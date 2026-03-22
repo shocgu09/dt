@@ -52,8 +52,8 @@ function renderBrandSelector(selectedBrand = '') {
   if (!el) return;
   el.innerHTML = CAR_BRANDS.map(b => `
     <button type="button" class="brand-btn ${selectedBrand === b.name ? 'selected' : ''}" onclick="selectBrand('${b.name}')">
-      ${b.logo ? `<img src="${b.logo}" alt="${b.name}" onerror="this.style.display='none'">` : '<span>🚘</span>'}
-      <span>${b.name}</span>
+      ${b.logo ? `<img src="${b.logo}" alt="${b.name}" onerror="this.style.display='none'">` : ''}
+      <span>${b.logo ? b.name : '🚘 ' + b.name}</span>
     </button>
   `).join('');
   const customInput = document.getElementById('carBrandCustom');
