@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DT Club</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- NAV -->
+  <nav class="navbar">
+    <div class="nav-brand" onclick="goPage('home')" style="cursor:pointer">
+      <span class="brand-icon">🚗</span>
+      <span class="brand-text">DT Club</span>
+    </div>
+    <div class="nav-links">
+      <button class="nav-btn active" data-page="home">홈</button>
+      <button class="nav-btn" data-page="members">회원</button>
+      <button class="nav-btn" data-page="cars">차량</button>
+      <button class="nav-btn" data-page="events">이벤트</button>
+      <button class="nav-btn admin-only hidden" data-page="admin">⚙️ 관리자</button>
+    </div>
+    <div class="nav-user" id="navUser">
+      <span class="nav-user-name" id="navUserName"></span>
+      <span class="admin-badge hidden" id="navAdminBadge">관리자</span>
+      <button class="btn btn-sm btn-outline" id="btnMyProfile">내 정보</button>
+      <button class="btn btn-sm btn-outline" id="btnLogout">로그아웃</button>
+    </div>
+    <button class="hamburger" id="hamburger">&#9776;</button>
+  </nav>
+  <div class="mobile-menu" id="mobileMenu">
+    <button class="nav-btn" data-page="home">홈</button>
+    <button class="nav-btn" data-page="members">회원</button>
+    <button class="nav-btn" data-page="cars">차량</button>
+    <button class="nav-btn" data-page="events">이벤트</button>
+    <button class="nav-btn admin-only hidden" data-page="admin">⚙️ 관리자</button>
+    <button class="nav-btn" id="btnMyProfileMobile">내 정보</button>
+    <button class="nav-btn" id="btnLogoutMobile">로그아웃</button>
+  </div>
+
+  <!-- PAGES -->
+  <main>
+    <!-- HOME -->
+    <section id="page-home" class="page active">
+      <div class="hero">
+        <div class="hero-content">
+          <h1>환영합니다 👋</h1>
+          <p class="hero-sub">DT 동아리 멤버십 플랫폼</p>
+          <p class="hero-desc">드라이브를 사랑하는 사람들의 모임.<br>운전자와 동승자가 함께 달리는 공간입니다.</p>
+          <button class="btn btn-primary" onclick="goPage('members')">회원 보기</button>
+          <button class="btn btn-outline" onclick="goPage('events')">이벤트 보기</button>
+        </div>
+        <div class="hero-art">🏎️</div>
+      </div>
+      <div class="stats-bar">
+        <div class="stat-card">
+          <span class="stat-num" id="stat-total">0</span>
+          <span class="stat-label">전체 회원</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-num" id="stat-drivers">0</span>
+          <span class="stat-label">운전자</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-num" id="stat-passengers">0</span>
+          <span class="stat-label">동승자</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-num" id="stat-events">0</span>
+          <span class="stat-label">이벤트</span>
+        </div>
+      </div>
+      <div class="home-sections">
+        <div class="home-section-card">
+          <h3>최근 이벤트</h3>
+          <div id="home-recent-events" class="home-list"></div>
+          <button class="btn btn-sm btn-outline" onclick="goPage('events')">모두 보기</button>
+        </div>
+        <div class="home-section-card">
+          <h3>새 회원</h3>
+          <div id="home-new-members" class="home-list"></div>
+          <button class="btn btn-sm btn-outline" onclick="goPage('members')">모두 보기</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- MEMBERS -->
+    <section id="page-members" class="page">
+      <div class="page-header">
+        <h2>회원 목록</h2>
+        <button class="btn btn-primary" id="btnAddMember">+ 회원 등록</button>
+      </div>
+      <div class="filter-bar">
+        <button class="filter-btn active" data-filter="all">전체</button>
+        <button class="filter-btn" data-filter="driver">운전자</button>
+        <button class="filter-btn" data-filter="passenger">동승자</button>
+        <input class="search-input" id="memberSearch" type="text" placeholder="이름/닉네임 검색..." />
+      </div>
+      <div class="card-grid" id="membersGrid"></div>
+    </section>
+
+    <!-- CARS -->
+    <section id="page-cars" class="page">
+      <div class="page-header">
+        <h2>차량 소개</h2>
+      </div>
+      <div class="card-grid" id="carsGrid"></div>
+    </section>
+
+    <!-- EVENTS -->
+    <section id="page-events" class="page">
+      <div class="page-header">
+        <h2>이벤트</h2>
+        <button class="btn btn-primary" id="btnAddEvent">+ 이벤트 만들기</button>
+      </div>
+      <div class="filter-bar">
+        <button class="filter-btn active" data-filter="all">전체</button>
+        <button class="filter-btn" data-filter="lightning">번개</button>
+        <button class="filter-btn" data-filter="regular">정모</button>
+        <button class="filter-btn" data-filter="upcoming">예정</button>
+      </div>
+      <div class="events-list" id="eventsList"></div>
+    </section>
+    <!-- ADMIN -->
+    <section id="page-admin" class="page">
+      <div class="page-header">
+        <h2>⚙️ 관리자 패널</h2>
+        <button class="btn btn-primary" id="btnInviteUser">+ 계정 생성</button>
+      </div>
+      <div class="admin-grid">
+        <div class="admin-card">
+          <h3>회원 계정 관리</h3>
+          <p class="admin-desc">가입된 계정 목록입니다. 역할을 변경하거나 계정을 삭제할 수 있습니다.</p>
+          <div id="userList" class="user-list"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- MODALS -->
+
+  <!-- LOGIN SCREEN -->
+  <div id="loginScreen" class="login-screen">
+    <div class="login-box">
+      <div class="login-brand"><span>🚗</span> DT Club</div>
+      <div class="login-tabs">
+        <button class="login-tab active" data-tab="login">로그인</button>
+        <button class="login-tab" data-tab="signup">회원가입</button>
+      </div>
+      <!-- 로그인 -->
+      <form id="loginForm" class="auth-form">
+        <div class="form-group">
+          <label>이메일</label>
+          <input type="email" id="loginEmail" required placeholder="example@email.com" />
+        </div>
+        <div class="form-group">
+          <label>비밀번호</label>
+          <input type="password" id="loginPassword" required placeholder="비밀번호 입력" />
+        </div>
+        <div class="auth-error" id="loginError"></div>
+        <button type="submit" class="btn btn-primary" style="width:100%">로그인</button>
+      </form>
+      <!-- 회원가입 -->
+      <form id="signupForm" class="auth-form hidden">
+        <div class="form-group">
+          <label>이름 *</label>
+          <input type="text" id="signupName" required placeholder="홍길동" />
+        </div>
+        <div class="form-group">
+          <label>이메일 *</label>
+          <input type="email" id="signupEmail" required placeholder="example@email.com" />
+        </div>
+        <div class="form-group">
+          <label>비밀번호 *</label>
+          <input type="password" id="signupPassword" required placeholder="6자 이상" minlength="6" />
+        </div>
+        <div class="form-group">
+          <label>비밀번호 확인 *</label>
+          <input type="password" id="signupPasswordConfirm" required placeholder="비밀번호 재입력" />
+        </div>
+        <div class="auth-error" id="signupError"></div>
+        <button type="submit" class="btn btn-primary" style="width:100%">가입하기</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Invite/Create Account Modal -->
+  <div class="modal-overlay" id="inviteModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>계정 생성</h3>
+        <button class="modal-close" data-modal="inviteModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="inviteForm">
+          <div class="form-group">
+            <label>이름 *</label>
+            <input type="text" id="inviteName" required placeholder="홍길동" />
+          </div>
+          <div class="form-group">
+            <label>이메일 *</label>
+            <input type="email" id="inviteEmail" required placeholder="example@email.com" />
+          </div>
+          <div class="form-group">
+            <label>임시 비밀번호 *</label>
+            <input type="text" id="invitePassword" required placeholder="멤버에게 전달할 비밀번호" />
+          </div>
+          <div class="form-group">
+            <label>역할</label>
+            <select id="inviteRole">
+              <option value="member">일반 회원</option>
+              <option value="admin">관리자 (운영진)</option>
+            </select>
+          </div>
+          <div class="auth-error" id="inviteError"></div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" data-modal="inviteModal">취소</button>
+            <button type="submit" class="btn btn-primary">생성</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Member Modal -->
+  <div class="modal-overlay" id="memberModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="memberModalTitle">회원 추가</h3>
+        <button class="modal-close" data-modal="memberModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="memberForm">
+          <input type="hidden" id="memberId" />
+          <div class="form-row">
+            <div class="form-group">
+              <label>이름 *</label>
+              <input type="text" id="memberName" required placeholder="홍길동" />
+            </div>
+            <div class="form-group">
+              <label>닉네임</label>
+              <input type="text" id="memberNickname" placeholder="길동이" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>역할 *</label>
+              <select id="memberRole">
+                <option value="driver">운전자</option>
+                <option value="passenger">동승자</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>성별 *</label>
+              <select id="memberGender">
+                <option value="male">남자</option>
+                <option value="female">여자</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>연락처</label>
+              <input type="text" id="memberPhone" placeholder="010-0000-0000" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>소개</label>
+            <textarea id="memberBio" rows="3" placeholder="간단한 자기소개를 입력해주세요."></textarea>
+          </div>
+          <div class="form-group">
+            <label>프로필 이미지</label>
+            <input type="file" id="memberImage" accept="image/*" />
+          </div>
+
+          <!-- Car info (shown when driver) -->
+          <div id="carSection">
+            <div class="divider"><span>내 차 정보</span></div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>브랜드</label>
+                <input type="text" id="carBrand" placeholder="현대, BMW 등" />
+              </div>
+              <div class="form-group">
+                <label>모델명</label>
+                <input type="text" id="carModel" placeholder="아반떼, 3시리즈 등" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>연식</label>
+                <input type="number" id="carYear" placeholder="2024" min="1980" max="2030" />
+              </div>
+              <div class="form-group">
+                <label>색상</label>
+                <input type="text" id="carColor" placeholder="펄화이트" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label>차량 소개</label>
+              <textarea id="carDesc" rows="2" placeholder="차량에 대한 설명을 입력해주세요."></textarea>
+            </div>
+            <div class="form-group">
+              <label>차량 사진</label>
+              <input type="file" id="carImage" accept="image/*" />
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-withdraw" id="btnWithdrawInModal" style="display:none;margin-right:auto" onclick="withdraw()">회원탈퇴</button>
+            <button type="button" class="btn btn-outline" data-modal="memberModal">취소</button>
+            <button type="submit" class="btn btn-primary">저장</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Member Detail Modal -->
+  <div class="modal-overlay" id="memberDetailModal">
+    <div class="modal modal-wide">
+      <div class="modal-header">
+        <h3 id="detailModalTitle">회원 정보</h3>
+        <button class="modal-close" data-modal="memberDetailModal">&times;</button>
+      </div>
+      <div class="modal-body" id="memberDetailBody"></div>
+    </div>
+  </div>
+
+  <!-- Event Modal -->
+  <div class="modal-overlay" id="eventModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="eventModalTitle">이벤트 만들기</h3>
+        <button class="modal-close" data-modal="eventModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="eventForm">
+          <input type="hidden" id="eventId" />
+          <div class="form-row">
+            <div class="form-group" style="flex:2">
+              <label>제목 *</label>
+              <input type="text" id="eventTitle" required placeholder="이벤트 제목" />
+            </div>
+            <div class="form-group">
+              <label>유형 *</label>
+              <select id="eventType">
+                <option value="lightning">번개</option>
+                <option value="regular">정모</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>날짜 *</label>
+              <input type="date" id="eventDate" required />
+            </div>
+            <div class="form-group">
+              <label>시간</label>
+              <input type="time" id="eventTime" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>장소</label>
+            <input type="text" id="eventLocation" placeholder="집결지 또는 장소 입력" />
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>참가비</label>
+              <input type="text" id="eventFee" placeholder="예: 3만원, 무료" />
+            </div>
+            <div class="form-group">
+              <label>투표 마감</label>
+              <input type="datetime-local" id="eventVoteDeadline" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>내용</label>
+            <textarea id="eventDesc" rows="4" placeholder="이벤트에 대한 설명을 입력해주세요."></textarea>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" data-modal="eventModal">취소</button>
+            <button type="submit" class="btn btn-primary">저장</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Vote Modal -->
+  <div class="modal-overlay" id="voteModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="voteModalTitle">참여 투표</h3>
+        <button class="modal-close" data-modal="voteModal">&times;</button>
+      </div>
+      <div class="modal-body" id="voteModalBody"></div>
+    </div>
+  </div>
+
+  <!-- 내 계정 모달 -->
+  <div class="modal-overlay" id="myAccountModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>내 계정 정보</h3>
+        <button class="modal-close" data-modal="myAccountModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="myAccountForm">
+          <div class="form-group">
+            <label>이름</label>
+            <input type="text" id="accountName" placeholder="이름" required />
+          </div>
+          <div class="form-group">
+            <label>이메일</label>
+            <input type="email" id="accountEmail" disabled style="opacity:.5;cursor:not-allowed" />
+          </div>
+          <div class="form-group">
+            <label>새 비밀번호 <small style="color:var(--text3);font-weight:400">(변경 시에만 입력)</small></label>
+            <input type="password" id="accountPassword" placeholder="6자 이상" minlength="6" />
+          </div>
+          <div class="form-group">
+            <label>새 비밀번호 확인</label>
+            <input type="password" id="accountPasswordConfirm" placeholder="비밀번호 재입력" />
+            <small id="passwordMatchMsg" style="font-size:.8rem;margin-top:4px;display:none"></small>
+          </div>
+          <div class="modal-footer" style="border-top:1px solid var(--border);margin-top:8px;padding-top:16px">
+            <button type="button" class="btn btn-withdraw" id="btnWithdrawInAccount" onclick="withdraw()">회원탈퇴</button>
+            <button type="button" class="btn btn-outline" data-modal="myAccountModal" style="margin-left:auto">취소</button>
+            <button type="submit" class="btn btn-primary">저장</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<!-- 🔧 Firebase 설정 파일 (본인 config로 교체하세요) -->
+  <script src="firebase-config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

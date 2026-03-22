@@ -1,0 +1,1147 @@
+/* ===== STATE ===== */
+const state = {
+  members: [],
+  events: [],
+  users: [],           // users 컬렉션 캐시 (투표 칩 표시용)
+  db: null,
+  auth: null,
+  currentPage: 'home',
+  currentUser: null,   // Firebase Auth user
+  currentUserRole: null, // 'admin' | 'member'
+  currentUserId: null,   // Firestore users 문서 ID (= auth uid)
+  memberFilter: 'all',
+  memberSearch: '',
+  eventFilter: 'all',
+};
+
+/* ===== FIREBASE INIT ===== */
+function initFirebase() {
+  try {
+    firebase.initializeApp(firebaseConfig);
+  } catch (e) {
+    if (e.code !== 'app/duplicate-app') throw e;
+  }
+  state.db = firebase.firestore();
+  state.auth = firebase.auth();
+}
+
+/* ===== AUTH ===== */
+function initAuth() {
+  state.auth.onAuthStateChanged(async (user) => {
+    if (user) {
+      state.currentUser = user;
+      state.currentUserId = user.uid;
+
+      // signup()이 문서를 쓸 때까지 최대 3초 대기 (race condition 방지)
+      let userDoc;
+      for (let i = 0; i < 6; i++) {
+        userDoc = await state.db.collection('users').doc(user.uid).get();
+        if (userDoc.exists) break;
+        await new Promise(r => setTimeout(r, 500));
+      }
+
+      if (userDoc.exists) {
+        const data = userDoc.data();
+        // 삭제 대기 계정 → 본인 Auth 계정 완전 삭제 후 로그아웃
+        if (data.pendingDelete) {
+          try {
+            await state.db.collection('users').doc(user.uid).delete();
+            await user.delete(); // Firebase Auth에서도 완전 삭제
+          } catch (e) {
+            // 세션 만료 등으로 삭제 실패 시 비활성화 유지
+          }
+          await state.auth.signOut();
+          alert('삭제된 계정입니다.');
+          return;
+        }
+        // 비활성화된 계정 → 강제 로그아웃
+        if (data.disabled) {
+          await state.auth.signOut();
+          alert('접근이 차단된 계정입니다. 운영진에게 문의하세요.');
+          return;
+        }
+        state.currentUserRole = data.role;
+      } else {
+        // 그래도 없으면 member로 폴백 생성
+        await state.db.collection('users').doc(user.uid).set({
+          name: user.displayName || user.email,
+          email: user.email,
+          role: 'member',
+          createdAt: new Date().toISOString().slice(0, 10),
+        });
+        state.currentUserRole = 'member';
+      }
+      showApp();
+    } else {
+      state.currentUser = null;
+      state.currentUserRole = null;
+      state.currentUserId = null;
+      showLoginScreen();
+    }
+  });
+}
+
+function showApp() {
+  document.getElementById('loginScreen').classList.add('hidden');
+  // 네비바 사용자 정보 표시
+  const userDoc = state.db.collection('users').doc(state.currentUserId);
+  userDoc.get().then(doc => {
+    const name = doc.exists ? doc.data().name : state.currentUser.email;
+    document.getElementById('navUserName').textContent = name;
+  });
+  // 관리자 전용 UI
+  const isAdmin = state.currentUserRole === 'admin';
+  document.querySelectorAll('.admin-only').forEach(el => {
+    el.classList.toggle('hidden', !isAdmin);
+  });
+  document.getElementById('navAdminBadge').classList.toggle('hidden', !isAdmin);
+  // 관리자가 아니면 수정/삭제 버튼 숨김
+  applyRoleUI();
+}
+
+function showLoginScreen() {
+  document.getElementById('loginScreen').classList.remove('hidden');
+}
+
+function applyRoleUI() {
+  // 관리자만 회원/이벤트 추가·수정·삭제 가능
+  // 렌더링 함수에서 isAdmin 체크하여 처리
+}
+
+async function login(email, password) {
+  await state.auth.signInWithEmailAndPassword(email, password);
+}
+
+async function signup(name, email, password) {
+  const cred = await state.auth.createUserWithEmailAndPassword(email, password);
+  await cred.user.updateProfile({ displayName: name });
+  // 본인 제외한 기존 users 수로 최초 가입자 여부 판별
+  const usersSnap = await state.db.collection('users').get();
+  const others = usersSnap.docs.filter(d => d.id !== cred.user.uid);
+  const role = others.length === 0 ? 'admin' : 'member';
+  await state.db.collection('users').doc(cred.user.uid).set({
+    name, email, role,
+    createdAt: new Date().toISOString().slice(0, 10),
+  });
+}
+
+async function logout() {
+  await state.auth.signOut();
+}
+
+async function withdraw() {
+  const uid = state.currentUserId;
+  const authUser = state.auth?.currentUser;
+  if (!uid || !authUser) {
+    alert('로그인 정보를 확인할 수 없습니다. 페이지를 새로고침 후 다시 시도해주세요.');
+    return;
+  }
+  const confirmed = confirm('정말 탈퇴하시겠습니까?\n탈퇴 시 계정이 완전히 삭제되며 되돌릴 수 없습니다.');
+  if (!confirmed) return;
+
+  try {
+    // 1. pendingDelete 마킹
+    await state.db.collection('users').doc(uid).set(
+      { pendingDelete: true, disabled: true },
+      { merge: true }
+    );
+    // 2. 내 회원 프로필 삭제 (members 컬렉션)
+    const myMembers = await state.db.collection('members').where('createdBy', '==', uid).get();
+    for (const doc of myMembers.docs) await doc.ref.delete();
+    // 3. 내가 작성한 이벤트 삭제 (events 컬렉션)
+    const myEvents = await state.db.collection('events').where('createdBy', '==', uid).get();
+    for (const doc of myEvents.docs) await doc.ref.delete();
+    // 4. Firebase Auth 계정 삭제
+    await authUser.delete();
+    // 5. Auth 삭제 성공 시 Firestore users 문서 완전 삭제
+    await state.db.collection('users').doc(uid).delete();
+    alert('탈퇴가 완료되었습니다.');
+  } catch (e) {
+    if (e.code === 'auth/requires-recent-login') {
+      alert('보안을 위해 재로그인이 필요합니다.\n다음 로그인 시 계정이 자동으로 완전 삭제됩니다.\n로그아웃합니다.');
+      await state.auth.signOut();
+    } else {
+      alert('탈퇴 중 오류가 발생했습니다: ' + e.message);
+    }
+  }
+}
+
+/* ===== ADMIN: 계정 생성 (관리자가 직접 생성) ===== */
+async function createAccount(name, email, password, role) {
+  // Firebase Admin SDK 없이는 다른 계정을 직접 생성 불가
+  // 대신: 임시 auth로 계정 생성 후 현재 세션 유지
+  const currentUser = state.currentUser;
+  const secondaryApp = firebase.initializeApp(firebaseConfig, 'secondary');
+  const secondaryAuth = secondaryApp.auth();
+  try {
+    const cred = await secondaryAuth.createUserWithEmailAndPassword(email, password);
+    await cred.user.updateProfile({ displayName: name });
+    await state.db.collection('users').doc(cred.user.uid).set({
+      name, email, role,
+      createdAt: new Date().toISOString().slice(0, 10),
+    });
+    await secondaryAuth.signOut();
+  } finally {
+    await secondaryApp.delete();
+  }
+}
+
+/* ===== ADMIN: 역할 변경 / 계정 삭제 ===== */
+async function updateUserRole(uid, role) {
+  await state.db.collection('users').doc(uid).update({ role });
+  renderAdmin();
+}
+
+async function deleteUserAccount(uid) {
+  if (!confirm('정말 삭제하시겠습니까?\n해당 계정은 즉시 차단되며, 다음 로그인 시도 시 Firebase에서 완전히 삭제됩니다.')) return;
+  await state.db.collection('users').doc(uid).update({ pendingDelete: true, disabled: true });
+  renderAdmin();
+}
+
+async function restoreUserAccount(uid) {
+  if (!confirm('이 계정을 복구할까요?')) return;
+  await state.db.collection('users').doc(uid).update({ disabled: false, pendingDelete: false });
+  renderAdmin();
+}
+
+/* ===== REALTIME LISTENERS ===== */
+function subscribeAll() {
+  state.db.collection('members').orderBy('joinDate', 'desc').onSnapshot(snap => {
+    state.members = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderCurrentPage();
+  });
+
+  state.db.collection('events').orderBy('date', 'asc').onSnapshot(snap => {
+    state.events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderCurrentPage();
+  });
+
+  // users 캐시 (투표 칩 표시용)
+  state.db.collection('users').onSnapshot(snap => {
+    state.users = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+  });
+}
+
+/* ===== SEED DATA (최초 1회) ===== */
+async function maybeSeed() {
+  const snap = await state.db.collection('members').limit(1).get();
+  if (!snap.empty) return; // 이미 데이터 있으면 skip
+
+  const today = new Date().toISOString().slice(0, 10);
+  const nextSat = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() + (6 - d.getDay() + 7) % 7 || 7);
+    return d.toISOString().slice(0, 10);
+  })();
+  const in4 = new Date(Date.now() + 4 * 86400000).toISOString().slice(0, 10);
+
+  const members = [
+    { name: '김민준', nickname: '민준', role: 'driver', phone: '010-1234-5678', joinDate: '2026-03-01', bio: 'BMW 3시리즈 오너. 와인딩 코스 전문가입니다. 드라이브 동아리 4기 회장.', image: null, car: { brand: 'BMW', model: '330i', year: 2023, color: '알파인 화이트', desc: 'M스포츠 패키지 장착. 와인딩에서 진가를 발휘하는 차입니다.', image: null } },
+    { name: '박서연', nickname: '서연', role: 'driver', phone: '010-2345-6789', joinDate: '2026-03-01', bio: '현대 아이오닉6 타고 조용히 드라이브 즐기는 걸 좋아해요.', image: null, car: { brand: '현대', model: '아이오닉6', year: 2024, color: '세빌 블랙', desc: '전기차로 조용하고 부드러운 주행감이 매력. 1회 충전 600km!', image: null } },
+    { name: '이도현', nickname: '도현', role: 'passenger', phone: '010-3456-7890', joinDate: '2026-03-05', bio: '조수석 전문가입니다 ㅋㅋ 음악 선곡은 제가 책임집니다.', image: null, car: null },
+    { name: '최지우', nickname: '지우', role: 'driver', phone: '010-4567-8901', joinDate: '2026-03-03', bio: '벤츠 A클래스 오너. 감성 카페 투어 전문.', image: null, car: { brand: 'Mercedes-Benz', model: 'A200', year: 2022, color: '코스모스 블랙', desc: '도심에서도 고속도로에서도 어디서든 빛나는 차입니다.', image: null } },
+    { name: '정예린', nickname: '예린', role: 'passenger', phone: '010-5678-9012', joinDate: '2026-03-07', bio: '드라이브하면서 차 덕후 언니오빠들한테 배우는 중입니다!', image: null, car: null },
+  ];
+
+  const batch = state.db.batch();
+  const idMap = {};
+  members.forEach((m, i) => {
+    const ref = state.db.collection('members').doc();
+    idMap[i] = ref.id;
+    batch.set(ref, m);
+  });
+  await batch.commit();
+
+  const events = [
+    {
+      title: '3월 개화 드라이브 🌸', type: 'regular', date: nextSat, time: '14:00',
+      location: '서울 올림픽공원 주차장',
+      desc: '4기 첫 정모! 벚꽃 핀 도로를 따라 드라이브 후 카페 투어 예정입니다. 팀 매칭 후 목적지 이동, 맛집 저녁 식사까지!',
+      createdAt: today,
+      votes: { attending: [idMap[0], idMap[3]], maybe: [idMap[2]], absent: [idMap[4]] },
+    },
+    {
+      title: '셀프 세차 번개 🚿', type: 'lightning', date: in4, time: '11:00',
+      location: '은평구 셀프 세차장',
+      desc: '주말에 가볍게 세차하고 카페 한 잔 어떠세요? 운전자 분들 특히 환영!',
+      createdAt: today,
+      votes: { attending: [idMap[1]], maybe: [idMap[0]], absent: [] },
+    },
+  ];
+
+  const batch2 = state.db.batch();
+  events.forEach(ev => {
+    const ref = state.db.collection('events').doc();
+    batch2.set(ref, ev);
+  });
+  await batch2.commit();
+}
+
+/* ===== ROUTING ===== */
+function goPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name)?.classList.add('active');
+  document.querySelectorAll(`[data-page="${name}"]`).forEach(b => b.classList.add('active'));
+  state.currentPage = name;
+  window.scrollTo(0, 0);
+  renderCurrentPage();
+}
+
+function renderCurrentPage() {
+  renderPage(state.currentPage);
+}
+
+function renderPage(name) {
+  if (name === 'home') renderHome();
+  else if (name === 'members') renderMembers();
+  else if (name === 'cars') renderCars();
+  else if (name === 'events') renderEvents();
+  else if (name === 'admin') renderAdmin();
+}
+
+/* ===== ADMIN PAGE ===== */
+async function renderAdmin() {
+  if (state.currentUserRole !== 'admin') return;
+  const snap = await state.db.collection('users').orderBy('createdAt', 'asc').get();
+  const users = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+  const list = document.getElementById('userList');
+  if (!users.length) {
+    list.innerHTML = '<div class="empty-state">등록된 계정이 없습니다</div>';
+    return;
+  }
+  list.innerHTML = users.map(u => `
+    <div class="user-item" style="${u.disabled ? 'opacity:.5' : ''}">
+      <div class="user-item-info">
+        <div class="user-item-name">
+          ${u.name}
+          ${u.uid === state.currentUserId ? '<span style="color:var(--primary-light);font-size:.76rem">(나)</span>' : ''}
+          ${u.pendingDelete ? '<span style="color:var(--accent);font-size:.76rem">삭제 예정</span>' : u.disabled ? '<span style="color:var(--accent);font-size:.76rem">비활성화</span>' : ''}
+        </div>
+        <div class="user-item-email">${u.email}</div>
+      </div>
+      <div class="user-item-actions">
+        ${!u.disabled ? `
+          <select class="role-select" onchange="updateUserRole('${u.uid}', this.value)" ${u.uid === state.currentUserId ? 'disabled' : ''}>
+            <option value="member" ${u.role === 'member' ? 'selected' : ''}>일반 회원</option>
+            <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>관리자</option>
+          </select>` : ''}
+        ${u.uid !== state.currentUserId ? `
+          <button class="btn btn-sm ${u.disabled ? 'btn-success' : 'btn-danger'}"
+            onclick="${u.disabled ? `restoreUserAccount('${u.uid}')` : `deleteUserAccount('${u.uid}')`}">
+            ${u.disabled ? '복구' : '비활성화'}
+          </button>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+/* ===== HOME ===== */
+function renderHome() {
+  const { members, events } = state;
+  document.getElementById('stat-total').textContent = members.length;
+  document.getElementById('stat-drivers').textContent = members.filter(m => m.role === 'driver').length;
+  document.getElementById('stat-passengers').textContent = members.filter(m => m.role === 'passenger').length;
+  document.getElementById('stat-events').textContent = events.length;
+
+  const recentEl = document.getElementById('home-recent-events');
+  const sorted = [...events].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 3);
+  recentEl.innerHTML = sorted.length
+    ? sorted.map(ev => `
+        <div class="home-list-item" onclick="goPage('events')">
+          <span class="item-icon">${ev.type === 'lightning' ? '⚡' : '🗓'}</span>
+          <div class="item-info">
+            <div class="item-title">${ev.title}</div>
+            <div class="item-sub">${formatDate(ev.date)} ${ev.time || ''} ${ev.location ? '· ' + ev.location : ''}</div>
+          </div>
+        </div>`)
+      .join('')
+    : '<div class="empty-state">이벤트가 없습니다</div>';
+
+  const newEl = document.getElementById('home-new-members');
+  const newMem = [...members].slice(0, 4);
+  newEl.innerHTML = newMem.length
+    ? newMem.map(m => `
+        <div class="home-list-item" onclick="openMemberDetail('${m.id}')">
+          <span class="item-icon">${avatarSmall(m)}</span>
+          <div class="item-info">
+            <div class="item-title">${m.name} ${m.nickname ? `<small style="color:var(--text2)">(${m.nickname})</small>` : ''}</div>
+            <div class="item-sub">${m.role === 'driver' ? '🚗 운전자' : '💺 동승자'} · ${m.joinDate}</div>
+          </div>
+        </div>`)
+      .join('')
+    : '<div class="empty-state">회원이 없습니다</div>';
+}
+
+/* ===== MEMBERS ===== */
+function updateAddMemberBtn() {
+  const btn = document.getElementById('btnAddMember');
+  if (!btn) return;
+  const alreadyRegistered = state.members.some(m => m.createdBy === state.currentUserId);
+  btn.disabled = alreadyRegistered;
+  btn.title = alreadyRegistered ? '이미 회원 등록이 완료되었습니다.' : '';
+  btn.textContent = alreadyRegistered ? '✅ 등록 완료' : '+ 회원 등록';
+}
+
+function renderMembers() {
+  updateAddMemberBtn();
+  const { memberFilter, memberSearch } = state;
+  const members = state.members.filter(m => {
+    const matchRole = memberFilter === 'all' || m.role === memberFilter;
+    const q = memberSearch.toLowerCase();
+    const matchSearch = !q || m.name.toLowerCase().includes(q) || (m.nickname || '').toLowerCase().includes(q);
+    return matchRole && matchSearch;
+  });
+
+  const grid = document.getElementById('membersGrid');
+  if (!members.length) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;padding:40px">조건에 맞는 회원이 없습니다</div>';
+    return;
+  }
+  grid.innerHTML = members.map(m => `
+    <div class="member-card" onclick="openMemberDetail('${m.id}')">
+      <div class="member-card-top">
+        <div class="member-avatar">${avatarEl(m)}</div>
+        <div class="member-info">
+          <div class="member-name">${m.name}${m.createdBy === state.currentUserId ? ' <span style="color:var(--primary-light);font-size:.75rem;font-weight:600">나</span>' : ''}</div>
+          <div class="member-nick">${m.nickname || '-'}</div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px">
+            <span class="role-badge ${m.role}">${m.role === 'driver' ? '🚗 운전자' : '💺 동승자'}</span>
+            <span class="gender-badge ${m.gender || 'male'}">${m.gender === 'female' ? '♀ 여' : '♂ 남'}</span>
+          </div>
+        </div>
+      </div>
+      <div class="member-card-body">
+        <div class="member-bio">${m.bio || '소개 없음'}</div>
+        ${m.car ? `<div class="member-car-tag">🚘 ${m.car.brand} ${m.car.model}</div>` : ''}
+      </div>
+      <div class="member-card-footer">
+        <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openMemberDetail('${m.id}')">상세보기</button>
+        ${canEdit(m) ? `
+          <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openEditMember('${m.id}')">수정</button>
+          <button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="event.stopPropagation();deleteMember('${m.id}')">삭제</button>
+        ` : ''}
+      </div>
+    </div>`).join('');
+}
+
+function openMemberDetail(id) {
+  const m = state.members.find(x => x.id === id);
+  if (!m) return;
+  document.getElementById('detailModalTitle').textContent = `${m.name} 회원 정보`;
+  document.getElementById('memberDetailBody').innerHTML = `
+    <div class="detail-hero">
+      <div class="detail-avatar">${avatarEl(m)}</div>
+      <div class="detail-info-main">
+        <h2>${m.name}</h2>
+        <div class="nick">${m.nickname ? `"${m.nickname}"` : ''}</div>
+        <div class="detail-meta">
+          <span class="role-badge ${m.role}">${m.role === 'driver' ? '🚗 운전자' : '💺 동승자'}</span>
+          <span class="gender-badge ${m.gender || 'male'}">${m.gender === 'female' ? '♀ 여' : '♂ 남'}</span>
+        </div>
+        <div style="font-size:.88rem;color:var(--text2)">${m.bio || ''}</div>
+      </div>
+    </div>
+    <div class="info-grid">
+      <div class="info-item"><div class="info-label">연락처</div><div class="info-value">${m.phone || '-'}</div></div>
+      <div class="info-item"><div class="info-label">가입일</div><div class="info-value">${m.joinDate || '-'}</div></div>
+    </div>
+    ${m.car ? `
+      <div class="detail-section">
+        <h4>내 차</h4>
+        <div class="detail-car">
+          <div class="detail-car-img">${m.car.image ? `<img src="${m.car.image}" alt="차량">` : '🚗'}</div>
+          <div class="detail-car-info">
+            <div class="detail-car-name">${m.car.brand} ${m.car.model}</div>
+            <div class="detail-car-sub">${m.car.year || ''} · ${m.car.color || ''}</div>
+            <div class="detail-car-desc">${m.car.desc || ''}</div>
+          </div>
+        </div>
+      </div>` : ''}
+    ${canEdit(m) ? `
+    <div class="detail-actions">
+      <button class="btn btn-outline" onclick="openEditMember('${m.id}');closeModal('memberDetailModal')">수정</button>
+      <button class="btn btn-danger" onclick="deleteMember('${m.id}');closeModal('memberDetailModal')">삭제</button>
+    </div>` : ''}
+    `;
+  openModal('memberDetailModal');
+}
+
+async function openMyProfile() {
+  // users 컬렉션에서 계정 정보 불러오기
+  const doc = await state.db.collection('users').doc(state.currentUserId).get();
+  const data = doc.exists ? doc.data() : {};
+  document.getElementById('accountName').value = data.name || '';
+  document.getElementById('accountEmail').value = state.currentUser?.email || '';
+  document.getElementById('accountPassword').value = '';
+  openModal('myAccountModal');
+}
+
+async function saveMyAccount(e) {
+  e.preventDefault();
+  const btn = e.target.querySelector('[type="submit"]');
+  btn.disabled = true; btn.textContent = '저장 중...';
+  try {
+    const name = document.getElementById('accountName').value.trim();
+    const password = document.getElementById('accountPassword').value;
+    const passwordConfirm = document.getElementById('accountPasswordConfirm').value;
+    if (password && password !== passwordConfirm) {
+      alert('비밀번호가 일치하지 않습니다.');
+      btn.disabled = false; btn.textContent = '저장';
+      return;
+    }
+    // Firestore 이름 업데이트
+    await state.db.collection('users').doc(state.currentUserId).update({ name });
+    // Auth displayName 업데이트
+    await state.currentUser.updateProfile({ displayName: name });
+    // 비밀번호 변경 (입력한 경우만)
+    if (password) await state.currentUser.updatePassword(password);
+    // 네비바 이름 갱신
+    document.getElementById('navUserName').textContent = name;
+    closeModal('myAccountModal');
+    alert('저장되었습니다.');
+  } catch (err) {
+    if (err.code === 'auth/requires-recent-login') {
+      alert('비밀번호 변경은 보안을 위해 재로그인 후 다시 시도해주세요.');
+    } else {
+      alert('저장 오류: ' + err.message);
+    }
+  } finally {
+    btn.disabled = false; btn.textContent = '저장';
+  }
+}
+
+function openAddMember() {
+  document.getElementById('memberModalTitle').textContent = '회원 등록';
+  document.getElementById('memberForm').reset();
+  document.getElementById('memberId').value = '';
+  document.getElementById('btnWithdrawInModal').style.display = 'none';
+  toggleCarSection('driver');
+  openModal('memberModal');
+}
+
+function openEditMember(id) {
+  const m = state.members.find(x => x.id === id);
+  if (!m) return;
+  document.getElementById('memberModalTitle').textContent = '회원 수정';
+  document.getElementById('btnWithdrawInModal').style.display = 'none';
+  document.getElementById('memberId').value = m.id;
+  document.getElementById('memberName').value = m.name;
+  document.getElementById('memberNickname').value = m.nickname || '';
+  document.getElementById('memberRole').value = m.role;
+  document.getElementById('memberGender').value = m.gender || 'male';
+  document.getElementById('memberPhone').value = m.phone || '';
+  document.getElementById('memberBio').value = m.bio || '';
+  toggleCarSection(m.role);
+  if (m.car) {
+    document.getElementById('carBrand').value = m.car.brand || '';
+    document.getElementById('carModel').value = m.car.model || '';
+    document.getElementById('carYear').value = m.car.year || '';
+    document.getElementById('carColor').value = m.car.color || '';
+    document.getElementById('carDesc').value = m.car.desc || '';
+  }
+  openModal('memberModal');
+}
+
+async function saveMember(e) {
+  e.preventDefault();
+  const submitBtn = e.target.querySelector('[type="submit"]');
+  submitBtn.disabled = true;
+  submitBtn.textContent = '저장 중...';
+
+  try {
+    const id = document.getElementById('memberId').value;
+    const role = document.getElementById('memberRole').value;
+    const existing = id ? state.members.find(x => x.id === id) : null;
+
+    const memberImageFile = document.getElementById('memberImage').files[0];
+    const carImageFile = document.getElementById('carImage').files[0];
+
+    let memberImg = existing?.image || null;
+    let carImg = existing?.car?.image || null;
+
+    // 이미지 압축 후 base64로 Firestore에 저장 (Storage 불필요)
+    if (memberImageFile) memberImg = await compressImage(memberImageFile, 600, 0.7);
+    if (carImageFile) carImg = await compressImage(carImageFile, 800, 0.75);
+
+    const data = {
+      name: document.getElementById('memberName').value.trim(),
+      nickname: document.getElementById('memberNickname').value.trim(),
+      role,
+      gender: document.getElementById('memberGender').value,
+      phone: document.getElementById('memberPhone').value.trim(),
+      bio: document.getElementById('memberBio').value.trim(),
+      joinDate: existing?.joinDate || new Date().toISOString().slice(0, 10),
+      createdBy: existing?.createdBy || state.currentUserId,
+      image: memberImg,
+      car: role === 'driver' ? {
+        brand: document.getElementById('carBrand').value.trim(),
+        model: document.getElementById('carModel').value.trim(),
+        year: parseInt(document.getElementById('carYear').value) || null,
+        color: document.getElementById('carColor').value.trim(),
+        desc: document.getElementById('carDesc').value.trim(),
+        image: carImg,
+      } : null,
+    };
+
+    if (id) {
+      await state.db.collection('members').doc(id).set(data, { merge: true });
+    } else {
+      await state.db.collection('members').add(data);
+    }
+
+    closeModal('memberModal');
+  } catch (err) {
+    console.error(err);
+    alert('저장 중 오류가 발생했습니다: ' + err.message);
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = '저장';
+  }
+}
+
+async function deleteMember(id) {
+  if (!confirm('정말 삭제할까요?')) return;
+  await state.db.collection('members').doc(id).delete();
+
+  // 이벤트 투표에서도 제거
+  const snap = await state.db.collection('events').get();
+  const batch = state.db.batch();
+  const FieldValue = firebase.firestore.FieldValue;
+  snap.docs.forEach(doc => {
+    const votes = doc.data().votes || {};
+    if ([...(votes.attending || []), ...(votes.maybe || []), ...(votes.absent || [])].includes(id)) {
+      batch.update(doc.ref, {
+        'votes.attending': FieldValue.arrayRemove(id),
+        'votes.maybe': FieldValue.arrayRemove(id),
+        'votes.absent': FieldValue.arrayRemove(id),
+      });
+    }
+  });
+  await batch.commit();
+}
+
+function toggleCarSection(role) {
+  document.getElementById('carSection').style.display = role === 'driver' ? 'block' : 'none';
+}
+
+/* ===== CARS ===== */
+function renderCars() {
+  const drivers = state.members.filter(m => m.role === 'driver' && m.car);
+  const grid = document.getElementById('carsGrid');
+  if (!drivers.length) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;padding:40px">등록된 차량이 없습니다.</div>';
+    return;
+  }
+  grid.innerHTML = drivers.map(m => `
+    <div class="car-card" onclick="openMemberDetail('${m.id}')">
+      <div class="car-card-img">${m.car.image ? `<img src="${m.car.image}" alt="${m.car.model}">` : '🚗'}</div>
+      <div class="car-card-body">
+        <div class="car-name">${m.car.brand} ${m.car.model}</div>
+        <div class="car-year-color">${m.car.year || ''} ${m.car.year && m.car.color ? '·' : ''} ${m.car.color || ''}</div>
+        <div class="car-desc">${m.car.desc || '설명 없음'}</div>
+        <div class="car-owner">
+          <div class="car-owner-avatar">${avatarEl(m)}</div>
+          <div>
+            <div class="car-owner-name">${m.name}</div>
+            <div style="font-size:.76rem;color:var(--text3)">오너</div>
+          </div>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+/* ===== EVENTS ===== */
+function renderEvents() {
+  const today = new Date().toISOString().slice(0, 10);
+  const { eventFilter } = state;
+  const events = state.events.filter(ev => {
+    if (eventFilter === 'lightning') return ev.type === 'lightning';
+    if (eventFilter === 'regular') return ev.type === 'regular';
+    if (eventFilter === 'upcoming') return ev.date >= today;
+    return true;
+  });
+
+  const list = document.getElementById('eventsList');
+  if (!events.length) {
+    list.innerHTML = '<div class="empty-state" style="text-align:center;padding:40px">이벤트가 없습니다.</div>';
+    return;
+  }
+
+  list.innerHTML = events.map(ev => {
+    const votes = ev.votes || { attending: [], maybe: [], absent: [] };
+    const total = votes.attending.length + votes.maybe.length + votes.absent.length;
+    const aW = total ? (votes.attending.length / total * 100).toFixed(1) : 0;
+    const mW = total ? (votes.maybe.length / total * 100).toFixed(1) : 0;
+    const bW = total ? (votes.absent.length / total * 100).toFixed(1) : 0;
+    const isPast = ev.date < today;
+    return `
+      <div class="event-card">
+        <div class="event-card-header">
+          <span class="event-type-badge ${ev.type}">${ev.type === 'lightning' ? '⚡ 번개' : '🗓 정모'}</span>
+          <div class="event-title">${ev.title}</div>
+          ${isPast ? '<span style="font-size:.78rem;color:var(--text3);background:var(--bg3);padding:3px 10px;border-radius:10px;white-space:nowrap">종료됨</span>' : ''}
+        </div>
+        ${(() => {
+          const author = state.users.find(u => u.uid === ev.createdBy);
+          const isMe = ev.createdBy === state.currentUserId;
+          const name = author?.name || '알 수 없음';
+          return `<div style="font-size:.78rem;color:var(--text3);margin-bottom:6px">✍️ ${name}${isMe ? ' <span style="color:var(--primary-light);font-weight:600">(나)</span>' : ''}</div>`;
+        })()}
+        <div class="event-meta">
+          <span class="event-meta-item">📅 ${formatDate(ev.date)}</span>
+          ${ev.time ? `<span class="event-meta-item">🕐 ${ev.time}</span>` : ''}
+          ${ev.location ? `<span class="event-meta-item">📍 ${ev.location}</span>` : ''}
+          ${ev.fee ? `<span class="event-meta-item">💰 ${ev.fee}</span>` : ''}
+          ${ev.voteDeadline ? `<span class="event-meta-item ${new Date(ev.voteDeadline) < new Date() ? 'deadline-over' : 'deadline-active'}">⏰ 투표마감 ${ev.voteDeadline.replace('T', ' ')}</span>` : ''}
+        </div>
+        ${ev.desc ? `
+          <div class="event-desc-wrap">
+            <div class="event-desc collapsed" id="desc-${ev.id}">${ev.desc.replace(/\n/g, '<br>')}</div>
+            <button class="desc-toggle" onclick="toggleDesc('${ev.id}')">더 보기 ▼</button>
+          </div>` : ''}
+        <div class="event-votes">
+          <div class="vote-count attending">✅ 참여 <span class="num">${votes.attending.length}</span></div>
+          <div class="vote-count maybe">🕐 늦참 <span class="num">${votes.maybe.length}</span></div>
+          <div class="vote-count absent">❌ 불참 <span class="num">${votes.absent.length}</span></div>
+        </div>
+        ${total > 0 ? `
+          <div class="vote-progress">
+            <div class="vote-bar-attend" style="width:${aW}%"></div>
+            <div class="vote-bar-maybe" style="width:${mW}%"></div>
+            <div class="vote-bar-absent" style="width:${bW}%"></div>
+          </div>` : ''}
+        <div class="event-actions">
+          ${(() => { const closed = ev.voteDeadline && new Date(ev.voteDeadline) < new Date(); return closed ? `<button class="btn btn-sm btn-outline" onclick="openVoteModal('${ev.id}')">📊 투표 현황 (마감)</button>` : `<button class="btn btn-sm btn-success" onclick="openVoteModal('${ev.id}')">📊 투표 현황 / 참여</button>`; })()}
+          ${canEdit(ev) ? `
+            <button class="btn btn-sm btn-outline" onclick="openEditEvent('${ev.id}')">수정</button>
+            <button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="deleteEvent('${ev.id}')">삭제</button>
+          ` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function openAddEvent() {
+  document.getElementById('eventModalTitle').textContent = '이벤트 만들기';
+  document.getElementById('eventForm').reset();
+  document.getElementById('eventId').value = '';
+  openModal('eventModal');
+}
+
+function openEditEvent(id) {
+  const ev = state.events.find(x => x.id === id);
+  if (!ev) return;
+  document.getElementById('eventModalTitle').textContent = '이벤트 수정';
+  document.getElementById('eventId').value = ev.id;
+  document.getElementById('eventTitle').value = ev.title;
+  document.getElementById('eventType').value = ev.type;
+  document.getElementById('eventDate').value = ev.date;
+  document.getElementById('eventTime').value = ev.time || '';
+  document.getElementById('eventLocation').value = ev.location || '';
+  document.getElementById('eventFee').value = ev.fee || '';
+  document.getElementById('eventVoteDeadline').value = ev.voteDeadline || '';
+  document.getElementById('eventDesc').value = ev.desc || '';
+  openModal('eventModal');
+}
+
+async function saveEvent(e) {
+  e.preventDefault();
+  const submitBtn = e.target.querySelector('[type="submit"]');
+  submitBtn.disabled = true;
+  submitBtn.textContent = '저장 중...';
+  try {
+    const id = document.getElementById('eventId').value;
+    const existing = id ? state.events.find(x => x.id === id) : null;
+    const data = {
+      title: document.getElementById('eventTitle').value.trim(),
+      type: document.getElementById('eventType').value,
+      date: document.getElementById('eventDate').value,
+      time: document.getElementById('eventTime').value,
+      location: document.getElementById('eventLocation').value.trim(),
+      fee: document.getElementById('eventFee').value.trim(),
+      voteDeadline: document.getElementById('eventVoteDeadline').value,
+      desc: document.getElementById('eventDesc').value.trim(),
+      createdAt: existing?.createdAt || new Date().toISOString().slice(0, 10),
+      createdBy: existing?.createdBy || state.currentUserId,
+      votes: existing?.votes || { attending: [], maybe: [], absent: [] },
+    };
+    if (id) {
+      await state.db.collection('events').doc(id).set(data, { merge: true });
+    } else {
+      await state.db.collection('events').add(data);
+    }
+    closeModal('eventModal');
+  } catch (err) {
+    alert('저장 오류: ' + err.message);
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = '저장';
+  }
+}
+
+async function deleteEvent(id) {
+  if (!confirm('이벤트를 삭제할까요?')) return;
+  await state.db.collection('events').doc(id).delete();
+}
+
+/* ===== VOTE MODAL ===== */
+function openVoteModal(evId) {
+  const ev = state.events.find(x => x.id === evId);
+  if (!ev) return;
+  const votes = ev.votes || { attending: [], maybe: [], absent: [] };
+  const uid = state.currentUserId;
+  document.getElementById('voteModalTitle').textContent = ev.title;
+
+  function chip(id) {
+    // Auth UID 기준으로 users에서 먼저 찾고, 없으면 members에서 찾기
+    const u = state.users.find(x => x.uid === id);
+    const m = state.members.find(x => x.id === id);
+    const person = u || m;
+    if (!person) return '';
+    const name = person.name || '알 수 없음';
+    const fakeM = { name, image: person.image || null, gender: person.gender || 'male' };
+    return `<div class="vote-person"><div class="mini-avatar">${avatarEl(fakeM)}</div>${name}</div>`;
+  }
+
+  const myVote = votes.attending.includes(uid) ? 'attending'
+    : votes.maybe.includes(uid) ? 'maybe'
+    : votes.absent.includes(uid) ? 'absent' : null;
+  const deadlinePassed = ev.voteDeadline && new Date(ev.voteDeadline) < new Date();
+
+  document.getElementById('voteModalBody').innerHTML = `
+    ${ev.fee ? `<div style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.9rem">💰 참가비: <strong>${ev.fee}</strong></div>` : ''}
+    ${ev.voteDeadline ? `<div style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.9rem">⏰ 투표 마감: <strong>${ev.voteDeadline.replace('T',' ')}</strong>${deadlinePassed ? ' <span style="color:var(--accent);font-size:.82rem">· 마감됨</span>' : ''}</div>` : ''}
+    <div class="my-vote-section">
+      ${deadlinePassed
+        ? `<h4 style="color:var(--text3)">투표 마감</h4><p style="font-size:.85rem;color:var(--text3)">투표 기간이 종료되었습니다.</p>`
+        : `<h4>내 투표 <small style="color:var(--text3);font-size:.78rem;font-weight:400">※ 같은 버튼 다시 누르면 취소</small></h4>
+           <div class="my-vote-btns">
+             <button class="btn btn-sm btn-vote-attend ${myVote === 'attending' ? 'selected' : ''}" onclick="castVote('${evId}','attending')">✅ 참여</button>
+             <button class="btn btn-sm btn-vote-maybe ${myVote === 'maybe' ? 'selected' : ''}" onclick="castVote('${evId}','maybe')">🕐 늦참</button>
+             <button class="btn btn-sm btn-vote-absent ${myVote === 'absent' ? 'selected' : ''}" onclick="castVote('${evId}','absent')">❌ 불참</button>
+           </div>`
+      }
+    </div>
+    <div class="vote-section">
+      <h4>✅ 참여 (${votes.attending.length}명)</h4>
+      <div class="vote-people">${votes.attending.map(chip).join('') || '<span style="color:var(--text3);font-size:.84rem">없음</span>'}</div>
+    </div>
+    <div class="vote-section">
+      <h4>🕐 늦참 (${votes.maybe.length}명)</h4>
+      <div class="vote-people">${votes.maybe.map(chip).join('') || '<span style="color:var(--text3);font-size:.84rem">없음</span>'}</div>
+    </div>
+    <div class="vote-section">
+      <h4>❌ 불참 (${votes.absent.length}명)</h4>
+      <div class="vote-people">${votes.absent.map(chip).join('') || '<span style="color:var(--text3);font-size:.84rem">없음</span>'}</div>
+    </div>`;
+  openModal('voteModal');
+}
+
+async function castVote(evId, status) {
+  const uid = state.currentUserId;
+  if (!uid) { alert('로그인이 필요합니다.'); return; }
+
+  const FieldValue = firebase.firestore.FieldValue;
+  const ref = state.db.collection('events').doc(evId);
+  const ev = state.events.find(e => e.id === evId);
+  const votes = ev?.votes || { attending: [], maybe: [], absent: [] };
+
+  // 이미 같은 항목 투표 → 취소 (토글)
+  const alreadyVoted = votes[status]?.includes(uid);
+
+  await ref.update({
+    'votes.attending': FieldValue.arrayRemove(uid),
+    'votes.maybe': FieldValue.arrayRemove(uid),
+    'votes.absent': FieldValue.arrayRemove(uid),
+  });
+
+  if (!alreadyVoted) {
+    await ref.update({ [`votes.${status}`]: FieldValue.arrayUnion(uid) });
+  }
+
+  openVoteModal(evId);
+}
+
+/* ===== IMAGE 압축 (base64 → Firestore 직접 저장) ===== */
+function compressImage(file, maxSize, quality) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let { width, height } = img;
+        if (width > maxSize || height > maxSize) {
+          if (width > height) { height = height * maxSize / width; width = maxSize; }
+          else { width = width * maxSize / height; height = maxSize; }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ===== HELPERS ===== */
+function avatarEl(m) {
+  const colors = ['#6c63ff', '#ff6b6b', '#4ade80', '#60a5fa', '#f472b6', '#fb923c'];
+  const color = colors[(m.name?.charCodeAt(0) || 0) % colors.length];
+  if (m.image) return `<img src="${m.image}" alt="${m.name}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`;
+  return `<span style="background:${color};color:#fff;width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:700">${m.name?.[0] || '?'}</span>`;
+}
+
+function avatarSmall(m) {
+  const colors = ['#6c63ff', '#ff6b6b', '#4ade80', '#60a5fa', '#f472b6', '#fb923c'];
+  const color = colors[(m.name?.charCodeAt(0) || 0) % colors.length];
+  if (m.image) return `<img src="${m.image}" style="width:28px;height:28px;border-radius:50%;object-fit:cover">`;
+  return `<span style="background:${color};color:#fff;width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700;flex-shrink:0">${m.name?.[0] || '?'}</span>`;
+}
+
+function toggleDesc(evId) {
+  const el = document.getElementById(`desc-${evId}`);
+  const btn = el.nextElementSibling;
+  const isCollapsed = el.classList.contains('collapsed');
+  el.classList.toggle('collapsed', !isCollapsed);
+  btn.textContent = isCollapsed ? '접기 ▲' : '더 보기 ▼';
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+}
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// 관리자이거나 본인이 만든 항목이면 수정/삭제 가능
+function canEdit(item) {
+  return state.currentUserRole === 'admin' || item.createdBy === state.currentUserId;
+}
+
+function authErrMsg(code) {
+  const map = {
+    'auth/user-not-found': '존재하지 않는 이메일입니다.',
+    'auth/wrong-password': '비밀번호가 틀렸습니다.',
+    'auth/email-already-in-use': '이미 사용 중인 이메일입니다.',
+    'auth/weak-password': '비밀번호는 6자 이상이어야 합니다.',
+    'auth/invalid-email': '이메일 형식이 올바르지 않습니다.',
+    'auth/invalid-credential': '이메일 또는 비밀번호가 올바르지 않습니다.',
+    'auth/too-many-requests': '너무 많은 시도입니다. 잠시 후 다시 시도해주세요.',
+  };
+  return map[code] || '오류가 발생했습니다. 다시 시도해주세요.';
+}
+
+/* ===== LOADING OVERLAY ===== */
+function showLoading(msg = '데이터 불러오는 중...') {
+  let el = document.getElementById('loadingOverlay');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'loadingOverlay';
+    el.style.cssText = 'position:fixed;bottom:24px;right:24px;background:rgba(24,24,31,.95);border:1px solid #2e2e3a;border-radius:14px;display:flex;align-items:center;justify-content:center;z-index:999;color:#fff;gap:10px;font-size:.88rem;padding:12px 18px;pointer-events:none;';
+    el.innerHTML = `<div style="width:40px;height:40px;border:3px solid rgba(108,99,255,.3);border-top-color:#6c63ff;border-radius:50%;animation:spin .8s linear infinite"></div><span id="loadingMsg">${msg}</span>`;
+    document.head.insertAdjacentHTML('beforeend', '<style>@keyframes spin{to{transform:rotate(360deg)}}</style>');
+    document.body.appendChild(el);
+  } else {
+    document.getElementById('loadingMsg').textContent = msg;
+    el.style.display = 'flex';
+  }
+}
+function hideLoading() {
+  const el = document.getElementById('loadingOverlay');
+  if (el) el.style.display = 'none';
+}
+
+/* ===== FIREBASE CONFIG 체크 ===== */
+function isConfigured() {
+  return firebaseConfig.apiKey && !firebaseConfig.apiKey.includes('여기에');
+}
+
+/* ===== INIT ===== */
+document.addEventListener('DOMContentLoaded', () => {
+  // Firebase config 미설정 시 안내
+  if (!isConfigured()) {
+    document.body.innerHTML = `
+      <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0f0f13;color:#f0f0f5;font-family:'Segoe UI',sans-serif;padding:24px">
+        <div style="max-width:520px;text-align:center">
+          <div style="font-size:3rem;margin-bottom:16px">🔧</div>
+          <h2 style="margin-bottom:12px;color:#8b84ff">Firebase 설정이 필요합니다</h2>
+          <p style="color:#9898b0;line-height:1.8;margin-bottom:20px">
+            <code style="background:#22222c;padding:2px 8px;border-radius:6px">firebase-config.js</code> 파일에<br>
+            Firebase 프로젝트 설정값을 붙여넣으세요.
+          </p>
+          <div style="background:#18181f;border:1px solid #2e2e3a;border-radius:12px;padding:20px;text-align:left;font-size:.86rem;color:#9898b0;line-height:2">
+            1. <a href="https://console.firebase.google.com" target="_blank" style="color:#8b84ff">console.firebase.google.com</a> 접속<br>
+            2. 프로젝트 만들기 → 웹앱 추가<br>
+            3. 발급된 config를 firebase-config.js에 복사<br>
+            4. Firestore Database 활성화 (테스트 모드)
+          </div>
+        </div>
+      </div>`;
+    return;
+  }
+
+  // ① 이벤트 바인딩 먼저 → UI 즉시 활성화
+  document.querySelectorAll('[data-page]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      goPage(btn.dataset.page);
+      document.getElementById('mobileMenu').classList.remove('open');
+    });
+  });
+
+  document.getElementById('hamburger').addEventListener('click', () => {
+    document.getElementById('mobileMenu').classList.toggle('open');
+  });
+
+  document.querySelectorAll('.modal-close, [data-modal]').forEach(btn => {
+    btn.addEventListener('click', () => closeModal(btn.dataset.modal || btn.closest('.modal-overlay')?.id));
+  });
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(overlay.id); });
+  });
+
+  document.getElementById('btnAddMember').addEventListener('click', openAddMember);
+  document.getElementById('memberForm').addEventListener('submit', saveMember);
+  document.getElementById('memberRole').addEventListener('change', e => toggleCarSection(e.target.value));
+
+  document.querySelectorAll('#page-members .filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#page-members .filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.memberFilter = btn.dataset.filter;
+      renderMembers();
+    });
+  });
+  document.getElementById('memberSearch').addEventListener('input', e => {
+    state.memberSearch = e.target.value;
+    renderMembers();
+  });
+
+  document.getElementById('btnAddEvent').addEventListener('click', openAddEvent);
+  document.getElementById('eventForm').addEventListener('submit', saveEvent);
+
+  document.querySelectorAll('#page-events .filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#page-events .filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.eventFilter = btn.dataset.filter;
+      renderEvents();
+    });
+  });
+
+  // ② 로그인/회원가입 탭 전환
+  document.querySelectorAll('.login-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.login-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const isLogin = tab.dataset.tab === 'login';
+      document.getElementById('loginForm').classList.toggle('hidden', !isLogin);
+      document.getElementById('signupForm').classList.toggle('hidden', isLogin);
+    });
+  });
+
+  // ③ 로그인 폼
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('loginError');
+    errEl.textContent = '';
+    try {
+      await login(
+        document.getElementById('loginEmail').value.trim(),
+        document.getElementById('loginPassword').value
+      );
+    } catch (err) {
+      errEl.textContent = authErrMsg(err.code);
+    }
+  });
+
+  // ④ 회원가입 폼
+  document.getElementById('signupForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('signupError');
+    errEl.textContent = '';
+    const pw = document.getElementById('signupPassword').value;
+    const pw2 = document.getElementById('signupPasswordConfirm').value;
+    if (pw !== pw2) { errEl.textContent = '비밀번호가 일치하지 않습니다.'; return; }
+    try {
+      await signup(
+        document.getElementById('signupName').value.trim(),
+        document.getElementById('signupEmail').value.trim(),
+        pw
+      );
+    } catch (err) {
+      errEl.textContent = authErrMsg(err.code);
+    }
+  });
+
+  // ⑤ 로그아웃
+  document.getElementById('btnLogout').addEventListener('click', logout);
+  document.getElementById('btnLogoutMobile').addEventListener('click', logout);
+
+  // ⑥ 내 정보 수정
+  document.getElementById('btnMyProfile').addEventListener('click', openMyProfile);
+  document.getElementById('btnMyProfileMobile').addEventListener('click', openMyProfile);
+  document.getElementById('myAccountForm').addEventListener('submit', saveMyAccount);
+
+  // 비밀번호 확인 실시간 피드백
+  ['accountPassword','accountPasswordConfirm'].forEach(id => {
+    document.getElementById(id).addEventListener('input', () => {
+      const pw = document.getElementById('accountPassword').value;
+      const cf = document.getElementById('accountPasswordConfirm').value;
+      const msg = document.getElementById('passwordMatchMsg');
+      if (!cf) { msg.style.display = 'none'; return; }
+      msg.style.display = 'block';
+      if (pw === cf) {
+        msg.textContent = '✅ 비밀번호가 일치합니다.';
+        msg.style.color = '#4ade80';
+      } else {
+        msg.textContent = '❌ 비밀번호가 일치하지 않습니다.';
+        msg.style.color = 'var(--accent)';
+      }
+    });
+  });
+
+  // ⑥ 관리자: 계정 생성
+  document.getElementById('btnInviteUser').addEventListener('click', () => openModal('inviteModal'));
+  document.getElementById('inviteForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('inviteError');
+    errEl.textContent = '';
+    const btn = e.target.querySelector('[type="submit"]');
+    btn.disabled = true; btn.textContent = '생성 중...';
+    try {
+      await createAccount(
+        document.getElementById('inviteName').value.trim(),
+        document.getElementById('inviteEmail').value.trim(),
+        document.getElementById('invitePassword').value,
+        document.getElementById('inviteRole').value
+      );
+      closeModal('inviteModal');
+      e.target.reset();
+      renderAdmin();
+      alert('계정이 생성되었습니다!');
+    } catch (err) {
+      errEl.textContent = authErrMsg(err.code) || err.message;
+    } finally {
+      btn.disabled = false; btn.textContent = '생성';
+    }
+  });
+
+  // ⑦ Firebase 초기화 및 Auth 감지
+  initFirebase();
+  initAuth();
+
+  // ⑧ Firestore 구독 및 seed (Auth 로그인 후 showApp에서 처리)
+  //    로그인 전에도 데이터 구독 시작 (로그인 화면 뒤에서 준비)
+  (async () => {
+    try {
+      await maybeSeed();
+      subscribeAll();
+    } catch (err) {
+      console.error('Firestore 오류:', err.message);
+    }
+  })();
+});
