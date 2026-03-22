@@ -276,15 +276,15 @@
           <!-- Car info (shown when driver) -->
           <div id="carSection">
             <div class="divider"><span>내 차 정보</span></div>
-            <div class="form-row">
-              <div class="form-group">
-                <label>브랜드</label>
-                <input type="text" id="carBrand" placeholder="현대, BMW 등" />
-              </div>
-              <div class="form-group">
-                <label>모델명</label>
-                <input type="text" id="carModel" placeholder="아반떼, 3시리즈 등" />
-              </div>
+            <div class="form-group">
+              <label>브랜드</label>
+              <div class="brand-selector" id="brandSelector"></div>
+              <input type="text" id="carBrandCustom" placeholder="브랜드 직접 입력" style="display:none;margin-top:8px" />
+              <input type="hidden" id="carBrand" />
+            </div>
+            <div class="form-group">
+              <label>모델명</label>
+              <input type="text" id="carModel" placeholder="아반떼, 3시리즈 등" />
             </div>
             <div class="form-row">
               <div class="form-group">

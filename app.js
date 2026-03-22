@@ -1,3 +1,77 @@
+/* ===== CAR BRANDS ===== */
+const CAR_BRANDS = [
+  { name: '현대',         logo: 'https://logo.clearbit.com/hyundai.com' },
+  { name: '기아',         logo: 'https://logo.clearbit.com/kia.com' },
+  { name: '제네시스',     logo: 'https://logo.clearbit.com/genesis.com' },
+  { name: 'BMW',          logo: 'https://logo.clearbit.com/bmw.com' },
+  { name: '벤츠',         logo: 'https://logo.clearbit.com/mercedes-benz.com' },
+  { name: '아우디',       logo: 'https://logo.clearbit.com/audi.com' },
+  { name: '폭스바겐',     logo: 'https://logo.clearbit.com/vw.com' },
+  { name: '포르쉐',       logo: 'https://logo.clearbit.com/porsche.com' },
+  { name: '테슬라',       logo: 'https://logo.clearbit.com/tesla.com' },
+  { name: '볼보',         logo: 'https://logo.clearbit.com/volvocars.com' },
+  { name: '토요타',       logo: 'https://logo.clearbit.com/toyota.com' },
+  { name: '혼다',         logo: 'https://logo.clearbit.com/honda.com' },
+  { name: '렉서스',       logo: 'https://logo.clearbit.com/lexus.com' },
+  { name: '닛산',         logo: 'https://logo.clearbit.com/nissan.com' },
+  { name: '인피니티',     logo: 'https://logo.clearbit.com/infiniti.com' },
+  { name: '마쓰다',       logo: 'https://logo.clearbit.com/mazda.com' },
+  { name: '스바루',       logo: 'https://logo.clearbit.com/subaru.com' },
+  { name: '페라리',       logo: 'https://logo.clearbit.com/ferrari.com' },
+  { name: '람보르기니',   logo: 'https://logo.clearbit.com/lamborghini.com' },
+  { name: '맥라렌',       logo: 'https://logo.clearbit.com/mclaren.com' },
+  { name: '마세라티',     logo: 'https://logo.clearbit.com/maserati.com' },
+  { name: '알파로메오',   logo: 'https://logo.clearbit.com/alfaromeo.com' },
+  { name: '롤스로이스',   logo: 'https://logo.clearbit.com/rolls-roycemotorcars.com' },
+  { name: '벤틀리',       logo: 'https://logo.clearbit.com/bentleymotors.com' },
+  { name: '재규어',       logo: 'https://logo.clearbit.com/jaguar.com' },
+  { name: '랜드로버',     logo: 'https://logo.clearbit.com/landrover.com' },
+  { name: 'MINI',         logo: 'https://logo.clearbit.com/mini.com' },
+  { name: '포드',         logo: 'https://logo.clearbit.com/ford.com' },
+  { name: '쉐보레',       logo: 'https://logo.clearbit.com/chevrolet.com' },
+  { name: '지프',         logo: 'https://logo.clearbit.com/jeep.com' },
+  { name: '캐딜락',       logo: 'https://logo.clearbit.com/cadillac.com' },
+  { name: '기타',         logo: null },
+];
+
+function getCarBrandLogo(brandName) {
+  const found = CAR_BRANDS.find(b => b.name === brandName);
+  return found?.logo || null;
+}
+
+function brandLogoHtml(brandName, size = 20) {
+  const logo = getCarBrandLogo(brandName);
+  if (logo) {
+    return `<img src="${logo}" alt="${brandName}" style="width:${size}px;height:${size}px;object-fit:contain;border-radius:3px;flex-shrink:0" onerror="this.outerHTML='<span style=\\'font-size:${Math.round(size*0.8)}px\\'>🚘</span>'">`;
+  }
+  return `<span style="font-size:${Math.round(size * 0.8)}px">🚘</span>`;
+}
+
+function renderBrandSelector(selectedBrand = '') {
+  const el = document.getElementById('brandSelector');
+  if (!el) return;
+  el.innerHTML = CAR_BRANDS.map(b => `
+    <button type="button" class="brand-btn ${selectedBrand === b.name ? 'selected' : ''}" onclick="selectBrand('${b.name}')">
+      ${b.logo ? `<img src="${b.logo}" alt="${b.name}" onerror="this.style.display='none'">` : '<span>🚘</span>'}
+      <span>${b.name}</span>
+    </button>
+  `).join('');
+  const customInput = document.getElementById('carBrandCustom');
+  if (selectedBrand === '기타') {
+    customInput.style.display = 'block';
+  } else {
+    customInput.style.display = 'none';
+  }
+}
+
+function selectBrand(name) {
+  document.getElementById('carBrand').value = name;
+  renderBrandSelector(name);
+  if (name === '기타') {
+    document.getElementById('carBrandCustom').focus();
+  }
+}
+
 /* ===== STATE ===== */
 const state = {
   members: [],
@@ -412,7 +486,7 @@ function renderMembers() {
       </div>
       <div class="member-card-body">
         <div class="member-bio">${m.bio || '소개 없음'}</div>
-        ${m.car ? `<div class="member-car-tag">🚘 ${m.car.brand} ${m.car.model}</div>` : ''}
+        ${m.car ? `<div class="member-car-tag">${brandLogoHtml(m.car.brand, 18)} ${m.car.brand} ${m.car.model}</div>` : ''}
       </div>
       <div class="member-card-footer">
         <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openMemberDetail('${m.id}')">상세보기</button>
@@ -516,6 +590,7 @@ function openAddMember() {
   document.getElementById('memberId').value = '';
   document.getElementById('btnWithdrawInModal').style.display = 'none';
   toggleCarSection('driver');
+  renderBrandSelector('');
   openModal('memberModal');
 }
 
@@ -533,7 +608,13 @@ function openEditMember(id) {
   document.getElementById('memberBio').value = m.bio || '';
   toggleCarSection(m.role);
   if (m.car) {
-    document.getElementById('carBrand').value = m.car.brand || '';
+    const knownBrand = CAR_BRANDS.find(b => b.name === m.car.brand);
+    const selectedKey = knownBrand ? m.car.brand : (m.car.brand ? '기타' : '');
+    document.getElementById('carBrand').value = selectedKey;
+    renderBrandSelector(selectedKey);
+    if (!knownBrand && m.car.brand) {
+      document.getElementById('carBrandCustom').value = m.car.brand;
+    }
     document.getElementById('carModel').value = m.car.model || '';
     document.getElementById('carYear').value = m.car.year || '';
     document.getElementById('carColor').value = m.car.color || '';
@@ -574,7 +655,7 @@ async function saveMember(e) {
       createdBy: existing?.createdBy || state.currentUserId,
       image: memberImg,
       car: role === 'driver' ? {
-        brand: document.getElementById('carBrand').value.trim(),
+        brand: (() => { const b = document.getElementById('carBrand').value.trim(); return b === '기타' ? (document.getElementById('carBrandCustom').value.trim() || '기타') : b; })(),
         model: document.getElementById('carModel').value.trim(),
         year: parseInt(document.getElementById('carYear').value) || null,
         color: document.getElementById('carColor').value.trim(),
@@ -636,7 +717,7 @@ function renderCars() {
     <div class="car-card" onclick="openMemberDetail('${m.id}')">
       <div class="car-card-img">${m.car.image ? `<img src="${m.car.image}" alt="${m.car.model}">` : '🚗'}</div>
       <div class="car-card-body">
-        <div class="car-name">${m.car.brand} ${m.car.model}</div>
+        <div class="car-name" style="display:flex;align-items:center;gap:6px">${brandLogoHtml(m.car.brand, 20)} ${m.car.brand} ${m.car.model}</div>
         <div class="car-year-color">${m.car.year || ''} ${m.car.year && m.car.color ? '·' : ''} ${m.car.color || ''}</div>
         <div class="car-desc">${m.car.desc || '설명 없음'}</div>
         <div class="car-owner">
