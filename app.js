@@ -710,8 +710,23 @@ function renderEvents() {
             <div class="vote-bar-maybe" style="width:${mW}%"></div>
             <div class="vote-bar-absent" style="width:${bW}%"></div>
           </div>` : ''}
+        ${(() => {
+          const uid = state.currentUserId;
+          const closed = ev.voteDeadline && new Date(ev.voteDeadline) < new Date();
+          const myVote = votes.attending.includes(uid) ? 'attending'
+            : votes.maybe.includes(uid) ? 'maybe'
+            : votes.absent.includes(uid) ? 'absent' : null;
+          if (closed) return `<div class="event-vote-btns">
+            <span style="font-size:.8rem;color:var(--text3)">투표 마감됨</span>
+          </div>`;
+          return `<div class="event-vote-btns">
+            <button class="btn btn-sm btn-vote-attend ${myVote === 'attending' ? 'selected' : ''}" onclick="castVote('${ev.id}','attending')">✅ 참여</button>
+            <button class="btn btn-sm btn-vote-maybe ${myVote === 'maybe' ? 'selected' : ''}" onclick="castVote('${ev.id}','maybe')">🕐 늦참</button>
+            <button class="btn btn-sm btn-vote-absent ${myVote === 'absent' ? 'selected' : ''}" onclick="castVote('${ev.id}','absent')">❌ 불참</button>
+          </div>`;
+        })()}
         <div class="event-actions">
-          ${(() => { const closed = ev.voteDeadline && new Date(ev.voteDeadline) < new Date(); return closed ? `<button class="btn btn-sm btn-outline" onclick="openVoteModal('${ev.id}')">📊 투표 현황 (마감)</button>` : `<button class="btn btn-sm btn-success" onclick="openVoteModal('${ev.id}')">📊 투표 현황 / 참여</button>`; })()}
+          <button class="btn btn-sm btn-outline" onclick="openVoteModal('${ev.id}')">📊 투표 현황</button>
           ${canEdit(ev) ? `
             <button class="btn btn-sm btn-outline" onclick="openEditEvent('${ev.id}')">수정</button>
             <button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="deleteEvent('${ev.id}')">삭제</button>
@@ -811,17 +826,6 @@ function openVoteModal(evId) {
   document.getElementById('voteModalBody').innerHTML = `
     ${ev.fee ? `<div style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.9rem">💰 참가비: <strong>${ev.fee}</strong></div>` : ''}
     ${ev.voteDeadline ? `<div style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.9rem">⏰ 투표 마감: <strong>${ev.voteDeadline.replace('T',' ')}</strong>${deadlinePassed ? ' <span style="color:var(--accent);font-size:.82rem">· 마감됨</span>' : ''}</div>` : ''}
-    <div class="my-vote-section">
-      ${deadlinePassed
-        ? `<h4 style="color:var(--text3)">투표 마감</h4><p style="font-size:.85rem;color:var(--text3)">투표 기간이 종료되었습니다.</p>`
-        : `<h4>내 투표 <small style="color:var(--text3);font-size:.78rem;font-weight:400">※ 같은 버튼 다시 누르면 취소</small></h4>
-           <div class="my-vote-btns">
-             <button class="btn btn-sm btn-vote-attend ${myVote === 'attending' ? 'selected' : ''}" onclick="castVote('${evId}','attending')">✅ 참여</button>
-             <button class="btn btn-sm btn-vote-maybe ${myVote === 'maybe' ? 'selected' : ''}" onclick="castVote('${evId}','maybe')">🕐 늦참</button>
-             <button class="btn btn-sm btn-vote-absent ${myVote === 'absent' ? 'selected' : ''}" onclick="castVote('${evId}','absent')">❌ 불참</button>
-           </div>`
-      }
-    </div>
     <div class="vote-section">
       <h4>✅ 참여 (${votes.attending.length}명)</h4>
       <div class="vote-people">${votes.attending.map(chip).join('') || '<span style="color:var(--text3);font-size:.84rem">없음</span>'}</div>
@@ -858,8 +862,6 @@ async function castVote(evId, status) {
   if (!alreadyVoted) {
     await ref.update({ [`votes.${status}`]: FieldValue.arrayUnion(uid) });
   }
-
-  openVoteModal(evId);
 }
 
 /* ===== IMAGE 압축 (base64 → Firestore 직접 저장) ===== */

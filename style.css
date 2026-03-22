@@ -266,6 +266,7 @@ main { padding: 24px 20px; max-width: 1200px; margin: 0 auto; }
 .vote-count.attending .num { color: var(--driver); }
 .vote-count.maybe .num { color: #fbbf24; }
 .vote-count.absent .num { color: var(--accent); }
+.event-vote-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .event-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .vote-progress {
   height: 6px; border-radius: 3px; background: var(--bg3);
