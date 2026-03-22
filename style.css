@@ -412,7 +412,9 @@ main { padding: 24px 20px; max-width: 1200px; margin: 0 auto; }
 .vote-person .mini-avatar {
   width: 24px; height: 24px; border-radius: 50%; background: var(--bg2);
   display: flex; align-items: center; justify-content: center; font-size: .8rem;
+  overflow: hidden; flex-shrink: 0;
 }
+.vote-person .mini-avatar span { font-size: .72rem !important; }
 .vote-person .mini-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .my-vote-section { background: var(--bg3); border-radius: 14px; padding: 16px; margin-bottom: 16px; }
 .my-vote-section h4 { font-size: .9rem; font-weight: 700; margin-bottom: 12px; }
