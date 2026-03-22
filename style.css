@@ -339,6 +339,7 @@ main { padding: 24px 20px; max-width: 1200px; margin: 0 auto; }
   animation: slideUp .25s ease;
 }
 .modal-wide { max-width: 720px; }
+.modal-gallery-form { max-width: 640px; }
 @keyframes slideUp {
   from { opacity: 0; transform: translateY(20px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -358,7 +359,7 @@ main { padding: 24px 20px; max-width: 1200px; margin: 0 auto; }
 }
 .modal-close:hover { background: var(--bg3); color: var(--text); }
 .modal-body { padding: 20px 24px; }
-.modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding-top: 20px; border-top: 1px solid var(--border); margin-top: 8px; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 20px 24px 24px; border-top: 1px solid var(--border); margin-top: 8px; }
 
 /* ===== FORMS ===== */
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
