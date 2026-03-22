@@ -78,6 +78,7 @@ function selectBrand(name) {
 const state = {
   members: [],
   events: [],
+  gallery: [],
   users: [],           // users 컬렉션 캐시 (투표 칩 표시용)
   db: null,
   auth: null,
@@ -292,6 +293,11 @@ function subscribeAll() {
     renderCurrentPage();
   });
 
+  state.db.collection('gallery').orderBy('date', 'desc').onSnapshot(snap => {
+    state.gallery = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderCurrentPage();
+  });
+
   // users 캐시 (투표 칩 표시용)
   state.db.collection('users').onSnapshot(snap => {
     state.users = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
@@ -373,6 +379,7 @@ function renderPage(name) {
   else if (name === 'members') renderMembers();
   else if (name === 'cars') renderCars();
   else if (name === 'events') renderEvents();
+  else if (name === 'gallery') renderGallery();
   else if (name === 'admin') renderAdmin();
 }
 
@@ -708,6 +715,163 @@ function toggleCarSection(role) {
 }
 
 /* ===== CARS ===== */
+/* ===== GALLERY ===== */
+let lightboxPhotos = [];
+let lightboxIndex = 0;
+
+function renderGallery() {
+  const isAdmin = state.currentUserRole === 'admin';
+  const btn = document.getElementById('btnAddGallery');
+  if (btn) btn.classList.toggle('hidden', !isAdmin);
+
+  const grid = document.getElementById('galleryGrid');
+  if (!grid) return;
+
+  if (!state.gallery.length) {
+    grid.innerHTML = '<div class="empty-state" style="text-align:center;padding:60px;grid-column:1/-1">등록된 활동이 없습니다.</div>';
+    return;
+  }
+  grid.innerHTML = state.gallery.map(g => {
+    const cover = g.photos?.[0] || null;
+    const count = g.photos?.length || 0;
+    return `
+      <div class="gallery-card" onclick="openGalleryDetail('${g.id}')">
+        <div class="gallery-card-img">
+          ${cover ? `<img src="${cover}" alt="${g.title}">` : '<div class="gallery-no-img">📷</div>'}
+          <div class="gallery-card-count">📷 ${count}</div>
+        </div>
+        <div class="gallery-card-body">
+          <div class="gallery-card-title">${g.title}</div>
+          <div class="gallery-card-date">${formatDate(g.date)}</div>
+          ${g.desc ? `<div class="gallery-card-desc">${g.desc}</div>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function openGalleryDetail(id) {
+  const g = state.gallery.find(x => x.id === id);
+  if (!g) return;
+  const isAdmin = state.currentUserRole === 'admin';
+
+  document.getElementById('galleryDetailTitle').textContent = g.title;
+  document.getElementById('galleryDetailMeta').textContent = `📅 ${formatDate(g.date)}  ·  📷 ${g.photos?.length || 0}장`;
+  document.getElementById('galleryDetailDesc').textContent = g.desc || '';
+
+  const photos = g.photos || [];
+  document.getElementById('galleryDetailPhotos').innerHTML = photos.length
+    ? photos.map((src, i) => `<img src="${src}" class="gallery-thumb" onclick="openLightbox('${id}',${i})" alt="사진 ${i+1}">`).join('')
+    : '<div style="color:var(--text3);font-size:.9rem">사진이 없습니다.</div>';
+
+  document.getElementById('galleryDetailFooter').innerHTML = isAdmin ? `
+    <label class="btn btn-sm btn-outline" style="cursor:pointer">
+      📷 사진 추가
+      <input type="file" accept="image/*" multiple style="display:none" onchange="addPhotosToGallery('${id}', this)">
+    </label>
+    <button class="btn btn-sm btn-outline" onclick="openEditGallery('${id}')">수정</button>
+    <button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="deleteGallery('${id}')">삭제</button>
+  ` : '';
+
+  openModal('galleryDetailModal');
+}
+
+function openLightbox(galleryId, index) {
+  const g = state.gallery.find(x => x.id === galleryId);
+  if (!g) return;
+  lightboxPhotos = g.photos || [];
+  lightboxIndex = index;
+  document.getElementById('lightboxImg').src = lightboxPhotos[lightboxIndex];
+  document.getElementById('lightbox').classList.add('active');
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('active');
+}
+
+function lightboxNav(dir) {
+  lightboxIndex = (lightboxIndex + dir + lightboxPhotos.length) % lightboxPhotos.length;
+  document.getElementById('lightboxImg').src = lightboxPhotos[lightboxIndex];
+}
+
+function openAddGallery() {
+  document.getElementById('galleryFormTitle').textContent = '모임 추가';
+  document.getElementById('galleryForm').reset();
+  document.getElementById('galleryId').value = '';
+  document.getElementById('galleryPhotoPreview').innerHTML = '';
+  openModal('galleryFormModal');
+}
+
+function openEditGallery(id) {
+  const g = state.gallery.find(x => x.id === id);
+  if (!g) return;
+  document.getElementById('galleryFormTitle').textContent = '모임 수정';
+  document.getElementById('galleryId').value = g.id;
+  document.getElementById('galleryTitle').value = g.title;
+  document.getElementById('galleryDate').value = g.date;
+  document.getElementById('galleryDesc').value = g.desc || '';
+  document.getElementById('galleryPhotoPreview').innerHTML =
+    (g.photos || []).map((src, i) => `
+      <div class="preview-photo-wrap">
+        <img src="${src}" class="preview-photo">
+        <button type="button" class="preview-photo-del" onclick="removeExistingPhoto('${id}',${i})">✕</button>
+      </div>`).join('');
+  closeModal('galleryDetailModal');
+  openModal('galleryFormModal');
+}
+
+async function removeExistingPhoto(galleryId, index) {
+  const g = state.gallery.find(x => x.id === galleryId);
+  if (!g) return;
+  const photos = [...(g.photos || [])];
+  photos.splice(index, 1);
+  await state.db.collection('gallery').doc(galleryId).update({ photos });
+  openEditGallery(galleryId);
+}
+
+async function addPhotosToGallery(galleryId, input) {
+  const files = Array.from(input.files);
+  if (!files.length) return;
+  const g = state.gallery.find(x => x.id === galleryId);
+  if (!g) return;
+  const existing = g.photos || [];
+  const newPhotos = await Promise.all(files.map(f => compressImage(f, 1200, 0.75)));
+  await state.db.collection('gallery').doc(galleryId).update({ photos: [...existing, ...newPhotos] });
+  openGalleryDetail(galleryId);
+}
+
+async function saveGallery(e) {
+  e.preventDefault();
+  const btn = e.target.querySelector('[type="submit"]');
+  btn.disabled = true; btn.textContent = '저장 중...';
+  try {
+    const id = document.getElementById('galleryId').value;
+    const existing = id ? state.gallery.find(x => x.id === id) : null;
+    const files = Array.from(document.getElementById('galleryPhotos').files);
+    const newPhotos = files.length ? await Promise.all(files.map(f => compressImage(f, 1200, 0.75))) : [];
+    const data = {
+      title: document.getElementById('galleryTitle').value.trim(),
+      date: document.getElementById('galleryDate').value,
+      desc: document.getElementById('galleryDesc').value.trim(),
+      photos: [...(existing?.photos || []), ...newPhotos],
+      createdBy: existing?.createdBy || state.currentUserId,
+      createdAt: existing?.createdAt || new Date().toISOString().slice(0, 10),
+    };
+    if (id) await state.db.collection('gallery').doc(id).update(data);
+    else await state.db.collection('gallery').add(data);
+    closeModal('galleryFormModal');
+  } catch(err) {
+    alert('저장 실패: ' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '저장';
+  }
+}
+
+async function deleteGallery(id) {
+  if (!confirm('이 모임을 삭제할까요? 사진도 모두 삭제됩니다.')) return;
+  await state.db.collection('gallery').doc(id).delete();
+  closeModal('galleryDetailModal');
+}
+
 function renderCars() {
   const drivers = state.members.filter(m => m.role === 'driver' && m.car);
   const grid = document.getElementById('carsGrid');
@@ -1107,6 +1271,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('btnAddEvent').addEventListener('click', openAddEvent);
   document.getElementById('eventForm').addEventListener('submit', saveEvent);
+
+  document.getElementById('btnAddGallery').addEventListener('click', openAddGallery);
+  document.getElementById('galleryForm').addEventListener('submit', saveGallery);
+
+  // 사진 미리보기
+  document.getElementById('galleryPhotos').addEventListener('change', e => {
+    const preview = document.getElementById('galleryPhotoPreview');
+    const existing = preview.querySelectorAll('.preview-photo-wrap').length;
+    Array.from(e.target.files).forEach(f => {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const wrap = document.createElement('div');
+        wrap.className = 'preview-photo-wrap';
+        wrap.innerHTML = `<img src="${ev.target.result}" class="preview-photo">`;
+        preview.appendChild(wrap);
+      };
+      reader.readAsDataURL(f);
+    });
+  });
+
+  // 키보드 라이트박스 이동
+  document.addEventListener('keydown', e => {
+    if (!document.getElementById('lightbox').classList.contains('active')) return;
+    if (e.key === 'ArrowLeft') lightboxNav(-1);
+    if (e.key === 'ArrowRight') lightboxNav(1);
+    if (e.key === 'Escape') closeLightbox();
+  });
 
   document.querySelectorAll('#page-events .filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
