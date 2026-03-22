@@ -699,31 +699,27 @@ function renderEvents() {
             <div class="event-desc collapsed" id="desc-${ev.id}">${ev.desc.replace(/\n/g, '<br>')}</div>
             <button class="desc-toggle" onclick="toggleDesc('${ev.id}')">더 보기 ▼</button>
           </div>` : ''}
-        <div class="event-votes">
-          <div class="vote-count attending">✅ 참여 <span class="num">${votes.attending.length}</span></div>
-          <div class="vote-count maybe">🕐 늦참 <span class="num">${votes.maybe.length}</span></div>
-          <div class="vote-count absent">❌ 불참 <span class="num">${votes.absent.length}</span></div>
-        </div>
-        ${total > 0 ? `
-          <div class="vote-progress">
-            <div class="vote-bar-attend" style="width:${aW}%"></div>
-            <div class="vote-bar-maybe" style="width:${mW}%"></div>
-            <div class="vote-bar-absent" style="width:${bW}%"></div>
-          </div>` : ''}
         ${(() => {
           const uid = state.currentUserId;
           const closed = ev.voteDeadline && new Date(ev.voteDeadline) < new Date();
           const myVote = votes.attending.includes(uid) ? 'attending'
             : votes.maybe.includes(uid) ? 'maybe'
             : votes.absent.includes(uid) ? 'absent' : null;
-          if (closed) return `<div class="event-vote-btns">
-            <span style="font-size:.8rem;color:var(--text3)">투표 마감됨</span>
-          </div>`;
-          return `<div class="event-vote-btns">
-            <button class="btn btn-sm btn-vote-attend ${myVote === 'attending' ? 'selected' : ''}" onclick="castVote('${ev.id}','attending')">✅ 참여</button>
-            <button class="btn btn-sm btn-vote-maybe ${myVote === 'maybe' ? 'selected' : ''}" onclick="castVote('${ev.id}','maybe')">🕐 늦참</button>
-            <button class="btn btn-sm btn-vote-absent ${myVote === 'absent' ? 'selected' : ''}" onclick="castVote('${ev.id}','absent')">❌ 불참</button>
-          </div>`;
+          if (closed) return `
+            <div class="event-votes">
+              <div class="vote-count attending">✅ 참여 <span class="num">${votes.attending.length}</span></div>
+              <div class="vote-count maybe">🕐 늦참 <span class="num">${votes.maybe.length}</span></div>
+              <div class="vote-count absent">❌ 불참 <span class="num">${votes.absent.length}</span></div>
+            </div>
+            ${total > 0 ? `<div class="vote-progress"><div class="vote-bar-attend" style="width:${aW}%"></div><div class="vote-bar-maybe" style="width:${mW}%"></div><div class="vote-bar-absent" style="width:${bW}%"></div></div>` : ''}
+            <div style="font-size:.8rem;color:var(--text3);margin-bottom:8px">🔒 투표 마감됨</div>`;
+          return `
+            <div class="event-votes">
+              <button class="vote-count attending ${myVote === 'attending' ? 'voted' : ''}" onclick="castVote('${ev.id}','attending')">✅ 참여 <span class="num">${votes.attending.length}</span></button>
+              <button class="vote-count maybe ${myVote === 'maybe' ? 'voted' : ''}" onclick="castVote('${ev.id}','maybe')">🕐 늦참 <span class="num">${votes.maybe.length}</span></button>
+              <button class="vote-count absent ${myVote === 'absent' ? 'voted' : ''}" onclick="castVote('${ev.id}','absent')">❌ 불참 <span class="num">${votes.absent.length}</span></button>
+            </div>
+            ${total > 0 ? `<div class="vote-progress"><div class="vote-bar-attend" style="width:${aW}%"></div><div class="vote-bar-maybe" style="width:${mW}%"></div><div class="vote-bar-absent" style="width:${bW}%"></div></div>` : ''}`;
         })()}
         <div class="event-actions">
           <button class="btn btn-sm btn-outline" onclick="openVoteModal('${ev.id}')">📊 투표 현황</button>
