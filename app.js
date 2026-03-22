@@ -736,6 +736,8 @@ function openAddEvent() {
   document.getElementById('eventModalTitle').textContent = '이벤트 만들기';
   document.getElementById('eventForm').reset();
   document.getElementById('eventId').value = '';
+  document.getElementById('eventTimeHour').value = '';
+  document.getElementById('eventTimeMin').value = '';
   openModal('eventModal');
 }
 
@@ -747,7 +749,9 @@ function openEditEvent(id) {
   document.getElementById('eventTitle').value = ev.title;
   document.getElementById('eventType').value = ev.type;
   document.getElementById('eventDate').value = ev.date;
-  document.getElementById('eventTime').value = ev.time || '';
+  const timeParts = (ev.time || '').split(':');
+  document.getElementById('eventTimeHour').value = timeParts[0] || '';
+  document.getElementById('eventTimeMin').value = timeParts[1] || '';
   document.getElementById('eventLocation').value = ev.location || '';
   document.getElementById('eventFee').value = ev.fee || '';
   document.getElementById('eventVoteDeadline').value = ev.voteDeadline || '';
@@ -767,7 +771,7 @@ async function saveEvent(e) {
       title: document.getElementById('eventTitle').value.trim(),
       type: document.getElementById('eventType').value,
       date: document.getElementById('eventDate').value,
-      time: document.getElementById('eventTime').value,
+      time: (() => { const h = document.getElementById('eventTimeHour').value; const m = document.getElementById('eventTimeMin').value; return h && m ? `${h}:${m}` : ''; })(),
       location: document.getElementById('eventLocation').value.trim(),
       fee: document.getElementById('eventFee').value.trim(),
       voteDeadline: document.getElementById('eventVoteDeadline').value,
