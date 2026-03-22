@@ -376,6 +376,7 @@ main { padding: 24px 20px; max-width: 1200px; margin: 0 auto; }
 .brand-btn:hover { background: var(--bg3); border-color: var(--border); }
 .brand-btn.selected { border-color: var(--primary); background: rgba(108,99,255,.15); }
 .brand-btn img { width: 28px; height: 28px; object-fit: contain; }
+.brand-emoji { font-size: 22px; line-height: 28px; height: 28px; display: flex; align-items: center; }
 .brand-btn span:last-child { font-size: .72rem; font-weight: 600; text-align: center; line-height: 1.2; }
 .member-car-tag { display: flex; align-items: center; gap: 5px; }
 .time-picker { display: flex; align-items: center; gap: 8px; }

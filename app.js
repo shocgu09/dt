@@ -1,37 +1,39 @@
 /* ===== CAR BRANDS ===== */
+const W = 'https://upload.wikimedia.org/wikipedia/commons/thumb/';
+const WE = 'https://upload.wikimedia.org/wikipedia/en/thumb/';
 const CAR_BRANDS = [
-  { name: '현대',         logo: 'https://logo.clearbit.com/hyundai.com' },
-  { name: '기아',         logo: 'https://logo.clearbit.com/kia.com' },
-  { name: '제네시스',     logo: 'https://logo.clearbit.com/genesis.com' },
-  { name: 'BMW',          logo: 'https://logo.clearbit.com/bmw.com' },
-  { name: '벤츠',         logo: 'https://logo.clearbit.com/mercedes-benz.com' },
-  { name: '아우디',       logo: 'https://logo.clearbit.com/audi.com' },
-  { name: '폭스바겐',     logo: 'https://logo.clearbit.com/vw.com' },
-  { name: '포르쉐',       logo: 'https://logo.clearbit.com/porsche.com' },
-  { name: '테슬라',       logo: 'https://logo.clearbit.com/tesla.com' },
-  { name: '볼보',         logo: 'https://logo.clearbit.com/volvocars.com' },
-  { name: '토요타',       logo: 'https://logo.clearbit.com/toyota.com' },
-  { name: '혼다',         logo: 'https://logo.clearbit.com/honda.com' },
-  { name: '렉서스',       logo: 'https://logo.clearbit.com/lexus.com' },
-  { name: '닛산',         logo: 'https://logo.clearbit.com/nissan.com' },
-  { name: '인피니티',     logo: 'https://logo.clearbit.com/infiniti.com' },
-  { name: '마쓰다',       logo: 'https://logo.clearbit.com/mazda.com' },
-  { name: '스바루',       logo: 'https://logo.clearbit.com/subaru.com' },
-  { name: '페라리',       logo: 'https://logo.clearbit.com/ferrari.com' },
-  { name: '람보르기니',   logo: 'https://logo.clearbit.com/lamborghini.com' },
-  { name: '맥라렌',       logo: 'https://logo.clearbit.com/mclaren.com' },
-  { name: '마세라티',     logo: 'https://logo.clearbit.com/maserati.com' },
-  { name: '알파로메오',   logo: 'https://logo.clearbit.com/alfaromeo.com' },
-  { name: '롤스로이스',   logo: 'https://logo.clearbit.com/rolls-roycemotorcars.com' },
-  { name: '벤틀리',       logo: 'https://logo.clearbit.com/bentleymotors.com' },
-  { name: '재규어',       logo: 'https://logo.clearbit.com/jaguar.com' },
-  { name: '랜드로버',     logo: 'https://logo.clearbit.com/landrover.com' },
-  { name: 'MINI',         logo: 'https://logo.clearbit.com/mini.com' },
-  { name: '포드',         logo: 'https://logo.clearbit.com/ford.com' },
-  { name: '쉐보레',       logo: 'https://logo.clearbit.com/chevrolet.com' },
-  { name: '지프',         logo: 'https://logo.clearbit.com/jeep.com' },
-  { name: '캐딜락',       logo: 'https://logo.clearbit.com/cadillac.com' },
-  { name: '기타',         logo: null },
+  { name: '현대',       logo: W+'4/44/Hyundai_Motor_Company_logo.svg/120px-Hyundai_Motor_Company_logo.svg.png' },
+  { name: '기아',       logo: W+'b/b6/KIA_logo3.svg/120px-KIA_logo3.svg.png' },
+  { name: '제네시스',   logo: WE+'8/83/Genesis_division_emblem.svg/120px-Genesis_division_emblem.svg.png' },
+  { name: 'BMW',        logo: W+'4/44/BMW.svg/120px-BMW.svg.png' },
+  { name: '벤츠',       logo: W+'9/90/Mercedes-Logo.svg/120px-Mercedes-Logo.svg.png' },
+  { name: '아우디',     logo: W+'9/92/Audi-Logo_2016.svg/120px-Audi-Logo_2016.svg.png' },
+  { name: '폭스바겐',   logo: W+'6/6d/Volkswagen_logo_2019.svg/120px-Volkswagen_logo_2019.svg.png' },
+  { name: '포르쉐',     logo: WE+'c/c2/Porsche_Logo_2024.png/120px-Porsche_Logo_2024.png' },
+  { name: '테슬라',     logo: W+'b/bd/Tesla_Motors.svg/120px-Tesla_Motors.svg.png' },
+  { name: '볼보',       logo: W+'5/54/Volvo_logo.svg/120px-Volvo_logo.svg.png' },
+  { name: '토요타',     logo: W+'9/9d/Toyota_carlogo.svg/120px-Toyota_carlogo.svg.png' },
+  { name: '혼다',       logo: W+'3/38/Honda.svg/120px-Honda.svg.png' },
+  { name: '렉서스',     logo: W+'7/75/Lexus.svg/120px-Lexus.svg.png' },
+  { name: '닛산',       logo: W+'2/23/Nissan_2020_logo.svg/120px-Nissan_2020_logo.svg.png' },
+  { name: '인피니티',   logo: W+'c/c3/Infiniti_logo.svg/120px-Infiniti_logo.svg.png' },
+  { name: '마쓰다',     logo: W+'3/3f/Mazda_logo.svg/120px-Mazda_logo.svg.png' },
+  { name: '스바루',     logo: W+'c/ca/Subaru_logo_%28transparent%29.svg/120px-Subaru_logo_%28transparent%29.svg.png' },
+  { name: '페라리',     logo: W+'9/9b/Ferrari_wordmark.svg/120px-Ferrari_wordmark.svg.png' },
+  { name: '람보르기니', logo: W+'3/3a/Lamborghini_-_logo_wordmark%2Bpayoff_%28Italy%2C_1963-%29.svg/120px-Lamborghini_-_logo_wordmark%2Bpayoff_%28Italy%2C_1963-%29.svg.png' },
+  { name: '맥라렌',     logo: W+'e/ed/McLaren_Automotive_logo.svg/120px-McLaren_Automotive_logo.svg.png' },
+  { name: '마세라티',   logo: W+'7/78/Maserati_logo_2.svg/120px-Maserati_logo_2.svg.png' },
+  { name: '알파로메오', logo: WE+'2/2a/Alfa_Romeo_logo.png/120px-Alfa_Romeo_logo.png' },
+  { name: '롤스로이스', logo: W+'5/52/Rolls-Royce_Motor_Cars_logo.svg/120px-Rolls-Royce_Motor_Cars_logo.svg.png' },
+  { name: '벤틀리',     logo: WE+'e/e4/Bentley_logo_2.svg/120px-Bentley_logo_2.svg.png' },
+  { name: '재규어',     logo: W+'5/50/Jaguar_2024.svg/120px-Jaguar_2024.svg.png' },
+  { name: '랜드로버',   logo: W+'c/c2/Land_Rover_2023.svg/120px-Land_Rover_2023.svg.png' },
+  { name: 'MINI',       logo: W+'e/e9/MINI_logo.svg/120px-MINI_logo.svg.png' },
+  { name: '포드',       logo: W+'a/a0/Ford_Motor_Company_Logo.svg/120px-Ford_Motor_Company_Logo.svg.png' },
+  { name: '쉐보레',     logo: W+'5/55/Chevrolet_simple_logo.svg/120px-Chevrolet_simple_logo.svg.png' },
+  { name: '지프',       logo: W+'9/92/Jeep_wordmark.svg/120px-Jeep_wordmark.svg.png' },
+  { name: '캐딜락',     logo: W+'f/fc/Cadillac_Wordmark.svg/120px-Cadillac_Wordmark.svg.png' },
+  { name: '기타',       logo: null },
 ];
 
 function getCarBrandLogo(brandName) {
@@ -52,8 +54,8 @@ function renderBrandSelector(selectedBrand = '') {
   if (!el) return;
   el.innerHTML = CAR_BRANDS.map(b => `
     <button type="button" class="brand-btn ${selectedBrand === b.name ? 'selected' : ''}" onclick="selectBrand('${b.name}')">
-      ${b.logo ? `<img src="${b.logo}" alt="${b.name}" onerror="this.style.display='none'">` : ''}
-      <span>${b.logo ? b.name : '🚘 ' + b.name}</span>
+      ${b.logo ? `<img src="${b.logo}" alt="${b.name}" onerror="this.style.display='none'">` : '<span class="brand-emoji">🚗</span>'}
+      <span>${b.name}</span>
     </button>
   `).join('');
   const customInput = document.getElementById('carBrandCustom');
