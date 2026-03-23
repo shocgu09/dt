@@ -716,8 +716,8 @@ function toggleCarSection(role) {
 
 /* ===== CARS ===== */
 /* ===== GALLERY ===== */
-let lightboxPhotos = [];
-let lightboxIndex = 0;
+let currentGalleryId = null;
+let commentUnsubscribe = null;
 
 function renderGallery() {
   const isAdmin = state.currentUserRole === 'admin';
@@ -731,66 +731,96 @@ function renderGallery() {
     grid.innerHTML = '<div class="empty-state" style="text-align:center;padding:60px;grid-column:1/-1">등록된 활동이 없습니다.</div>';
     return;
   }
-  grid.innerHTML = state.gallery.map(g => {
-    const cover = g.photos?.[0] || null;
-    const count = g.photos?.length || 0;
-    return `
-      <div class="gallery-card" onclick="openGalleryDetail('${g.id}')">
-        <div class="gallery-card-img">
-          ${cover ? `<img src="${cover}" alt="${g.title}">` : '<div class="gallery-no-img">📷</div>'}
-          <div class="gallery-card-count">📷 ${count}</div>
-        </div>
-        <div class="gallery-card-body">
-          <div class="gallery-card-title">${g.title}</div>
-          <div class="gallery-card-date">${formatDate(g.date)}</div>
-          ${g.desc ? `<div class="gallery-card-desc">${g.desc}</div>` : ''}
-        </div>
-      </div>`;
-  }).join('');
+  grid.innerHTML = state.gallery.map(g => `
+    <div class="gallery-card" onclick="openGalleryDetail('${g.id}')">
+      <div class="gallery-card-img">
+        ${g.photo ? `<img src="${g.photo}" alt="${g.title}">` : '<div class="gallery-no-img">📷</div>'}
+      </div>
+      <div class="gallery-card-body">
+        <div class="gallery-card-title">${g.title}</div>
+        <div class="gallery-card-date">${formatDate(g.date)}</div>
+        ${g.desc ? `<div class="gallery-card-desc">${g.desc}</div>` : ''}
+      </div>
+    </div>`).join('');
 }
 
 function openGalleryDetail(id) {
   const g = state.gallery.find(x => x.id === id);
   if (!g) return;
   const isAdmin = state.currentUserRole === 'admin';
+  currentGalleryId = id;
 
   document.getElementById('galleryDetailTitle').textContent = g.title;
-  document.getElementById('galleryDetailMeta').textContent = `📅 ${formatDate(g.date)}  ·  📷 ${g.photos?.length || 0}장`;
+  document.getElementById('galleryDetailMeta').textContent = `📅 ${formatDate(g.date)}`;
   document.getElementById('galleryDetailDesc').textContent = g.desc || '';
-
-  const photos = g.photos || [];
-  document.getElementById('galleryDetailPhotos').innerHTML = photos.length
-    ? photos.map((src, i) => `<img src="${src}" class="gallery-thumb" onclick="openLightbox('${id}',${i})" alt="사진 ${i+1}">`).join('')
-    : '<div style="color:var(--text3);font-size:.9rem">사진이 없습니다.</div>';
+  document.getElementById('galleryDetailPhoto').innerHTML = g.photo
+    ? `<img src="${g.photo}" style="width:100%;max-height:340px;object-fit:cover;border-radius:12px;cursor:zoom-in" onclick="openLightbox('${g.photo}')">`
+    : '';
+  document.getElementById('commentInput').value = '';
 
   document.getElementById('galleryDetailFooter').innerHTML = isAdmin ? `
-    <label class="btn btn-sm btn-outline" style="cursor:pointer">
-      📷 사진 추가
-      <input type="file" accept="image/*" multiple style="display:none" onchange="addPhotosToGallery('${id}', this)">
-    </label>
     <button class="btn btn-sm btn-outline" onclick="openEditGallery('${id}')">수정</button>
     <button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="deleteGallery('${id}')">삭제</button>
   ` : '';
 
+  // 댓글 실시간 구독
+  if (commentUnsubscribe) commentUnsubscribe();
+  commentUnsubscribe = state.db.collection('gallery').doc(id)
+    .collection('comments').orderBy('createdAt', 'asc')
+    .onSnapshot(snap => {
+      const comments = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderComments(comments, id);
+    });
+
   openModal('galleryDetailModal');
 }
 
-function openLightbox(galleryId, index) {
-  const g = state.gallery.find(x => x.id === galleryId);
-  if (!g) return;
-  lightboxPhotos = g.photos || [];
-  lightboxIndex = index;
-  document.getElementById('lightboxImg').src = lightboxPhotos[lightboxIndex];
+function renderComments(comments, galleryId) {
+  const isAdmin = state.currentUserRole === 'admin';
+  const uid = state.currentUserId;
+  const list = document.getElementById('commentList');
+  if (!list) return;
+  if (!comments.length) {
+    list.innerHTML = '<div class="comment-empty">첫 댓글을 남겨보세요 💬</div>';
+    return;
+  }
+  list.innerHTML = comments.map(c => `
+    <div class="comment-item">
+      <div class="comment-meta">
+        <span class="comment-author">${c.authorName}</span>
+        <span class="comment-time">${c.createdAt?.toDate ? c.createdAt.toDate().toLocaleDateString('ko') : ''}</span>
+        ${(c.authorUid === uid || isAdmin) ? `<button class="comment-del" onclick="deleteComment('${galleryId}','${c.id}')">✕</button>` : ''}
+      </div>
+      <div class="comment-text">${c.text}</div>
+    </div>`).join('');
+}
+
+async function submitComment() {
+  const input = document.getElementById('commentInput');
+  const text = input.value.trim();
+  if (!text || !currentGalleryId) return;
+  const user = state.users.find(u => u.uid === state.currentUserId);
+  await state.db.collection('gallery').doc(currentGalleryId).collection('comments').add({
+    text,
+    authorUid: state.currentUserId,
+    authorName: user?.name || state.currentUser?.displayName || '익명',
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+  });
+  input.value = '';
+}
+
+async function deleteComment(galleryId, commentId) {
+  if (!confirm('댓글을 삭제할까요?')) return;
+  await state.db.collection('gallery').doc(galleryId).collection('comments').doc(commentId).delete();
+}
+
+function openLightbox(src) {
+  document.getElementById('lightboxImg').src = src;
   document.getElementById('lightbox').classList.add('active');
 }
 
 function closeLightbox() {
   document.getElementById('lightbox').classList.remove('active');
-}
-
-function lightboxNav(dir) {
-  lightboxIndex = (lightboxIndex + dir + lightboxPhotos.length) % lightboxPhotos.length;
-  document.getElementById('lightboxImg').src = lightboxPhotos[lightboxIndex];
 }
 
 function openAddGallery() {
@@ -809,34 +839,12 @@ function openEditGallery(id) {
   document.getElementById('galleryTitle').value = g.title;
   document.getElementById('galleryDate').value = g.date;
   document.getElementById('galleryDesc').value = g.desc || '';
-  document.getElementById('galleryPhotoPreview').innerHTML =
-    (g.photos || []).map((src, i) => `
-      <div class="preview-photo-wrap">
-        <img src="${src}" class="preview-photo">
-        <button type="button" class="preview-photo-del" onclick="removeExistingPhoto('${id}',${i})">✕</button>
-      </div>`).join('');
+  document.getElementById('galleryPhotoPreview').innerHTML = g.photo
+    ? `<div class="preview-photo-wrap"><img src="${g.photo}" class="preview-photo"><button type="button" class="preview-photo-del" onclick="document.getElementById('galleryPhotoPreview').innerHTML='';window._clearPhoto=true">✕</button></div>`
+    : '';
+  window._clearPhoto = false;
   closeModal('galleryDetailModal');
   openModal('galleryFormModal');
-}
-
-async function removeExistingPhoto(galleryId, index) {
-  const g = state.gallery.find(x => x.id === galleryId);
-  if (!g) return;
-  const photos = [...(g.photos || [])];
-  photos.splice(index, 1);
-  await state.db.collection('gallery').doc(galleryId).update({ photos });
-  openEditGallery(galleryId);
-}
-
-async function addPhotosToGallery(galleryId, input) {
-  const files = Array.from(input.files);
-  if (!files.length) return;
-  const g = state.gallery.find(x => x.id === galleryId);
-  if (!g) return;
-  const existing = g.photos || [];
-  const newPhotos = await Promise.all(files.map(f => compressImage(f, 1200, 0.75)));
-  await state.db.collection('gallery').doc(galleryId).update({ photos: [...existing, ...newPhotos] });
-  openGalleryDetail(galleryId);
 }
 
 async function saveGallery(e) {
@@ -846,13 +854,15 @@ async function saveGallery(e) {
   try {
     const id = document.getElementById('galleryId').value;
     const existing = id ? state.gallery.find(x => x.id === id) : null;
-    const files = Array.from(document.getElementById('galleryPhotos').files);
-    const newPhotos = files.length ? await Promise.all(files.map(f => compressImage(f, 1200, 0.75))) : [];
+    const file = document.getElementById('galleryPhotos').files[0];
+    let photo = existing?.photo || null;
+    if (file) photo = await compressImage(file, 1200, 0.75);
+    if (window._clearPhoto) photo = null;
     const data = {
       title: document.getElementById('galleryTitle').value.trim(),
       date: document.getElementById('galleryDate').value,
       desc: document.getElementById('galleryDesc').value.trim(),
-      photos: [...(existing?.photos || []), ...newPhotos],
+      photo,
       createdBy: existing?.createdBy || state.currentUserId,
       createdAt: existing?.createdAt || new Date().toISOString().slice(0, 10),
     };
@@ -863,11 +873,12 @@ async function saveGallery(e) {
     alert('저장 실패: ' + err.message);
   } finally {
     btn.disabled = false; btn.textContent = '저장';
+    window._clearPhoto = false;
   }
 }
 
 async function deleteGallery(id) {
-  if (!confirm('이 모임을 삭제할까요? 사진도 모두 삭제됩니다.')) return;
+  if (!confirm('이 모임을 삭제할까요?')) return;
   await state.db.collection('gallery').doc(id).delete();
   closeModal('galleryDetailModal');
 }
