@@ -1065,6 +1065,9 @@ function openAddEvent() {
   document.getElementById('eventId').value = '';
   document.getElementById('eventTimeHour').value = '';
   document.getElementById('eventTimeMin').value = '';
+  document.getElementById('voteDeadlineDate').value = '';
+  document.getElementById('voteDeadlineHour').value = '';
+  document.getElementById('voteDeadlineMin').value = '';
   openModal('eventModal');
 }
 
@@ -1081,7 +1084,11 @@ function openEditEvent(id) {
   document.getElementById('eventTimeMin').value = timeParts[1] || '';
   document.getElementById('eventLocation').value = ev.location || '';
   document.getElementById('eventFee').value = ev.fee || '';
-  document.getElementById('eventVoteDeadline').value = ev.voteDeadline || '';
+  const dlParts = (ev.voteDeadline || '').split('T');
+  document.getElementById('voteDeadlineDate').value = dlParts[0] || '';
+  const dlTime = (dlParts[1] || '').split(':');
+  document.getElementById('voteDeadlineHour').value = dlTime[0] || '';
+  document.getElementById('voteDeadlineMin').value = dlTime[1] || '';
   document.getElementById('eventDesc').value = ev.desc || '';
   openModal('eventModal');
 }
@@ -1101,7 +1108,12 @@ async function saveEvent(e) {
       time: (() => { const h = document.getElementById('eventTimeHour').value; const m = document.getElementById('eventTimeMin').value; return h && m ? `${h}:${m}` : ''; })(),
       location: document.getElementById('eventLocation').value.trim(),
       fee: document.getElementById('eventFee').value.trim(),
-      voteDeadline: document.getElementById('eventVoteDeadline').value,
+      voteDeadline: (() => {
+        const d = document.getElementById('voteDeadlineDate').value;
+        const h = document.getElementById('voteDeadlineHour').value;
+        const m = document.getElementById('voteDeadlineMin').value;
+        return d && h && m ? `${d}T${h}:${m}` : '';
+      })(),
       desc: document.getElementById('eventDesc').value.trim(),
       createdAt: existing?.createdAt || new Date().toISOString().slice(0, 10),
       createdBy: existing?.createdBy || state.currentUserId,
