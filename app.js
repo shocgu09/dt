@@ -1589,98 +1589,6 @@ function authErrMsg(code) {
   return map[code] || `오류가 발생했습니다. (${code})`;
 }
 
-/* ===== AI 드라이브 코스 추천 ===== */
-function openAICourse() {
-  document.getElementById('aiCourseForm').style.display = '';
-  document.getElementById('aiCourseResult').style.display = 'none';
-  document.getElementById('aiCourseText').innerHTML = '';
-  openModal('aiCourseModal');
-}
-
-async function getAICourseRecommendation() {
-  const departure = document.getElementById('aiDeparture').value.trim();
-  if (!departure) { alert('출발지를 입력해주세요.'); return; }
-
-  const vibes = Array.from(document.querySelectorAll('.ai-vibe-chip input:checked')).map(c => c.value);
-  const people = document.getElementById('aiPeople').value;
-  const duration = document.getElementById('aiDuration').value;
-  const season = document.getElementById('aiSeason').value;
-
-  const prompt = `당신은 한국 드라이브 코스 전문가입니다. 자동차 동아리 회원들을 위한 드라이브 코스를 추천해주세요.
-
-조건:
-- 출발지: ${departure}
-- 인원: ${people}
-- 소요 시간: ${duration}
-- 선호 분위기: ${vibes.length > 0 ? vibes.join(', ') : '특별한 선호 없음'}
-${season ? `- 계절/시간대: ${season}` : ''}
-
-다음 형식으로 답변해주세요:
-
-## 🗺 추천 코스명
-
-**코스 요약:** 한 줄 소개
-
-### 📍 코스 경로
-출발지 → 경유지1 → 경유지2 → 도착지 (각 구간 예상 소요 시간 포함)
-
-### 🚗 드라이브 포인트
-- 도로 특징 및 볼거리 2~3가지
-
-### 🍽 추천 스팟
-- 맛집 또는 카페 2~3곳 (지역명과 특징)
-
-### 💡 꿀팁
-- 주의사항 또는 참고사항 1~2가지
-
-한국어로 답변하고, 실제 존재하는 장소를 기반으로 구체적으로 추천해주세요.`;
-
-  const btn = document.getElementById('btnGetAICourse');
-  btn.disabled = true;
-  btn.textContent = '추천 받는 중...';
-
-  document.getElementById('aiCourseForm').style.display = 'none';
-  document.getElementById('aiCourseResult').style.display = '';
-  const resultEl = document.getElementById('aiCourseText');
-  resultEl.innerHTML = '<div class="ai-typing">✨ AI가 코스를 분석 중입니다...</div>';
-
-  try {
-    const res = await fetch('/api/course', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt }),
-    });
-
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || res.statusText);
-
-    const fullText = data.text || '';
-    resultEl.innerHTML = markdownToHtml(fullText);
-
-    // "이벤트로 만들기" 버튼에 코스 제목 연동
-    const titleMatch = fullText.match(/##\s*🗺\s*(.+)/);
-    document.getElementById('btnAICourseEvent').dataset.title = titleMatch?.[1]?.trim() || 'AI 추천 드라이브';
-    document.getElementById('btnAICourseEvent').dataset.desc = fullText;
-
-  } catch (err) {
-    resultEl.innerHTML = `<div style="color:#ff9898">오류가 발생했습니다: ${err.message}</div>`;
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '✨ 추천받기';
-  }
-}
-
-function markdownToHtml(md) {
-  return md
-    .replace(/^## (.+)$/gm, '<h3 class="ai-md-h2">$1</h3>')
-    .replace(/^### (.+)$/gm, '<h4 class="ai-md-h3">$1</h4>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/^- (.+)$/gm, '<li>$1</li>')
-    .replace(/(<li>.*<\/li>\n?)+/g, s => `<ul>${s}</ul>`)
-    .replace(/\n{2,}/g, '<br><br>')
-    .replace(/\n/g, '<br>');
-}
-
 /* ===== LOADING OVERLAY ===== */
 function showLoading(msg = '데이터 불러오는 중...') {
   let el = document.getElementById('loadingOverlay');
@@ -1789,18 +1697,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('btnAddEvent').addEventListener('click', openAddEvent);
   document.getElementById('eventForm').addEventListener('submit', saveEvent);
-  document.getElementById('btnGetAICourse').addEventListener('click', getAICourseRecommendation);
-  document.getElementById('btnAICourseBack').addEventListener('click', () => {
-    document.getElementById('aiCourseForm').style.display = '';
-    document.getElementById('aiCourseResult').style.display = 'none';
-  });
-  document.getElementById('btnAICourseEvent').addEventListener('click', () => {
-    const btn = document.getElementById('btnAICourseEvent');
-    closeModal('aiCourseModal');
-    openAddEvent();
-    document.getElementById('eventTitle').value = btn.dataset.title || '';
-    document.getElementById('eventDesc').value = btn.dataset.desc || '';
-  });
   document.getElementById('quizPhoto').addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return;
