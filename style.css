@@ -619,6 +619,12 @@ main { padding: 24px 20px; max-width: 1200px; margin: 0 auto; }
   /* Home */
   .home-sections { grid-template-columns: 1fr; }
   .home-links { grid-template-columns: 1fr 1fr; }
+  .home-link-card { padding: 12px 14px; gap: 10px; }
+  .home-link-icon { width: 40px; height: 40px; border-radius: 10px; }
+  .home-link-icon svg { width: 20px; height: 20px; }
+  .home-link-name { font-size: .85rem; margin-bottom: 2px; }
+  .home-link-desc { font-size: .72rem; }
+  .home-link-arrow { font-size: 1rem; }
 
   /* Filter bar */
   .filter-bar { flex-wrap: wrap; gap: 6px; }

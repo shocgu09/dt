@@ -106,6 +106,14 @@ function initFirebase() {
 function initAuth() {
   state.auth.onAuthStateChanged(async (user) => {
     if (user) {
+      // 이메일 미인증 계정 차단
+      if (!user.emailVerified) {
+        await state.auth.signOut();
+        const errEl = document.getElementById('loginError');
+        if (errEl) errEl.textContent = '이메일 인증이 완료되지 않았습니다. 받은 편지함을 확인해 주세요.';
+        return;
+      }
+
       state.currentUser = user;
       state.currentUserId = user.uid;
 
@@ -198,8 +206,12 @@ async function signup(name, email, password) {
   const role = others.length === 0 ? 'admin' : 'member';
   await state.db.collection('users').doc(cred.user.uid).set({
     name, email, role,
+    emailVerified: false,
     createdAt: new Date().toISOString().slice(0, 10),
   });
+  // 인증 메일 발송 후 로그아웃 (인증 전 앱 진입 차단)
+  await cred.user.sendEmailVerification();
+  await state.auth.signOut();
 }
 
 async function logout() {
@@ -1346,6 +1358,8 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('loginEmail').value.trim(),
         document.getElementById('loginPassword').value
       );
+      // onAuthStateChanged에서 미인증 시 자동 로그아웃되므로 여기서 별도 처리
+      // emailVerified 체크는 onAuthStateChanged에서 수행
     } catch (err) {
       errEl.textContent = authErrMsg(err.code);
     }
@@ -1365,7 +1379,12 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('signupEmail').value.trim(),
         pw
       );
+      // 가입 성공 → 인증 메일 안내
+      document.getElementById('signupForm').reset();
+      errEl.style.color = 'var(--driver)';
+      errEl.textContent = '✅ 인증 메일을 발송했습니다. 이메일을 확인 후 로그인해 주세요.';
     } catch (err) {
+      errEl.style.color = '';
       errEl.textContent = authErrMsg(err.code);
     }
   });
