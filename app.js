@@ -1635,6 +1635,12 @@ ${season ? `- 계절/시간대: ${season}` : ''}
 
 한국어로 답변하고, 실제 존재하는 장소를 기반으로 구체적으로 추천해주세요.`;
 
+  const apiKey = typeof OPENAI_API_KEY !== 'undefined' ? OPENAI_API_KEY : null;
+  if (!apiKey || apiKey.includes('여기에')) {
+    alert('openai-config.js 파일에 OpenAI API 키를 입력해주세요.\n\nconst OPENAI_API_KEY = \'sk-...\';');
+    return;
+  }
+
   const btn = document.getElementById('btnGetAICourse');
   btn.disabled = true;
   btn.textContent = '추천 받는 중...';
@@ -1649,7 +1655,7 @@ ${season ? `- 계절/시간대: ${season}` : ''}
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
