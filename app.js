@@ -1635,12 +1635,6 @@ ${season ? `- 계절/시간대: ${season}` : ''}
 
 한국어로 답변하고, 실제 존재하는 장소를 기반으로 구체적으로 추천해주세요.`;
 
-  const apiKey = typeof OPENAI_API_KEY !== 'undefined' ? OPENAI_API_KEY : null;
-  if (!apiKey || apiKey.includes('여기에')) {
-    alert('openai-config.js 파일에 OpenAI API 키를 입력해주세요.\n\nconst OPENAI_API_KEY = \'sk-...\';');
-    return;
-  }
-
   const btn = document.getElementById('btnGetAICourse');
   btn.disabled = true;
   btn.textContent = '추천 받는 중...';
@@ -1651,46 +1645,17 @@ ${season ? `- 계절/시간대: ${season}` : ''}
   resultEl.innerHTML = '<div class="ai-typing">✨ AI가 코스를 분석 중입니다...</div>';
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const res = await fetch('/api/course', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-        stream: true,
-      }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt }),
     });
 
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error?.message || response.statusText);
-    }
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
 
-    resultEl.innerHTML = '';
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let fullText = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const chunk = decoder.decode(value, { stream: true });
-      const lines = chunk.split('\n').filter(l => l.startsWith('data: '));
-      for (const line of lines) {
-        const data = line.replace('data: ', '');
-        if (data === '[DONE]') break;
-        try {
-          const parsed = JSON.parse(data);
-          const token = parsed.choices?.[0]?.delta?.content || '';
-          fullText += token;
-          resultEl.innerHTML = markdownToHtml(fullText);
-          resultEl.scrollTop = resultEl.scrollHeight;
-        } catch {}
-      }
-    }
+    const fullText = data.text || '';
+    resultEl.innerHTML = markdownToHtml(fullText);
 
     // "이벤트로 만들기" 버튼에 코스 제목 연동
     const titleMatch = fullText.match(/##\s*🗺\s*(.+)/);
