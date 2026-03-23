@@ -581,10 +581,10 @@ function renderHome() {
   recentEl.innerHTML = sorted.length
     ? sorted.map(ev => `
         <div class="home-list-item" onclick="goPage('events')">
-          <span class="item-icon">${ev.type === 'lightning' ? '⚡' : '🗓'}</span>
+          <span class="item-icon">${ev.type === 'lightning' ? '⚡' : ev.type === 'quiz' ? '🧩' : '🗓'}</span>
           <div class="item-info">
             <div class="item-title">${ev.title}</div>
-            <div class="item-sub">${formatDate(ev.date)} ${ev.time || ''} ${ev.location ? '· ' + ev.location : ''}</div>
+            <div class="item-sub">${ev.type === 'quiz' ? (ev.voteDeadline ? `⏰ 마감 ${ev.voteDeadline.replace('T', ' ')}` : '퀴즈') : `${formatDate(ev.date)} ${ev.time || ''} ${ev.location ? '· ' + ev.location : ''}`}</div>
           </div>
         </div>`)
       .join('')
