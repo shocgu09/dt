@@ -1,0 +1,78 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── 헬퍼 함수 ──────────────────────────────────────────
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuth() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isOwner(uid) {
+      return isAuth() && request.auth.uid == uid;
+    }
+
+    // ── users 컬렉션 ────────────────────────────────────────
+    // - 인증된 유저만 읽기 가능
+    // - 본인 문서 생성 가능 (단, role은 반드시 'member'로만)
+    // - 본인은 role·disabled 필드 변경 불가, 관리자만 변경 가능
+    match /users/{uid} {
+      allow read: if isAuth();
+      allow create: if isOwner(uid)
+        && request.resource.data.role == 'member'
+        && request.resource.data.disabled == false;
+      allow update: if isAdmin()
+        || (isOwner(uid)
+            && !request.resource.data.diff(resource.data)
+                .affectedKeys().hasAny(['role', 'disabled']));
+      allow delete: if isOwner(uid) || isAdmin();
+    }
+
+    // ── members 컬렉션 ──────────────────────────────────────
+    // - 인증된 유저만 읽기
+    // - 쓰기(추가·수정·삭제)는 관리자만
+    match /members/{memberId} {
+      allow read: if isAuth();
+      allow write: if isAdmin();
+    }
+
+    // ── events 컬렉션 ───────────────────────────────────────
+    // - 인증된 유저만 읽기
+    // - 생성·삭제는 관리자만
+    // - 투표(update)는 인증된 유저 가능 (votes 필드만 변경 허용)
+    match /events/{eventId} {
+      allow read: if isAuth();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (isAuth()
+            && request.resource.data.diff(resource.data)
+                .affectedKeys().hasOnly(['votes']));
+    }
+
+    // ── gallery 컬렉션 ──────────────────────────────────────
+    // - 인증된 유저만 읽기
+    // - 쓰기는 관리자만
+    match /gallery/{galleryId} {
+      allow read: if isAuth();
+      allow write: if isAdmin();
+
+      // 댓글 서브컬렉션
+      // - 인증된 유저 읽기·작성 가능
+      // - 수정·삭제는 작성자 본인 또는 관리자만
+      match /comments/{commentId} {
+        allow read: if isAuth();
+        allow create: if isAuth()
+          && request.resource.data.authorUid == request.auth.uid;
+        allow update: if isAuth()
+          && resource.data.authorUid == request.auth.uid;
+        allow delete: if isAuth()
+          && (resource.data.authorUid == request.auth.uid || isAdmin());
+      }
+    }
+
+  }
+}
