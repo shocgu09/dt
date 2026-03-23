@@ -1075,6 +1075,7 @@ function renderEvents() {
   const events = state.events.filter(ev => {
     if (eventFilter === 'lightning') return ev.type === 'lightning';
     if (eventFilter === 'regular') return ev.type === 'regular';
+    if (eventFilter === 'quiz') return ev.type === 'quiz';
     if (eventFilter === 'upcoming') return ev.date >= today;
     return true;
   });
@@ -1086,6 +1087,7 @@ function renderEvents() {
   }
 
   list.innerHTML = events.map(ev => {
+    if (ev.type === 'quiz') return renderQuizCard(ev, today);
     const votes = ev.votes || { attending: [], maybe: [], absent: [] };
     const total = votes.attending.length + votes.maybe.length + votes.absent.length;
     const aW = total ? (votes.attending.length / total * 100).toFixed(1) : 0;
@@ -1159,6 +1161,8 @@ function openAddEvent() {
   document.getElementById('voteDeadlineDate').value = '';
   document.getElementById('voteDeadlineHour').value = '';
   document.getElementById('voteDeadlineMin').value = '';
+  onEventTypeChange('lightning');
+  resetQuizFields();
   openModal('eventModal');
 }
 
@@ -1181,6 +1185,24 @@ function openEditEvent(id) {
   document.getElementById('voteDeadlineHour').value = dlTime[0] || '';
   document.getElementById('voteDeadlineMin').value = dlTime[1] || '';
   document.getElementById('eventDesc').value = ev.desc || '';
+  onEventTypeChange(ev.type);
+  if (ev.type === 'quiz') {
+    resetQuizFields();
+    const options = ev.quizOptions || ['', ''];
+    const list = document.getElementById('quizOptionsList');
+    list.innerHTML = '';
+    options.forEach((opt, i) => {
+      const row = document.createElement('div');
+      row.className = 'quiz-option-row';
+      row.innerHTML = `<input type="text" class="quiz-option-input" placeholder="보기 ${i+1}" value="${opt.replace(/"/g, '&quot;')}" /><button type="button" class="quiz-option-del" onclick="removeQuizOption(this)" ${options.length <= 2 ? 'style="display:none"' : ''}>✕</button>`;
+      list.appendChild(row);
+    });
+    document.getElementById('quizAnswer').value = ev.quizAnswer ?? 0;
+    updateQuizAnswerSelect();
+    if (ev.quizPhoto) {
+      document.getElementById('quizPhotoPreview').innerHTML = `<img src="${ev.quizPhoto}" style="max-width:100%;max-height:160px;border-radius:8px;margin-top:6px">`;
+    }
+  }
   openModal('eventModal');
 }
 
@@ -1192,9 +1214,10 @@ async function saveEvent(e) {
   try {
     const id = document.getElementById('eventId').value;
     const existing = id ? state.events.find(x => x.id === id) : null;
+    const type = document.getElementById('eventType').value;
     const data = {
       title: document.getElementById('eventTitle').value.trim(),
-      type: document.getElementById('eventType').value,
+      type,
       date: document.getElementById('eventDate').value,
       time: (() => { const h = document.getElementById('eventTimeHour').value; const m = document.getElementById('eventTimeMin').value; return h && m ? `${h}:${m}` : ''; })(),
       location: document.getElementById('eventLocation').value.trim(),
@@ -1210,6 +1233,21 @@ async function saveEvent(e) {
       createdBy: existing?.createdBy || state.currentUserId,
       votes: existing?.votes || { attending: [], maybe: [], absent: [] },
     };
+    if (type === 'quiz') {
+      const options = Array.from(document.querySelectorAll('.quiz-option-input')).map(i => i.value.trim()).filter(v => v);
+      if (options.length < 2) { alert('보기를 최소 2개 입력해주세요.'); submitBtn.disabled = false; submitBtn.textContent = '저장'; return; }
+      data.quizOptions = options;
+      data.quizAnswer = parseInt(document.getElementById('quizAnswer').value, 10);
+      data.quizAnswers = existing?.quizAnswers || {};
+      data.quizRevealed = existing?.quizRevealed || false;
+      data.quizWinner = existing?.quizWinner || null;
+      const photoFile = document.getElementById('quizPhoto').files[0];
+      if (photoFile) {
+        data.quizPhoto = await compressImage(photoFile, 800, 0.75);
+      } else {
+        data.quizPhoto = existing?.quizPhoto || null;
+      }
+    }
     if (id) {
       await state.db.collection('events').doc(id).set(data, { merge: true });
     } else {
@@ -1295,6 +1333,161 @@ async function castVote(evId, status) {
     }
   } catch (e) {
     alert('투표 실패: ' + e.message);
+  }
+}
+
+/* ===== QUIZ ===== */
+function onEventTypeChange(type) {
+  document.getElementById('quizFields').style.display = type === 'quiz' ? 'block' : 'none';
+}
+
+function resetQuizFields() {
+  const list = document.getElementById('quizOptionsList');
+  list.innerHTML = `
+    <div class="quiz-option-row"><input type="text" class="quiz-option-input" placeholder="보기 1" /><button type="button" class="quiz-option-del" onclick="removeQuizOption(this)" style="display:none">✕</button></div>
+    <div class="quiz-option-row"><input type="text" class="quiz-option-input" placeholder="보기 2" /><button type="button" class="quiz-option-del" onclick="removeQuizOption(this)" style="display:none">✕</button></div>`;
+  document.getElementById('quizPhotoPreview').innerHTML = '';
+  updateQuizAnswerSelect();
+}
+
+function addQuizOption() {
+  const list = document.getElementById('quizOptionsList');
+  const rows = list.querySelectorAll('.quiz-option-row');
+  if (rows.length >= 4) return;
+  const idx = rows.length + 1;
+  const row = document.createElement('div');
+  row.className = 'quiz-option-row';
+  row.innerHTML = `<input type="text" class="quiz-option-input" placeholder="보기 ${idx}" /><button type="button" class="quiz-option-del" onclick="removeQuizOption(this)">✕</button>`;
+  list.appendChild(row);
+  // show del buttons if > 2
+  list.querySelectorAll('.quiz-option-del').forEach(b => b.style.display = list.querySelectorAll('.quiz-option-row').length > 2 ? '' : 'none');
+  if (rows.length + 1 >= 4) document.getElementById('btnAddQuizOption').style.display = 'none';
+  updateQuizAnswerSelect();
+}
+
+function removeQuizOption(btn) {
+  const list = document.getElementById('quizOptionsList');
+  const rows = list.querySelectorAll('.quiz-option-row');
+  if (rows.length <= 2) return;
+  btn.closest('.quiz-option-row').remove();
+  // re-label placeholders
+  list.querySelectorAll('.quiz-option-input').forEach((inp, i) => inp.placeholder = `보기 ${i+1}`);
+  list.querySelectorAll('.quiz-option-del').forEach(b => b.style.display = list.querySelectorAll('.quiz-option-row').length > 2 ? '' : 'none');
+  document.getElementById('btnAddQuizOption').style.display = '';
+  updateQuizAnswerSelect();
+}
+
+function updateQuizAnswerSelect() {
+  const list = document.getElementById('quizOptionsList');
+  const count = list.querySelectorAll('.quiz-option-row').length;
+  const sel = document.getElementById('quizAnswer');
+  const prev = sel.value;
+  sel.innerHTML = Array.from({ length: count }, (_, i) => `<option value="${i}">보기 ${i+1}</option>`).join('');
+  if (prev < count) sel.value = prev;
+}
+
+function renderQuizCard(ev, today) {
+  const uid = state.currentUserId;
+  const isAdmin = state.currentUserRole === 'admin';
+  const isPast = ev.date < today;
+  const deadline = ev.voteDeadline ? new Date(ev.voteDeadline) : null;
+  const deadlinePassed = deadline && deadline < new Date();
+  const options = ev.quizOptions || [];
+  const quizAnswers = ev.quizAnswers || {};
+  const myAnswer = quizAnswers[uid] !== undefined ? quizAnswers[uid] : null;
+  const totalAnswers = Object.keys(quizAnswers).length;
+  const revealed = ev.quizRevealed;
+  const correctIdx = ev.quizAnswer ?? -1;
+  const labels = ['A', 'B', 'C', 'D'];
+  const author = state.users.find(u => u.uid === ev.createdBy);
+  const isMe = ev.createdBy === uid;
+  const authorName = author?.name || '알 수 없음';
+
+  let winnerHtml = '';
+  if (revealed && ev.quizWinner) {
+    const winner = state.users.find(u => u.uid === ev.quizWinner) || state.members.find(m => m.id === ev.quizWinner);
+    winnerHtml = `<div class="quiz-winner-banner">🏆 당첨자: <strong>${winner?.name || '알 수 없음'}</strong></div>`;
+  } else if (revealed && !ev.quizWinner) {
+    winnerHtml = `<div class="quiz-winner-banner" style="background:rgba(255,107,107,.13);border-color:rgba(255,107,107,.3);color:#ff9898">😢 정답자 없음 — 추첨 불가</div>`;
+  }
+
+  const optionsHtml = options.map((opt, i) => {
+    let cls = 'quiz-opt-btn';
+    if (revealed) {
+      if (i === correctIdx) cls += ' correct';
+      else if (myAnswer === i) cls += ' wrong';
+    } else {
+      if (myAnswer === i) cls += ' selected';
+    }
+    const disabled = (deadlinePassed || revealed || myAnswer !== null) ? 'disabled' : '';
+    const countAnswered = Object.values(quizAnswers).filter(v => v === i).length;
+    const pct = totalAnswers > 0 ? Math.round(countAnswered / totalAnswers * 100) : 0;
+    return `
+      <button class="${cls}" onclick="castQuizAnswer('${ev.id}', ${i})" ${disabled}>
+        <span class="quiz-opt-label">${labels[i]}</span>
+        <span class="quiz-opt-text">${opt}</span>
+        ${revealed ? `<span class="quiz-opt-pct">${pct}%</span>` : (myAnswer !== null ? `<span class="quiz-opt-pct">${pct}%</span>` : '')}
+      </button>`;
+  }).join('');
+
+  const adminActions = canEdit(ev) ? `
+    ${!revealed && deadlinePassed ? `<button class="btn btn-sm btn-primary" onclick="revealQuizAndDraw('${ev.id}')">🎲 정답 공개 및 추첨</button>` : ''}
+    <button class="btn btn-sm btn-outline" onclick="openEditEvent('${ev.id}')">수정</button>
+    <button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="deleteEvent('${ev.id}')">삭제</button>` : '';
+
+  return `
+    <div class="event-card quiz-card">
+      <div class="event-card-header">
+        <span class="event-type-badge quiz">🧩 퀴즈</span>
+        <div class="event-title">${ev.title}</div>
+        ${isPast ? '<span style="font-size:.78rem;color:var(--text3);background:var(--bg3);padding:3px 10px;border-radius:10px;white-space:nowrap">종료됨</span>' : ''}
+      </div>
+      <div style="font-size:.78rem;color:var(--text3);margin-bottom:6px">✍️ ${authorName}${isMe ? ' <span style="color:var(--primary-light);font-weight:600">(나)</span>' : ''}</div>
+      <div class="event-meta">
+        <span class="event-meta-item">📅 ${formatDate(ev.date)}</span>
+        ${deadline ? `<span class="event-meta-item ${deadlinePassed ? 'deadline-over' : 'deadline-active'}">⏰ 마감 ${ev.voteDeadline.replace('T', ' ')}</span>` : ''}
+      </div>
+      ${ev.desc ? `<div style="font-size:.88rem;color:var(--text2);margin-bottom:10px">${ev.desc.replace(/\n/g,'<br>')}</div>` : ''}
+      ${ev.quizPhoto ? `<img src="${ev.quizPhoto}" style="width:100%;max-height:220px;object-fit:cover;border-radius:10px;margin-bottom:12px">` : ''}
+      <div class="quiz-options">${optionsHtml}</div>
+      <div style="font-size:.78rem;color:var(--text3);margin:6px 0 8px">${myAnswer !== null ? `✅ 답변 완료 (${labels[myAnswer]})` : deadlinePassed ? '⏰ 마감됨' : '👆 정답을 골라보세요!'} · 참여 ${totalAnswers}명</div>
+      ${winnerHtml}
+      <div class="event-actions">${adminActions}</div>
+    </div>`;
+}
+
+async function castQuizAnswer(evId, optionIdx) {
+  const uid = state.currentUserId;
+  if (!uid) { alert('로그인이 필요합니다.'); return; }
+  const ev = state.events.find(e => e.id === evId);
+  if (!ev) return;
+  const quizAnswers = ev.quizAnswers || {};
+  if (quizAnswers[uid] !== undefined) return; // already answered
+  if (ev.voteDeadline && new Date(ev.voteDeadline) < new Date()) return;
+  try {
+    await state.db.collection('events').doc(evId).update({
+      [`quizAnswers.${uid}`]: optionIdx,
+    });
+  } catch (err) {
+    alert('오류: ' + err.message);
+  }
+}
+
+async function revealQuizAndDraw(evId) {
+  if (!confirm('정답을 공개하고 정답자 중 무작위로 당첨자를 추첨할까요?')) return;
+  const ev = state.events.find(e => e.id === evId);
+  if (!ev) return;
+  const correctIdx = ev.quizAnswer ?? -1;
+  const quizAnswers = ev.quizAnswers || {};
+  const correct = Object.entries(quizAnswers).filter(([, v]) => v === correctIdx).map(([k]) => k);
+  const winner = correct.length > 0 ? correct[Math.floor(Math.random() * correct.length)] : null;
+  try {
+    await state.db.collection('events').doc(evId).update({
+      quizRevealed: true,
+      quizWinner: winner,
+    });
+  } catch (err) {
+    alert('오류: ' + err.message);
   }
 }
 
@@ -1461,6 +1654,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('btnAddEvent').addEventListener('click', openAddEvent);
   document.getElementById('eventForm').addEventListener('submit', saveEvent);
+  document.getElementById('quizPhoto').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      document.getElementById('quizPhotoPreview').innerHTML = `<img src="${ev.target.result}" style="max-width:100%;max-height:160px;border-radius:8px;margin-top:6px">`;
+    };
+    reader.readAsDataURL(file);
+  });
 
   document.getElementById('btnAddGallery').addEventListener('click', openAddGallery);
   document.getElementById('galleryForm').addEventListener('submit', saveGallery);

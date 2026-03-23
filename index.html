@@ -23,7 +23,7 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚗</text></svg>" />
   <meta name="google-adsense-account" content="ca-pub-8670106445114873">
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8670106445114873" crossorigin="anonymous"></script>
-  <link rel="stylesheet" href="style.css?v=2" />
+  <link rel="stylesheet" href="style.css?v=3" />
 </head>
 <body>
   <!-- NAV -->
@@ -216,6 +216,7 @@
         <button class="filter-btn active" data-filter="all">전체</button>
         <button class="filter-btn" data-filter="lightning">번개</button>
         <button class="filter-btn" data-filter="regular">정모</button>
+        <button class="filter-btn" data-filter="quiz">🧩 퀴즈</button>
         <button class="filter-btn" data-filter="upcoming">예정</button>
       </div>
       <div class="events-list" id="eventsList"></div>
@@ -599,9 +600,10 @@
             </div>
             <div class="form-group">
               <label>유형 *</label>
-              <select id="eventType">
+              <select id="eventType" onchange="onEventTypeChange(this.value)">
                 <option value="lightning">번개</option>
                 <option value="regular">정모</option>
+                <option value="quiz">🧩 퀴즈</option>
               </select>
             </div>
           </div>
@@ -665,6 +667,29 @@
                   <option value="30">30분</option><option value="40">40분</option><option value="50">50분</option>
                 </select>
               </div>
+            </div>
+          </div>
+          <!-- 퀴즈 전용 필드 -->
+          <div id="quizFields" style="display:none">
+            <div class="form-group">
+              <label>퀴즈 사진 <span style="color:var(--text3);font-size:.82rem">(선택)</span></label>
+              <input type="file" id="quizPhoto" accept="image/*" />
+              <div id="quizPhotoPreview" style="margin-top:6px"></div>
+            </div>
+            <div class="form-group">
+              <label>보기 <span style="color:var(--text3);font-size:.82rem">(최소 2개, 최대 4개)</span></label>
+              <div id="quizOptionsList">
+                <div class="quiz-option-row"><input type="text" class="quiz-option-input" placeholder="보기 1" /><button type="button" class="quiz-option-del" onclick="removeQuizOption(this)" style="display:none">✕</button></div>
+                <div class="quiz-option-row"><input type="text" class="quiz-option-input" placeholder="보기 2" /><button type="button" class="quiz-option-del" onclick="removeQuizOption(this)" style="display:none">✕</button></div>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline" id="btnAddQuizOption" onclick="addQuizOption()" style="margin-top:6px">+ 보기 추가</button>
+            </div>
+            <div class="form-group">
+              <label>정답 번호 *</label>
+              <select id="quizAnswer">
+                <option value="0">보기 1</option>
+                <option value="1">보기 2</option>
+              </select>
             </div>
           </div>
           <div class="form-group">
