@@ -162,6 +162,7 @@ function initAuth() {
       state.currentUser = null;
       state.currentUserRole = null;
       state.currentUserId = null;
+      state.subscribed = false;
       showLoginScreen();
     }
   });
