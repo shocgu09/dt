@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>제휴 문의 | DT Club</title>
+  <style>
+    :root {
+      --bg:           #0f0f13;
+      --bg2:          #18181f;
+      --bg3:          #22222c;
+      --border:       #2e2e3a;
+      --primary:      #6c63ff;
+      --primary-light:#8b84ff;
+      --primary-dark: #4d46d9;
+      --accent:       #ff6b6b;
+      --text:         #e8e8f0;
+      --text2:        #9090a8;
+      --text3:        #5a5a72;
+      --card-radius:  14px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── NAV ── */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      height: 56px;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+    }
+    .brand-icon { font-size: 1.5rem; }
+    .brand-text { font-size: 1.2rem; font-weight: 700; letter-spacing: -.5px; color: var(--primary-light); }
+    .back-btn {
+      font-size: .88rem;
+      color: var(--text2);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: color .2s;
+    }
+    .back-btn:hover { color: var(--text); }
+
+    /* ── HERO ── */
+    .hero {
+      text-align: center;
+      padding: 56px 20px 40px;
+    }
+    .hero-badge {
+      display: inline-block;
+      background: rgba(108,99,255,.18);
+      color: var(--primary-light);
+      font-size: .8rem;
+      font-weight: 600;
+      padding: 4px 14px;
+      border-radius: 20px;
+      border: 1px solid rgba(108,99,255,.35);
+      margin-bottom: 18px;
+    }
+    .hero h1 {
+      font-size: 2rem;
+      font-weight: 800;
+      margin-bottom: 12px;
+      line-height: 1.3;
+    }
+    .hero h1 span { color: var(--primary-light); }
+    .hero p {
+      color: var(--text2);
+      font-size: .95rem;
+      line-height: 1.8;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    /* ── FEATURES ── */
+    .features {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      padding: 0 20px 48px;
+    }
+    .feature-chip {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 20px;
+      font-size: .85rem;
+      color: var(--text2);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .feature-chip span { font-size: 1.1rem; }
+
+    /* ── FORM CARD ── */
+    .form-wrap {
+      max-width: 560px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 0 20px 80px;
+    }
+    .form-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--card-radius);
+      padding: 36px 32px;
+    }
+    .form-card h2 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .form-group {
+      margin-bottom: 18px;
+    }
+    .form-row {
+      display: flex;
+      gap: 14px;
+    }
+    .form-row .form-group { flex: 1; }
+
+    label {
+      display: block;
+      font-size: .82rem;
+      font-weight: 600;
+      color: var(--text2);
+      margin-bottom: 6px;
+      letter-spacing: .02em;
+    }
+    label .req { color: var(--accent); margin-left: 2px; }
+
+    input, select, textarea {
+      width: 100%;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: .92rem;
+      font-family: inherit;
+      padding: 10px 13px;
+      transition: border-color .2s, box-shadow .2s;
+      outline: none;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(108,99,255,.18);
+    }
+    textarea { resize: vertical; min-height: 130px; line-height: 1.6; }
+    select option { background: var(--bg3); }
+
+    .submit-btn {
+      width: 100%;
+      padding: 13px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: background .2s, transform .1s;
+      letter-spacing: .02em;
+    }
+    .submit-btn:hover { background: var(--primary-light); }
+    .submit-btn:active { transform: scale(.98); }
+    .submit-btn:disabled {
+      background: var(--bg3);
+      color: var(--text3);
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* ── RESULT ── */
+    .result-box {
+      display: none;
+      text-align: center;
+      padding: 48px 20px;
+    }
+    .result-box.show { display: block; }
+    .result-icon { font-size: 3.2rem; margin-bottom: 16px; }
+    .result-box h3 { font-size: 1.3rem; font-weight: 700; margin-bottom: 10px; }
+    .result-box p { color: var(--text2); font-size: .9rem; line-height: 1.7; }
+    .result-box.error .result-icon { filter: grayscale(0); }
+    .result-box h3.err-title { color: var(--accent); }
+
+    /* ── FOOTER ── */
+    footer {
+      margin-top: auto;
+      text-align: center;
+      padding: 28px 20px;
+      border-top: 1px solid var(--border);
+      color: var(--text3);
+      font-size: .8rem;
+    }
+    footer a { color: var(--primary-light); text-decoration: none; }
+
+    @media (max-width: 480px) {
+      .form-card { padding: 24px 18px; }
+      .form-row { flex-direction: column; gap: 0; }
+      .hero h1 { font-size: 1.6rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a class="brand" href="index.html">
+      <span class="brand-icon">🚗</span>
+      <span class="brand-text">DT Club</span>
+    </a>
+    <a class="back-btn" href="index.html">← 홈으로</a>
+  </nav>
+
+  <section class="hero">
+    <div class="hero-badge">💼 Partnership</div>
+    <h1>DT Club과 <span>함께하세요</span></h1>
+    <p>드라이브 모임, 카페, 세차장, 자동차 용품 등<br>다양한 분야의 제휴 문의를 환영합니다.</p>
+  </section>
+
+  <div class="features">
+    <div class="feature-chip"><span>🚗</span> 드라이브 코스 협력</div>
+    <div class="feature-chip"><span>☕</span> 카페 · 맛집 제휴</div>
+    <div class="feature-chip"><span>🔧</span> 자동차 용품 · 서비스</div>
+    <div class="feature-chip"><span>📸</span> 촬영 · 미디어</div>
+  </div>
+
+  <div class="form-wrap">
+    <div class="form-card">
+      <h2>📩 문의 양식</h2>
+
+      <div id="formArea">
+        <form id="contactForm" action="https://formspree.io/f/mwvrdryr" method="POST">
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>이름 / 담당자명 <span class="req">*</span></label>
+              <input type="text" name="name" placeholder="홍길동" required />
+            </div>
+            <div class="form-group">
+              <label>소속 / 업체명</label>
+              <input type="text" name="company" placeholder="○○ 카페" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>이메일 <span class="req">*</span></label>
+            <input type="email" name="email" placeholder="example@email.com" required />
+          </div>
+
+          <div class="form-group">
+            <label>연락처</label>
+            <input type="tel" name="phone" placeholder="010-0000-0000" />
+          </div>
+
+          <div class="form-group">
+            <label>문의 유형 <span class="req">*</span></label>
+            <select name="type" required>
+              <option value="" disabled selected>선택해주세요</option>
+              <option value="drive">드라이브 코스 / 장소 협력</option>
+              <option value="cafe">카페 · 식당 · 맛집 제휴</option>
+              <option value="product">자동차 용품 · 서비스</option>
+              <option value="media">촬영 · 미디어 · 협찬</option>
+              <option value="event">이벤트 · 행사 협력</option>
+              <option value="other">기타</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>문의 내용 <span class="req">*</span></label>
+            <textarea name="message" placeholder="제휴 내용, 조건, 기타 문의사항을 자유롭게 작성해주세요." required></textarea>
+          </div>
+
+          <!-- 스팸 방지 honeypot -->
+          <input type="text" name="_gotcha" style="display:none" />
+          <!-- 제출 후 리다이렉트 없이 처리 -->
+          <input type="hidden" name="_subject" value="[DT Club] 제휴 문의가 접수되었습니다" />
+
+          <button type="submit" class="submit-btn" id="submitBtn">문의 보내기</button>
+        </form>
+      </div>
+
+      <!-- 성공 -->
+      <div class="result-box" id="successBox">
+        <div class="result-icon">✅</div>
+        <h3>문의가 접수되었습니다!</h3>
+        <p>빠른 시일 내에 입력하신 이메일로<br>답변 드리겠습니다. 감사합니다 🙏</p>
+      </div>
+
+      <!-- 실패 -->
+      <div class="result-box error" id="errorBox">
+        <div class="result-icon">❌</div>
+        <h3 class="err-title">전송에 실패했습니다</h3>
+        <p>잠시 후 다시 시도해 주세요.<br>문제가 지속되면 직접 연락 부탁드립니다.</p>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    © 2025 DT Club &nbsp;·&nbsp; <a href="index.html">홈으로 돌아가기</a>
+  </footer>
+
+  <script>
+    const form = document.getElementById('contactForm');
+    const btn  = document.getElementById('submitBtn');
+    const formArea   = document.getElementById('formArea');
+    const successBox = document.getElementById('successBox');
+    const errorBox   = document.getElementById('errorBox');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      btn.disabled = true;
+      btn.textContent = '전송 중...';
+
+      try {
+        const res = await fetch(form.action, {
+          method: 'POST',
+          body: new FormData(form),
+          headers: { 'Accept': 'application/json' },
+        });
+
+        if (res.ok) {
+          formArea.style.display = 'none';
+          successBox.classList.add('show');
+        } else {
+          throw new Error('서버 오류');
+        }
+      } catch {
+        formArea.style.display = 'none';
+        errorBox.classList.add('show');
+      }
+    });
+  </script>
+</body>
+</html>
