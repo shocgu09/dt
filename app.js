@@ -506,7 +506,7 @@ async function maybeSeed() {
 /* ===== ROUTING ===== */
 function goPage(name, pushState = true) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.nav-btn, .bottom-nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + name)?.classList.add('active');
   document.querySelectorAll(`[data-page="${name}"]`).forEach(b => b.classList.add('active'));
   state.currentPage = name;
