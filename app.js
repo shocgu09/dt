@@ -181,8 +181,20 @@ function showApp() {
     el.classList.toggle('hidden', !isAdmin);
   });
   document.getElementById('navAdminBadge').classList.toggle('hidden', !isAdmin);
-  // 관리자가 아니면 수정/삭제 버튼 숨김
   applyRoleUI();
+  // 인증 완료 후 Firestore 구독 시작 (최초 1회만)
+  if (!state.subscribed) {
+    state.subscribed = true;
+    (async () => {
+      try {
+        await maybeSeed();
+        subscribeAll();
+      } catch (err) {
+        console.error('Firestore 오류:', err.message);
+        subscribeAll(); // seed 실패해도 구독은 시작
+      }
+    })();
+  }
 }
 
 function showLoginScreen() {
@@ -1549,14 +1561,5 @@ document.addEventListener('DOMContentLoaded', () => {
   initFirebase();
   initAuth();
 
-  // ⑧ Firestore 구독 및 seed (Auth 로그인 후 showApp에서 처리)
-  //    로그인 전에도 데이터 구독 시작 (로그인 화면 뒤에서 준비)
-  (async () => {
-    try {
-      await maybeSeed();
-      subscribeAll();
-    } catch (err) {
-      console.error('Firestore 오류:', err.message);
-    }
-  })();
+  // ⑧ Firestore 구독 및 seed는 showApp()에서 인증 완료 후 처리
 });
