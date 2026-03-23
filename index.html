@@ -210,7 +210,10 @@
     <section id="page-events" class="page">
       <div class="page-header">
         <h2>이벤트</h2>
-        <button class="btn btn-primary" id="btnAddEvent">+ 이벤트 만들기</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-outline" id="btnAICourse">🗺 AI 코스 추천</button>
+          <button class="btn btn-primary" id="btnAddEvent">+ 이벤트 만들기</button>
+        </div>
       </div>
       <div class="filter-bar">
         <button class="filter-btn active" data-filter="all">전체</button>
@@ -707,6 +710,79 @@
     </div>
   </div>
 
+  <!-- AI 드라이브 코스 추천 모달 -->
+  <div class="modal-overlay" id="aiCourseModal">
+    <div class="modal modal-wide">
+      <div class="modal-header">
+        <h3>🗺 AI 드라이브 코스 추천</h3>
+        <button class="modal-close" data-modal="aiCourseModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="aiCourseForm">
+          <div class="form-row">
+            <div class="form-group">
+              <label>출발지 *</label>
+              <input type="text" id="aiDeparture" placeholder="예: 서울 강남, 수원 영통" />
+            </div>
+            <div class="form-group">
+              <label>인원수</label>
+              <select id="aiPeople">
+                <option value="2~3명">2~3명</option>
+                <option value="4~6명" selected>4~6명</option>
+                <option value="7~10명">7~10명</option>
+                <option value="10명 이상">10명 이상</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>선호 분위기 (중복 선택 가능)</label>
+            <div class="ai-vibe-grid">
+              <label class="ai-vibe-chip"><input type="checkbox" value="야경" /> 🌃 야경</label>
+              <label class="ai-vibe-chip"><input type="checkbox" value="해안도로" /> 🌊 해안도로</label>
+              <label class="ai-vibe-chip"><input type="checkbox" value="산길/와인딩" /> 🏔 산길/와인딩</label>
+              <label class="ai-vibe-chip"><input type="checkbox" value="카페투어" /> ☕ 카페투어</label>
+              <label class="ai-vibe-chip"><input type="checkbox" value="맛집투어" /> 🍽 맛집투어</label>
+              <label class="ai-vibe-chip"><input type="checkbox" value="드라이브스루" /> 🚗 드라이브스루</label>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>소요 시간</label>
+              <select id="aiDuration">
+                <option value="약 2시간">약 2시간</option>
+                <option value="반나절(3~4시간)" selected>반나절 (3~4시간)</option>
+                <option value="하루 종일">하루 종일</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>계절/시간대 <span style="font-size:.78rem;color:var(--text3)">(선택)</span></label>
+              <select id="aiSeason">
+                <option value="">상관없음</option>
+                <option value="봄">🌸 봄</option>
+                <option value="여름">☀️ 여름</option>
+                <option value="가을">🍁 가을</option>
+                <option value="겨울">❄️ 겨울</option>
+                <option value="주간">🌤 주간</option>
+                <option value="야간">🌙 야간</option>
+              </select>
+            </div>
+          </div>
+          <div class="modal-footer" style="padding:0;margin-top:4px">
+            <button type="button" class="btn btn-outline" data-modal="aiCourseModal">취소</button>
+            <button type="button" class="btn btn-primary" id="btnGetAICourse">✨ 추천받기</button>
+          </div>
+        </div>
+        <div id="aiCourseResult" style="display:none">
+          <div class="ai-course-result-box" id="aiCourseText"></div>
+          <div class="modal-footer" style="padding:0;margin-top:12px">
+            <button type="button" class="btn btn-outline" id="btnAICourseBack">← 다시 입력</button>
+            <button type="button" class="btn btn-outline" id="btnAICourseEvent">📅 이벤트로 만들기</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Vote Modal -->
   <div class="modal-overlay" id="voteModal">
     <div class="modal">
@@ -760,6 +836,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <!-- 🔧 Firebase 설정 파일 (본인 config로 교체하세요) -->
   <script src="firebase-config.js"></script>
-  <script src="app.js?v=3"></script>
+  <script src="openai-config.js"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>
