@@ -200,13 +200,17 @@ async function login(email, password) {
 async function signup(name, email, password) {
   const cred = await state.auth.createUserWithEmailAndPassword(email, password);
   await cred.user.updateProfile({ displayName: name });
-  // 본인 제외한 기존 users 수로 최초 가입자 여부 판별
-  const usersSnap = await state.db.collection('users').get();
-  const others = usersSnap.docs.filter(d => d.id !== cred.user.uid);
-  const role = others.length === 0 ? 'admin' : 'member';
+  // 최초 가입자(admin) 판별: 읽기 실패 시 member로 폴백
+  let role = 'member';
+  try {
+    const usersSnap = await state.db.collection('users').get();
+    const others = usersSnap.docs.filter(d => d.id !== cred.user.uid);
+    if (others.length === 0) role = 'admin';
+  } catch (e) {
+    // 보안 규칙으로 읽기 불가 시 member로 유지
+  }
   await state.db.collection('users').doc(cred.user.uid).set({
     name, email, role,
-    emailVerified: false,
     createdAt: new Date().toISOString().slice(0, 10),
   });
   // 인증 메일 발송 후 로그아웃 (인증 전 앱 진입 차단)
@@ -1284,7 +1288,7 @@ function authErrMsg(code) {
     'auth/invalid-credential': '이메일 또는 비밀번호가 올바르지 않습니다.',
     'auth/too-many-requests': '너무 많은 시도입니다. 잠시 후 다시 시도해주세요.',
   };
-  return map[code] || '오류가 발생했습니다. 다시 시도해주세요.';
+  return map[code] || `오류가 발생했습니다. (${code})`;
 }
 
 /* ===== LOADING OVERLAY ===== */
