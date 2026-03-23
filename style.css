@@ -681,14 +681,14 @@ main { padding: 24px 20px; max-width: 1200px; margin: 0 auto; }
 
 /* ===== RESPONSIVE ===== */
 @media (max-width: 900px) {
-  .login-screen { grid-template-columns: 1fr; }
+  .login-screen { display: flex; flex-direction: column; }
+  .login-box { order: 1; min-height: auto; padding: 36px 28px 48px; }
   .landing-content {
-    min-height: auto; padding: 48px 28px 32px;
-    border-right: none; border-bottom: 1px solid var(--border);
+    order: 2; min-height: auto; padding: 32px 28px 28px;
+    border-right: none; border-top: 1px solid var(--border);
   }
   .landing-title { font-size: 1.8rem; }
   .landing-features { max-width: 100%; }
-  .login-box { min-height: auto; padding: 36px 28px 48px; }
 }
 @media (max-width: 480px) {
   .landing-features { grid-template-columns: 1fr; }
