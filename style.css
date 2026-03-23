@@ -121,6 +121,20 @@ main { padding: 24px 20px; max-width: 1200px; margin: 0 auto; }
 .home-link-desc { font-size: .8rem; color: var(--text3); }
 .home-link-arrow { font-size: 1.2rem; color: var(--text3); transition: var(--transition); }
 .home-link-card:hover .home-link-arrow { color: var(--primary-light); transform: translateX(4px); }
+
+/* 제휴 문의 배너 */
+.partnership-banner { margin-top: 24px; }
+.partnership-banner-inner {
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  background: linear-gradient(135deg, rgba(108,99,255,.18) 0%, rgba(108,99,255,.08) 100%);
+  border: 1px solid rgba(108,99,255,.35);
+  border-radius: var(--card-radius);
+  padding: 22px 28px;
+}
+.partnership-banner-title { font-size: 1rem; font-weight: 700; margin-bottom: 5px; }
+.partnership-banner-desc { font-size: .85rem; color: var(--text2); }
+.partnership-banner-btn { white-space: nowrap; flex-shrink: 0; text-decoration: none; }
+
 .home-section-card {
   background: var(--bg2); border: 1px solid var(--border);
   border-radius: var(--card-radius); padding: 24px;
