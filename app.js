@@ -291,15 +291,26 @@ async function withdraw() {
       myComments.docs.forEach(c => commentBatch.delete(c.ref));
       if (!myComments.empty) await commentBatch.commit();
     }
-    // 4. Firebase Auth 계정 삭제
-    await authUser.delete();
-    // 5. Auth 삭제 성공 시 Firestore users 문서 완전 삭제
+    // 4. Firestore users 문서 삭제
     await state.db.collection('users').doc(uid).delete();
+    // 5. Firebase Auth 계정 삭제
+    await authUser.delete();
     alert('탈퇴가 완료되었습니다.');
   } catch (e) {
     if (e.code === 'auth/requires-recent-login') {
-      alert('보안을 위해 재로그인이 필요합니다.\n다음 로그인 시 계정이 자동으로 완전 삭제됩니다.\n로그아웃합니다.');
-      await state.auth.signOut();
+      // Auth 세션 만료 → 비밀번호 재입력 후 재시도 안내
+      const pw = prompt('보안 확인을 위해 비밀번호를 다시 입력해주세요:');
+      if (pw) {
+        try {
+          const cred = firebase.auth.EmailAuthProvider.credential(authUser.email, pw);
+          await authUser.reauthenticateWithCredential(cred);
+          await state.db.collection('users').doc(uid).delete();
+          await authUser.delete();
+          alert('탈퇴가 완료되었습니다.');
+        } catch (e2) {
+          alert('탈퇴 실패: 비밀번호가 올바르지 않습니다.');
+        }
+      }
     } else {
       alert('탈퇴 중 오류가 발생했습니다: ' + e.message);
     }
