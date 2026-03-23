@@ -314,15 +314,13 @@ async function withdraw() {
     alert('탈퇴가 완료되었습니다.');
   } catch (e) {
     if (e.code === 'auth/requires-recent-login') {
-      // Auth 세션 만료 → 비밀번호 재입력 후 재시도 안내
       const pw = prompt('보안 확인을 위해 비밀번호를 다시 입력해주세요:');
       if (pw) {
         try {
           const cred = firebase.auth.EmailAuthProvider.credential(authUser.email, pw);
           await authUser.reauthenticateWithCredential(cred);
-          await state.db.collection('users').doc(uid).delete();
-          await authUser.delete();
-          alert('탈퇴가 완료되었습니다.');
+          // 재인증 후 전체 데이터 정리 재시도
+          await withdraw();
         } catch (e2) {
           alert('탈퇴 실패: 비밀번호가 올바르지 않습니다.');
         }
@@ -355,8 +353,12 @@ async function createAccount(name, email, password, role) {
 
 /* ===== ADMIN: 역할 변경 / 계정 삭제 ===== */
 async function updateUserRole(uid, role) {
-  await state.db.collection('users').doc(uid).update({ role });
-  renderAdmin();
+  try {
+    await state.db.collection('users').doc(uid).update({ role });
+    renderAdmin();
+  } catch (e) {
+    alert('역할 변경 실패: ' + e.message);
+  }
 }
 
 async function deleteUserAccount(uid) {
@@ -399,7 +401,11 @@ async function deleteUserAccount(uid) {
     const myGallery = await state.db.collection('gallery').where('createdBy', '==', uid).get();
     for (const doc of myGallery.docs) await doc.ref.delete();
 
-    // 5. users 문서 삭제 (pendingDelete로 마킹 → 다음 로그인 시 Auth도 삭제)
+    // 5. 이벤트 삭제
+    const myEvents = await state.db.collection('events').where('createdBy', '==', uid).get();
+    for (const doc of myEvents.docs) await doc.ref.delete();
+
+    // 6. users 문서 삭제 (pendingDelete로 마킹 → 다음 로그인 시 Auth도 삭제)
     await state.db.collection('users').doc(uid).update({ pendingDelete: true, disabled: true });
 
     alert('탈퇴 처리가 완료됐습니다.');
@@ -411,8 +417,12 @@ async function deleteUserAccount(uid) {
 
 async function restoreUserAccount(uid) {
   if (!confirm('이 계정을 복구할까요?')) return;
-  await state.db.collection('users').doc(uid).update({ disabled: false, pendingDelete: false });
-  renderAdmin();
+  try {
+    await state.db.collection('users').doc(uid).update({ disabled: false, pendingDelete: false });
+    renderAdmin();
+  } catch (e) {
+    alert('복구 실패: ' + e.message);
+  }
 }
 
 /* ===== REALTIME LISTENERS ===== */
@@ -1269,23 +1279,22 @@ function openVoteModal(evId) {
 async function castVote(evId, status) {
   const uid = state.currentUserId;
   if (!uid) { alert('로그인이 필요합니다.'); return; }
-
-  const FieldValue = firebase.firestore.FieldValue;
-  const ref = state.db.collection('events').doc(evId);
-  const ev = state.events.find(e => e.id === evId);
-  const votes = ev?.votes || { attending: [], maybe: [], absent: [] };
-
-  // 이미 같은 항목 투표 → 취소 (토글)
-  const alreadyVoted = votes[status]?.includes(uid);
-
-  await ref.update({
-    'votes.attending': FieldValue.arrayRemove(uid),
-    'votes.maybe': FieldValue.arrayRemove(uid),
-    'votes.absent': FieldValue.arrayRemove(uid),
-  });
-
-  if (!alreadyVoted) {
-    await ref.update({ [`votes.${status}`]: FieldValue.arrayUnion(uid) });
+  try {
+    const FieldValue = firebase.firestore.FieldValue;
+    const ref = state.db.collection('events').doc(evId);
+    const ev = state.events.find(e => e.id === evId);
+    const votes = ev?.votes || { attending: [], maybe: [], absent: [] };
+    const alreadyVoted = votes[status]?.includes(uid);
+    await ref.update({
+      'votes.attending': FieldValue.arrayRemove(uid),
+      'votes.maybe': FieldValue.arrayRemove(uid),
+      'votes.absent': FieldValue.arrayRemove(uid),
+    });
+    if (!alreadyVoted) {
+      await ref.update({ [`votes.${status}`]: FieldValue.arrayUnion(uid) });
+    }
+  } catch (e) {
+    alert('투표 실패: ' + e.message);
   }
 }
 
