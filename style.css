@@ -508,6 +508,11 @@ main { padding: 24px 20px; max-width: 1200px; margin: 0 auto; }
   color: var(--accent); font-size: .82rem; margin-bottom: 8px;
   min-height: 20px; line-height: 1.5;
 }
+.resend-verify-btn {
+  background: none; border: none; color: var(--text3); font-size: .8rem;
+  cursor: pointer; text-decoration: underline; padding: 0;
+}
+.resend-verify-btn:hover { color: var(--primary-light); }
 
 /* ===== ADMIN PAGE ===== */
 .admin-grid { display: grid; gap: 20px; }

@@ -218,6 +218,33 @@ async function logout() {
   await state.auth.signOut();
 }
 
+async function resendVerificationEmail() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  if (!email || !password) {
+    errEl.style.color = '';
+    errEl.textContent = '이메일과 비밀번호를 입력 후 재전송 버튼을 눌러주세요.';
+    return;
+  }
+  try {
+    const cred = await state.auth.signInWithEmailAndPassword(email, password);
+    if (cred.user.emailVerified) {
+      errEl.style.color = '';
+      errEl.textContent = '이미 인증된 계정입니다. 로그인을 진행해 주세요.';
+      await state.auth.signOut();
+      return;
+    }
+    await cred.user.sendEmailVerification();
+    await state.auth.signOut();
+    errEl.style.color = 'var(--driver)';
+    errEl.textContent = '✅ 인증 메일을 재전송했습니다. 스팸함도 확인해 주세요.';
+  } catch (e) {
+    errEl.style.color = '';
+    errEl.textContent = authErrMsg(e.code);
+  }
+}
+
 async function withdraw() {
   const uid = state.currentUserId;
   const authUser = state.auth?.currentUser;
