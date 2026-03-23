@@ -779,23 +779,28 @@ async function saveMember(e) {
 
 async function deleteMember(id) {
   if (!confirm('정말 삭제할까요?')) return;
-  await state.db.collection('members').doc(id).delete();
-
-  // 이벤트 투표에서도 제거
-  const snap = await state.db.collection('events').get();
-  const batch = state.db.batch();
-  const FieldValue = firebase.firestore.FieldValue;
-  snap.docs.forEach(doc => {
-    const votes = doc.data().votes || {};
-    if ([...(votes.attending || []), ...(votes.maybe || []), ...(votes.absent || [])].includes(id)) {
-      batch.update(doc.ref, {
-        'votes.attending': FieldValue.arrayRemove(id),
-        'votes.maybe': FieldValue.arrayRemove(id),
-        'votes.absent': FieldValue.arrayRemove(id),
-      });
-    }
-  });
-  await batch.commit();
+  try {
+    await state.db.collection('members').doc(id).delete();
+    // 이벤트 투표에서도 제거
+    const snap = await state.db.collection('events').get();
+    const batch = state.db.batch();
+    const FieldValue = firebase.firestore.FieldValue;
+    snap.docs.forEach(doc => {
+      const votes = doc.data().votes || {};
+      if ([...(votes.attending || []), ...(votes.maybe || []), ...(votes.absent || [])].includes(id)) {
+        batch.update(doc.ref, {
+          'votes.attending': FieldValue.arrayRemove(id),
+          'votes.maybe': FieldValue.arrayRemove(id),
+          'votes.absent': FieldValue.arrayRemove(id),
+        });
+      }
+    });
+    await batch.commit();
+    closeModal('memberDetailModal');
+    renderMembers();
+  } catch (e) {
+    alert('삭제 실패: ' + e.message);
+  }
 }
 
 function toggleCarSection(role) {
@@ -967,8 +972,13 @@ async function saveGallery(e) {
 
 async function deleteGallery(id) {
   if (!confirm('이 모임을 삭제할까요?')) return;
-  await state.db.collection('gallery').doc(id).delete();
-  closeModal('galleryDetailModal');
+  try {
+    await state.db.collection('gallery').doc(id).delete();
+    closeModal('galleryDetailModal');
+    renderGallery();
+  } catch (e) {
+    alert('삭제 실패: ' + e.message);
+  }
 }
 
 function renderCars() {
@@ -1154,7 +1164,12 @@ async function saveEvent(e) {
 
 async function deleteEvent(id) {
   if (!confirm('이벤트를 삭제할까요?')) return;
-  await state.db.collection('events').doc(id).delete();
+  try {
+    await state.db.collection('events').doc(id).delete();
+    renderEvents();
+  } catch (e) {
+    alert('삭제 실패: ' + e.message);
+  }
 }
 
 /* ===== VOTE MODAL ===== */
