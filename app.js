@@ -267,6 +267,30 @@ async function withdraw() {
     // 3. 내가 작성한 이벤트 삭제 (events 컬렉션)
     const myEvents = await state.db.collection('events').where('createdBy', '==', uid).get();
     for (const doc of myEvents.docs) await doc.ref.delete();
+    // 3-1. 이벤트 투표에서 내 uid 제거
+    const allEvents = await state.db.collection('events').get();
+    const voteBatch = state.db.batch();
+    const FieldValue = firebase.firestore.FieldValue;
+    allEvents.docs.forEach(doc => {
+      const votes = doc.data().votes || {};
+      const inVotes = [...(votes.attending || []), ...(votes.maybe || []), ...(votes.absent || [])].includes(uid);
+      if (inVotes) {
+        voteBatch.update(doc.ref, {
+          'votes.attending': FieldValue.arrayRemove(uid),
+          'votes.maybe': FieldValue.arrayRemove(uid),
+          'votes.absent': FieldValue.arrayRemove(uid),
+        });
+      }
+    });
+    await voteBatch.commit();
+    // 3-2. 갤러리 댓글에서 내가 쓴 댓글 삭제
+    const allGallery = await state.db.collection('gallery').get();
+    for (const gDoc of allGallery.docs) {
+      const myComments = await gDoc.ref.collection('comments').where('authorUid', '==', uid).get();
+      const commentBatch = state.db.batch();
+      myComments.docs.forEach(c => commentBatch.delete(c.ref));
+      if (!myComments.empty) await commentBatch.commit();
+    }
     // 4. Firebase Auth 계정 삭제
     await authUser.delete();
     // 5. Auth 삭제 성공 시 Firestore users 문서 완전 삭제
