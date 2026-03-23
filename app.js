@@ -1394,9 +1394,9 @@ function updateQuizAnswerSelect() {
 function renderQuizCard(ev, today) {
   const uid = state.currentUserId;
   const isAdmin = state.currentUserRole === 'admin';
-  const isPast = ev.date < today;
   const deadline = ev.voteDeadline ? new Date(ev.voteDeadline) : null;
   const deadlinePassed = deadline && deadline < new Date();
+  const isPast = deadline ? deadlinePassed : ev.date < today;
   const options = ev.quizOptions || [];
   const quizAnswers = ev.quizAnswers || {};
   const myAnswer = quizAnswers[uid] !== undefined ? quizAnswers[uid] : null;
