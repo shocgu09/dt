@@ -543,7 +543,7 @@ function openMemberDetail(id) {
       </div>
     </div>
     <div class="info-grid">
-      <div class="info-item"><div class="info-label">연락처</div><div class="info-value">${m.phone || '-'}</div></div>
+      <div class="info-item"><div class="info-label">연락처</div><div class="info-value">${m.phone ? m.phone.slice(0, -4) + '****' : '-'}</div></div>
       <div class="info-item"><div class="info-label">가입일</div><div class="info-value">${m.joinDate || '-'}</div></div>
     </div>
     ${m.car ? `
