@@ -360,15 +360,21 @@ async function maybeSeed() {
 }
 
 /* ===== ROUTING ===== */
-function goPage(name) {
+function goPage(name, pushState = true) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + name)?.classList.add('active');
   document.querySelectorAll(`[data-page="${name}"]`).forEach(b => b.classList.add('active'));
   state.currentPage = name;
   window.scrollTo(0, 0);
+  if (pushState) history.pushState({ page: name }, '', '#' + name);
   renderCurrentPage();
 }
+
+window.addEventListener('popstate', (e) => {
+  const page = e.state?.page || 'home';
+  goPage(page, false);
+});
 
 function renderCurrentPage() {
   renderPage(state.currentPage);
@@ -1418,6 +1424,12 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ⑦ Firebase 초기화 및 Auth 감지
+  // 초기 URL 해시로 페이지 복원
+  const initPage = location.hash.replace('#', '') || 'home';
+  const validPages = ['home', 'members', 'cars', 'events', 'gallery', 'admin'];
+  if (validPages.includes(initPage)) goPage(initPage, false);
+  history.replaceState({ page: state.currentPage }, '', '#' + state.currentPage);
+
   initFirebase();
   initAuth();
 
