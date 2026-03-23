@@ -357,9 +357,53 @@ async function updateUserRole(uid, role) {
 }
 
 async function deleteUserAccount(uid) {
-  if (!confirm('정말 삭제하시겠습니까?\n해당 계정은 즉시 차단되며, 다음 로그인 시도 시 Firebase에서 완전히 삭제됩니다.')) return;
-  await state.db.collection('users').doc(uid).update({ pendingDelete: true, disabled: true });
-  renderAdmin();
+  if (!confirm('정말 탈퇴 처리하시겠습니까?\n해당 계정과 관련된 모든 데이터가 삭제됩니다.')) return;
+  try {
+    const FieldValue = firebase.firestore.FieldValue;
+
+    // 1. 회원 프로필 삭제 (members 컬렉션)
+    const myMembers = await state.db.collection('members').where('createdBy', '==', uid).get();
+    for (const doc of myMembers.docs) await doc.ref.delete();
+
+    // 2. 이벤트 투표에서 uid 제거
+    const allEvents = await state.db.collection('events').get();
+    const voteBatch = state.db.batch();
+    allEvents.docs.forEach(doc => {
+      const votes = doc.data().votes || {};
+      const inVotes = [...(votes.attending || []), ...(votes.maybe || []), ...(votes.absent || [])].includes(uid);
+      if (inVotes) {
+        voteBatch.update(doc.ref, {
+          'votes.attending': FieldValue.arrayRemove(uid),
+          'votes.maybe': FieldValue.arrayRemove(uid),
+          'votes.absent': FieldValue.arrayRemove(uid),
+        });
+      }
+    });
+    await voteBatch.commit();
+
+    // 3. 갤러리 댓글 삭제
+    const allGallery = await state.db.collection('gallery').get();
+    for (const gDoc of allGallery.docs) {
+      const myComments = await gDoc.ref.collection('comments').where('authorUid', '==', uid).get();
+      if (!myComments.empty) {
+        const cb = state.db.batch();
+        myComments.docs.forEach(c => cb.delete(c.ref));
+        await cb.commit();
+      }
+    }
+
+    // 4. 갤러리 게시물 삭제
+    const myGallery = await state.db.collection('gallery').where('createdBy', '==', uid).get();
+    for (const doc of myGallery.docs) await doc.ref.delete();
+
+    // 5. users 문서 삭제 (pendingDelete로 마킹 → 다음 로그인 시 Auth도 삭제)
+    await state.db.collection('users').doc(uid).update({ pendingDelete: true, disabled: true });
+
+    alert('탈퇴 처리가 완료됐습니다.');
+    renderAdmin();
+  } catch (e) {
+    alert('오류: ' + e.message);
+  }
 }
 
 async function restoreUserAccount(uid) {
