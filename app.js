@@ -894,7 +894,7 @@ function renderGallery() {
       <div class="gallery-card-body">
         <div class="gallery-card-title">${g.title}</div>
         <div class="gallery-card-date">${formatDate(g.date)}</div>
-        ${g.desc ? `<div class="gallery-card-desc">${g.desc}</div>` : ''}
+        ${g.desc ? `<div class="gallery-card-desc">${linkify(g.desc)}</div>` : ''}
       </div>
     </div>`).join('');
 }
@@ -907,7 +907,7 @@ function openGalleryDetail(id) {
 
   document.getElementById('galleryDetailTitle').textContent = g.title;
   document.getElementById('galleryDetailMeta').textContent = `📅 ${formatDate(g.date)}`;
-  document.getElementById('galleryDetailDesc').textContent = g.desc || '';
+  document.getElementById('galleryDetailDesc').innerHTML = linkify(g.desc || '');
   document.getElementById('galleryDetailPhoto').innerHTML = g.photo
     ? `<img src="${g.photo}" style="width:100%;max-height:340px;object-fit:cover;border-radius:12px;cursor:zoom-in" onclick="openLightbox('${g.photo}')">`
     : '';
@@ -1116,7 +1116,7 @@ function renderEvents() {
         </div>
         ${ev.desc ? `
           <div class="event-desc-wrap">
-            <div class="event-desc collapsed" id="desc-${ev.id}">${ev.desc.replace(/\n/g, '<br>')}</div>
+            <div class="event-desc collapsed" id="desc-${ev.id}">${linkify(ev.desc)}</div>
             <button class="desc-toggle" onclick="toggleDesc('${ev.id}')">더 보기 ▼</button>
           </div>` : ''}
         ${(() => {
@@ -1452,7 +1452,7 @@ function renderQuizCard(ev, today) {
         <span class="event-meta-item">📅 ${formatDate(ev.date)}</span>
         ${deadline ? `<span class="event-meta-item ${deadlinePassed ? 'deadline-over' : 'deadline-active'}">⏰ 마감 ${ev.voteDeadline.replace('T', ' ')}</span>` : ''}
       </div>
-      ${ev.desc ? `<div style="font-size:.88rem;color:var(--text2);margin-bottom:10px">${ev.desc.replace(/\n/g,'<br>')}</div>` : ''}
+      ${ev.desc ? `<div style="font-size:.88rem;color:var(--text2);margin-bottom:10px">${linkify(ev.desc)}</div>` : ''}
       ${ev.quizPhoto ? `<img src="${ev.quizPhoto}" style="width:100%;max-height:220px;object-fit:cover;border-radius:10px;margin-bottom:12px">` : ''}
       <div class="quiz-options">${optionsHtml}</div>
       <div style="font-size:.78rem;color:var(--text3);margin:6px 0 8px">${myAnswer !== null ? `✅ 답변 완료 (${labels[myAnswer]})` : deadlinePassed ? '⏰ 마감됨' : '👆 정답을 골라보세요!'} · 참여 ${totalAnswers}명</div>
@@ -1533,6 +1533,12 @@ function avatarSmall(m) {
   const color = colors[(m.name?.charCodeAt(0) || 0) % colors.length];
   if (m.image) return `<img src="${m.image}" style="width:28px;height:28px;border-radius:50%;object-fit:cover">`;
   return `<span style="background:${color};color:#fff;width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700;flex-shrink:0">${m.name?.[0] || '?'}</span>`;
+}
+
+function linkify(text) {
+  return text
+    .replace(/\n/g, '<br>')
+    .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:var(--primary-light);text-decoration:underline;word-break:break-all">$1</a>');
 }
 
 function toggleDesc(evId) {
