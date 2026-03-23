@@ -1824,7 +1824,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('btnAddEvent').addEventListener('click', openAddEvent);
   document.getElementById('eventForm').addEventListener('submit', saveEvent);
-  document.getElementById('btnAICourse').addEventListener('click', openAICourse);
   document.getElementById('btnGetAICourse').addEventListener('click', getAICourseRecommendation);
   document.getElementById('btnAICourseBack').addEventListener('click', () => {
     document.getElementById('aiCourseForm').style.display = '';

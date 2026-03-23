@@ -158,6 +158,16 @@
             </div>
             <div class="home-link-arrow">→</div>
           </a>
+          <div class="home-link-card" onclick="openAICourse()" style="cursor:pointer">
+            <div class="home-link-icon" style="background:linear-gradient(135deg,#4ade80,#22c55e)">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="white"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+            </div>
+            <div class="home-link-info">
+              <div class="home-link-name">🗺 AI 드라이브 코스</div>
+              <div class="home-link-desc">AI가 추천하는 맞춤 드라이브 코스</div>
+            </div>
+            <div class="home-link-arrow">→</div>
+          </div>
         </div>
       </div>
 
@@ -210,10 +220,7 @@
     <section id="page-events" class="page">
       <div class="page-header">
         <h2>이벤트</h2>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-outline" id="btnAICourse">🗺 AI 코스 추천</button>
-          <button class="btn btn-primary" id="btnAddEvent">+ 이벤트 만들기</button>
-        </div>
+        <button class="btn btn-primary" id="btnAddEvent">+ 이벤트 만들기</button>
       </div>
       <div class="filter-bar">
         <button class="filter-btn active" data-filter="all">전체</button>
