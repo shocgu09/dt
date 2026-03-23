@@ -1338,7 +1338,12 @@ async function castVote(evId, status) {
 
 /* ===== QUIZ ===== */
 function onEventTypeChange(type) {
-  document.getElementById('quizFields').style.display = type === 'quiz' ? 'block' : 'none';
+  const isQuiz = type === 'quiz';
+  document.getElementById('quizFields').style.display = isQuiz ? 'block' : 'none';
+  document.getElementById('eventDateTimeRow').style.display = isQuiz ? 'none' : '';
+  document.getElementById('eventLocationRow').style.display = isQuiz ? 'none' : '';
+  document.getElementById('eventFeeGroup').style.display = isQuiz ? 'none' : '';
+  document.getElementById('eventDate').required = !isQuiz;
 }
 
 function resetQuizFields() {
