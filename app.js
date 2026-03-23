@@ -185,15 +185,7 @@ function showApp() {
   // 인증 완료 후 Firestore 구독 시작 (최초 1회만)
   if (!state.subscribed) {
     state.subscribed = true;
-    (async () => {
-      try {
-        await maybeSeed();
-        subscribeAll();
-      } catch (err) {
-        console.error('Firestore 오류:', err.message);
-        subscribeAll(); // seed 실패해도 구독은 시작
-      }
-    })();
+    subscribeAll();
   }
 }
 
