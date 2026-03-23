@@ -304,6 +304,9 @@ async function withdraw() {
       myComments.docs.forEach(c => commentBatch.delete(c.ref));
       if (!myComments.empty) await commentBatch.commit();
     }
+    // 3-3. 내가 올린 갤러리 게시물 삭제
+    const myGallery = await state.db.collection('gallery').where('createdBy', '==', uid).get();
+    for (const doc of myGallery.docs) await doc.ref.delete();
     // 4. Firestore users 문서 삭제
     await state.db.collection('users').doc(uid).delete();
     // 5. Firebase Auth 계정 삭제
