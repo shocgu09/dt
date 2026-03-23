@@ -106,8 +106,9 @@ function initFirebase() {
 function initAuth() {
   state.auth.onAuthStateChanged(async (user) => {
     if (user) {
-      // 이메일 미인증 계정 차단
+      // 이메일 미인증 계정 차단 (회원가입 진행 중이면 스킵)
       if (!user.emailVerified) {
+        if (state.isSigningUp) return;
         await state.auth.signOut();
         const errEl = document.getElementById('loginError');
         if (errEl) errEl.textContent = '이메일 인증이 완료되지 않았습니다. 받은 편지함을 확인해 주세요.';
@@ -198,24 +199,27 @@ async function login(email, password) {
 }
 
 async function signup(name, email, password) {
-  const cred = await state.auth.createUserWithEmailAndPassword(email, password);
-  await cred.user.updateProfile({ displayName: name });
-  // 최초 가입자(admin) 판별: 읽기 실패 시 member로 폴백
-  let role = 'member';
+  state.isSigningUp = true;
   try {
-    const usersSnap = await state.db.collection('users').get();
-    const others = usersSnap.docs.filter(d => d.id !== cred.user.uid);
-    if (others.length === 0) role = 'admin';
-  } catch (e) {
-    // 보안 규칙으로 읽기 불가 시 member로 유지
+    const cred = await state.auth.createUserWithEmailAndPassword(email, password);
+    await cred.user.updateProfile({ displayName: name });
+    // 최초 가입자(admin) 판별: 읽기 실패 시 member로 폴백
+    let role = 'member';
+    try {
+      const usersSnap = await state.db.collection('users').get();
+      const others = usersSnap.docs.filter(d => d.id !== cred.user.uid);
+      if (others.length === 0) role = 'admin';
+    } catch (e) {}
+    await state.db.collection('users').doc(cred.user.uid).set({
+      name, email, role,
+      createdAt: new Date().toISOString().slice(0, 10),
+    });
+    // 인증 메일 발송 후 로그아웃 (인증 전 앱 진입 차단)
+    await cred.user.sendEmailVerification();
+    await state.auth.signOut();
+  } finally {
+    state.isSigningUp = false;
   }
-  await state.db.collection('users').doc(cred.user.uid).set({
-    name, email, role,
-    createdAt: new Date().toISOString().slice(0, 10),
-  });
-  // 인증 메일 발송 후 로그아웃 (인증 전 앱 진입 차단)
-  await cred.user.sendEmailVerification();
-  await state.auth.signOut();
 }
 
 async function logout() {
