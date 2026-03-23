@@ -748,6 +748,7 @@ function openAddMember() {
   document.getElementById('memberForm').reset();
   document.getElementById('memberId').value = '';
   document.getElementById('memberImagePreview').innerHTML = '';
+  document.getElementById('carImagePreview').innerHTML = '';
   document.getElementById('btnWithdrawInModal').style.display = 'none';
   toggleCarSection('driver');
   renderBrandSelector('');
@@ -785,6 +786,12 @@ function openEditMember(id) {
     preview.innerHTML = `<img src="${m.image}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid var(--border)"><span style="font-size:.78rem;color:var(--text3);margin-left:8px;vertical-align:middle">현재 사진 · 새 파일 선택 시 교체됩니다</span>`;
   } else {
     preview.innerHTML = '';
+  }
+  const carPreview = document.getElementById('carImagePreview');
+  if (m.car?.image) {
+    carPreview.innerHTML = `<img src="${m.car.image}" style="width:80px;height:56px;border-radius:8px;object-fit:cover;border:2px solid var(--border)"><span style="font-size:.78rem;color:var(--text3);margin-left:8px;vertical-align:middle">현재 사진 · 새 파일 선택 시 교체됩니다</span>`;
+  } else {
+    carPreview.innerHTML = '';
   }
   openModal('memberModal');
 }
@@ -1662,6 +1669,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const reader = new FileReader();
     reader.onload = ev => {
       document.getElementById('memberImagePreview').innerHTML = `<img src="${ev.target.result}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid var(--border)"><span style="font-size:.78rem;color:var(--text3);margin-left:8px;vertical-align:middle">선택된 새 사진</span>`;
+    };
+    reader.readAsDataURL(file);
+  });
+  document.getElementById('carImage').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      document.getElementById('carImagePreview').innerHTML = `<img src="${ev.target.result}" style="width:80px;height:56px;border-radius:8px;object-fit:cover;border:2px solid var(--border)"><span style="font-size:.78rem;color:var(--text3);margin-left:8px;vertical-align:middle">선택된 새 사진</span>`;
     };
     reader.readAsDataURL(file);
   });
