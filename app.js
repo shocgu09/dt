@@ -1197,8 +1197,8 @@ function openEditEvent(id) {
       row.innerHTML = `<input type="text" class="quiz-option-input" placeholder="보기 ${i+1}" value="${opt.replace(/"/g, '&quot;')}" /><button type="button" class="quiz-option-del" onclick="removeQuizOption(this)" ${options.length <= 2 ? 'style="display:none"' : ''}>✕</button>`;
       list.appendChild(row);
     });
-    document.getElementById('quizAnswer').value = ev.quizAnswer ?? 0;
     updateQuizAnswerSelect();
+    document.getElementById('quizAnswer').value = ev.quizAnswer ?? 0;
     if (ev.quizPhoto) {
       document.getElementById('quizPhotoPreview').innerHTML = `<img src="${ev.quizPhoto}" style="max-width:100%;max-height:160px;border-radius:8px;margin-top:6px">`;
     }
