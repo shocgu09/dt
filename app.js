@@ -1593,10 +1593,14 @@ function openCropModal(file, aspectRatio, callback) {
       _cropperInstance = new Cropper(img, {
         aspectRatio: aspectRatio ?? NaN,
         viewMode: 1,
-        autoCropArea: 0.85,
-        movable: true,
-        zoomable: true,
+        autoCropArea: 1,       // 크롭 박스가 뷰 전체를 채움
+        dragMode: 'move',      // 드래그 시 이미지 이동
+        cropBoxMovable: false, // 크롭 박스 고정
+        cropBoxResizable: false, // 크롭 박스 크기 고정
+        movable: true,         // 이미지 이동 가능
+        zoomable: true,        // 핀치/휠 줌 가능
         rotatable: false,
+        toggleDragModeOnDblclick: false,
       });
     };
   };
