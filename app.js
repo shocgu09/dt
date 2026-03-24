@@ -140,12 +140,6 @@ function initAuth() {
           alert('삭제된 계정입니다.');
           return;
         }
-        // 비활성화된 계정 → 강제 로그아웃
-        if (data.disabled) {
-          await state.auth.signOut();
-          alert('접근이 차단된 계정입니다. 운영진에게 문의하세요.');
-          return;
-        }
         state.currentUserRole = data.role;
         // 마지막 접속 시간 갱신
         state.db.collection('users').doc(user.uid).update({ lastSeen: new Date().toISOString() }).catch(() => {});
@@ -160,14 +154,13 @@ function initAuth() {
         state.currentUserRole = 'member';
       }
       showApp();
-      // 실시간 강퇴 감지: 관리자가 disabled/pendingDelete 설정 시 즉시 로그아웃
+      // 실시간 강퇴 감지: 관리자가 pendingDelete 설정 시 즉시 로그아웃
       if (state._banListener) state._banListener();
       state._banListener = state.db.collection('users').doc(user.uid).onSnapshot(snap => {
         if (!snap.exists) return;
-        const d = snap.data();
-        if (d.disabled || d.pendingDelete) {
+        if (snap.data().pendingDelete) {
           state.auth.signOut();
-          alert('접근이 차단된 계정입니다. 운영진에게 문의하세요.');
+          alert('계정이 삭제되었습니다.');
         }
       });
     } else {
@@ -239,6 +232,9 @@ async function login(email, password) {
 async function signup(name, email, password) {
   state.isSigningUp = true;
   try {
+    // 블랙리스트 체크
+    const blackSnap = await state.db.collection('blacklist').where('email', '==', email.toLowerCase()).limit(1).get();
+    if (!blackSnap.empty) throw Object.assign(new Error('가입이 제한된 이메일입니다. 운영진에게 문의하세요.'), { code: 'auth/blacklisted' });
     const cred = await state.auth.createUserWithEmailAndPassword(email, password);
     await cred.user.updateProfile({ displayName: name });
     // 최초 가입자(admin) 판별: 읽기 실패 시 member로 폴백
@@ -304,7 +300,7 @@ async function withdraw() {
   try {
     // 1. pendingDelete 마킹
     await state.db.collection('users').doc(uid).set(
-      { pendingDelete: true, disabled: true },
+      { pendingDelete: true },
       { merge: true }
     );
     // 2. 내 회원 프로필 삭제 (members 컬렉션)
@@ -400,16 +396,6 @@ async function updateUserRole(uid, role) {
   }
 }
 
-async function disableUserAccount(uid) {
-  if (!confirm('이 계정을 비활성화할까요?\n데이터는 유지되며 복구가 가능합니다.')) return;
-  try {
-    await state.db.collection('users').doc(uid).update({ disabled: true });
-    renderAdmin();
-  } catch (e) {
-    alert('오류: ' + e.message);
-  }
-}
-
 async function deleteUserAccount(uid) {
   if (!confirm('정말 영구 삭제하시겠습니까?\n모든 데이터가 즉시 삭제되며 복구할 수 없습니다.')) return;
   try {
@@ -460,23 +446,25 @@ async function deleteUserAccount(uid) {
     const myEvents = await state.db.collection('events').where('createdBy', '==', uid).get();
     for (const doc of myEvents.docs) await doc.ref.delete();
 
-    // 6. users 문서 pendingDelete 마킹 (Auth 계정은 해당 유저 로그인 시 삭제)
-    await state.db.collection('users').doc(uid).update({ pendingDelete: true, disabled: true });
+    // 6. 블랙리스트 등록
+    const userSnap = await state.db.collection('users').doc(uid).get();
+    const email = userSnap.data()?.email;
+    if (email) {
+      await state.db.collection('blacklist').add({
+        email: email.toLowerCase(),
+        reason: '관리자 강퇴',
+        addedAt: new Date().toISOString(),
+        addedBy: state.currentUserId,
+      });
+    }
 
-    alert('영구 삭제 완료됐습니다.');
+    // 7. users 문서 pendingDelete 마킹 (Auth 계정은 해당 유저 로그인 시 삭제)
+    await state.db.collection('users').doc(uid).update({ pendingDelete: true });
+
+    alert('강퇴 처리가 완료됐습니다.');
     renderAdmin();
   } catch (e) {
     alert('오류: ' + e.message);
-  }
-}
-
-async function restoreUserAccount(uid) {
-  if (!confirm('이 계정을 복구할까요?')) return;
-  try {
-    await state.db.collection('users').doc(uid).update({ disabled: false, pendingDelete: false });
-    renderAdmin();
-  } catch (e) {
-    alert('복구 실패: ' + e.message);
   }
 }
 
@@ -814,9 +802,71 @@ function formatLastSeen(iso) {
   return new Date(iso).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
 }
 
+async function renderAdminBlacklist() {
+  const list = document.getElementById('blacklistItems');
+  if (!list) return;
+  try {
+    const snap = await state.db.collection('blacklist').orderBy('addedAt', 'desc').get();
+    if (snap.empty) {
+      list.innerHTML = '<div class="empty-state">블랙리스트가 없습니다</div>';
+      return;
+    }
+    list.innerHTML = snap.docs.map(doc => {
+      const b = doc.data();
+      const date = b.addedAt ? b.addedAt.slice(0, 10) : '';
+      return `
+        <div class="user-item">
+          <div class="user-item-info">
+            <div class="user-item-name">${escapeHtml(b.email)}</div>
+            <div class="user-item-email">${escapeHtml(b.reason || '')} · ${date}</div>
+          </div>
+          <div class="user-item-actions">
+            <button class="btn btn-sm btn-outline" onclick="removeFromBlacklist('${doc.id}')">해제</button>
+          </div>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    list.innerHTML = '<div class="empty-state">불러오기 실패</div>';
+  }
+}
+
+async function addToBlacklist() {
+  const email = document.getElementById('blacklistEmail').value.trim().toLowerCase();
+  const reason = document.getElementById('blacklistReason').value.trim();
+  if (!email) { alert('이메일을 입력해주세요.'); return; }
+  try {
+    const existing = await state.db.collection('blacklist').where('email', '==', email).limit(1).get();
+    if (!existing.empty) { alert('이미 블랙리스트에 등록된 이메일입니다.'); return; }
+    await state.db.collection('blacklist').add({
+      email,
+      reason: reason || '수동 등록',
+      addedAt: new Date().toISOString(),
+      addedBy: state.currentUserId,
+    });
+    document.getElementById('blacklistEmail').value = '';
+    document.getElementById('blacklistReason').value = '';
+    showToast('✅ 블랙리스트에 추가됐습니다.');
+    renderAdminBlacklist();
+  } catch (e) {
+    alert('오류: ' + e.message);
+  }
+}
+
+async function removeFromBlacklist(id) {
+  if (!confirm('블랙리스트에서 해제할까요?')) return;
+  try {
+    await state.db.collection('blacklist').doc(id).delete();
+    showToast('✅ 블랙리스트에서 해제됐습니다.');
+    renderAdminBlacklist();
+  } catch (e) {
+    alert('오류: ' + e.message);
+  }
+}
+
 async function renderAdmin() {
   if (state.currentUserRole !== 'admin') return;
   renderAdminNotice();
+  renderAdminBlacklist();
   const snap = await state.db.collection('users').orderBy('createdAt', 'asc').get();
   const users = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
   const list = document.getElementById('userList');
@@ -825,29 +875,24 @@ async function renderAdmin() {
     return;
   }
   list.innerHTML = users.map(u => `
-    <div class="user-item" style="${u.disabled ? 'opacity:.5' : ''}">
+    <div class="user-item" style="${u.pendingDelete ? 'opacity:.5' : ''}">
       <div class="user-item-info">
         <div class="user-item-name">
           ${escapeHtml(u.name)}
           ${u.uid === state.currentUserId ? '<span style="color:var(--primary-light);font-size:.76rem">(나)</span>' : ''}
-          ${u.pendingDelete ? '<span style="color:var(--accent);font-size:.76rem">삭제 예정</span>' : u.disabled ? '<span style="color:var(--accent);font-size:.76rem">비활성화</span>' : ''}
+          ${u.pendingDelete ? '<span style="color:var(--accent);font-size:.76rem">삭제 예정</span>' : ''}
         </div>
         <div class="user-item-email">${escapeHtml(u.email)}</div>
         <div class="user-item-lastseen">마지막 접속: ${formatLastSeen(u.lastSeen)}</div>
       </div>
       <div class="user-item-actions">
-        ${!u.disabled ? `
+        ${!u.pendingDelete ? `
           <select class="role-select" onchange="updateUserRole('${u.uid}', this.value)" ${u.uid === state.currentUserId ? 'disabled' : ''}>
             <option value="member" ${u.role === 'member' ? 'selected' : ''}>일반 회원</option>
             <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>관리자</option>
           </select>` : ''}
-        ${u.uid !== state.currentUserId ? `
-          ${u.disabled
-            ? `<button class="btn btn-sm btn-success" onclick="restoreUserAccount('${u.uid}')">복구</button>
-               ${!u.pendingDelete ? `<button class="btn btn-sm btn-danger" onclick="deleteUserAccount('${u.uid}')">영구삭제</button>` : ''}`
-            : `<button class="btn btn-sm btn-outline" onclick="disableUserAccount('${u.uid}')">비활성화</button>
-               <button class="btn btn-sm btn-danger" onclick="deleteUserAccount('${u.uid}')">영구삭제</button>`
-          }` : ''}
+        ${u.uid !== state.currentUserId && !u.pendingDelete ? `
+          <button class="btn btn-sm btn-danger" onclick="deleteUserAccount('${u.uid}')">강퇴</button>` : ''}
       </div>
     </div>`).join('');
 }
@@ -2007,6 +2052,7 @@ function authErrMsg(code) {
     'auth/invalid-email': '이메일 형식이 올바르지 않습니다.',
     'auth/invalid-credential': '이메일 또는 비밀번호가 올바르지 않습니다.',
     'auth/too-many-requests': '너무 많은 시도입니다. 잠시 후 다시 시도해주세요.',
+    'auth/blacklisted': '가입이 제한된 이메일입니다. 운영진에게 문의하세요.',
   };
   return map[code] || `오류가 발생했습니다. (${code})`;
 }

@@ -241,7 +241,7 @@
       <div class="admin-grid">
         <div class="admin-card">
           <h3>회원 계정 관리</h3>
-          <p class="admin-desc">가입된 계정 목록입니다. 역할을 변경하거나 계정을 삭제할 수 있습니다.</p>
+          <p class="admin-desc">가입된 계정 목록입니다. 역할을 변경하거나 강퇴할 수 있습니다.</p>
           <div id="userList" class="user-list"></div>
         </div>
         <div class="admin-card">
@@ -253,6 +253,16 @@
             <button class="btn btn-primary btn-sm" onclick="openNoticeModal()">+ 추가</button>
           </div>
           <div id="noticeList"></div>
+        </div>
+        <div class="admin-card" style="grid-column:1/-1">
+          <h3>🚫 블랙리스트 관리</h3>
+          <p class="admin-desc">등록된 이메일은 재가입이 차단됩니다.</p>
+          <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+            <input type="email" id="blacklistEmail" placeholder="차단할 이메일" style="flex:1;min-width:200px" />
+            <input type="text" id="blacklistReason" placeholder="사유 (선택)" style="flex:1;min-width:140px" />
+            <button class="btn btn-primary btn-sm" onclick="addToBlacklist()">추가</button>
+          </div>
+          <div id="blacklistItems" class="user-list"></div>
         </div>
       </div>
     </section>
