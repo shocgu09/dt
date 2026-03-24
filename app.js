@@ -2163,10 +2163,13 @@ function initDMs() {
 function updateDMBadge() {
   const uid = state.currentUserId;
   const total = state.dms.reduce((sum, c) => sum + ((c.unread || {})[uid] || 0), 0);
-  const badge = document.getElementById('dmUnreadBadge');
-  if (!badge) return;
-  badge.textContent = total > 99 ? '99+' : total;
-  badge.style.display = total > 0 ? '' : 'none';
+  const label = total > 99 ? '99+' : total;
+  ['dmUnreadBadge', 'dmUnreadBadgeBottom'].forEach(id => {
+    const badge = document.getElementById(id);
+    if (!badge) return;
+    badge.textContent = label;
+    badge.style.display = total > 0 ? '' : 'none';
+  });
 }
 
 function openDMPanel() {
