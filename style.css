@@ -258,7 +258,7 @@ main { padding: 24px 20px; max-width: 1200px; margin: 0 auto; }
 }
 .member-card-footer {
   padding: 12px 20px; border-top: 1px solid var(--border);
-  display: flex; gap: 8px; flex-wrap: wrap;
+  display: flex; gap: 8px; align-items: center;
 }
 
 /* ===== CAR CARD ===== */
