@@ -2871,4 +2871,9 @@ document.addEventListener('DOMContentLoaded', () => {
   initAuth();
 
   // ⑧ Firestore 구독 및 seed는 showApp()에서 인증 완료 후 처리
+
+  // PWA 서비스워커 등록
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
 });
