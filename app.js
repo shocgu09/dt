@@ -84,7 +84,7 @@ const state = {
   auth: null,
   currentPage: 'home',
   currentUser: null,   // Firebase Auth user
-  currentUserRole: null, // 'admin' | 'member'
+  currentUserRole: null, // 'superadmin' | 'admin' | 'member'
   currentUserId: null,   // Firestore users 문서 ID (= auth uid)
   memberFilter: 'all',
   memberSearch: '',
@@ -171,8 +171,8 @@ function showApp() {
     const name = doc.exists ? doc.data().name : state.currentUser.email;
     document.getElementById('navUserName').textContent = name;
   });
-  // 관리자 전용 UI
-  const isAdmin = state.currentUserRole === 'admin';
+  // 관리자 전용 UI (superadmin 포함)
+  const isAdmin = state.currentUserRole === 'admin' || state.currentUserRole === 'superadmin';
   document.querySelectorAll('.admin-only').forEach(el => {
     el.classList.toggle('hidden', !isAdmin);
   });
@@ -848,7 +848,7 @@ async function removeFromBlacklist(id) {
 }
 
 async function renderAdmin() {
-  if (state.currentUserRole !== 'admin') return;
+  if (state.currentUserRole !== 'admin' && state.currentUserRole !== 'superadmin') return;
   renderAdminNotice();
   renderAdminBlacklist();
   const snap = await state.db.collection('users').orderBy('createdAt', 'asc').get();
@@ -858,22 +858,26 @@ async function renderAdmin() {
     list.innerHTML = '<div class="empty-state">등록된 계정이 없습니다</div>';
     return;
   }
+  const isSuperAdmin = state.currentUserRole === 'superadmin';
   list.innerHTML = users.map(u => `
     <div class="user-item">
       <div class="user-item-info">
         <div class="user-item-name">
           ${escapeHtml(u.name)}
           ${u.uid === state.currentUserId ? '<span style="color:var(--primary-light);font-size:.76rem">(나)</span>' : ''}
+          ${u.role === 'superadmin' ? '<span style="color:#f59e0b;font-size:.76rem;font-weight:700">슈퍼관리자</span>' : ''}
         </div>
         <div class="user-item-email">${escapeHtml(u.email)}</div>
-        <div class="user-item-lastseen">마지막 접속: ${formatLastSeen(u.lastSeen)}</div>
+        ${isSuperAdmin ? `<div class="user-item-lastseen">마지막 접속: ${formatLastSeen(u.lastSeen)}</div>` : ''}
       </div>
       <div class="user-item-actions">
-        <select class="role-select" onchange="updateUserRole('${u.uid}', this.value)" ${u.uid === state.currentUserId ? 'disabled' : ''}>
-          <option value="member" ${u.role === 'member' ? 'selected' : ''}>일반 회원</option>
-          <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>관리자</option>
-        </select>
-        ${u.uid !== state.currentUserId ? `
+        ${u.role === 'superadmin' ? `
+          <span style="font-size:.82rem;color:#f59e0b;padding:6px 10px">슈퍼관리자</span>` : `
+          <select class="role-select" onchange="updateUserRole('${u.uid}', this.value)" ${u.uid === state.currentUserId ? 'disabled' : ''}>
+            <option value="member" ${u.role === 'member' ? 'selected' : ''}>일반 회원</option>
+            <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>관리자</option>
+          </select>`}
+        ${u.uid !== state.currentUserId && u.role !== 'superadmin' ? `
           <button class="btn btn-sm btn-danger" onclick="deleteUserAccount('${u.uid}')">강퇴</button>` : ''}
       </div>
     </div>`).join('');
@@ -1202,7 +1206,7 @@ let currentGalleryId = null;
 let commentUnsubscribe = null;
 
 function renderGallery() {
-  const isAdmin = state.currentUserRole === 'admin';
+  const isAdmin = state.currentUserRole === 'admin' || state.currentUserRole === 'superadmin';
   const btn = document.getElementById('btnAddGallery');
   if (btn) btn.classList.toggle('hidden', !isAdmin);
 
@@ -1229,7 +1233,7 @@ function renderGallery() {
 function openGalleryDetail(id) {
   const g = state.gallery.find(x => x.id === id);
   if (!g) return;
-  const isAdmin = state.currentUserRole === 'admin';
+  const isAdmin = state.currentUserRole === 'admin' || state.currentUserRole === 'superadmin';
   currentGalleryId = id;
 
   document.getElementById('galleryDetailTitle').textContent = g.title;
@@ -1258,7 +1262,7 @@ function openGalleryDetail(id) {
 }
 
 function renderComments(comments, galleryId) {
-  const isAdmin = state.currentUserRole === 'admin';
+  const isAdmin = state.currentUserRole === 'admin' || state.currentUserRole === 'superadmin';
   const uid = state.currentUserId;
   const list = document.getElementById('commentList');
   if (!list) return;
@@ -1732,7 +1736,7 @@ function updateQuizAnswerSelect() {
 
 function renderQuizCard(ev, today) {
   const uid = state.currentUserId;
-  const isAdmin = state.currentUserRole === 'admin';
+  const isAdmin = state.currentUserRole === 'admin' || state.currentUserRole === 'superadmin';
   const deadline = ev.voteDeadline ? new Date(ev.voteDeadline) : null;
   const deadlinePassed = deadline && deadline < new Date();
   const isPast = deadline ? deadlinePassed : ev.date < today;
@@ -2022,7 +2026,7 @@ function closeModal(id) { document.getElementById(id).classList.remove('open'); 
 
 // 관리자이거나 본인이 만든 항목이면 수정/삭제 가능
 function canEdit(item) {
-  return state.currentUserRole === 'admin' || item.createdBy === state.currentUserId;
+  return state.currentUserRole === 'admin' || state.currentUserRole === 'superadmin' || item.createdBy === state.currentUserId;
 }
 
 function authErrMsg(code) {
