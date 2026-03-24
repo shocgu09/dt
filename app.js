@@ -2268,8 +2268,32 @@ function isConfigured() {
   return firebaseConfig.apiKey && !firebaseConfig.apiKey.includes('여기에');
 }
 
+/* ===== THEME ===== */
+function toggleTheme() {
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  const next = isLight ? 'dark' : 'light';
+  applyTheme(next);
+  localStorage.setItem('theme', next);
+}
+
+function applyTheme(theme) {
+  if (theme === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+  const btn = document.getElementById('themeToggle');
+  if (btn) btn.textContent = theme === 'light' ? '☀️' : '🌙';
+  // mobile menu button text
+  document.querySelectorAll('.mobile-menu .nav-btn').forEach(b => {
+    if (b.textContent.includes('테마')) b.textContent = (theme === 'light' ? '☀️' : '🌙') + ' 테마 변경';
+  });
+}
+
 /* ===== INIT ===== */
 document.addEventListener('DOMContentLoaded', () => {
+  // 저장된 테마 복원
+  applyTheme(localStorage.getItem('theme') || 'dark');
   // Firebase config 미설정 시 안내
   if (!isConfigured()) {
     document.body.innerHTML = `
