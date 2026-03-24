@@ -1803,7 +1803,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const file = e.target.files[0];
     if (!file) return;
     e.target.value = '';
-    openCropModal(file, NaN, dataUrl => {
+    openCropModal(file, 16/9, dataUrl => {
       document.getElementById('quizPhoto')._croppedData = dataUrl;
       document.getElementById('quizPhotoPreview').innerHTML = `<img src="${dataUrl}" style="max-width:100%;max-height:160px;border-radius:8px;margin-top:6px">`;
     });
@@ -1820,11 +1820,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // 파일 큐에 넣고 하나씩 크롭
     _galleryQueue = files.slice(1);
     _galleryResults = [];
-    openCropModal(files[0], NaN, dataUrl => {
+    openCropModal(files[0], 16/9, dataUrl => {
       _galleryResults.push(dataUrl);
       if (_galleryQueue.length > 0) {
         const next = _galleryQueue.shift();
-        openCropModal(next, NaN, dataUrl2 => {
+        openCropModal(next, 16/9, dataUrl2 => {
           _galleryResults.push(dataUrl2);
           confirmGalleryQueue();
         });
