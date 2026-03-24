@@ -771,9 +771,11 @@ function openAddMember() {
   document.getElementById('memberImagePreview').innerHTML = '';
   document.getElementById('carImagePreview').innerHTML = '';
   document.getElementById('btnWithdrawInModal').style.display = 'none';
-  // 회원가입 시 입력한 이름 자동 채우기
+  // 회원가입 시 입력한 이름 자동 채우기 (수정 불가)
   const myUser = state.users.find(u => u.uid === state.currentUserId);
-  if (myUser) document.getElementById('memberName').value = myUser.name || '';
+  const nameEl = document.getElementById('memberName');
+  nameEl.value = myUser?.name || '';
+  nameEl.readOnly = true;
   toggleCarSection('driver');
   renderBrandSelector('');
   openModal('memberModal');
@@ -785,7 +787,10 @@ function openEditMember(id) {
   document.getElementById('memberModalTitle').textContent = '회원 수정';
   document.getElementById('btnWithdrawInModal').style.display = 'none';
   document.getElementById('memberId').value = m.id;
-  document.getElementById('memberName').value = m.name;
+  const nameEl = document.getElementById('memberName');
+  nameEl.value = m.name;
+  // 내 프로필은 이름 수정 불가 (내 정보에서만 변경 가능)
+  nameEl.readOnly = m.createdBy === state.currentUserId;
   document.getElementById('memberNickname').value = m.nickname || '';
   document.getElementById('memberRole').value = m.role;
   document.getElementById('memberGender').value = m.gender || 'male';
@@ -865,15 +870,6 @@ async function saveMember(e) {
       await state.db.collection('members').doc(id).set(data, { merge: true });
     } else {
       await state.db.collection('members').doc(state.currentUserId).set(data);
-    }
-
-    // 내 프로필이면 users + auth 이름도 동기화
-    const savedId = id || state.currentUserId;
-    const savedMember = state.members.find(m => m.id === savedId) || { createdBy: state.currentUserId };
-    if (savedMember.createdBy === state.currentUserId) {
-      await state.db.collection('users').doc(state.currentUserId).update({ name: data.name });
-      await state.currentUser.updateProfile({ displayName: data.name });
-      document.getElementById('navUserName').textContent = data.name;
     }
 
     closeModal('memberModal');

@@ -321,6 +321,8 @@ main { padding: 24px 20px; max-width: 1200px; margin: 0 auto; }
 }
 .btn-primary { background: var(--primary); color: #fff; }
 .btn-primary:hover { background: var(--primary-light); transform: translateY(-1px); }
+.btn-primary:disabled { background: var(--bg3); color: var(--text3); border: 1px solid var(--border); cursor: default; transform: none; }
+input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; border-color: var(--border) !important; }
 .btn-outline {
   background: transparent; color: var(--text2);
   border: 1px solid var(--border);
