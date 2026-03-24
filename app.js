@@ -1259,17 +1259,21 @@ function renderGallery() {
     grid.innerHTML = '<div class="empty-state" style="text-align:center;padding:60px;grid-column:1/-1">등록된 활동이 없습니다.</div>';
     return;
   }
-  grid.innerHTML = state.gallery.map(g => `
+  grid.innerHTML = state.gallery.map(g => {
+    const author = state.users.find(u => u.uid === g.createdBy);
+    const authorName = author?.name || '';
+    return `
     <div class="gallery-card" onclick="openGalleryDetail('${g.id}')">
       <div class="gallery-card-img">
         ${g.photo ? `<img src="${g.photo}" alt="${g.title}">` : '<div class="gallery-no-img">📷</div>'}
       </div>
       <div class="gallery-card-body">
         <div class="gallery-card-title">${escapeHtml(g.title)}</div>
-        <div class="gallery-card-date">${formatDate(g.date)}</div>
+        <div class="gallery-card-date">${formatDate(g.date)}${authorName ? ` · ${escapeHtml(authorName)}${titleBadge(author?.title)}` : ''}</div>
         ${g.desc ? `<div class="gallery-card-desc">${linkify(g.desc)}</div>` : ''}
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function openGalleryDetail(id) {
