@@ -1075,7 +1075,12 @@ function renderMembers() {
       </div>
       <div class="member-card-footer">
         <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openMemberDetail('${m.id}')">상세보기</button>
-        ${m.createdBy && m.createdBy !== state.currentUserId ? `<button class="btn btn-sm btn-outline" title="DM 보내기" onclick="event.stopPropagation();openDMChat('${m.createdBy}')">💬</button>` : ''}
+        ${(() => {
+          const dmUid = m.createdBy || state.users.find(u => u.name === m.name)?.uid;
+          return dmUid && dmUid !== state.currentUserId
+            ? `<button class="btn btn-sm btn-outline" title="DM 보내기" onclick="event.stopPropagation();openDMChat('${dmUid}')">💬 DM</button>`
+            : '';
+        })()}
         ${m.createdBy === state.currentUserId ? `<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openEditMember('${m.id}')">수정</button>` : ''}
         ${canEdit(m) ? `<button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="event.stopPropagation();deleteMember('${m.id}')">삭제</button>` : ''}
       </div>
