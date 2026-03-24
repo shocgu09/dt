@@ -17,9 +17,10 @@ service cloud.firestore {
     }
 
     // ── users 컬렉션 ────────────────────────────────────────
-    // - 인증된 유저만 읽기 가능
-    // - 본인 문서 생성 가능 (단, role은 반드시 'member'로만)
-    // - 본인은 role·disabled 필드 변경 불가, 관리자만 변경 가능
+    // - 인증된 유저만 읽기
+    // - 본인 문서 생성 가능 (role은 반드시 'member')
+    // - 본인은 role 변경 불가, 관리자만 변경 가능
+    // - 삭제는 본인(탈퇴) 또는 관리자(강퇴)
     match /users/{uid} {
       allow read: if isAuth();
       allow create: if isOwner(uid)
@@ -32,24 +33,36 @@ service cloud.firestore {
     }
 
     // ── members 컬렉션 ──────────────────────────────────────
-    // - 인증된 유저만 읽기
-    // - 쓰기(추가·수정·삭제)는 관리자만
+    // - 인증된 유저 읽기
+    // - 본인 프로필 생성 가능 (createdBy == 본인 uid 강제)
+    // - 수정은 본인 또는 관리자
+    // - 삭제는 본인(탈퇴 시 자기 데이터 정리) 또는 관리자(강퇴 시 정리)
     match /members/{memberId} {
       allow read: if isAuth();
-      allow write: if isAdmin();
+      allow create: if isAuth()
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isAdmin()
+        || (isAuth() && resource.data.createdBy == request.auth.uid);
+      allow delete: if isAdmin()
+        || (isAuth() && resource.data.createdBy == request.auth.uid);
     }
 
     // ── events 컬렉션 ───────────────────────────────────────
-    // - 인증된 유저만 읽기
-    // - 생성·삭제는 관리자만
-    // - 투표(update)는 인증된 유저 가능 (votes, quizAnswers 필드만 변경 허용)
+    // - 인증된 유저 읽기
+    // - 생성은 인증된 유저 가능 (createdBy == 본인 uid 강제)
+    // - 수정: 관리자 / 작성자 본인 / 투표 필드(votes·quizAnswers)만 변경하는 경우
+    // - 삭제: 관리자 또는 작성자 본인
     match /events/{eventId} {
       allow read: if isAuth();
-      allow create, delete: if isAdmin();
+      allow create: if isAuth()
+        && request.resource.data.createdBy == request.auth.uid;
       allow update: if isAdmin()
+        || (isAuth() && resource.data.createdBy == request.auth.uid)
         || (isAuth()
             && request.resource.data.diff(resource.data)
                 .affectedKeys().hasOnly(['votes', 'quizAnswers']));
+      allow delete: if isAdmin()
+        || (isAuth() && resource.data.createdBy == request.auth.uid);
     }
 
     // ── notices 컬렉션 ──────────────────────────────────────
@@ -61,14 +74,17 @@ service cloud.firestore {
 
     // ── gallery 컬렉션 ──────────────────────────────────────
     // - 인증된 유저만 읽기
-    // - 쓰기는 관리자만
+    // - 생성·수정은 관리자만
+    // - 삭제: 관리자 또는 작성자 본인 (탈퇴 시 자기 데이터 정리)
     match /gallery/{galleryId} {
       allow read: if isAuth();
-      allow write: if isAdmin();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin()
+        || (isAuth() && resource.data.createdBy == request.auth.uid);
 
       // 댓글 서브컬렉션
-      // - 인증된 유저 읽기·작성 가능
-      // - 수정·삭제는 작성자 본인 또는 관리자만
+      // - 인증된 유저 읽기·작성
+      // - 수정·삭제는 작성자 본인 또는 관리자
       match /comments/{commentId} {
         allow read: if isAuth();
         allow create: if isAuth()
@@ -81,8 +97,8 @@ service cloud.firestore {
     }
 
     // ── blacklist 컬렉션 ─────────────────────────────────────
-    // - 관리자만 읽기·쓰기
-    // - 회원가입 시 이메일 체크는 비인증 상태에서도 필요하므로 read는 허용
+    // - 회원가입 시 이메일 체크는 비인증 상태에서도 필요하므로 read는 전체 허용
+    // - 쓰기(추가·삭제)는 관리자만
     match /blacklist/{docId} {
       allow read: if true;
       allow write: if isAdmin();

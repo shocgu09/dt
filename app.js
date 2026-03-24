@@ -128,37 +128,26 @@ function initAuth() {
 
       if (userDoc.exists) {
         const data = userDoc.data();
-        // 삭제 대기 계정 → 본인 Auth 계정 완전 삭제 후 로그아웃
-        if (data.pendingDelete) {
-          try {
-            await state.db.collection('users').doc(user.uid).delete();
-            await user.delete(); // Firebase Auth에서도 완전 삭제
-          } catch (e) {
-            // 세션 만료 등으로 삭제 실패 시 비활성화 유지
-          }
-          await state.auth.signOut();
-          alert('삭제된 계정입니다.');
-          return;
-        }
         state.currentUserRole = data.role;
         // 마지막 접속 시간 갱신
         state.db.collection('users').doc(user.uid).update({ lastSeen: new Date().toISOString() }).catch(() => {});
       } else {
-        // 그래도 없으면 member로 폴백 생성
-        await state.db.collection('users').doc(user.uid).set({
-          name: user.displayName || user.email,
-          email: user.email,
-          role: 'member',
-          createdAt: new Date().toISOString().slice(0, 10),
-        });
-        state.currentUserRole = 'member';
+        if (state.isSigningUp) {
+          // 회원가입 직후 race condition - 역할만 임시 설정
+          state.currentUserRole = 'member';
+        } else {
+          // 강퇴된 계정 - Auth도 삭제 후 로그아웃
+          try { await user.delete(); } catch(e) {}
+          await state.auth.signOut();
+          alert('삭제된 계정입니다.');
+          return;
+        }
       }
       showApp();
       // 실시간 강퇴 감지: 관리자가 pendingDelete 설정 시 즉시 로그아웃
       if (state._banListener) state._banListener();
       state._banListener = state.db.collection('users').doc(user.uid).onSnapshot(snap => {
-        if (!snap.exists) return;
-        if (snap.data().pendingDelete) {
+        if (!snap.exists) {
           state.auth.signOut();
           alert('계정이 삭제되었습니다.');
         }
@@ -458,8 +447,8 @@ async function deleteUserAccount(uid) {
       });
     }
 
-    // 7. users 문서 pendingDelete 마킹 (Auth 계정은 해당 유저 로그인 시 삭제)
-    await state.db.collection('users').doc(uid).update({ pendingDelete: true });
+    // 7. users 문서 즉시 삭제 (onSnapshot이 감지해서 해당 유저 즉시 로그아웃됨)
+    await state.db.collection('users').doc(uid).delete();
 
     alert('강퇴 처리가 완료됐습니다.');
     renderAdmin();
@@ -875,23 +864,21 @@ async function renderAdmin() {
     return;
   }
   list.innerHTML = users.map(u => `
-    <div class="user-item" style="${u.pendingDelete ? 'opacity:.5' : ''}">
+    <div class="user-item">
       <div class="user-item-info">
         <div class="user-item-name">
           ${escapeHtml(u.name)}
           ${u.uid === state.currentUserId ? '<span style="color:var(--primary-light);font-size:.76rem">(나)</span>' : ''}
-          ${u.pendingDelete ? '<span style="color:var(--accent);font-size:.76rem">삭제 예정</span>' : ''}
         </div>
         <div class="user-item-email">${escapeHtml(u.email)}</div>
         <div class="user-item-lastseen">마지막 접속: ${formatLastSeen(u.lastSeen)}</div>
       </div>
       <div class="user-item-actions">
-        ${!u.pendingDelete ? `
-          <select class="role-select" onchange="updateUserRole('${u.uid}', this.value)" ${u.uid === state.currentUserId ? 'disabled' : ''}>
-            <option value="member" ${u.role === 'member' ? 'selected' : ''}>일반 회원</option>
-            <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>관리자</option>
-          </select>` : ''}
-        ${u.uid !== state.currentUserId && !u.pendingDelete ? `
+        <select class="role-select" onchange="updateUserRole('${u.uid}', this.value)" ${u.uid === state.currentUserId ? 'disabled' : ''}>
+          <option value="member" ${u.role === 'member' ? 'selected' : ''}>일반 회원</option>
+          <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>관리자</option>
+        </select>
+        ${u.uid !== state.currentUserId ? `
           <button class="btn btn-sm btn-danger" onclick="deleteUserAccount('${u.uid}')">강퇴</button>` : ''}
       </div>
     </div>`).join('');
