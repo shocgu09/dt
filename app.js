@@ -137,8 +137,9 @@ function initAuth() {
       if (userDoc.exists) {
         const data = userDoc.data();
         state.currentUserRole = data.role;
-        // 마지막 접속 시간 갱신 + 출석 체크
-        const today = new Date().toISOString().slice(0, 10);
+        // 마지막 접속 시간 갱신 + 출석 체크 (KST 기준)
+        const kstNow = new Date(Date.now() + 9 * 3600 * 1000);
+        const today = kstNow.toISOString().slice(0, 10);
         const updates = { lastSeen: new Date().toISOString() };
         if (data.lastAttendance !== today) {
           updates.lastAttendance = today;
