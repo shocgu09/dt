@@ -144,7 +144,7 @@ function initAuth() {
         }
       }
       showApp();
-      // 실시간 강퇴 감지: 관리자가 pendingDelete 설정 시 즉시 로그아웃
+      // 실시간 강퇴 감지: 관리자가 users 문서 삭제 시 즉시 로그아웃
       if (state._banListener) state._banListener();
       state._banListener = state.db.collection('users').doc(user.uid).onSnapshot(snap => {
         if (!snap.exists) {
@@ -287,12 +287,7 @@ async function withdraw() {
   if (!confirmed) return;
 
   try {
-    // 1. pendingDelete 마킹
-    await state.db.collection('users').doc(uid).set(
-      { pendingDelete: true },
-      { merge: true }
-    );
-    // 2. 내 회원 프로필 삭제 (members 컬렉션)
+    // 1. 내 회원 프로필 삭제 (members 컬렉션)
     const myMembers = await state.db.collection('members').where('createdBy', '==', uid).get();
     for (const doc of myMembers.docs) await doc.ref.delete();
     // 3. 내가 작성한 이벤트 삭제 (events 컬렉션)
