@@ -617,7 +617,7 @@ async function renderAdminNotice() {
         <div class="notice-list-item">
           <div class="notice-list-info">
             <span class="notice-list-badge ${n.active ? 'on' : 'off'}">${n.active ? '활성' : '비활성'}</span>
-            <span class="notice-list-title">${n.title}</span>
+            <span class="notice-list-title">${escapeHtml(n.title)}</span>
           </div>
           <div class="notice-list-actions">
             <button class="btn btn-sm btn-outline" onclick="openNoticeModal('${d.id}')">수정</button>
@@ -707,11 +707,11 @@ async function renderAdmin() {
     <div class="user-item" style="${u.disabled ? 'opacity:.5' : ''}">
       <div class="user-item-info">
         <div class="user-item-name">
-          ${u.name}
+          ${escapeHtml(u.name)}
           ${u.uid === state.currentUserId ? '<span style="color:var(--primary-light);font-size:.76rem">(나)</span>' : ''}
           ${u.pendingDelete ? '<span style="color:var(--accent);font-size:.76rem">삭제 예정</span>' : u.disabled ? '<span style="color:var(--accent);font-size:.76rem">비활성화</span>' : ''}
         </div>
-        <div class="user-item-email">${u.email}</div>
+        <div class="user-item-email">${escapeHtml(u.email)}</div>
       </div>
       <div class="user-item-actions">
         ${!u.disabled ? `
@@ -795,8 +795,8 @@ function renderMembers() {
       <div class="member-card-top">
         <div class="member-avatar">${avatarEl(m)}</div>
         <div class="member-info">
-          <div class="member-name">${m.name}${m.createdBy === state.currentUserId ? ' <span style="color:var(--primary-light);font-size:.75rem;font-weight:600">나</span>' : ''}</div>
-          <div class="member-nick">${m.nickname || '-'}</div>
+          <div class="member-name">${escapeHtml(m.name)}${m.createdBy === state.currentUserId ? ' <span style="color:var(--primary-light);font-size:.75rem;font-weight:600">나</span>' : ''}</div>
+          <div class="member-nick">${escapeHtml(m.nickname || '-')}</div>
           <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px">
             <span class="role-badge ${m.role}">${m.role === 'driver' ? '🚗 운전자' : '💺 동승자'}</span>
             <span class="gender-badge ${m.gender || 'male'}">${m.gender === 'female' ? '♀ 여' : '♂ 남'}</span>
@@ -804,8 +804,8 @@ function renderMembers() {
         </div>
       </div>
       <div class="member-card-body">
-        <div class="member-bio">${m.bio || '소개 없음'}</div>
-        ${m.car ? `<div class="member-car-tag">${brandLogoHtml(m.car.brand, 18)} ${m.car.brand} ${m.car.model}</div>` : ''}
+        <div class="member-bio">${escapeHtml(m.bio || '소개 없음')}</div>
+        ${m.car ? `<div class="member-car-tag">${brandLogoHtml(m.car.brand, 18)} ${escapeHtml(m.car.brand)} ${escapeHtml(m.car.model)}</div>` : ''}
       </div>
       <div class="member-card-footer">
         <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openMemberDetail('${m.id}')">상세보기</button>
@@ -825,13 +825,13 @@ function openMemberDetail(id) {
     <div class="detail-hero">
       <div class="detail-avatar">${avatarEl(m)}</div>
       <div class="detail-info-main">
-        <h2>${m.name}</h2>
-        <div class="nick">${m.nickname ? `"${m.nickname}"` : ''}</div>
+        <h2>${escapeHtml(m.name)}</h2>
+        <div class="nick">${m.nickname ? `"${escapeHtml(m.nickname)}"` : ''}</div>
         <div class="detail-meta">
           <span class="role-badge ${m.role}">${m.role === 'driver' ? '🚗 운전자' : '💺 동승자'}</span>
           <span class="gender-badge ${m.gender || 'male'}">${m.gender === 'female' ? '♀ 여' : '♂ 남'}</span>
         </div>
-        <div style="font-size:.88rem;color:var(--text2)">${m.bio || ''}</div>
+        <div style="font-size:.88rem;color:var(--text2)">${escapeHtml(m.bio || '')}</div>
       </div>
     </div>
     <div class="info-grid">
@@ -1068,7 +1068,7 @@ function renderGallery() {
         ${g.photo ? `<img src="${g.photo}" alt="${g.title}">` : '<div class="gallery-no-img">📷</div>'}
       </div>
       <div class="gallery-card-body">
-        <div class="gallery-card-title">${g.title}</div>
+        <div class="gallery-card-title">${escapeHtml(g.title)}</div>
         <div class="gallery-card-date">${formatDate(g.date)}</div>
         ${g.desc ? `<div class="gallery-card-desc">${linkify(g.desc)}</div>` : ''}
       </div>
@@ -1275,20 +1275,20 @@ function renderEvents() {
       <div class="event-card">
         <div class="event-card-header">
           <span class="event-type-badge ${ev.type}">${ev.type === 'lightning' ? '⚡ 번개' : '🗓 정모'}</span>
-          <div class="event-title">${ev.title}</div>
+          <div class="event-title">${escapeHtml(ev.title)}</div>
           ${isPast ? '<span style="font-size:.78rem;color:var(--text3);background:var(--bg3);padding:3px 10px;border-radius:10px;white-space:nowrap">종료됨</span>' : ''}
         </div>
         ${(() => {
           const author = state.users.find(u => u.uid === ev.createdBy);
           const isMe = ev.createdBy === state.currentUserId;
           const name = author?.name || '알 수 없음';
-          return `<div style="font-size:.78rem;color:var(--text3);margin-bottom:6px">✍️ ${name}${isMe ? ' <span style="color:var(--primary-light);font-weight:600">(나)</span>' : ''}</div>`;
+          return `<div style="font-size:.78rem;color:var(--text3);margin-bottom:6px">✍️ ${escapeHtml(name)}${isMe ? ' <span style="color:var(--primary-light);font-weight:600">(나)</span>' : ''}</div>`;
         })()}
         <div class="event-meta">
           <span class="event-meta-item">📅 ${formatDate(ev.date)}</span>
           ${ev.time ? `<span class="event-meta-item">🕐 ${ev.time}</span>` : ''}
-          ${ev.location ? `<span class="event-meta-item">📍 ${ev.location}</span>` : ''}
-          ${ev.fee ? `<span class="event-meta-item">💰 ${ev.fee}</span>` : ''}
+          ${ev.location ? `<span class="event-meta-item">📍 ${escapeHtml(ev.location)}</span>` : ''}
+          ${ev.fee ? `<span class="event-meta-item">💰 ${escapeHtml(ev.fee)}</span>` : ''}
           ${ev.voteDeadline ? `<span class="event-meta-item ${new Date(ev.voteDeadline) < new Date() ? 'deadline-over' : 'deadline-active'}">⏰ 투표마감 ${ev.voteDeadline.replace('T', ' ')}</span>` : ''}
         </div>
         ${ev.desc ? `
@@ -1578,7 +1578,7 @@ function renderQuizCard(ev, today) {
   let winnerHtml = '';
   if (revealed && ev.quizWinner) {
     const winner = state.users.find(u => u.uid === ev.quizWinner) || state.members.find(m => m.id === ev.quizWinner);
-    winnerHtml = `<div class="quiz-winner-banner">🏆 당첨자: <strong>${winner?.name || '알 수 없음'}</strong></div>`;
+    winnerHtml = `<div class="quiz-winner-banner">🏆 당첨자: <strong>${escapeHtml(winner?.name || '알 수 없음')}</strong></div>`;
   } else if (revealed && !ev.quizWinner) {
     winnerHtml = `<div class="quiz-winner-banner" style="background:rgba(255,107,107,.13);border-color:rgba(255,107,107,.3);color:#ff9898">😢 정답자 없음 — 추첨 불가</div>`;
   }
@@ -1597,7 +1597,7 @@ function renderQuizCard(ev, today) {
     return `
       <button class="${cls}" onclick="castQuizAnswer('${ev.id}', ${i})" ${disabled}>
         <span class="quiz-opt-label">${labels[i]}</span>
-        <span class="quiz-opt-text">${opt}</span>
+        <span class="quiz-opt-text">${escapeHtml(opt)}</span>
         ${revealed ? `<span class="quiz-opt-pct">${pct}%</span>` : (myAnswer !== null ? `<span class="quiz-opt-pct">${pct}%</span>` : '')}
       </button>`;
   }).join('');
@@ -1611,10 +1611,10 @@ function renderQuizCard(ev, today) {
     <div class="event-card quiz-card">
       <div class="event-card-header">
         <span class="event-type-badge quiz">🧩 퀴즈</span>
-        <div class="event-title">${ev.title}</div>
+        <div class="event-title">${escapeHtml(ev.title)}</div>
         ${isPast ? '<span style="font-size:.78rem;color:var(--text3);background:var(--bg3);padding:3px 10px;border-radius:10px;white-space:nowrap">종료됨</span>' : ''}
       </div>
-      <div style="font-size:.78rem;color:var(--text3);margin-bottom:6px">✍️ ${authorName}${isMe ? ' <span style="color:var(--primary-light);font-weight:600">(나)</span>' : ''}</div>
+      <div style="font-size:.78rem;color:var(--text3);margin-bottom:6px">✍️ ${escapeHtml(authorName)}${isMe ? ' <span style="color:var(--primary-light);font-weight:600">(나)</span>' : ''}</div>
       <div class="event-meta">
         <span class="event-meta-item">📅 ${formatDate(ev.date)}</span>
         ${deadline ? `<span class="event-meta-item ${deadlinePassed ? 'deadline-over' : 'deadline-active'}">⏰ 마감 ${ev.voteDeadline.replace('T', ' ')}</span>` : ''}
@@ -1690,15 +1690,15 @@ function compressImage(file, maxSize, quality) {
 function avatarEl(m) {
   const colors = ['#6c63ff', '#ff6b6b', '#4ade80', '#60a5fa', '#f472b6', '#fb923c'];
   const color = colors[(m.name?.charCodeAt(0) || 0) % colors.length];
-  if (m.image) return `<img src="${m.image}" alt="${m.name}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`;
-  return `<span style="background:${color};color:#fff;width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:inherit;font-weight:700">${m.name?.[0] || '?'}</span>`;
+  if (m.image) return `<img src="${m.image}" alt="${escapeHtml(m.name)}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`;
+  return `<span style="background:${color};color:#fff;width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:inherit;font-weight:700">${escapeHtml(m.name?.[0] || '?')}</span>`;
 }
 
 function avatarSmall(m) {
   const colors = ['#6c63ff', '#ff6b6b', '#4ade80', '#60a5fa', '#f472b6', '#fb923c'];
   const color = colors[(m.name?.charCodeAt(0) || 0) % colors.length];
   if (m.image) return `<img src="${m.image}" style="width:28px;height:28px;border-radius:50%;object-fit:cover">`;
-  return `<span style="background:${color};color:#fff;width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700;flex-shrink:0">${m.name?.[0] || '?'}</span>`;
+  return `<span style="background:${color};color:#fff;width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700;flex-shrink:0">${escapeHtml(m.name?.[0] || '?')}</span>`;
 }
 
 /* ===== CROP ===== */
@@ -1815,8 +1815,17 @@ function addGalleryPreview(dataUrl) {
   preview.appendChild(wrap);
 }
 
-function linkify(text) {
+function escapeHtml(text) {
   return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function linkify(text) {
+  return escapeHtml(text)
     .replace(/\n/g, '<br>')
     .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:var(--primary-light);text-decoration:underline;word-break:break-all">$1</a>');
 }
