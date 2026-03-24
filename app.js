@@ -1234,8 +1234,6 @@ function openEditEvent(id) {
     });
     updateQuizAnswerSelect();
     document.getElementById('quizAnswer').value = ev.quizAnswer ?? 0;
-    document.getElementById('quizPhotoPreview').innerHTML = ev.quizPhoto ? quizPreviewHtml(ev.quizPhoto) : '';
-    document.getElementById('quizPhoto')._deleted = false;
   }
   openModal('eventModal');
 }
@@ -1275,8 +1273,6 @@ async function saveEvent(e) {
       data.quizAnswers = existing?.quizAnswers || {};
       data.quizRevealed = existing?.quizRevealed || false;
       data.quizWinner = existing?.quizWinner || null;
-      const quizEl = document.getElementById('quizPhoto');
-      data.quizPhoto = quizEl._deleted ? null : (quizEl._croppedData || existing?.quizPhoto || null);
     }
     if (id) {
       await state.db.collection('events').doc(id).set(data, { merge: true });
@@ -1381,7 +1377,6 @@ function resetQuizFields() {
   list.innerHTML = `
     <div class="quiz-option-row"><input type="text" class="quiz-option-input" placeholder="보기 1" /><button type="button" class="quiz-option-del" onclick="removeQuizOption(this)" style="display:none">✕</button></div>
     <div class="quiz-option-row"><input type="text" class="quiz-option-input" placeholder="보기 2" /><button type="button" class="quiz-option-del" onclick="removeQuizOption(this)" style="display:none">✕</button></div>`;
-  document.getElementById('quizPhotoPreview').innerHTML = '';
   updateQuizAnswerSelect();
 }
 
@@ -1483,7 +1478,6 @@ function renderQuizCard(ev, today) {
         ${deadline ? `<span class="event-meta-item ${deadlinePassed ? 'deadline-over' : 'deadline-active'}">⏰ 마감 ${ev.voteDeadline.replace('T', ' ')}</span>` : ''}
       </div>
       ${ev.desc ? `<div style="font-size:.88rem;color:var(--text2);margin-bottom:10px">${linkify(ev.desc)}</div>` : ''}
-      ${ev.quizPhoto ? `<img src="${ev.quizPhoto}" style="width:100%;max-height:220px;object-fit:cover;border-radius:10px;margin-bottom:12px">` : ''}
       <div class="quiz-options">${optionsHtml}</div>
       <div style="font-size:.78rem;color:var(--text3);margin:6px 0 8px">${myAnswer !== null ? `✅ 답변 완료 (${labels[myAnswer]})` : deadlinePassed ? '⏰ 마감됨' : '👆 정답을 골라보세요!'} · 참여 ${totalAnswers}명</div>
       ${winnerHtml}
@@ -1829,16 +1823,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('btnAddEvent').addEventListener('click', openAddEvent);
   document.getElementById('eventForm').addEventListener('submit', saveEvent);
-  document.getElementById('quizPhoto').addEventListener('change', e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    e.target.value = '';
-    openCropModal(file, 3/4, dataUrl => {
-      document.getElementById('quizPhoto')._croppedData = dataUrl;
-      document.getElementById('quizPhoto')._deleted = false;
-      document.getElementById('quizPhotoPreview').innerHTML = quizPreviewHtml(dataUrl);
-    });
-  });
 
   document.getElementById('btnAddGallery').addEventListener('click', openAddGallery);
   document.getElementById('galleryForm').addEventListener('submit', saveGallery);
