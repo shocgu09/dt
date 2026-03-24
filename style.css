@@ -259,7 +259,8 @@ main { padding: 24px 20px; max-width: 1200px; margin: 0 auto; }
 .car-owner-avatar {
   width: 28px; height: 28px; border-radius: 50%;
   background: var(--bg3); display: flex; align-items: center;
-  justify-content: center; font-size: .9rem; flex-shrink: 0;
+  justify-content: center; font-size: .78rem; font-weight: 700;
+  flex-shrink: 0; overflow: hidden; line-height: 1;
 }
 .car-owner-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .car-owner-name { font-size: .82rem; font-weight: 600; }
