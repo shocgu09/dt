@@ -1400,12 +1400,13 @@ function renderEvents() {
             ${total > 0 ? `<div class="vote-progress"><div class="vote-bar-attend" style="width:${aW}%"></div><div class="vote-bar-maybe" style="width:${mW}%"></div><div class="vote-bar-absent" style="width:${bW}%"></div></div>` : ''}
             <div style="font-size:.8rem;color:var(--text3);margin-bottom:8px">🔒 투표 마감됨</div>`;
           return `
-            <div class="event-votes">
-              <button class="vote-count attending ${myVote === 'attending' ? 'voted' : ''}" onclick="castVote('${ev.id}','attending')">✅ 참여 <span class="num">${votes.attending.length}</span></button>
-              <button class="vote-count maybe ${myVote === 'maybe' ? 'voted' : ''}" onclick="castVote('${ev.id}','maybe')">🕐 늦참 <span class="num">${votes.maybe.length}</span></button>
-              <button class="vote-count absent ${myVote === 'absent' ? 'voted' : ''}" onclick="castVote('${ev.id}','absent')">❌ 불참 <span class="num">${votes.absent.length}</span></button>
+            <div class="event-votes" id="vote-btns-${ev.id}">
+              <button class="vote-count attending ${myVote === 'attending' ? 'voted' : ''}" onclick="selectVote('${ev.id}','attending')">✅ 참여 <span class="num">${votes.attending.length}</span></button>
+              <button class="vote-count maybe ${myVote === 'maybe' ? 'voted' : ''}" onclick="selectVote('${ev.id}','maybe')">🕐 늦참 <span class="num">${votes.maybe.length}</span></button>
+              <button class="vote-count absent ${myVote === 'absent' ? 'voted' : ''}" onclick="selectVote('${ev.id}','absent')">❌ 불참 <span class="num">${votes.absent.length}</span></button>
             </div>
-            ${total > 0 ? `<div class="vote-progress"><div class="vote-bar-attend" style="width:${aW}%"></div><div class="vote-bar-maybe" style="width:${mW}%"></div><div class="vote-bar-absent" style="width:${bW}%"></div></div>` : ''}`;
+            ${total > 0 ? `<div class="vote-progress"><div class="vote-bar-attend" style="width:${aW}%"></div><div class="vote-bar-maybe" style="width:${mW}%"></div><div class="vote-bar-absent" style="width:${bW}%"></div></div>` : ''}
+            <button class="btn btn-sm btn-primary vote-confirm-btn" id="vote-confirm-${ev.id}" style="display:none" onclick="confirmVote('${ev.id}')">투표하기</button>`;
         })()}
         <div class="event-actions">
           <button class="btn btn-sm btn-outline" onclick="openVoteModal('${ev.id}')">📊 투표 현황</button>
@@ -1569,6 +1570,29 @@ function openVoteModal(evId) {
       <div class="vote-people">${votes.absent.map(chip).join('') || '<span style="color:var(--text3);font-size:.84rem">없음</span>'}</div>
     </div>`;
   openModal('voteModal');
+}
+
+const _voteSelection = {};
+
+function selectVote(evId, status) {
+  _voteSelection[evId] = status;
+  const container = document.getElementById('vote-btns-' + evId);
+  if (!container) return;
+  container.querySelectorAll('.vote-count').forEach(btn => btn.classList.remove('selecting'));
+  const statusList = ['attending', 'maybe', 'absent'];
+  const idx = statusList.indexOf(status);
+  if (idx >= 0) container.querySelectorAll('.vote-count')[idx].classList.add('selecting');
+  const confirmBtn = document.getElementById('vote-confirm-' + evId);
+  if (confirmBtn) confirmBtn.style.display = '';
+}
+
+async function confirmVote(evId) {
+  const status = _voteSelection[evId];
+  if (!status) return;
+  const confirmBtn = document.getElementById('vote-confirm-' + evId);
+  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = '투표 중...'; }
+  await castVote(evId, status);
+  delete _voteSelection[evId];
 }
 
 async function castVote(evId, status) {
