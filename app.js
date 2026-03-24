@@ -2876,4 +2876,45 @@ document.addEventListener('DOMContentLoaded', () => {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
+
+  // PWA 설치 배너
+  initPWAInstall();
 });
+
+function initPWAInstall() {
+  // 이미 설치됐거나 배너 닫은 경우 스킵
+  if (localStorage.getItem('pwaBannerDismissed')) return;
+  if (window.matchMedia('(display-mode: standalone)').matches) return;
+
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+  const isAndroid = /android/i.test(navigator.userAgent);
+
+  if (isIOS && /safari/i.test(navigator.userAgent)) {
+    // iOS Safari: 가이드 팝업 (3초 후)
+    setTimeout(() => {
+      document.getElementById('iosInstallGuide').style.display = 'block';
+    }, 3000);
+    return;
+  }
+
+  // Android/Chrome: beforeinstallprompt 이벤트 캡처
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    window._pwaPrompt = e;
+    document.getElementById('pwaInstallBanner').style.display = 'flex';
+  });
+
+  document.getElementById('pwaInstallBtn')?.addEventListener('click', async () => {
+    if (!window._pwaPrompt) return;
+    window._pwaPrompt.prompt();
+    const { outcome } = await window._pwaPrompt.userChoice;
+    if (outcome === 'accepted') dismissPWABanner();
+    window._pwaPrompt = null;
+  });
+}
+
+function dismissPWABanner() {
+  localStorage.setItem('pwaBannerDismissed', '1');
+  document.getElementById('pwaInstallBanner').style.display = 'none';
+  document.getElementById('iosInstallGuide').style.display = 'none';
+}
