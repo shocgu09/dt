@@ -2164,7 +2164,7 @@ function updateDMBadge() {
   const uid = state.currentUserId;
   const total = state.dms.reduce((sum, c) => sum + ((c.unread || {})[uid] || 0), 0);
   const label = total > 99 ? '99+' : total;
-  ['dmUnreadBadge', 'dmUnreadBadgeBottom'].forEach(id => {
+  ['dmUnreadBadge', 'dmUnreadBadgeMobile'].forEach(id => {
     const badge = document.getElementById(id);
     if (!badge) return;
     badge.textContent = label;
@@ -2652,6 +2652,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('hamburger').addEventListener('click', () => {
     document.getElementById('mobileMenu').classList.toggle('open');
   });
+
+  window.closeMobileMenu = () => document.getElementById('mobileMenu').classList.remove('open');
 
   document.querySelectorAll('.modal-close, [data-modal]').forEach(btn => {
     btn.addEventListener('click', () => closeModal(btn.dataset.modal || btn.closest('.modal-overlay')?.id));
