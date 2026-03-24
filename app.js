@@ -307,14 +307,20 @@ async function withdraw() {
     const voteBatch = state.db.batch();
     const FieldValue = firebase.firestore.FieldValue;
     allEvents.docs.forEach(doc => {
-      const votes = doc.data().votes || {};
+      const data = doc.data();
+      const votes = data.votes || {};
+      const quizAnswers = data.quizAnswers || {};
       const inVotes = [...(votes.attending || []), ...(votes.maybe || []), ...(votes.absent || [])].includes(uid);
-      if (inVotes) {
-        voteBatch.update(doc.ref, {
-          'votes.attending': FieldValue.arrayRemove(uid),
-          'votes.maybe': FieldValue.arrayRemove(uid),
-          'votes.absent': FieldValue.arrayRemove(uid),
-        });
+      const inQuiz = uid in quizAnswers;
+      if (inVotes || inQuiz) {
+        const update = {};
+        if (inVotes) {
+          update['votes.attending'] = FieldValue.arrayRemove(uid);
+          update['votes.maybe'] = FieldValue.arrayRemove(uid);
+          update['votes.absent'] = FieldValue.arrayRemove(uid);
+        }
+        if (inQuiz) update[`quizAnswers.${uid}`] = FieldValue.delete();
+        voteBatch.update(doc.ref, update);
       }
     });
     await voteBatch.commit();
@@ -396,14 +402,20 @@ async function deleteUserAccount(uid) {
     const allEvents = await state.db.collection('events').get();
     const voteBatch = state.db.batch();
     allEvents.docs.forEach(doc => {
-      const votes = doc.data().votes || {};
+      const data = doc.data();
+      const votes = data.votes || {};
+      const quizAnswers = data.quizAnswers || {};
       const inVotes = [...(votes.attending || []), ...(votes.maybe || []), ...(votes.absent || [])].includes(uid);
-      if (inVotes) {
-        voteBatch.update(doc.ref, {
-          'votes.attending': FieldValue.arrayRemove(uid),
-          'votes.maybe': FieldValue.arrayRemove(uid),
-          'votes.absent': FieldValue.arrayRemove(uid),
-        });
+      const inQuiz = uid in quizAnswers;
+      if (inVotes || inQuiz) {
+        const update = {};
+        if (inVotes) {
+          update['votes.attending'] = FieldValue.arrayRemove(uid);
+          update['votes.maybe'] = FieldValue.arrayRemove(uid);
+          update['votes.absent'] = FieldValue.arrayRemove(uid);
+        }
+        if (inQuiz) update[`quizAnswers.${uid}`] = FieldValue.delete();
+        voteBatch.update(doc.ref, update);
       }
     });
     await voteBatch.commit();
