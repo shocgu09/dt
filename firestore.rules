@@ -62,7 +62,7 @@ service cloud.firestore {
         || (isAuth() && resource.data.createdBy == request.auth.uid)
         || (isAuth()
             && request.resource.data.diff(resource.data)
-                .affectedKeys().hasOnly(['votes', 'quizAnswers']));
+                .affectedKeys().hasOnly(['votes', 'quizAnswers', 'reactions']));
       allow delete: if isAdmin()
         || (isAuth() && resource.data.createdBy == request.auth.uid);
     }

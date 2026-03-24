@@ -950,3 +950,63 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 .notice-drag-handle:active { cursor: grabbing; }
 .notice-list-item.dragging { opacity: 0.4; }
 .notice-list-item.drag-over { border-color: var(--primary); background: rgba(108,99,255,.1); transform: scale(1.01); }
+
+
+/* ===== EMOJI REACTIONS ===== */
+.reaction-bar {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;
+}
+.reaction-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px; border-radius: 20px;
+  border: 1.5px solid var(--border); background: var(--bg3);
+  font-size: .9rem; cursor: pointer; transition: all .15s;
+  color: var(--text2); line-height: 1;
+}
+.reaction-btn:hover {
+  border-color: var(--primary-light); background: rgba(108,99,255,.1);
+}
+.reaction-btn.active {
+  border-color: var(--primary); background: rgba(108,99,255,.18);
+  color: var(--primary-light); font-weight: 700;
+}
+.reaction-cnt {
+  font-size: .78rem; font-weight: 700; color: var(--text2);
+}
+.reaction-btn.active .reaction-cnt {
+  color: var(--primary-light);
+}
+
+/* ===== EVENT COMMENTS ===== */
+.event-comments-section {
+  border-top: 1px solid var(--border);
+  margin-top: 10px;
+  padding-top: 12px;
+}
+.ev-comment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.ev-comment-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.ev-comment-input {
+  flex: 1;
+  background: var(--bg3);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 8px 12px;
+  font-size: .88rem;
+  outline: none;
+}
+.ev-comment-input:focus {
+  border-color: var(--primary-light);
+}
+.btn-outline.active { border-color: var(--primary); color: var(--primary-light); background: rgba(124,111,255,.1); }

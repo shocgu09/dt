@@ -89,6 +89,9 @@ const state = {
   memberFilter: 'all',
   memberSearch: '',
   eventFilter: 'all',
+  openEventComments: new Set(),
+  eventCommentUnsubs: {},
+  eventCommentData: {},
 };
 
 /* ===== FIREBASE INIT ===== */
@@ -1353,6 +1356,92 @@ async function deleteComment(galleryId, commentId) {
   await state.db.collection('gallery').doc(galleryId).collection('comments').doc(commentId).delete();
 }
 
+/* ===== EVENT COMMENTS ===== */
+function toggleEventComments(evId) {
+  const section = document.getElementById(`ev-comments-${evId}`);
+  if (!section) return;
+  const isOpen = state.openEventComments.has(evId);
+  if (isOpen) {
+    state.openEventComments.delete(evId);
+    if (state.eventCommentUnsubs[evId]) { state.eventCommentUnsubs[evId](); delete state.eventCommentUnsubs[evId]; }
+    section.style.display = 'none';
+    const btn = document.getElementById(`ev-comment-btn-${evId}`);
+    if (btn) btn.classList.remove('active');
+  } else {
+    state.openEventComments.add(evId);
+    section.style.display = 'block';
+    const btn = document.getElementById(`ev-comment-btn-${evId}`);
+    if (btn) btn.classList.add('active');
+    subscribeEventComments(evId);
+  }
+}
+
+function subscribeEventComments(evId) {
+  if (state.eventCommentUnsubs[evId]) return;
+  state.eventCommentUnsubs[evId] = state.db.collection('events').doc(evId)
+    .collection('comments').orderBy('createdAt', 'asc')
+    .onSnapshot(snap => {
+      state.eventCommentData[evId] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderEventCommentList(evId);
+    });
+}
+
+function renderEventCommentList(evId) {
+  const list = document.getElementById(`ev-comment-list-${evId}`);
+  if (!list) return;
+  const comments = state.eventCommentData[evId] || [];
+  const isAdminUser = state.currentUserRole === 'admin' || state.currentUserRole === 'superadmin';
+  const uid = state.currentUserId;
+  if (!comments.length) {
+    list.innerHTML = '<div class="comment-empty">첫 댓글을 남겨보세요 💬</div>';
+    return;
+  }
+  list.innerHTML = comments.map(c => `
+    <div class="comment-item">
+      <div class="comment-meta">
+        <span class="comment-author">${escapeHtml(c.authorName)}${titleBadge(userTitle(c.authorUid))}</span>
+        <span class="comment-time">${c.createdAt?.toDate ? c.createdAt.toDate().toLocaleDateString('ko') : ''}</span>
+        ${(c.authorUid === uid || isAdminUser) ? `<button class="comment-del" onclick="deleteEventComment('${evId}','${c.id}')">✕</button>` : ''}
+      </div>
+      <div class="comment-text">${escapeHtml(c.text)}</div>
+    </div>`).join('');
+  // update button label with count
+  const btn = document.getElementById(`ev-comment-btn-${evId}`);
+  if (btn) btn.textContent = `💬 댓글 ${comments.length > 0 ? comments.length : ''}`.trim();
+}
+
+function restoreOpenEventComments() {
+  state.openEventComments.forEach(evId => {
+    const section = document.getElementById(`ev-comments-${evId}`);
+    if (section) {
+      section.style.display = 'block';
+      const btn = document.getElementById(`ev-comment-btn-${evId}`);
+      if (btn) btn.classList.add('active');
+      if (state.eventCommentData[evId]) renderEventCommentList(evId);
+      subscribeEventComments(evId);
+    }
+  });
+}
+
+async function submitEventComment(evId) {
+  const input = document.getElementById(`ev-comment-input-${evId}`);
+  const text = input?.value.trim();
+  if (!text) return;
+  const user = state.users.find(u => u.uid === state.currentUserId);
+  await state.db.collection('events').doc(evId).collection('comments').add({
+    text,
+    authorUid: state.currentUserId,
+    authorName: user?.name || state.currentUser?.displayName || '익명',
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+  });
+  if (input) input.value = '';
+}
+
+async function deleteEventComment(evId, commentId) {
+  if (!confirm('댓글을 삭제할까요?')) return;
+  await state.db.collection('events').doc(evId).collection('comments').doc(commentId).delete();
+}
+
 function openLightbox(src) {
   document.getElementById('lightboxImg').src = src;
   document.getElementById('lightbox').classList.add('active');
@@ -1526,15 +1615,25 @@ function renderEvents() {
             </div>
             ${total > 0 ? `<div class="vote-progress"><div class="vote-bar-attend" style="width:${aW}%"></div><div class="vote-bar-maybe" style="width:${mW}%"></div><div class="vote-bar-absent" style="width:${bW}%"></div></div>` : ''}`;
         })()}
+        ${renderReactions(ev)}
         <div class="event-actions">
           <button class="btn btn-sm btn-outline" onclick="openVoteModal('${ev.id}')">📊 투표 현황</button>
+          <button class="btn btn-sm btn-outline" id="ev-comment-btn-${ev.id}" onclick="toggleEventComments('${ev.id}')">💬 댓글</button>
           ${canEdit(ev) ? `
             <button class="btn btn-sm btn-outline" onclick="openEditEvent('${ev.id}')">수정</button>
             <button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="deleteEvent('${ev.id}')">삭제</button>
           ` : ''}
         </div>
+        <div class="event-comments-section" id="ev-comments-${ev.id}" style="display:none">
+          <div class="ev-comment-list" id="ev-comment-list-${ev.id}"></div>
+          <div class="ev-comment-form">
+            <input class="ev-comment-input" id="ev-comment-input-${ev.id}" placeholder="댓글을 입력하세요..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitEventComment('${ev.id}')}">
+            <button class="btn btn-sm btn-primary" onclick="submitEventComment('${ev.id}')">등록</button>
+          </div>
+        </div>
       </div>`;
   }).join('');
+  restoreOpenEventComments();
 }
 
 function openAddEvent() {
@@ -1733,6 +1832,43 @@ async function castVote(evId, status) {
   }
 }
 
+const REACTION_EMOJIS = ['👍','❤️','😂','😮','🔥','😢'];
+
+async function reactToEvent(evId, emoji) {
+  const uid = state.currentUserId;
+  if (!uid) return;
+  try {
+    const FieldValue = firebase.firestore.FieldValue;
+    const ref = state.db.collection('events').doc(evId);
+    const ev = state.events.find(e => e.id === evId);
+    const current = (ev?.reactions || {})[uid];
+    if (current === emoji) {
+      // 같은 이모지 → 취소
+      await ref.update({ [`reactions.${uid}`]: FieldValue.delete() });
+    } else {
+      // 다른 이모지 또는 새로 반응 → 변경
+      await ref.update({ [`reactions.${uid}`]: emoji });
+    }
+  } catch (e) {
+    alert('반응 실패: ' + e.message);
+  }
+}
+
+function renderReactions(ev) {
+  const reactions = ev.reactions || {};
+  const myReaction = reactions[state.currentUserId];
+  // 이모지별 카운트 집계
+  const counts = {};
+  REACTION_EMOJIS.forEach(e => { counts[e] = 0; });
+  Object.values(reactions).forEach(e => { if (counts[e] !== undefined) counts[e]++; });
+  const buttons = REACTION_EMOJIS.map(e => {
+    const cnt = counts[e];
+    const active = myReaction === e;
+    return `<button class="reaction-btn${active ? ' active' : ''}" onclick="reactToEvent('${ev.id}','${e}')">${e}${cnt > 0 ? ` <span class="reaction-cnt">${cnt}</span>` : ''}</button>`;
+  }).join('');
+  return `<div class="reaction-bar">${buttons}</div>`;
+}
+
 /* ===== QUIZ ===== */
 function onEventTypeChange(type) {
   const isQuiz = type === 'quiz';
@@ -1854,7 +1990,18 @@ function renderQuizCard(ev, today) {
       ${canVote ? `<button class="btn btn-sm btn-primary vote-confirm-btn" id="quiz-confirm-${ev.id}" style="display:none;margin-bottom:8px" onclick="confirmQuizAnswer('${ev.id}')">답변 제출</button>` : ''}
       <div style="font-size:.78rem;color:var(--text3);margin:6px 0 8px">${myAnswer !== null ? `✅ 답변 완료 (${labels[myAnswer]})` : deadlinePassed ? '⏰ 마감됨' : '👆 정답을 고르고 제출하세요'} · 참여 ${totalAnswers}명</div>
       ${winnerHtml}
-      <div class="event-actions">${adminActions}</div>
+      ${renderReactions(ev)}
+      <div class="event-actions">
+        <button class="btn btn-sm btn-outline" id="ev-comment-btn-${ev.id}" onclick="toggleEventComments('${ev.id}')">💬 댓글</button>
+        ${adminActions}
+      </div>
+      <div class="event-comments-section" id="ev-comments-${ev.id}" style="display:none">
+        <div class="ev-comment-list" id="ev-comment-list-${ev.id}"></div>
+        <div class="ev-comment-form">
+          <input class="ev-comment-input" id="ev-comment-input-${ev.id}" placeholder="댓글을 입력하세요..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitEventComment('${ev.id}')}">
+          <button class="btn btn-sm btn-primary" onclick="submitEventComment('${ev.id}')">등록</button>
+        </div>
+      </div>
     </div>`;
 }
 
