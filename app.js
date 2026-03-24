@@ -2259,21 +2259,64 @@ async function sendDMMessage() {
 }
 
 /* ===== IMAGE 압축 (base64 → Firestore 직접 저장) ===== */
-function compressImage(file, maxSize, quality) {
+function getExifOrientation(file) {
   return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const view = new DataView(e.target.result);
+      if (view.getUint16(0, false) !== 0xFFD8) return resolve(1);
+      let offset = 2;
+      while (offset < view.byteLength) {
+        const marker = view.getUint16(offset, false);
+        offset += 2;
+        if (marker === 0xFFE1) {
+          if (view.getUint32(offset += 2, false) !== 0x45786966) return resolve(1);
+          const little = view.getUint16(offset += 6, false) === 0x4949;
+          offset += view.getUint32(offset + 4, little);
+          const tags = view.getUint16(offset, little);
+          offset += 2;
+          for (let i = 0; i < tags; i++) {
+            if (view.getUint16(offset + i * 12, little) === 0x0112) {
+              return resolve(view.getUint16(offset + i * 12 + 8, little));
+            }
+          }
+        } else if ((marker & 0xFF00) !== 0xFF00) break;
+        else offset += view.getUint16(offset, false);
+      }
+      resolve(1);
+    };
+    reader.readAsArrayBuffer(file.slice(0, 65536));
+  });
+}
+
+function compressImage(file, maxSize, quality) {
+  return new Promise(async resolve => {
+    const orientation = await getExifOrientation(file);
     const reader = new FileReader();
     reader.onload = e => {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
         let { width, height } = img;
+        // 회전이 필요한 orientation (5,6,7,8)은 width/height 교환
+        const rotated = orientation >= 5 && orientation <= 8;
+        let dw = width, dh = height;
         if (width > maxSize || height > maxSize) {
-          if (width > height) { height = height * maxSize / width; width = maxSize; }
-          else { width = width * maxSize / height; height = maxSize; }
+          if (width > height) { dh = dh * maxSize / dw; dw = maxSize; }
+          else { dw = dw * maxSize / dh; dh = maxSize; }
         }
-        canvas.width = width;
-        canvas.height = height;
-        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        canvas.width = rotated ? dh : dw;
+        canvas.height = rotated ? dw : dh;
+        const ctx = canvas.getContext('2d');
+        // EXIF orientation에 따라 변환
+        if (orientation === 2) { ctx.transform(-1, 0, 0, 1, dw, 0); }
+        else if (orientation === 3) { ctx.transform(-1, 0, 0, -1, dw, dh); }
+        else if (orientation === 4) { ctx.transform(1, 0, 0, -1, 0, dh); }
+        else if (orientation === 5) { ctx.transform(0, 1, 1, 0, 0, 0); }
+        else if (orientation === 6) { ctx.transform(0, 1, -1, 0, dh, 0); }
+        else if (orientation === 7) { ctx.transform(0, -1, -1, 0, dh, dw); }
+        else if (orientation === 8) { ctx.transform(0, -1, 1, 0, 0, dw); }
+        ctx.drawImage(img, 0, 0, dw, dh);
         resolve(canvas.toDataURL('image/jpeg', quality));
       };
       img.src = e.target.result;
