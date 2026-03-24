@@ -244,6 +244,45 @@
           <p class="admin-desc">가입된 계정 목록입니다. 역할을 변경하거나 계정을 삭제할 수 있습니다.</p>
           <div id="userList" class="user-list"></div>
         </div>
+        <div class="admin-card">
+          <h3>📢 공지 팝업 관리</h3>
+          <p class="admin-desc">로그인 시 표시되는 공지 팝업을 설정합니다.</p>
+          <div style="display:flex;flex-direction:column;gap:12px;margin-top:8px">
+            <div class="form-group" style="margin:0">
+              <label>제목</label>
+              <input type="text" id="noticeTitle" placeholder="예: 3월 드라이브 일정 안내" maxlength="40" />
+            </div>
+            <div class="form-group" style="margin:0">
+              <label>부제목 <span style="color:var(--text3);font-size:.8rem">(선택)</span></label>
+              <input type="text" id="noticeSubtitle" placeholder="예: DT Club 운영팀" maxlength="40" />
+            </div>
+            <div class="form-group" style="margin:0">
+              <label>내용</label>
+              <textarea id="noticeContent" rows="5" placeholder="공지 내용을 입력하세요."></textarea>
+            </div>
+            <div class="form-group" style="margin:0">
+              <label>헤더 색상</label>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap" id="noticeColorPicker">
+                <button type="button" class="notice-color-btn selected" data-color="#e8711a" style="background:#e8711a"></button>
+                <button type="button" class="notice-color-btn" data-color="#6c63ff" style="background:#6c63ff"></button>
+                <button type="button" class="notice-color-btn" data-color="#1a73e8" style="background:#1a73e8"></button>
+                <button type="button" class="notice-color-btn" data-color="#16a34a" style="background:#16a34a"></button>
+                <button type="button" class="notice-color-btn" data-color="#dc2626" style="background:#dc2626"></button>
+                <button type="button" class="notice-color-btn" data-color="#0f172a" style="background:#0f172a"></button>
+              </div>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;margin-top:4px">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.9rem">
+                <input type="checkbox" id="noticeActive" style="width:16px;height:16px" />
+                활성화 (로그인 시 팝업 표시)
+              </label>
+            </div>
+            <div style="display:flex;gap:10px">
+              <button class="btn btn-primary" onclick="saveNotice()">💾 저장</button>
+              <button class="btn btn-outline" onclick="previewNotice()">👁 미리보기</button>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
   </main>
@@ -768,6 +807,27 @@
   <script src="firebase-config.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
   <script src="app.js?v=4"></script>
+
+  <!-- 공지 팝업 -->
+  <div class="modal-overlay" id="noticePopup" style="display:none;z-index:999">
+    <div class="notice-popup">
+      <div class="notice-popup-header" id="noticePopupHeader">
+        <div class="notice-popup-badge">📢 공지사항</div>
+        <h2 class="notice-popup-title" id="noticePopupTitle"></h2>
+        <p class="notice-popup-subtitle" id="noticePopupSubtitle"></p>
+      </div>
+      <div class="notice-popup-body">
+        <p class="notice-popup-content" id="noticePopupContent"></p>
+      </div>
+      <div class="notice-popup-footer">
+        <label class="notice-skip-label">
+          <input type="checkbox" id="noticeSkipToday" />
+          오늘 하루 보지 않기
+        </label>
+        <button class="notice-close-btn" onclick="closeNoticePopup()">닫기</button>
+      </div>
+    </div>
+  </div>
 
   <!-- 크롭 모달 -->
   <div class="modal-overlay" id="cropModal" style="display:none;z-index:1000">

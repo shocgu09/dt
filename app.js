@@ -187,6 +187,8 @@ function showApp() {
   if (!state.subscribed) {
     state.subscribed = true;
     subscribeAll();
+    // 공지 팝업 체크
+    checkAndShowNotice();
     // 회원 프로필 미등록 시 안내 토스트
     state.db.collection('members').where('createdBy', '==', state.currentUserId).limit(1).get().then(snap => {
       if (snap.empty) showToast('👋 환영합니다! 회원 탭에서 프로필을 등록해주세요.', 6000);
@@ -551,9 +553,99 @@ function renderPage(name) {
   else if (name === 'admin') renderAdmin();
 }
 
+/* ===== NOTICE POPUP ===== */
+let _noticeSelectedColor = '#e8711a';
+
+async function checkAndShowNotice() {
+  try {
+    const doc = await state.db.collection('notices').doc('main').get();
+    if (!doc.exists) return;
+    const n = doc.data();
+    if (!n.active) return;
+    const skipKey = 'noticeSkip_' + (n.updatedAt || 'v1');
+    if (localStorage.getItem(skipKey) === 'true') return;
+    showNoticePopup(n);
+  } catch(e) {}
+}
+
+function showNoticePopup(n) {
+  document.getElementById('noticePopupTitle').textContent = n.title || '';
+  const sub = document.getElementById('noticePopupSubtitle');
+  sub.textContent = n.subtitle || '';
+  sub.style.display = n.subtitle ? '' : 'none';
+  document.getElementById('noticePopupContent').textContent = n.content || '';
+  document.getElementById('noticePopupHeader').style.background = n.color || '#e8711a';
+  document.getElementById('noticeSkipToday').checked = false;
+  document.getElementById('noticePopup').style.display = 'flex';
+  document.getElementById('noticePopup')._noticeKey = 'noticeSkip_' + (n.updatedAt || 'v1');
+}
+
+function closeNoticePopup() {
+  const popup = document.getElementById('noticePopup');
+  if (document.getElementById('noticeSkipToday').checked) {
+    localStorage.setItem(popup._noticeKey, 'true');
+  }
+  popup.style.display = 'none';
+}
+
+/* ===== NOTICE ADMIN ===== */
+async function renderAdminNotice() {
+  try {
+    const doc = await state.db.collection('notices').doc('main').get();
+    if (!doc.exists) return;
+    const n = doc.data();
+    document.getElementById('noticeTitle').value = n.title || '';
+    document.getElementById('noticeSubtitle').value = n.subtitle || '';
+    document.getElementById('noticeContent').value = n.content || '';
+    document.getElementById('noticeActive').checked = !!n.active;
+    _noticeSelectedColor = n.color || '#e8711a';
+    document.querySelectorAll('.notice-color-btn').forEach(btn => {
+      btn.classList.toggle('selected', btn.dataset.color === _noticeSelectedColor);
+    });
+  } catch(e) {}
+}
+
+async function saveNotice() {
+  const title = document.getElementById('noticeTitle').value.trim();
+  if (!title) { alert('제목을 입력해주세요.'); return; }
+  const data = {
+    title,
+    subtitle: document.getElementById('noticeSubtitle').value.trim(),
+    content: document.getElementById('noticeContent').value.trim(),
+    color: _noticeSelectedColor,
+    active: document.getElementById('noticeActive').checked,
+    updatedAt: new Date().toISOString().slice(0, 16),
+  };
+  try {
+    await state.db.collection('notices').doc('main').set(data);
+    showToast('✅ 공지가 저장되었습니다.');
+  } catch(e) { alert('저장 실패: ' + e.message); }
+}
+
+function previewNotice() {
+  const title = document.getElementById('noticeTitle').value.trim();
+  if (!title) { alert('제목을 입력해주세요.'); return; }
+  showNoticePopup({
+    title,
+    subtitle: document.getElementById('noticeSubtitle').value.trim(),
+    content: document.getElementById('noticeContent').value.trim(),
+    color: _noticeSelectedColor,
+    updatedAt: '__preview__',
+  });
+}
+
 /* ===== ADMIN PAGE ===== */
 async function renderAdmin() {
   if (state.currentUserRole !== 'admin') return;
+  renderAdminNotice();
+  // 색상 버튼 이벤트 (한 번만 등록)
+  document.querySelectorAll('.notice-color-btn').forEach(btn => {
+    btn.onclick = () => {
+      _noticeSelectedColor = btn.dataset.color;
+      document.querySelectorAll('.notice-color-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+    };
+  });
   const snap = await state.db.collection('users').orderBy('createdAt', 'asc').get();
   const users = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
   const list = document.getElementById('userList');
