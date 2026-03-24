@@ -1778,7 +1778,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const file = e.target.files[0];
     if (!file) return;
     e.target.value = '';
-    openCropModal(file, 16/9, dataUrl => {
+    openCropModal(file, 4/3, dataUrl => {
       document.getElementById('carImage')._croppedData = dataUrl;
       document.getElementById('carImagePreview').innerHTML = `<img src="${dataUrl}" style="width:80px;height:56px;border-radius:8px;object-fit:cover;border:2px solid var(--border)"><span style="font-size:.78rem;color:var(--text3);margin-left:8px;vertical-align:middle">선택된 새 사진</span>`;
     });
@@ -1803,7 +1803,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const file = e.target.files[0];
     if (!file) return;
     e.target.value = '';
-    openCropModal(file, 16/9, dataUrl => {
+    openCropModal(file, 4/3, dataUrl => {
       document.getElementById('quizPhoto')._croppedData = dataUrl;
       document.getElementById('quizPhotoPreview').innerHTML = `<img src="${dataUrl}" style="max-width:100%;max-height:160px;border-radius:8px;margin-top:6px">`;
     });
@@ -1820,11 +1820,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // 파일 큐에 넣고 하나씩 크롭
     _galleryQueue = files.slice(1);
     _galleryResults = [];
-    openCropModal(files[0], 16/9, dataUrl => {
+    openCropModal(files[0], 4/3, dataUrl => {
       _galleryResults.push(dataUrl);
       if (_galleryQueue.length > 0) {
         const next = _galleryQueue.shift();
-        openCropModal(next, 16/9, dataUrl2 => {
+        openCropModal(next, 4/3, dataUrl2 => {
           _galleryResults.push(dataUrl2);
           confirmGalleryQueue();
         });
