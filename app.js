@@ -400,12 +400,70 @@ async function updateUserRole(uid, role) {
   }
 }
 
-async function deleteUserAccount(uid) {
-  if (!confirm('정말 강퇴 처리하시겠습니까?\n해당 회원은 즉시 차단되며, 다음 접속 시 계정이 완전히 삭제됩니다.')) return;
+async function disableUserAccount(uid) {
+  if (!confirm('이 계정을 비활성화할까요?\n데이터는 유지되며 복구가 가능합니다.')) return;
   try {
-    // 데이터 삭제는 하지 않음 — 실제 삭제는 해당 유저가 다음 로그인 시 onAuthStateChanged에서 처리
+    await state.db.collection('users').doc(uid).update({ disabled: true });
+    renderAdmin();
+  } catch (e) {
+    alert('오류: ' + e.message);
+  }
+}
+
+async function deleteUserAccount(uid) {
+  if (!confirm('정말 영구 삭제하시겠습니까?\n모든 데이터가 즉시 삭제되며 복구할 수 없습니다.')) return;
+  try {
+    const FieldValue = firebase.firestore.FieldValue;
+
+    // 1. 회원 프로필 삭제
+    const myMembers = await state.db.collection('members').where('createdBy', '==', uid).get();
+    for (const doc of myMembers.docs) await doc.ref.delete();
+
+    // 2. 투표 데이터 제거
+    const allEvents = await state.db.collection('events').get();
+    const voteBatch = state.db.batch();
+    allEvents.docs.forEach(doc => {
+      const data = doc.data();
+      const votes = data.votes || {};
+      const quizAnswers = data.quizAnswers || {};
+      const inVotes = [...(votes.attending || []), ...(votes.maybe || []), ...(votes.absent || [])].includes(uid);
+      const inQuiz = uid in quizAnswers;
+      if (inVotes || inQuiz) {
+        const update = {};
+        if (inVotes) {
+          update['votes.attending'] = FieldValue.arrayRemove(uid);
+          update['votes.maybe'] = FieldValue.arrayRemove(uid);
+          update['votes.absent'] = FieldValue.arrayRemove(uid);
+        }
+        if (inQuiz) update[`quizAnswers.${uid}`] = FieldValue.delete();
+        voteBatch.update(doc.ref, update);
+      }
+    });
+    await voteBatch.commit();
+
+    // 3. 갤러리 댓글 삭제
+    const allGallery = await state.db.collection('gallery').get();
+    for (const gDoc of allGallery.docs) {
+      const myComments = await gDoc.ref.collection('comments').where('authorUid', '==', uid).get();
+      if (!myComments.empty) {
+        const cb = state.db.batch();
+        myComments.docs.forEach(c => cb.delete(c.ref));
+        await cb.commit();
+      }
+    }
+
+    // 4. 갤러리 게시물 삭제
+    const myGallery = await state.db.collection('gallery').where('createdBy', '==', uid).get();
+    for (const doc of myGallery.docs) await doc.ref.delete();
+
+    // 5. 이벤트 삭제
+    const myEvents = await state.db.collection('events').where('createdBy', '==', uid).get();
+    for (const doc of myEvents.docs) await doc.ref.delete();
+
+    // 6. users 문서 pendingDelete 마킹 (Auth 계정은 해당 유저 로그인 시 삭제)
     await state.db.collection('users').doc(uid).update({ pendingDelete: true, disabled: true });
-    alert('강퇴 처리가 완료됐습니다. 해당 회원은 즉시 차단됩니다.');
+
+    alert('영구 삭제 완료됐습니다.');
     renderAdmin();
   } catch (e) {
     alert('오류: ' + e.message);
@@ -784,10 +842,12 @@ async function renderAdmin() {
             <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>관리자</option>
           </select>` : ''}
         ${u.uid !== state.currentUserId ? `
-          <button class="btn btn-sm ${u.disabled ? 'btn-success' : 'btn-danger'}"
-            onclick="${u.disabled ? `restoreUserAccount('${u.uid}')` : `deleteUserAccount('${u.uid}')`}">
-            ${u.disabled ? '복구' : '비활성화'}
-          </button>` : ''}
+          ${u.disabled
+            ? `<button class="btn btn-sm btn-success" onclick="restoreUserAccount('${u.uid}')">복구</button>
+               ${!u.pendingDelete ? `<button class="btn btn-sm btn-danger" onclick="deleteUserAccount('${u.uid}')">영구삭제</button>` : ''}`
+            : `<button class="btn btn-sm btn-outline" onclick="disableUserAccount('${u.uid}')">비활성화</button>
+               <button class="btn btn-sm btn-danger" onclick="deleteUserAccount('${u.uid}')">영구삭제</button>`
+          }` : ''}
       </div>
     </div>`).join('');
 }
