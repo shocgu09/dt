@@ -695,7 +695,9 @@ function openNoticeModal(id) {
   document.getElementById('noticeEditTitle').value = '';
   document.getElementById('noticeEditSubtitle').value = '';
   document.getElementById('noticeEditContent').value = '';
-  document.getElementById('noticeEditExpiresAt').value = '';
+  document.getElementById('noticeExpiresDate').value = '';
+  document.getElementById('noticeExpiresHour').value = '';
+  document.getElementById('noticeExpiresMin').value = '';
   document.getElementById('noticeEditModalTitle').textContent = id ? '공지 수정' : '공지 추가';
   if (id) {
     state.db.collection('notices').doc(id).get().then(doc => {
@@ -704,8 +706,13 @@ function openNoticeModal(id) {
       document.getElementById('noticeEditTitle').value = n.title || '';
       document.getElementById('noticeEditSubtitle').value = n.subtitle || '';
       document.getElementById('noticeEditContent').value = n.content || '';
-      // datetime-local은 'YYYY-MM-DDTHH:mm' 형식 필요
-      document.getElementById('noticeEditExpiresAt').value = n.expiresAt ? n.expiresAt.slice(0, 16) : '';
+      if (n.expiresAt) {
+        const [datePart, timePart] = n.expiresAt.split('T');
+        const [hh, mm] = (timePart || '').split(':');
+        document.getElementById('noticeExpiresDate').value = datePart || '';
+        document.getElementById('noticeExpiresHour').value = hh || '';
+        document.getElementById('noticeExpiresMin').value = mm || '';
+      }
     });
   }
   openModal('noticeEditModal');
@@ -714,8 +721,11 @@ function openNoticeModal(id) {
 async function saveNotice() {
   const title = document.getElementById('noticeEditTitle').value.trim();
   if (!title) { alert('제목을 입력해주세요.'); return; }
-  const expiresAt = document.getElementById('noticeEditExpiresAt').value;
-  if (!expiresAt) { alert('마감 기한을 설정해주세요.'); return; }
+  const expDate = document.getElementById('noticeExpiresDate').value;
+  const expHour = document.getElementById('noticeExpiresHour').value;
+  const expMin  = document.getElementById('noticeExpiresMin').value;
+  if (!expDate || !expHour || !expMin) { alert('마감 기한 날짜와 시간을 모두 설정해주세요.'); return; }
+  const expiresAt = `${expDate}T${expHour}:${expMin}`;
   const id = document.getElementById('noticeEditId').value;
   const now = new Date().toISOString().slice(0, 16);
   const data = {
