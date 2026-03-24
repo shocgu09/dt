@@ -563,8 +563,10 @@ async function checkAndShowNotice() {
     const snap = await state.db.collection('notices').get();
     const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     all.sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
+    const now = new Date();
     _noticeQueue = all.filter(n => {
-      if (!n.active) return false;
+      if (!n.expiresAt) return false;
+      if (new Date(n.expiresAt) <= now) return false;
       const skipKey = 'noticeSkip_' + n.id + '_' + (n.updatedAt || 'v1');
       return localStorage.getItem(skipKey) !== 'true';
     });
@@ -623,7 +625,13 @@ async function renderAdminNotice() {
           ondrop="onNoticeDrop(event,'${n.id}')">
           <span class="notice-drag-handle" title="드래그하여 순서 변경">⠿</span>
           <div class="notice-list-info">
-            <span class="notice-list-badge ${n.active ? 'on' : 'off'}">${n.active ? '활성' : '비활성'}</span>
+            ${(() => {
+              if (!n.expiresAt) return '<span class="notice-list-badge off">미설정</span>';
+              const exp = new Date(n.expiresAt);
+              const isActive = exp > new Date();
+              const fmt = exp.toLocaleString('ko-KR', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' });
+              return `<span class="notice-list-badge ${isActive ? 'on' : 'off'}" title="${n.expiresAt}">${isActive ? '~' : '만료 '}${fmt}</span>`;
+            })()}
             <span class="notice-list-title">${escapeHtml(n.title)}</span>
           </div>
           <div class="notice-list-actions">
@@ -687,7 +695,7 @@ function openNoticeModal(id) {
   document.getElementById('noticeEditTitle').value = '';
   document.getElementById('noticeEditSubtitle').value = '';
   document.getElementById('noticeEditContent').value = '';
-  document.getElementById('noticeEditActive').checked = true;
+  document.getElementById('noticeEditExpiresAt').value = '';
   document.getElementById('noticeEditModalTitle').textContent = id ? '공지 수정' : '공지 추가';
   if (id) {
     state.db.collection('notices').doc(id).get().then(doc => {
@@ -696,7 +704,8 @@ function openNoticeModal(id) {
       document.getElementById('noticeEditTitle').value = n.title || '';
       document.getElementById('noticeEditSubtitle').value = n.subtitle || '';
       document.getElementById('noticeEditContent').value = n.content || '';
-      document.getElementById('noticeEditActive').checked = !!n.active;
+      // datetime-local은 'YYYY-MM-DDTHH:mm' 형식 필요
+      document.getElementById('noticeEditExpiresAt').value = n.expiresAt ? n.expiresAt.slice(0, 16) : '';
     });
   }
   openModal('noticeEditModal');
@@ -705,13 +714,15 @@ function openNoticeModal(id) {
 async function saveNotice() {
   const title = document.getElementById('noticeEditTitle').value.trim();
   if (!title) { alert('제목을 입력해주세요.'); return; }
+  const expiresAt = document.getElementById('noticeEditExpiresAt').value;
+  if (!expiresAt) { alert('마감 기한을 설정해주세요.'); return; }
   const id = document.getElementById('noticeEditId').value;
   const now = new Date().toISOString().slice(0, 16);
   const data = {
     title,
     subtitle: document.getElementById('noticeEditSubtitle').value.trim(),
     content: document.getElementById('noticeEditContent').value.trim(),
-    active: document.getElementById('noticeEditActive').checked,
+    expiresAt,
     updatedAt: now,
   };
   try {

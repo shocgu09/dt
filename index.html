@@ -824,10 +824,10 @@
           <label>내용</label>
           <textarea id="noticeEditContent" rows="6" placeholder="공지 내용을 입력하세요."></textarea>
         </div>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.9rem;margin-top:4px">
-          <input type="checkbox" id="noticeEditActive" style="width:16px;height:16px" />
-          활성화 (로그인 시 팝업 표시)
-        </label>
+        <div class="form-group" style="margin-top:4px">
+          <label>마감 기한 <span style="color:var(--text3);font-size:.8rem">(이 시각까지 로그인 시 팝업 표시)</span></label>
+          <input type="datetime-local" id="noticeEditExpiresAt" step="600" style="width:100%" />
+        </div>
       </div>
       <div class="modal-footer" style="display:flex;gap:10px;padding:16px 24px">
         <button class="btn btn-outline" onclick="previewNotice()">👁 미리보기</button>
