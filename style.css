@@ -620,6 +620,7 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 .user-item-info { flex: 1; }
 .user-item-name { font-size: .92rem; font-weight: 600; }
 .user-item-email { font-size: .78rem; color: var(--text2); }
+.user-item-lastseen { font-size: .74rem; color: var(--text3); margin-top: 2px; }
 .user-item-actions { display: flex; gap: 8px; align-items: center; }
 .role-select {
   background: var(--bg2); border: 1px solid var(--border); color: var(--text);

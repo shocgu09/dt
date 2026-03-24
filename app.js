@@ -147,6 +147,8 @@ function initAuth() {
           return;
         }
         state.currentUserRole = data.role;
+        // 마지막 접속 시간 갱신
+        state.db.collection('users').doc(user.uid).update({ lastSeen: new Date().toISOString() }).catch(() => {});
       } else {
         // 그래도 없으면 member로 폴백 생성
         await state.db.collection('users').doc(user.uid).set({
@@ -766,6 +768,19 @@ function previewNotice() {
 }
 
 /* ===== ADMIN PAGE ===== */
+function formatLastSeen(iso) {
+  if (!iso) return '기록 없음';
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return '방금 전';
+  if (m < 60) return `${m}분 전`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}시간 전`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}일 전`;
+  return new Date(iso).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
+}
+
 async function renderAdmin() {
   if (state.currentUserRole !== 'admin') return;
   renderAdminNotice();
@@ -785,6 +800,7 @@ async function renderAdmin() {
           ${u.pendingDelete ? '<span style="color:var(--accent);font-size:.76rem">삭제 예정</span>' : u.disabled ? '<span style="color:var(--accent);font-size:.76rem">비활성화</span>' : ''}
         </div>
         <div class="user-item-email">${escapeHtml(u.email)}</div>
+        <div class="user-item-lastseen">마지막 접속: ${formatLastSeen(u.lastSeen)}</div>
       </div>
       <div class="user-item-actions">
         ${!u.disabled ? `
