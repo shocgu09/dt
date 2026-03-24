@@ -1789,6 +1789,42 @@ function openVoteModal(evId) {
   openModal('voteModal');
 }
 
+/* ===== QUIZ ANSWERS MODAL (작성자 전용) ===== */
+function openQuizAnswersModal(evId) {
+  const ev = state.events.find(x => x.id === evId);
+  if (!ev) return;
+  if (ev.createdBy !== state.currentUserId) return;
+
+  const quizAnswers = ev.quizAnswers || {};
+  const options = ev.quizOptions || [];
+  const labels = ['A', 'B', 'C', 'D'];
+  const correctIdx = ev.quizAnswer ?? -1;
+  const totalAnswers = Object.keys(quizAnswers).length;
+
+  function chip(uid) {
+    const u = state.users.find(x => x.uid === uid);
+    if (!u) return '';
+    return `<div class="vote-person"><div class="mini-avatar">${avatarEl({ name: u.name, image: u.image || null, gender: u.gender || 'male' })}</div>${escapeHtml(u.name)}${titleBadge(u.title)}</div>`;
+  }
+
+  const sectionsHtml = options.map((opt, i) => {
+    const voters = Object.entries(quizAnswers).filter(([, v]) => v === i).map(([uid]) => uid);
+    const isCorrect = i === correctIdx;
+    const pct = totalAnswers > 0 ? Math.round(voters.length / totalAnswers * 100) : 0;
+    return `
+      <div class="vote-section" style="${isCorrect && ev.quizRevealed ? 'border-left:3px solid #4ade80;padding-left:10px' : ''}">
+        <h4>${labels[i]}. ${escapeHtml(opt)} ${isCorrect && ev.quizRevealed ? '<span style="color:#4ade80;font-size:.78rem">✓ 정답</span>' : ''} <span style="color:var(--text3);font-size:.82rem;font-weight:400">${voters.length}명 · ${pct}%</span></h4>
+        <div class="vote-people">${voters.map(chip).join('') || '<span style="color:var(--text3);font-size:.84rem">없음</span>'}</div>
+      </div>`;
+  }).join('');
+
+  document.getElementById('voteModalTitle').textContent = `📊 응답 현황 — ${ev.title}`;
+  document.getElementById('voteModalBody').innerHTML = `
+    <div style="font-size:.84rem;color:var(--text3);margin-bottom:14px">총 ${totalAnswers}명 응답</div>
+    ${sectionsHtml}`;
+  openModal('voteModal');
+}
+
 const _quizSelection = {};
 
 function selectQuizOption(evId, idx) {
@@ -1992,6 +2028,7 @@ function renderQuizCard(ev, today) {
       ${winnerHtml}
       ${renderReactions(ev)}
       <div class="event-actions">
+        ${isMe ? `<button class="btn btn-sm btn-outline" onclick="openQuizAnswersModal('${ev.id}')">📊 응답 현황</button>` : ''}
         <button class="btn btn-sm btn-outline" id="ev-comment-btn-${ev.id}" onclick="toggleEventComments('${ev.id}')">💬 댓글</button>
         ${adminActions}
       </div>
