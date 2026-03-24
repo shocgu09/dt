@@ -1400,13 +1400,12 @@ function renderEvents() {
             ${total > 0 ? `<div class="vote-progress"><div class="vote-bar-attend" style="width:${aW}%"></div><div class="vote-bar-maybe" style="width:${mW}%"></div><div class="vote-bar-absent" style="width:${bW}%"></div></div>` : ''}
             <div style="font-size:.8rem;color:var(--text3);margin-bottom:8px">🔒 투표 마감됨</div>`;
           return `
-            <div class="event-votes" id="vote-btns-${ev.id}">
-              <button class="vote-count attending ${myVote === 'attending' ? 'voted' : ''}" onclick="selectVote('${ev.id}','attending')">✅ 참여 <span class="num">${votes.attending.length}</span></button>
-              <button class="vote-count maybe ${myVote === 'maybe' ? 'voted' : ''}" onclick="selectVote('${ev.id}','maybe')">🕐 늦참 <span class="num">${votes.maybe.length}</span></button>
-              <button class="vote-count absent ${myVote === 'absent' ? 'voted' : ''}" onclick="selectVote('${ev.id}','absent')">❌ 불참 <span class="num">${votes.absent.length}</span></button>
+            <div class="event-votes">
+              <button class="vote-count attending ${myVote === 'attending' ? 'voted' : ''}" onclick="castVote('${ev.id}','attending')">✅ 참여 <span class="num">${votes.attending.length}</span></button>
+              <button class="vote-count maybe ${myVote === 'maybe' ? 'voted' : ''}" onclick="castVote('${ev.id}','maybe')">🕐 늦참 <span class="num">${votes.maybe.length}</span></button>
+              <button class="vote-count absent ${myVote === 'absent' ? 'voted' : ''}" onclick="castVote('${ev.id}','absent')">❌ 불참 <span class="num">${votes.absent.length}</span></button>
             </div>
-            ${total > 0 ? `<div class="vote-progress"><div class="vote-bar-attend" style="width:${aW}%"></div><div class="vote-bar-maybe" style="width:${mW}%"></div><div class="vote-bar-absent" style="width:${bW}%"></div></div>` : ''}
-            <button class="btn btn-sm btn-primary vote-confirm-btn" id="vote-confirm-${ev.id}" style="display:none" onclick="confirmVote('${ev.id}')">투표하기</button>`;
+            ${total > 0 ? `<div class="vote-progress"><div class="vote-bar-attend" style="width:${aW}%"></div><div class="vote-bar-maybe" style="width:${mW}%"></div><div class="vote-bar-absent" style="width:${bW}%"></div></div>` : ''}`;
         })()}
         <div class="event-actions">
           <button class="btn btn-sm btn-outline" onclick="openVoteModal('${ev.id}')">📊 투표 현황</button>
@@ -1572,27 +1571,25 @@ function openVoteModal(evId) {
   openModal('voteModal');
 }
 
-const _voteSelection = {};
+const _quizSelection = {};
 
-function selectVote(evId, status) {
-  _voteSelection[evId] = status;
-  const container = document.getElementById('vote-btns-' + evId);
+function selectQuizOption(evId, idx) {
+  _quizSelection[evId] = idx;
+  const container = document.getElementById('quiz-opts-' + evId);
   if (!container) return;
-  container.querySelectorAll('.vote-count').forEach(btn => btn.classList.remove('selecting'));
-  const statusList = ['attending', 'maybe', 'absent'];
-  const idx = statusList.indexOf(status);
-  if (idx >= 0) container.querySelectorAll('.vote-count')[idx].classList.add('selecting');
-  const confirmBtn = document.getElementById('vote-confirm-' + evId);
+  container.querySelectorAll('.quiz-opt-btn').forEach(btn => btn.classList.remove('selecting'));
+  container.querySelectorAll('.quiz-opt-btn')[idx]?.classList.add('selecting');
+  const confirmBtn = document.getElementById('quiz-confirm-' + evId);
   if (confirmBtn) confirmBtn.style.display = '';
 }
 
-async function confirmVote(evId) {
-  const status = _voteSelection[evId];
-  if (!status) return;
-  const confirmBtn = document.getElementById('vote-confirm-' + evId);
-  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = '투표 중...'; }
-  await castVote(evId, status);
-  delete _voteSelection[evId];
+async function confirmQuizAnswer(evId) {
+  const idx = _quizSelection[evId];
+  if (idx === undefined) return;
+  const confirmBtn = document.getElementById('quiz-confirm-' + evId);
+  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = '제출 중...'; }
+  await castQuizAnswer(evId, idx);
+  delete _quizSelection[evId];
 }
 
 async function castVote(evId, status) {
@@ -1696,6 +1693,7 @@ function renderQuizCard(ev, today) {
     winnerHtml = `<div class="quiz-winner-banner" style="background:rgba(255,107,107,.13);border-color:rgba(255,107,107,.3);color:#ff9898">😢 정답자 없음 — 추첨 불가</div>`;
   }
 
+  const canVote = !deadlinePassed && !revealed && myAnswer === null;
   const optionsHtml = options.map((opt, i) => {
     let cls = 'quiz-opt-btn';
     if (revealed) {
@@ -1704,11 +1702,11 @@ function renderQuizCard(ev, today) {
     } else {
       if (myAnswer === i) cls += ' selected';
     }
-    const disabled = (deadlinePassed || revealed || myAnswer !== null) ? 'disabled' : '';
+    const disabled = canVote ? '' : 'disabled';
     const countAnswered = Object.values(quizAnswers).filter(v => v === i).length;
     const pct = totalAnswers > 0 ? Math.round(countAnswered / totalAnswers * 100) : 0;
     return `
-      <button class="${cls}" onclick="castQuizAnswer('${ev.id}', ${i})" ${disabled}>
+      <button class="${cls}" onclick="${canVote ? `selectQuizOption('${ev.id}', ${i})` : ''}" ${disabled}>
         <span class="quiz-opt-label">${labels[i]}</span>
         <span class="quiz-opt-text">${escapeHtml(opt)}</span>
         ${revealed ? `<span class="quiz-opt-pct">${pct}%</span>` : (myAnswer !== null ? `<span class="quiz-opt-pct">${pct}%</span>` : '')}
@@ -1733,8 +1731,9 @@ function renderQuizCard(ev, today) {
         ${deadline ? `<span class="event-meta-item ${deadlinePassed ? 'deadline-over' : 'deadline-active'}">⏰ 마감 ${ev.voteDeadline.replace('T', ' ')}</span>` : ''}
       </div>
       ${ev.desc ? `<div style="font-size:.88rem;color:var(--text2);margin-bottom:10px">${linkify(ev.desc)}</div>` : ''}
-      <div class="quiz-options">${optionsHtml}</div>
-      <div style="font-size:.78rem;color:var(--text3);margin:6px 0 8px">${myAnswer !== null ? `✅ 답변 완료 (${labels[myAnswer]})` : deadlinePassed ? '⏰ 마감됨' : '👆 정답을 골라보세요!'} · 참여 ${totalAnswers}명</div>
+      <div class="quiz-options" id="quiz-opts-${ev.id}">${optionsHtml}</div>
+      ${canVote ? `<button class="btn btn-sm btn-primary vote-confirm-btn" id="quiz-confirm-${ev.id}" style="display:none;margin-bottom:8px" onclick="confirmQuizAnswer('${ev.id}')">답변 제출</button>` : ''}
+      <div style="font-size:.78rem;color:var(--text3);margin:6px 0 8px">${myAnswer !== null ? `✅ 답변 완료 (${labels[myAnswer]})` : deadlinePassed ? '⏰ 마감됨' : '👆 정답을 고르고 제출하세요'} · 참여 ${totalAnswers}명</div>
       ${winnerHtml}
       <div class="event-actions">${adminActions}</div>
     </div>`;

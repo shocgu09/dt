@@ -803,6 +803,8 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 .quiz-opt-btn:hover:not(:disabled) { border-color: var(--primary-light); background: rgba(108,99,255,.1); }
 .quiz-opt-btn:disabled { cursor: default; }
 .quiz-opt-btn.selected { border-color: var(--primary-light); background: rgba(108,99,255,.15); }
+.quiz-opt-btn.selecting { border-color: var(--primary-light); border-width: 2px; background: rgba(108,99,255,.12); }
+.quiz-opt-btn.selecting .quiz-opt-label { background: var(--primary); color: #fff; }
 .quiz-opt-btn.correct { border-color: #4ade80; background: rgba(74,222,128,.15); color: #4ade80; font-weight: 700; }
 .quiz-opt-btn.wrong { border-color: #ff6b6b; background: rgba(255,107,107,.1); color: #ff9898; text-decoration: line-through; }
 .quiz-opt-label {
