@@ -805,6 +805,11 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
   .page-header h2 { font-size: 1.3rem; }
 }
 
+/* ===== CROP MODAL ===== */
+.modal-crop { max-width: 560px; width: 100%; }
+.crop-img-wrap { max-height: 60vh; overflow: hidden; display: flex; justify-content: center; background: #000; border-radius: 8px; }
+#cropModal { align-items: center; justify-content: center; padding: 20px; }
+
 /* ===== TOAST ===== */
 #appToast {
   position: fixed; bottom: calc(80px + env(safe-area-inset-bottom, 0px));

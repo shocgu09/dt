@@ -24,6 +24,7 @@
   <meta name="google-adsense-account" content="ca-pub-8670106445114873">
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8670106445114873" crossorigin="anonymous"></script>
   <link rel="stylesheet" href="style.css?v=3" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css" />
 </head>
 <body>
   <!-- NAV -->
@@ -770,6 +771,27 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <!-- 🔧 Firebase 설정 파일 (본인 config로 교체하세요) -->
   <script src="firebase-config.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
   <script src="app.js?v=4"></script>
+
+  <!-- 크롭 모달 -->
+  <div class="modal-overlay" id="cropModal" style="display:none;z-index:1000">
+    <div class="modal modal-crop">
+      <div class="modal-header">
+        <h3>사진 영역 선택</h3>
+        <button class="modal-close" onclick="cancelCrop()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:.85rem;color:var(--text3);margin-bottom:12px">드래그로 영역을 조절하세요</p>
+        <div class="crop-img-wrap">
+          <img id="cropImage" style="max-width:100%" />
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex;gap:10px;padding:16px 24px">
+        <button class="btn btn-outline" onclick="cancelCrop()">취소</button>
+        <button class="btn btn-primary" onclick="confirmCrop()">✂️ 선택 완료</button>
+      </div>
+    </div>
+  </div>
 </body>
 </html>

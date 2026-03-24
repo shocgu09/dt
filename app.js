@@ -836,15 +836,14 @@ async function saveMember(e) {
     const role = document.getElementById('memberRole').value;
     const existing = id ? state.members.find(x => x.id === id) : null;
 
-    const memberImageFile = document.getElementById('memberImage').files[0];
-    const carImageFile = document.getElementById('carImage').files[0];
+    const memberCropped = document.getElementById('memberImage')._croppedData;
+    const carCropped = document.getElementById('carImage')._croppedData;
 
     let memberImg = existing?.image || null;
     let carImg = existing?.car?.image || null;
 
-    // 이미지 압축 후 base64로 Firestore에 저장 (Storage 불필요)
-    if (memberImageFile) memberImg = await compressImage(memberImageFile, 600, 0.7);
-    if (carImageFile) carImg = await compressImage(carImageFile, 800, 0.75);
+    if (memberCropped) memberImg = memberCropped;
+    if (carCropped) carImg = carCropped;
 
     const data = {
       name: document.getElementById('memberName').value.trim(),
@@ -1052,9 +1051,10 @@ async function saveGallery(e) {
   try {
     const id = document.getElementById('galleryId').value;
     const existing = id ? state.gallery.find(x => x.id === id) : null;
-    const file = document.getElementById('galleryPhotos').files[0];
-    let photo = existing?.photo || null;
-    if (file) photo = await compressImage(file, 1200, 0.75);
+    // 크롭된 갤러리 사진 (첫 번째)
+    const croppedWraps = document.getElementById('galleryPhotoPreview').querySelectorAll('[data-cropped]');
+    const firstCropped = croppedWraps[0]?.dataset.cropped || null;
+    let photo = firstCropped || existing?.photo || null;
     if (window._clearPhoto) photo = null;
     const data = {
       title: document.getElementById('galleryTitle').value.trim(),
@@ -1284,12 +1284,8 @@ async function saveEvent(e) {
       data.quizAnswers = existing?.quizAnswers || {};
       data.quizRevealed = existing?.quizRevealed || false;
       data.quizWinner = existing?.quizWinner || null;
-      const photoFile = document.getElementById('quizPhoto').files[0];
-      if (photoFile) {
-        data.quizPhoto = await compressImage(photoFile, 800, 0.75);
-      } else {
-        data.quizPhoto = existing?.quizPhoto || null;
-      }
+      const quizCropped = document.getElementById('quizPhoto')._croppedData;
+      data.quizPhoto = quizCropped || existing?.quizPhoto || null;
     }
     if (id) {
       await state.db.collection('events').doc(id).set(data, { merge: true });
@@ -1578,6 +1574,79 @@ function avatarSmall(m) {
   return `<span style="background:${color};color:#fff;width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700;flex-shrink:0">${m.name?.[0] || '?'}</span>`;
 }
 
+/* ===== CROP ===== */
+let _cropperInstance = null;
+let _cropCallback = null;
+let _galleryQueue = [];
+let _galleryResults = [];
+
+function openCropModal(file, aspectRatio, callback) {
+  _cropCallback = callback;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = document.getElementById('cropImage');
+    img.src = e.target.result;
+    const overlay = document.getElementById('cropModal');
+    overlay.style.display = 'flex';
+    if (_cropperInstance) { _cropperInstance.destroy(); _cropperInstance = null; }
+    img.onload = () => {
+      _cropperInstance = new Cropper(img, {
+        aspectRatio: aspectRatio ?? NaN,
+        viewMode: 1,
+        autoCropArea: 0.85,
+        movable: true,
+        zoomable: true,
+        rotatable: false,
+      });
+    };
+  };
+  reader.readAsDataURL(file);
+}
+
+function confirmCrop() {
+  if (!_cropperInstance || !_cropCallback) return;
+  const canvas = _cropperInstance.getCroppedCanvas({ maxWidth: 1200, maxHeight: 1200 });
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+  const cb = _cropCallback;
+  closeCropModal();
+  cb(dataUrl);
+  // 갤러리 큐 처리
+  if (_galleryQueue.length > 0) {
+    const next = _galleryQueue.shift();
+    openCropModal(next, NaN, dataUrl2 => {
+      _galleryResults.push(dataUrl2);
+      confirmGalleryQueue();
+    });
+  }
+}
+
+function confirmGalleryQueue() {
+  if (_galleryQueue.length > 0) return; // 아직 진행 중
+  _galleryResults.forEach(dataUrl => addGalleryPreview(dataUrl));
+  _galleryResults = [];
+}
+
+function cancelCrop() {
+  closeCropModal();
+  _galleryQueue = [];
+  _galleryResults = [];
+}
+
+function closeCropModal() {
+  if (_cropperInstance) { _cropperInstance.destroy(); _cropperInstance = null; }
+  _cropCallback = null;
+  document.getElementById('cropModal').style.display = 'none';
+}
+
+function addGalleryPreview(dataUrl) {
+  const preview = document.getElementById('galleryPhotoPreview');
+  const wrap = document.createElement('div');
+  wrap.className = 'preview-photo-wrap';
+  wrap.innerHTML = `<img src="${dataUrl}" class="preview-photo"><button type="button" class="preview-photo-del" onclick="this.parentElement.remove()">✕</button>`;
+  wrap.dataset.cropped = dataUrl;
+  preview.appendChild(wrap);
+}
+
 function linkify(text) {
   return text
     .replace(/\n/g, '<br>')
@@ -1695,20 +1764,20 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('memberImage').addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      document.getElementById('memberImagePreview').innerHTML = `<img src="${ev.target.result}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid var(--border)"><span style="font-size:.78rem;color:var(--text3);margin-left:8px;vertical-align:middle">선택된 새 사진</span>`;
-    };
-    reader.readAsDataURL(file);
+    e.target.value = '';
+    openCropModal(file, 1, dataUrl => {
+      document.getElementById('memberImage')._croppedData = dataUrl;
+      document.getElementById('memberImagePreview').innerHTML = `<img src="${dataUrl}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid var(--border)"><span style="font-size:.78rem;color:var(--text3);margin-left:8px;vertical-align:middle">선택된 새 사진</span>`;
+    });
   });
   document.getElementById('carImage').addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      document.getElementById('carImagePreview').innerHTML = `<img src="${ev.target.result}" style="width:80px;height:56px;border-radius:8px;object-fit:cover;border:2px solid var(--border)"><span style="font-size:.78rem;color:var(--text3);margin-left:8px;vertical-align:middle">선택된 새 사진</span>`;
-    };
-    reader.readAsDataURL(file);
+    e.target.value = '';
+    openCropModal(file, 16/9, dataUrl => {
+      document.getElementById('carImage')._croppedData = dataUrl;
+      document.getElementById('carImagePreview').innerHTML = `<img src="${dataUrl}" style="width:80px;height:56px;border-radius:8px;object-fit:cover;border:2px solid var(--border)"><span style="font-size:.78rem;color:var(--text3);margin-left:8px;vertical-align:middle">선택된 새 사진</span>`;
+    });
   });
 
   document.querySelectorAll('#page-members .filter-btn').forEach(btn => {
@@ -1729,11 +1798,11 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('quizPhoto').addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      document.getElementById('quizPhotoPreview').innerHTML = `<img src="${ev.target.result}" style="max-width:100%;max-height:160px;border-radius:8px;margin-top:6px">`;
-    };
-    reader.readAsDataURL(file);
+    e.target.value = '';
+    openCropModal(file, NaN, dataUrl => {
+      document.getElementById('quizPhoto')._croppedData = dataUrl;
+      document.getElementById('quizPhotoPreview').innerHTML = `<img src="${dataUrl}" style="max-width:100%;max-height:160px;border-radius:8px;margin-top:6px">`;
+    });
   });
 
   document.getElementById('btnAddGallery').addEventListener('click', openAddGallery);
@@ -1741,17 +1810,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 사진 미리보기
   document.getElementById('galleryPhotos').addEventListener('change', e => {
-    const preview = document.getElementById('galleryPhotoPreview');
-    const existing = preview.querySelectorAll('.preview-photo-wrap').length;
-    Array.from(e.target.files).forEach(f => {
-      const reader = new FileReader();
-      reader.onload = ev => {
-        const wrap = document.createElement('div');
-        wrap.className = 'preview-photo-wrap';
-        wrap.innerHTML = `<img src="${ev.target.result}" class="preview-photo">`;
-        preview.appendChild(wrap);
-      };
-      reader.readAsDataURL(f);
+    const files = Array.from(e.target.files);
+    e.target.value = '';
+    if (!files.length) return;
+    // 파일 큐에 넣고 하나씩 크롭
+    _galleryQueue = files.slice(1);
+    _galleryResults = [];
+    openCropModal(files[0], NaN, dataUrl => {
+      _galleryResults.push(dataUrl);
+      if (_galleryQueue.length > 0) {
+        const next = _galleryQueue.shift();
+        openCropModal(next, NaN, dataUrl2 => {
+          _galleryResults.push(dataUrl2);
+          confirmGalleryQueue();
+        });
+      } else {
+        confirmGalleryQueue();
+      }
     });
   });
 
