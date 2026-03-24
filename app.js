@@ -1549,7 +1549,7 @@ function avatarEl(m) {
   const colors = ['#6c63ff', '#ff6b6b', '#4ade80', '#60a5fa', '#f472b6', '#fb923c'];
   const color = colors[(m.name?.charCodeAt(0) || 0) % colors.length];
   if (m.image) return `<img src="${m.image}" alt="${m.name}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`;
-  return `<span style="background:${color};color:#fff;width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:700">${m.name?.[0] || '?'}</span>`;
+  return `<span style="background:${color};color:#fff;width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:inherit;font-weight:700">${m.name?.[0] || '?'}</span>`;
 }
 
 function avatarSmall(m) {

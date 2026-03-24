@@ -443,7 +443,7 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
   width: 90px; height: 90px; border-radius: 50%; border: 3px solid var(--primary);
   object-fit: cover; background: var(--bg3);
   display: flex; align-items: center; justify-content: center; font-size: 2.5rem;
-  flex-shrink: 0;
+  flex-shrink: 0; overflow: hidden;
 }
 .detail-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; }
 .detail-info-main { flex: 1; }
@@ -486,7 +486,7 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
   display: flex; align-items: center; justify-content: center; font-size: .8rem;
   overflow: hidden; flex-shrink: 0;
 }
-.vote-person .mini-avatar span { font-size: .72rem !important; }
+.vote-person .mini-avatar span { font-size: inherit; }
 .vote-person .mini-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .my-vote-section { background: var(--bg3); border-radius: 14px; padding: 16px; margin-bottom: 16px; }
 .my-vote-section h4 { font-size: .9rem; font-weight: 700; margin-bottom: 12px; }
