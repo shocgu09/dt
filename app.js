@@ -407,6 +407,9 @@ function titleBadge(title) {
   if (!title) return '';
   return `<span style="color:#a78bfa;font-size:.75rem;font-weight:700;background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.35);padding:1px 7px;border-radius:0;margin-left:5px">${escapeHtml(title)}</span>`;
 }
+function userTitle(uid) {
+  return state.users.find(u => u.uid === uid)?.title || '';
+}
 
 async function deleteUserAccount(uid) {
   if (!confirm('정말 영구 삭제하시겠습니까?\n모든 데이터가 즉시 삭제되며 복구할 수 없습니다.')) return;
@@ -989,7 +992,7 @@ function renderMembers() {
       <div class="member-card-top">
         <div class="member-avatar">${avatarEl(m)}</div>
         <div class="member-info">
-          <div class="member-name">${escapeHtml(m.name)}${m.createdBy === state.currentUserId ? ' <span style="color:var(--primary-light);font-size:.75rem;font-weight:600">나</span>' : ''}</div>
+          <div class="member-name">${escapeHtml(m.name)}${titleBadge(userTitle(m.createdBy))}${m.createdBy === state.currentUserId ? ' <span style="color:var(--primary-light);font-size:.75rem;font-weight:600">나</span>' : ''}</div>
           <div class="member-nick">${escapeHtml(m.nickname || '-')}</div>
           <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px">
             <span class="role-badge ${m.role}">${m.role === 'driver' ? '🚗 운전자' : '💺 동승자'}</span>
@@ -1019,7 +1022,7 @@ function openMemberDetail(id) {
     <div class="detail-hero">
       <div class="detail-avatar">${avatarEl(m)}</div>
       <div class="detail-info-main">
-        <h2>${escapeHtml(m.name)}</h2>
+        <h2>${escapeHtml(m.name)}${titleBadge(userTitle(m.createdBy))}</h2>
         <div class="nick">${m.nickname ? `"${escapeHtml(m.nickname)}"` : ''}</div>
         <div class="detail-meta">
           <span class="role-badge ${m.role}">${m.role === 'driver' ? '🚗 운전자' : '💺 동승자'}</span>
@@ -1312,7 +1315,7 @@ function renderComments(comments, galleryId) {
   list.innerHTML = comments.map(c => `
     <div class="comment-item">
       <div class="comment-meta">
-        <span class="comment-author">${c.authorName}</span>
+        <span class="comment-author">${c.authorName}${titleBadge(userTitle(c.authorUid))}</span>
         <span class="comment-time">${c.createdAt?.toDate ? c.createdAt.toDate().toLocaleDateString('ko') : ''}</span>
         ${(c.authorUid === uid || isAdmin) ? `<button class="comment-del" onclick="deleteComment('${galleryId}','${c.id}')">✕</button>` : ''}
       </div>
@@ -1431,7 +1434,7 @@ function renderCars() {
         <div class="car-owner">
           <div class="car-owner-avatar">${avatarEl(m)}</div>
           <div>
-            <div class="car-owner-name">${m.name}</div>
+            <div class="car-owner-name">${m.name}${titleBadge(userTitle(m.createdBy))}</div>
             <div style="font-size:.76rem;color:var(--text3)">오너</div>
           </div>
         </div>
@@ -1476,7 +1479,7 @@ function renderEvents() {
           const author = state.users.find(u => u.uid === ev.createdBy);
           const isMe = ev.createdBy === state.currentUserId;
           const name = author?.name || '알 수 없음';
-          return `<div style="font-size:.78rem;color:var(--text3);margin-bottom:6px">✍️ ${escapeHtml(name)}${isMe ? ' <span style="color:var(--primary-light);font-weight:600">(나)</span>' : ''}</div>`;
+          return `<div style="font-size:.78rem;color:var(--text3);margin-bottom:6px">✍️ ${escapeHtml(name)}${titleBadge(author?.title)}${isMe ? ' <span style="color:var(--primary-light);font-weight:600">(나)</span>' : ''}</div>`;
         })()}
         <div class="event-meta">
           <span class="event-meta-item">📅 ${formatDate(ev.date)}</span>
@@ -1830,7 +1833,7 @@ function renderQuizCard(ev, today) {
         <div class="event-title">${escapeHtml(ev.title)}</div>
         ${isPast ? '<span style="font-size:.78rem;color:var(--text3);background:var(--bg3);padding:3px 10px;border-radius:10px;white-space:nowrap">종료됨</span>' : ''}
       </div>
-      <div style="font-size:.78rem;color:var(--text3);margin-bottom:6px">✍️ ${escapeHtml(authorName)}${isMe ? ' <span style="color:var(--primary-light);font-weight:600">(나)</span>' : ''}</div>
+      <div style="font-size:.78rem;color:var(--text3);margin-bottom:6px">✍️ ${escapeHtml(authorName)}${titleBadge(author?.title)}${isMe ? ' <span style="color:var(--primary-light);font-weight:600">(나)</span>' : ''}</div>
       <div class="event-meta">
         <span class="event-meta-item">📅 ${formatDate(ev.date)}</span>
         ${deadline ? `<span class="event-meta-item ${deadlinePassed ? 'deadline-over' : 'deadline-active'}">⏰ 마감 ${ev.voteDeadline.replace('T', ' ')}</span>` : ''}
