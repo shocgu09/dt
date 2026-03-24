@@ -53,6 +53,13 @@ service cloud.firestore {
                 .affectedKeys().hasOnly(['votes']));
     }
 
+    // ── notices 컬렉션 ──────────────────────────────────────
+    // - 인증된 유저 읽기, 관리자만 쓰기
+    match /notices/{noticeId} {
+      allow read: if isAuth();
+      allow write: if isAdmin();
+    }
+
     // ── gallery 컬렉션 ──────────────────────────────────────
     // - 인증된 유저만 읽기
     // - 쓰기는 관리자만
