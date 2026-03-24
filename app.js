@@ -372,6 +372,10 @@ async function createAccount(name, email, password, role) {
 
 /* ===== ADMIN: 역할 변경 / 계정 삭제 ===== */
 async function updateUserRole(uid, role) {
+  if (state.currentUserRole !== 'superadmin') {
+    alert('역할 변경은 슈퍼관리자만 가능합니다.');
+    return;
+  }
   try {
     await state.db.collection('users').doc(uid).update({ role });
     renderAdmin();
@@ -872,11 +876,15 @@ async function renderAdmin() {
       </div>
       <div class="user-item-actions">
         ${u.role === 'superadmin' ? `
-          <span style="font-size:.82rem;color:#f59e0b;padding:6px 10px">슈퍼관리자</span>` : `
+          <span style="font-size:.82rem;color:#f59e0b;padding:6px 10px">슈퍼관리자</span>
+        ` : isSuperAdmin ? `
           <select class="role-select" onchange="updateUserRole('${u.uid}', this.value)" ${u.uid === state.currentUserId ? 'disabled' : ''}>
             <option value="member" ${u.role === 'member' ? 'selected' : ''}>일반 회원</option>
             <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>관리자</option>
-          </select>`}
+          </select>
+        ` : `
+          <span style="font-size:.82rem;color:var(--text2);padding:6px 10px">${u.role === 'admin' ? '관리자' : '일반 회원'}</span>
+        `}
         ${u.uid !== state.currentUserId && u.role !== 'superadmin' ? `
           <button class="btn btn-sm btn-danger" onclick="deleteUserAccount('${u.uid}')">강퇴</button>` : ''}
       </div>
