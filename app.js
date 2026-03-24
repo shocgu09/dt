@@ -700,7 +700,7 @@ function openMemberDetail(id) {
       <div class="detail-section">
         <h4>내 차</h4>
         <div class="detail-car">
-          <div class="detail-car-img">${m.car.image ? `<img src="${m.car.image}" alt="차량">` : '🚗'}</div>
+          <div class="detail-car-img${m.car.image ? '' : ' no-img'}">${m.car.image ? `<img src="${m.car.image}" alt="차량">` : '🚗'}</div>
           <div class="detail-car-info">
             <div class="detail-car-name">${m.car.brand} ${m.car.model}</div>
             <div class="detail-car-sub">${m.car.year || ''} · ${m.car.color || ''}</div>
@@ -1087,7 +1087,7 @@ function renderCars() {
   }
   grid.innerHTML = drivers.map(m => `
     <div class="car-card" onclick="openMemberDetail('${m.id}')">
-      <div class="car-card-img">${m.car.image ? `<img src="${m.car.image}" alt="${m.car.model}">` : '🚗'}</div>
+      <div class="car-card-img${m.car.image ? '' : ' no-img'}">${m.car.image ? `<img src="${m.car.image}" alt="${m.car.model}">` : '🚗'}</div>
       <div class="car-card-body">
         <div class="car-name" style="display:flex;align-items:center;gap:6px">${brandLogoHtml(m.car.brand, 20)} ${m.car.brand} ${m.car.model}</div>
         <div class="car-year-color">${m.car.year || ''} ${m.car.year && m.car.color ? '·' : ''} ${m.car.color || ''}</div>

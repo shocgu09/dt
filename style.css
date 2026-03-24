@@ -246,6 +246,7 @@ main { padding: 24px 20px; max-width: 1200px; margin: 0 auto; }
   display: flex; align-items: center; justify-content: center;
   font-size: 4rem;
 }
+.car-card-img.no-img { aspect-ratio: unset; height: 80px; font-size: 2.2rem; }
 .car-card-img img { width: 100%; height: 100%; object-fit: cover; }
 .car-card-body { padding: 16px 18px; }
 .car-name { font-size: 1.05rem; font-weight: 700; margin-bottom: 2px; }
@@ -457,6 +458,7 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
   background: linear-gradient(135deg, var(--bg2), #1a1a2e);
   display: flex; align-items: center; justify-content: center; font-size: 5rem;
 }
+.detail-car-img.no-img { aspect-ratio: unset; height: 100px; font-size: 2.8rem; }
 .detail-car-img img { width: 100%; height: 100%; object-fit: contain; background: var(--bg2); }
 .detail-car-info { padding: 16px 18px; }
 .detail-car-name { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
