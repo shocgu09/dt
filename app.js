@@ -160,7 +160,18 @@ function initAuth() {
         state.currentUserRole = 'member';
       }
       showApp();
+      // 실시간 강퇴 감지: 관리자가 disabled/pendingDelete 설정 시 즉시 로그아웃
+      if (state._banListener) state._banListener();
+      state._banListener = state.db.collection('users').doc(user.uid).onSnapshot(snap => {
+        if (!snap.exists) return;
+        const d = snap.data();
+        if (d.disabled || d.pendingDelete) {
+          state.auth.signOut();
+          alert('접근이 차단된 계정입니다. 운영진에게 문의하세요.');
+        }
+      });
     } else {
+      if (state._banListener) { state._banListener(); state._banListener = null; }
       state.currentUser = null;
       state.currentUserRole = null;
       state.currentUserId = null;
@@ -390,59 +401,11 @@ async function updateUserRole(uid, role) {
 }
 
 async function deleteUserAccount(uid) {
-  if (!confirm('정말 탈퇴 처리하시겠습니까?\n해당 계정과 관련된 모든 데이터가 삭제됩니다.')) return;
+  if (!confirm('정말 강퇴 처리하시겠습니까?\n해당 회원은 즉시 차단되며, 다음 접속 시 계정이 완전히 삭제됩니다.')) return;
   try {
-    const FieldValue = firebase.firestore.FieldValue;
-
-    // 1. 회원 프로필 삭제 (members 컬렉션)
-    const myMembers = await state.db.collection('members').where('createdBy', '==', uid).get();
-    for (const doc of myMembers.docs) await doc.ref.delete();
-
-    // 2. 이벤트 투표에서 uid 제거
-    const allEvents = await state.db.collection('events').get();
-    const voteBatch = state.db.batch();
-    allEvents.docs.forEach(doc => {
-      const data = doc.data();
-      const votes = data.votes || {};
-      const quizAnswers = data.quizAnswers || {};
-      const inVotes = [...(votes.attending || []), ...(votes.maybe || []), ...(votes.absent || [])].includes(uid);
-      const inQuiz = uid in quizAnswers;
-      if (inVotes || inQuiz) {
-        const update = {};
-        if (inVotes) {
-          update['votes.attending'] = FieldValue.arrayRemove(uid);
-          update['votes.maybe'] = FieldValue.arrayRemove(uid);
-          update['votes.absent'] = FieldValue.arrayRemove(uid);
-        }
-        if (inQuiz) update[`quizAnswers.${uid}`] = FieldValue.delete();
-        voteBatch.update(doc.ref, update);
-      }
-    });
-    await voteBatch.commit();
-
-    // 3. 갤러리 댓글 삭제
-    const allGallery = await state.db.collection('gallery').get();
-    for (const gDoc of allGallery.docs) {
-      const myComments = await gDoc.ref.collection('comments').where('authorUid', '==', uid).get();
-      if (!myComments.empty) {
-        const cb = state.db.batch();
-        myComments.docs.forEach(c => cb.delete(c.ref));
-        await cb.commit();
-      }
-    }
-
-    // 4. 갤러리 게시물 삭제
-    const myGallery = await state.db.collection('gallery').where('createdBy', '==', uid).get();
-    for (const doc of myGallery.docs) await doc.ref.delete();
-
-    // 5. 이벤트 삭제
-    const myEvents = await state.db.collection('events').where('createdBy', '==', uid).get();
-    for (const doc of myEvents.docs) await doc.ref.delete();
-
-    // 6. users 문서 삭제 (pendingDelete로 마킹 → 다음 로그인 시 Auth도 삭제)
+    // 데이터 삭제는 하지 않음 — 실제 삭제는 해당 유저가 다음 로그인 시 onAuthStateChanged에서 처리
     await state.db.collection('users').doc(uid).update({ pendingDelete: true, disabled: true });
-
-    alert('탈퇴 처리가 완료됐습니다.');
+    alert('강퇴 처리가 완료됐습니다. 해당 회원은 즉시 차단됩니다.');
     renderAdmin();
   } catch (e) {
     alert('오류: ' + e.message);
