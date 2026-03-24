@@ -219,6 +219,17 @@ async function signup(name, email, password) {
       name, email, role,
       createdAt: new Date().toISOString().slice(0, 10),
     });
+    // 회원 프로필 자동 생성 (가입 시 기본값으로)
+    await state.db.collection('members').doc(cred.user.uid).set({
+      name,
+      nickname: '',
+      role: 'passenger',
+      gender: 'male',
+      bio: '',
+      phone: '',
+      createdBy: cred.user.uid,
+      joinDate: new Date().toISOString().slice(0, 10),
+    });
     // 인증 메일 발송 후 로그아웃 (인증 전 앱 진입 차단)
     await cred.user.sendEmailVerification();
     await state.auth.signOut();
@@ -609,10 +620,9 @@ function renderHome() {
 function updateAddMemberBtn() {
   const btn = document.getElementById('btnAddMember');
   if (!btn) return;
-  const alreadyRegistered = state.members.some(m => m.createdBy === state.currentUserId);
-  btn.disabled = alreadyRegistered;
-  btn.title = alreadyRegistered ? '이미 회원 등록이 완료되었습니다.' : '';
-  btn.textContent = alreadyRegistered ? '✅ 등록 완료' : '+ 회원 등록';
+  btn.disabled = false;
+  btn.title = '';
+  btn.textContent = '✏️ 내 프로필 수정';
 }
 
 function renderMembers() {
@@ -726,6 +736,9 @@ async function saveMyAccount(e) {
     await state.db.collection('users').doc(state.currentUserId).update({ name });
     // Auth displayName 업데이트
     await state.currentUser.updateProfile({ displayName: name });
+    // members 프로필 이름도 동기화
+    const memberSnap = await state.db.collection('members').where('createdBy', '==', state.currentUserId).get();
+    if (!memberSnap.empty) await memberSnap.docs[0].ref.update({ name });
     // 비밀번호 변경 (입력한 경우만)
     if (password) await state.currentUser.updatePassword(password);
     // 네비바 이름 갱신
@@ -744,13 +757,23 @@ async function saveMyAccount(e) {
 }
 
 function openAddMember() {
-  document.getElementById('memberModalTitle').textContent = '회원 등록';
+  const myMember = state.members.find(m => m.createdBy === state.currentUserId);
+  if (myMember) {
+    // 이미 프로필이 있으면 수정 모달 열기
+    openEditMember(myMember.id);
+    return;
+  }
+  // 기존 유저(가입 전 자동생성 없던 시절)를 위한 폴백
+  document.getElementById('memberModalTitle').textContent = '프로필 설정';
   document.getElementById('memberForm').reset();
   document.getElementById('memberId').value = '';
   document.getElementById('memberImagePreview').innerHTML = '';
   document.getElementById('carImagePreview').innerHTML = '';
   document.getElementById('btnWithdrawInModal').style.display = 'none';
-  toggleCarSection('driver');
+  // 이름 자동 채우기
+  const myUser = state.users.find(u => u.uid === state.currentUserId);
+  if (myUser) document.getElementById('memberName').value = myUser.name || '';
+  toggleCarSection('passenger');
   renderBrandSelector('');
   openModal('memberModal');
 }
@@ -840,7 +863,16 @@ async function saveMember(e) {
     if (id) {
       await state.db.collection('members').doc(id).set(data, { merge: true });
     } else {
-      await state.db.collection('members').add(data);
+      await state.db.collection('members').doc(state.currentUserId).set(data);
+    }
+
+    // 내 프로필이면 users + auth 이름도 동기화
+    const savedId = id || state.currentUserId;
+    const savedMember = state.members.find(m => m.id === savedId) || { createdBy: state.currentUserId };
+    if (savedMember.createdBy === state.currentUserId) {
+      await state.db.collection('users').doc(state.currentUserId).update({ name: data.name });
+      await state.currentUser.updateProfile({ displayName: data.name });
+      document.getElementById('navUserName').textContent = data.name;
     }
 
     closeModal('memberModal');
