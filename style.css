@@ -805,10 +805,12 @@ main { padding: 24px 20px; max-width: 1200px; margin: 0 auto; }
 
 /* ===== TOAST ===== */
 #appToast {
-  position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px);
+  position: fixed; bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  left: 50%; transform: translateX(-50%) translateY(20px);
   background: var(--bg3); border: 1px solid var(--primary);
   color: var(--text); padding: 12px 20px; border-radius: 12px;
-  font-size: .9rem; font-weight: 500; white-space: nowrap;
+  font-size: .9rem; font-weight: 500;
+  max-width: 88vw; text-align: center; word-break: keep-all;
   box-shadow: 0 4px 20px rgba(0,0,0,.4); opacity: 0;
   transition: opacity .3s, transform .3s; z-index: 9999; pointer-events: none;
 }
