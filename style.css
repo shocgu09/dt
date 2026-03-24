@@ -191,6 +191,7 @@ main { padding: 24px 20px; max-width: 1200px; margin: 0 auto; }
   background: var(--bg2); border: 1px solid var(--border);
   border-radius: var(--card-radius); overflow: hidden;
   transition: var(--transition); cursor: pointer;
+  display: flex; flex-direction: column;
 }
 .member-card:hover { border-color: var(--primary); transform: translateY(-3px); box-shadow: var(--shadow); }
 .member-card-top {
@@ -203,7 +204,7 @@ main { padding: 24px 20px; max-width: 1200px; margin: 0 auto; }
   object-fit: cover; border: 2px solid var(--border);
   background: var(--bg3); flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  font-size: 1.6rem;
+  font-size: 1.4rem; overflow: hidden; line-height: 1;
 }
 .member-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; }
 .member-info { flex: 1; }
@@ -221,8 +222,8 @@ main { padding: 24px 20px; max-width: 1200px; margin: 0 auto; }
 }
 .gender-badge.male { background: rgba(96,165,250,.12); color: #60a5fa; border: 1px solid rgba(96,165,250,.25); }
 .gender-badge.female { background: rgba(244,114,182,.12); color: #f472b6; border: 1px solid rgba(244,114,182,.25); }
-.member-card-body { padding: 16px 20px; }
-.member-bio { font-size: .85rem; color: var(--text2); line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.member-card-body { padding: 16px 20px; flex: 1; }
+.member-bio { font-size: .85rem; color: var(--text2); line-height: 1.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .member-car-tag {
   margin-top: 10px; display: inline-flex; align-items: center; gap: 6px;
   background: var(--bg3); border: 1px solid var(--border);
@@ -238,6 +239,7 @@ main { padding: 24px 20px; max-width: 1200px; margin: 0 auto; }
   background: var(--bg2); border: 1px solid var(--border);
   border-radius: var(--card-radius); overflow: hidden;
   transition: var(--transition); cursor: pointer;
+  display: flex; flex-direction: column;
 }
 .car-card:hover { border-color: var(--primary); transform: translateY(-3px); box-shadow: var(--shadow); }
 .car-card-img {
@@ -247,13 +249,13 @@ main { padding: 24px 20px; max-width: 1200px; margin: 0 auto; }
   font-size: 4rem;
 }
 .car-card-img img { width: 100%; height: 100%; object-fit: cover; }
-.car-card-body { padding: 16px 18px; }
+.car-card-body { padding: 16px 18px; flex: 1; display: flex; flex-direction: column; }
 .car-name { font-size: 1.05rem; font-weight: 700; margin-bottom: 2px; }
 .car-year-color { font-size: .82rem; color: var(--text2); margin-bottom: 8px; }
-.car-desc { font-size: .84rem; color: var(--text2); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.car-desc { font-size: .84rem; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px; }
 .car-owner {
   display: flex; align-items: center; gap: 8px;
-  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
+  margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border);
 }
 .car-owner-avatar {
   width: 28px; height: 28px; border-radius: 50%;
