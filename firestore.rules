@@ -98,6 +98,26 @@ service cloud.firestore {
       }
     }
 
+    // ── dms 컬렉션 ──────────────────────────────────────────
+    // - 참여자만 읽기/쓰기 가능
+    match /dms/{convId} {
+      allow read, update: if isAuth()
+        && request.auth.uid in resource.data.participants;
+      allow create: if isAuth()
+        && request.auth.uid in request.resource.data.participants
+        && request.resource.data.participants.size() == 2;
+
+      match /messages/{msgId} {
+        allow read: if isAuth()
+          && request.auth.uid in
+            get(/databases/$(database)/documents/dms/$(convId)).data.participants;
+        allow create: if isAuth()
+          && request.resource.data.senderId == request.auth.uid
+          && request.auth.uid in
+            get(/databases/$(database)/documents/dms/$(convId)).data.participants;
+      }
+    }
+
     // ── blacklist 컬렉션 ─────────────────────────────────────
     // - 회원가입 시 이메일 체크는 비인증 상태에서도 필요하므로 read는 전체 허용
     // - 쓰기(추가·삭제)는 관리자만

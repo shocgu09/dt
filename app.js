@@ -92,6 +92,11 @@ const state = {
   openEventComments: new Set(),
   eventCommentUnsubs: {},
   eventCommentData: {},
+  dms: [],
+  _dmUnsub: null,
+  _dmMsgUnsub: null,
+  _activeDMConvId: null,
+  _activeDMOtherUid: null,
 };
 
 /* ===== FIREBASE INIT ===== */
@@ -197,6 +202,7 @@ function showApp() {
   if (!state.subscribed) {
     state.subscribed = true;
     subscribeAll();
+    initDMs();
     // 공지 팝업 체크
     checkAndShowNotice();
     // 회원 프로필 미등록 시 안내 토스트
@@ -1016,6 +1022,7 @@ function renderMembers() {
       </div>
       <div class="member-card-footer">
         <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openMemberDetail('${m.id}')">상세보기</button>
+        ${m.createdBy && m.createdBy !== state.currentUserId ? `<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openDMChat('${m.createdBy}')">💬 DM</button>` : ''}
         ${canEdit(m) ? `
           <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openEditMember('${m.id}')">수정</button>
           <button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="event.stopPropagation();deleteMember('${m.id}')">삭제</button>
@@ -2077,6 +2084,178 @@ async function revealQuizAndDraw(evId) {
   }
 }
 
+/* ===== DM (Direct Messages) ===== */
+function initDMs() {
+  const uid = state.currentUserId;
+  if (!uid) return;
+  if (state._dmUnsub) state._dmUnsub();
+  state._dmUnsub = state.db.collection('dms')
+    .where('participants', 'array-contains', uid)
+    .orderBy('lastAt', 'desc')
+    .onSnapshot(snap => {
+      state.dms = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      updateDMBadge();
+      if (document.getElementById('dmPanel').classList.contains('open')) renderDMList();
+    }, () => {});
+}
+
+function updateDMBadge() {
+  const uid = state.currentUserId;
+  const total = state.dms.reduce((sum, c) => sum + ((c.unread || {})[uid] || 0), 0);
+  const badge = document.getElementById('dmUnreadBadge');
+  if (!badge) return;
+  badge.textContent = total > 99 ? '99+' : total;
+  badge.style.display = total > 0 ? '' : 'none';
+}
+
+function openDMPanel() {
+  document.getElementById('dmPanel').classList.add('open');
+  document.getElementById('dmPanelOverlay').classList.add('open');
+  renderDMList();
+}
+
+function closeDMPanel() {
+  document.getElementById('dmPanel').classList.remove('open');
+  document.getElementById('dmPanelOverlay').classList.remove('open');
+}
+
+function renderDMList() {
+  const uid = state.currentUserId;
+  const list = document.getElementById('dmPanelList');
+  if (!state.dms.length) {
+    list.innerHTML = '<div style="padding:32px 20px;text-align:center;color:var(--text3);font-size:.88rem">대화 내역이 없습니다<br><span style="font-size:.8rem">회원 카드에서 DM을 시작하세요</span></div>';
+    return;
+  }
+  list.innerHTML = state.dms.map(conv => {
+    const otherUid = conv.participants.find(p => p !== uid);
+    const other = state.users.find(u => u.uid === otherUid);
+    const name = other?.name || '알 수 없음';
+    const unread = (conv.unread || {})[uid] || 0;
+    const lastMsg = conv.lastMessage || '';
+    const lastAt = conv.lastAt ? (() => {
+      const d = conv.lastAt.toDate ? conv.lastAt.toDate() : new Date(conv.lastAt);
+      const now = new Date();
+      const isToday = d.toDateString() === now.toDateString();
+      return isToday ? d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
+    })() : '';
+    return `
+      <div class="dm-conv-item" onclick="openDMChat('${otherUid}')">
+        <div class="mini-avatar dm-conv-avatar">${avatarEl({ name, image: other?.image || null, gender: other?.gender || 'male' })}</div>
+        <div class="dm-conv-info">
+          <div class="dm-conv-name">${escapeHtml(name)}${titleBadge(other?.title)}</div>
+          <div class="dm-conv-last">${escapeHtml(lastMsg.length > 28 ? lastMsg.slice(0, 28) + '…' : lastMsg)}</div>
+        </div>
+        <div class="dm-conv-meta">
+          <div class="dm-conv-time">${lastAt}</div>
+          ${unread > 0 ? `<div class="dm-unread-dot">${unread}</div>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function openDMChat(otherUid) {
+  const uid = state.currentUserId;
+  if (!uid || otherUid === uid) return;
+
+  const convId = [uid, otherUid].sort().join('_');
+  state._activeDMConvId = convId;
+  state._activeDMOtherUid = otherUid;
+
+  const other = state.users.find(u => u.uid === otherUid);
+  const name = other?.name || '알 수 없음';
+  document.getElementById('dmChatTitle').innerHTML = `💬 ${escapeHtml(name)}${titleBadge(other?.title)}`;
+  document.getElementById('dmMessages').innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:.84rem">로딩 중…</div>';
+
+  openModal('dmChatModal');
+  closeDMPanel();
+
+  // 읽음 처리
+  state.db.collection('dms').doc(convId).set({
+    participants: [uid, otherUid],
+    [`unread.${uid}`]: 0
+  }, { merge: true }).catch(() => {});
+
+  // 메시지 실시간 구독
+  if (state._dmMsgUnsub) state._dmMsgUnsub();
+  state._dmMsgUnsub = state.db.collection('dms').doc(convId).collection('messages')
+    .orderBy('createdAt', 'asc')
+    .onSnapshot(snap => {
+      renderDMMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })), uid);
+    }, () => {});
+}
+
+function closeDMChat() {
+  if (state._dmMsgUnsub) { state._dmMsgUnsub(); state._dmMsgUnsub = null; }
+  state._activeDMConvId = null;
+  state._activeDMOtherUid = null;
+  closeModal('dmChatModal');
+}
+
+function renderDMMessages(msgs, myUid) {
+  const container = document.getElementById('dmMessages');
+  if (!msgs.length) {
+    container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:.84rem">아직 메시지가 없습니다.<br>첫 메시지를 보내보세요!</div>';
+    return;
+  }
+  let html = '';
+  let lastDate = '';
+  msgs.forEach(msg => {
+    const isMe = msg.senderId === myUid;
+    const d = msg.createdAt ? (msg.createdAt.toDate ? msg.createdAt.toDate() : new Date(msg.createdAt)) : new Date();
+    const dateStr = d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+    if (dateStr !== lastDate) {
+      html += `<div class="dm-date-sep">${dateStr}</div>`;
+      lastDate = dateStr;
+    }
+    const time = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+    html += `<div class="dm-msg ${isMe ? 'dm-msg-me' : 'dm-msg-other'}">
+      <div class="dm-bubble">${escapeHtml(msg.text)}</div>
+      <div class="dm-time">${time}</div>
+    </div>`;
+  });
+  container.innerHTML = html;
+  container.scrollTop = container.scrollHeight;
+}
+
+async function sendDMMessage() {
+  const input = document.getElementById('dmInput');
+  const text = input.value.trim();
+  if (!text) return;
+  const convId = state._activeDMConvId;
+  const uid = state.currentUserId;
+  const otherUid = state._activeDMOtherUid;
+  if (!convId || !uid || !otherUid) return;
+
+  input.value = '';
+  const FieldValue = firebase.firestore.FieldValue;
+
+  try {
+    await state.db.collection('dms').doc(convId).collection('messages').add({
+      senderId: uid,
+      text,
+      createdAt: FieldValue.serverTimestamp()
+    });
+    const convSnap = await state.db.collection('dms').doc(convId).get();
+    if (convSnap.exists) {
+      await state.db.collection('dms').doc(convId).update({
+        lastMessage: text,
+        lastAt: FieldValue.serverTimestamp(),
+        [`unread.${otherUid}`]: FieldValue.increment(1),
+        [`unread.${uid}`]: 0
+      });
+    } else {
+      await state.db.collection('dms').doc(convId).set({
+        participants: [uid, otherUid],
+        lastMessage: text,
+        lastAt: FieldValue.serverTimestamp(),
+        unread: { [otherUid]: 1, [uid]: 0 }
+      });
+    }
+  } catch (err) {
+    alert('전송 실패: ' + err.message);
+  }
+}
+
 /* ===== IMAGE 압축 (base64 → Firestore 직접 저장) ===== */
 function compressImage(file, maxSize, quality) {
   return new Promise(resolve => {
@@ -2563,6 +2742,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ⑦ Firebase 초기화 및 Auth 감지
+  document.getElementById('dmInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendDMMessage(); }
+  });
+
   // 초기 URL 해시로 페이지 복원
   const initPage = location.hash.replace('#', '') || 'home';
   const validPages = ['home', 'members', 'cars', 'events', 'gallery', 'admin'];

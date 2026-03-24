@@ -45,6 +45,7 @@
       <span class="nav-user-name" id="navUserName"></span>
       <span class="admin-badge hidden" id="navAdminBadge">관리자</span>
       <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="테마 변경">🌙</button>
+      <button class="btn btn-sm btn-outline dm-nav-btn" id="btnDM" onclick="openDMPanel()">💬<span class="dm-unread-badge" id="dmUnreadBadge" style="display:none">0</span></button>
       <button class="btn btn-sm btn-outline" id="btnMyProfile">내 정보</button>
       <button class="btn btn-sm btn-outline" id="btnLogout">로그아웃</button>
     </div>
@@ -731,6 +732,31 @@
             <button type="submit" class="btn btn-primary">저장</button>
           </div>
         </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- DM Panel -->
+  <div class="dm-panel" id="dmPanel">
+    <div class="dm-panel-header">
+      <h3 style="font-size:1rem;font-weight:700">💬 메시지</h3>
+      <button style="background:none;border:none;color:var(--text2);font-size:1.2rem;cursor:pointer;padding:4px 8px" onclick="closeDMPanel()">✕</button>
+    </div>
+    <div class="dm-panel-list" id="dmPanelList"></div>
+  </div>
+  <div class="dm-panel-overlay" id="dmPanelOverlay" onclick="closeDMPanel()"></div>
+
+  <!-- DM Chat Modal -->
+  <div class="modal-overlay" id="dmChatModal">
+    <div class="modal dm-chat-modal">
+      <div class="modal-header">
+        <h3 id="dmChatTitle">대화</h3>
+        <button class="modal-close" onclick="closeDMChat()">×</button>
+      </div>
+      <div class="dm-messages" id="dmMessages"></div>
+      <div class="dm-input-area">
+        <input id="dmInput" placeholder="메시지를 입력하세요…" autocomplete="off">
+        <button class="btn btn-sm btn-primary" onclick="sendDMMessage()">전송</button>
       </div>
     </div>
   </div>
