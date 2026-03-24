@@ -554,8 +554,6 @@ function renderPage(name) {
 }
 
 /* ===== NOTICE POPUP ===== */
-let _noticeSelectedColor = '#e8711a';
-
 async function checkAndShowNotice() {
   try {
     const doc = await state.db.collection('notices').doc('main').get();
@@ -574,7 +572,6 @@ function showNoticePopup(n) {
   sub.textContent = n.subtitle || '';
   sub.style.display = n.subtitle ? '' : 'none';
   document.getElementById('noticePopupContent').textContent = n.content || '';
-  document.getElementById('noticePopupHeader').style.background = n.color || '#e8711a';
   document.getElementById('noticeSkipToday').checked = false;
   document.getElementById('noticePopup').style.display = 'flex';
   document.getElementById('noticePopup')._noticeKey = 'noticeSkip_' + (n.updatedAt || 'v1');
@@ -598,10 +595,6 @@ async function renderAdminNotice() {
     document.getElementById('noticeSubtitle').value = n.subtitle || '';
     document.getElementById('noticeContent').value = n.content || '';
     document.getElementById('noticeActive').checked = !!n.active;
-    _noticeSelectedColor = n.color || '#e8711a';
-    document.querySelectorAll('.notice-color-btn').forEach(btn => {
-      btn.classList.toggle('selected', btn.dataset.color === _noticeSelectedColor);
-    });
   } catch(e) {}
 }
 
@@ -612,7 +605,6 @@ async function saveNotice() {
     title,
     subtitle: document.getElementById('noticeSubtitle').value.trim(),
     content: document.getElementById('noticeContent').value.trim(),
-    color: _noticeSelectedColor,
     active: document.getElementById('noticeActive').checked,
     updatedAt: new Date().toISOString().slice(0, 16),
   };
@@ -629,7 +621,6 @@ function previewNotice() {
     title,
     subtitle: document.getElementById('noticeSubtitle').value.trim(),
     content: document.getElementById('noticeContent').value.trim(),
-    color: _noticeSelectedColor,
     updatedAt: '__preview__',
   });
 }
@@ -638,14 +629,6 @@ function previewNotice() {
 async function renderAdmin() {
   if (state.currentUserRole !== 'admin') return;
   renderAdminNotice();
-  // 색상 버튼 이벤트 (한 번만 등록)
-  document.querySelectorAll('.notice-color-btn').forEach(btn => {
-    btn.onclick = () => {
-      _noticeSelectedColor = btn.dataset.color;
-      document.querySelectorAll('.notice-color-btn').forEach(b => b.classList.remove('selected'));
-      btn.classList.add('selected');
-    };
-  });
   const snap = await state.db.collection('users').orderBy('createdAt', 'asc').get();
   const users = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
   const list = document.getElementById('userList');
