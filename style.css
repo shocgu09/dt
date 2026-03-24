@@ -802,3 +802,14 @@ main { padding: 24px 20px; max-width: 1200px; margin: 0 auto; }
   .page-header { flex-wrap: wrap; gap: 8px; }
   .page-header h2 { font-size: 1.3rem; }
 }
+
+/* ===== TOAST ===== */
+#appToast {
+  position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px);
+  background: var(--bg3); border: 1px solid var(--primary);
+  color: var(--text); padding: 12px 20px; border-radius: 12px;
+  font-size: .9rem; font-weight: 500; white-space: nowrap;
+  box-shadow: 0 4px 20px rgba(0,0,0,.4); opacity: 0;
+  transition: opacity .3s, transform .3s; z-index: 9999; pointer-events: none;
+}
+#appToast.show { opacity: 1; transform: translateX(-50%) translateY(0); }

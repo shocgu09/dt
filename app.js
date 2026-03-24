@@ -187,7 +187,25 @@ function showApp() {
   if (!state.subscribed) {
     state.subscribed = true;
     subscribeAll();
+    // 회원 프로필 미등록 시 안내 토스트
+    state.db.collection('members').where('createdBy', '==', state.currentUserId).limit(1).get().then(snap => {
+      if (snap.empty) showToast('👋 환영합니다! 회원 탭에서 프로필을 등록해주세요.', 6000);
+    });
   }
+}
+
+function showToast(msg, duration = 3000) {
+  const existing = document.getElementById('appToast');
+  if (existing) existing.remove();
+  const el = document.createElement('div');
+  el.id = 'appToast';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  setTimeout(() => {
+    el.classList.remove('show');
+    setTimeout(() => el.remove(), 400);
+  }, duration);
 }
 
 function showLoginScreen() {
