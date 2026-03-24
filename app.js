@@ -2169,11 +2169,21 @@ async function openDMChat(otherUid) {
   openModal('dmChatModal');
   closeDMPanel();
 
-  // 읽음 처리
-  state.db.collection('dms').doc(convId).set({
-    participants: [uid, otherUid],
-    [`unread.${uid}`]: 0
-  }, { merge: true }).catch(() => {});
+  // 대화방 문서 생성 또는 읽음 처리 (메시지 구독 전에 반드시 완료)
+  const convRef = state.db.collection('dms').doc(convId);
+  try {
+    const convSnap = await convRef.get();
+    if (!convSnap.exists) {
+      await convRef.set({
+        participants: [uid, otherUid],
+        lastMessage: '',
+        lastAt: firebase.firestore.FieldValue.serverTimestamp(),
+        unread: { [uid]: 0, [otherUid]: 0 }
+      });
+    } else {
+      await convRef.update({ [`unread.${uid}`]: 0 });
+    }
+  } catch(e) {}
 
   // 메시지 실시간 구독
   if (state._dmMsgUnsub) state._dmMsgUnsub();
@@ -2228,30 +2238,22 @@ async function sendDMMessage() {
 
   input.value = '';
   const FieldValue = firebase.firestore.FieldValue;
+  const convRef = state.db.collection('dms').doc(convId);
 
   try {
-    await state.db.collection('dms').doc(convId).collection('messages').add({
+    await convRef.collection('messages').add({
       senderId: uid,
       text,
       createdAt: FieldValue.serverTimestamp()
     });
-    const convSnap = await state.db.collection('dms').doc(convId).get();
-    if (convSnap.exists) {
-      await state.db.collection('dms').doc(convId).update({
-        lastMessage: text,
-        lastAt: FieldValue.serverTimestamp(),
-        [`unread.${otherUid}`]: FieldValue.increment(1),
-        [`unread.${uid}`]: 0
-      });
-    } else {
-      await state.db.collection('dms').doc(convId).set({
-        participants: [uid, otherUid],
-        lastMessage: text,
-        lastAt: FieldValue.serverTimestamp(),
-        unread: { [otherUid]: 1, [uid]: 0 }
-      });
-    }
+    await convRef.update({
+      lastMessage: text,
+      lastAt: FieldValue.serverTimestamp(),
+      [`unread.${otherUid}`]: FieldValue.increment(1),
+      [`unread.${uid}`]: 0
+    });
   } catch (err) {
+    input.value = text;
     alert('전송 실패: ' + err.message);
   }
 }
