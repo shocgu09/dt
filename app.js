@@ -1920,7 +1920,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => closeModal(btn.dataset.modal || btn.closest('.modal-overlay')?.id));
   });
   // 폼 모달은 외부 클릭으로 닫히지 않음 (데이터 손실 방지)
-  const formModals = new Set(['memberModal', 'eventModal', 'galleryFormModal', 'myAccountModal', 'inviteModal']);
+  const formModals = new Set(['memberModal', 'eventModal', 'galleryFormModal', 'myAccountModal', 'inviteModal', 'noticeEditModal']);
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
     if (formModals.has(overlay.id)) return;
     overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(overlay.id); });
