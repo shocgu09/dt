@@ -556,11 +556,13 @@ function renderPage(name) {
 /* ===== NOTICE POPUP ===== */
 let _noticeQueue = [];
 let _noticeQueueIdx = 0;
+let _noticeDragSrcId = null;
 
 async function checkAndShowNotice() {
   try {
-    const snap = await state.db.collection('notices').orderBy('createdAt', 'asc').get();
+    const snap = await state.db.collection('notices').get();
     const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    all.sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
     _noticeQueue = all.filter(n => {
       if (!n.active) return false;
       const skipKey = 'noticeSkip_' + n.id + '_' + (n.updatedAt || 'v1');
@@ -606,28 +608,78 @@ async function renderAdminNotice() {
   const list = document.getElementById('noticeList');
   if (!list) return;
   try {
-    const snap = await state.db.collection('notices').orderBy('createdAt', 'asc').get();
+    const snap = await state.db.collection('notices').get();
     if (snap.empty) {
       list.innerHTML = '<div class="empty-state" style="padding:20px 0;font-size:.88rem">등록된 공지가 없습니다</div>';
       return;
     }
-    list.innerHTML = snap.docs.map(d => {
-      const n = d.data();
-      return `
-        <div class="notice-list-item">
+    const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    docs.sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
+    list.innerHTML = docs.map(n => `
+        <div class="notice-list-item" draggable="true" data-id="${n.id}"
+          ondragstart="onNoticeDragStart(event,'${n.id}')"
+          ondragend="onNoticeDragEnd(event)"
+          ondragover="onNoticeDragOver(event)"
+          ondrop="onNoticeDrop(event,'${n.id}')">
+          <span class="notice-drag-handle" title="드래그하여 순서 변경">⠿</span>
           <div class="notice-list-info">
             <span class="notice-list-badge ${n.active ? 'on' : 'off'}">${n.active ? '활성' : '비활성'}</span>
             <span class="notice-list-title">${escapeHtml(n.title)}</span>
           </div>
           <div class="notice-list-actions">
-            <button class="btn btn-sm btn-outline" onclick="openNoticeModal('${d.id}')">수정</button>
-            <button class="btn btn-sm btn-danger" onclick="deleteNotice('${d.id}')">삭제</button>
+            <button class="btn btn-sm btn-outline" onclick="openNoticeModal('${n.id}')">수정</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteNotice('${n.id}')">삭제</button>
           </div>
-        </div>`;
-    }).join('');
+        </div>`).join('');
   } catch(e) {
     list.innerHTML = '<div class="empty-state">불러오기 실패</div>';
   }
+}
+
+function onNoticeDragStart(e, id) {
+  _noticeDragSrcId = id;
+  e.dataTransfer.effectAllowed = 'move';
+  setTimeout(() => e.target.classList.add('dragging'), 0);
+}
+
+function onNoticeDragEnd(e) {
+  e.target.classList.remove('dragging');
+  document.querySelectorAll('#noticeList .notice-list-item').forEach(el => el.classList.remove('drag-over'));
+}
+
+function onNoticeDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  if (e.currentTarget.dataset.id === _noticeDragSrcId) return;
+  document.querySelectorAll('#noticeList .notice-list-item').forEach(el => el.classList.remove('drag-over'));
+  e.currentTarget.classList.add('drag-over');
+}
+
+async function onNoticeDrop(e, id) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  if (_noticeDragSrcId === id) return;
+
+  const list = document.getElementById('noticeList');
+  const items = [...list.querySelectorAll('.notice-list-item')];
+  const srcEl = items.find(el => el.dataset.id === _noticeDragSrcId);
+  const tgtEl = e.currentTarget;
+
+  const srcIdx = items.indexOf(srcEl);
+  const tgtIdx = items.indexOf(tgtEl);
+  if (srcIdx < tgtIdx) tgtEl.after(srcEl);
+  else tgtEl.before(srcEl);
+
+  const newOrder = [...list.querySelectorAll('.notice-list-item')].map(el => el.dataset.id);
+  await saveNoticeOrder(newOrder);
+}
+
+async function saveNoticeOrder(orderedIds) {
+  const batch = state.db.batch();
+  orderedIds.forEach((id, idx) => {
+    batch.update(state.db.collection('notices').doc(id), { order: idx });
+  });
+  await batch.commit();
 }
 
 function openNoticeModal(id) {

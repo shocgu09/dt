@@ -916,3 +916,7 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 .notice-list-title { font-size: .88rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .notice-list-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .notice-counter { font-size: .8rem; color: var(--text3); font-weight: 600; }
+.notice-drag-handle { cursor: grab; color: var(--text3); font-size: 1.1rem; flex-shrink: 0; padding: 0 2px; user-select: none; }
+.notice-drag-handle:active { cursor: grabbing; }
+.notice-list-item.dragging { opacity: 0.4; }
+.notice-list-item.drag-over { border-color: var(--primary); background: rgba(108,99,255,.1); transform: scale(1.01); }
