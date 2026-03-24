@@ -2091,12 +2091,17 @@ function initDMs() {
   if (state._dmUnsub) state._dmUnsub();
   state._dmUnsub = state.db.collection('dms')
     .where('participants', 'array-contains', uid)
-    .orderBy('lastAt', 'desc')
     .onSnapshot(snap => {
-      state.dms = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      state.dms = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => {
+          const at = a.lastAt?.toDate?.() || new Date(a.lastAt || 0);
+          const bt = b.lastAt?.toDate?.() || new Date(b.lastAt || 0);
+          return bt - at;
+        });
       updateDMBadge();
       if (document.getElementById('dmPanel').classList.contains('open')) renderDMList();
-    }, () => {});
+    }, err => console.error('DM 구독 오류:', err));
 }
 
 function updateDMBadge() {
@@ -2191,7 +2196,7 @@ async function openDMChat(otherUid) {
     .orderBy('createdAt', 'asc')
     .onSnapshot(snap => {
       renderDMMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })), uid);
-    }, () => {});
+    }, err => console.error('DM 메시지 구독 오류:', err));
 }
 
 function closeDMChat() {
