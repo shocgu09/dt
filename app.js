@@ -770,6 +770,8 @@ function openAddMember() {
   document.getElementById('memberId').value = '';
   document.getElementById('memberImagePreview').innerHTML = '';
   document.getElementById('carImagePreview').innerHTML = '';
+  document.getElementById('memberImage')._croppedData = null; document.getElementById('memberImage')._deleted = false;
+  document.getElementById('carImage')._croppedData = null; document.getElementById('carImage')._deleted = false;
   document.getElementById('btnWithdrawInModal').style.display = 'none';
   // 회원가입 시 입력한 이름 자동 채우기 (수정 불가)
   const myUser = state.users.find(u => u.uid === state.currentUserId);
@@ -810,18 +812,11 @@ function openEditMember(id) {
     document.getElementById('carColor').value = m.car.color || '';
     document.getElementById('carDesc').value = m.car.desc || '';
   }
-  const preview = document.getElementById('memberImagePreview');
-  if (m.image) {
-    preview.innerHTML = `<img src="${m.image}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid var(--border)"><span style="font-size:.78rem;color:var(--text3);margin-left:8px;vertical-align:middle">현재 사진 · 새 파일 선택 시 교체됩니다</span>`;
-  } else {
-    preview.innerHTML = '';
-  }
-  const carPreview = document.getElementById('carImagePreview');
-  if (m.car?.image) {
-    carPreview.innerHTML = `<img src="${m.car.image}" style="width:80px;height:56px;border-radius:8px;object-fit:cover;border:2px solid var(--border)"><span style="font-size:.78rem;color:var(--text3);margin-left:8px;vertical-align:middle">현재 사진 · 새 파일 선택 시 교체됩니다</span>`;
-  } else {
-    carPreview.innerHTML = '';
-  }
+  document.getElementById('memberImagePreview').innerHTML = m.image ? profilePreviewHtml(m.image, false) : '';
+  document.getElementById('carImagePreview').innerHTML = m.car?.image ? carPreviewHtml(m.car.image, false) : '';
+  // 삭제 플래그 초기화
+  document.getElementById('memberImage')._deleted = false;
+  document.getElementById('carImage')._deleted = false;
   openModal('memberModal');
 }
 
@@ -836,14 +831,11 @@ async function saveMember(e) {
     const role = document.getElementById('memberRole').value;
     const existing = id ? state.members.find(x => x.id === id) : null;
 
-    const memberCropped = document.getElementById('memberImage')._croppedData;
-    const carCropped = document.getElementById('carImage')._croppedData;
+    const memberEl = document.getElementById('memberImage');
+    const carEl = document.getElementById('carImage');
 
-    let memberImg = existing?.image || null;
-    let carImg = existing?.car?.image || null;
-
-    if (memberCropped) memberImg = memberCropped;
-    if (carCropped) carImg = carCropped;
+    let memberImg = memberEl._deleted ? null : (memberEl._croppedData || existing?.image || null);
+    let carImg = carEl._deleted ? null : (carEl._croppedData || existing?.car?.image || null);
 
     const data = {
       name: document.getElementById('memberName').value.trim(),
@@ -1242,9 +1234,8 @@ function openEditEvent(id) {
     });
     updateQuizAnswerSelect();
     document.getElementById('quizAnswer').value = ev.quizAnswer ?? 0;
-    if (ev.quizPhoto) {
-      document.getElementById('quizPhotoPreview').innerHTML = `<img src="${ev.quizPhoto}" style="max-width:100%;max-height:160px;border-radius:8px;margin-top:6px">`;
-    }
+    document.getElementById('quizPhotoPreview').innerHTML = ev.quizPhoto ? quizPreviewHtml(ev.quizPhoto) : '';
+    document.getElementById('quizPhoto')._deleted = false;
   }
   openModal('eventModal');
 }
@@ -1284,8 +1275,8 @@ async function saveEvent(e) {
       data.quizAnswers = existing?.quizAnswers || {};
       data.quizRevealed = existing?.quizRevealed || false;
       data.quizWinner = existing?.quizWinner || null;
-      const quizCropped = document.getElementById('quizPhoto')._croppedData;
-      data.quizPhoto = quizCropped || existing?.quizPhoto || null;
+      const quizEl = document.getElementById('quizPhoto');
+      data.quizPhoto = quizEl._deleted ? null : (quizEl._croppedData || existing?.quizPhoto || null);
     }
     if (id) {
       await state.db.collection('events').doc(id).set(data, { merge: true });
@@ -1642,6 +1633,43 @@ function closeCropModal() {
   document.getElementById('cropModal').style.display = 'none';
 }
 
+/* ===== 사진 미리보기 헬퍼 ===== */
+function profilePreviewHtml(src, isNew) {
+  const label = isNew ? '선택된 새 사진' : '현재 사진 · 새 파일 선택 시 교체됩니다';
+  return `<div class="preview-inline">
+    <div class="preview-thumb-wrap">
+      <img src="${src}" class="preview-thumb-profile">
+      <button type="button" class="preview-thumb-del" onclick="clearPhotoPreview('memberImage','memberImagePreview')">✕</button>
+    </div>
+    <span class="preview-label">${label}</span>
+  </div>`;
+}
+
+function carPreviewHtml(src, isNew) {
+  const label = isNew ? '선택된 새 사진' : '현재 사진 · 새 파일 선택 시 교체됩니다';
+  return `<div class="preview-inline">
+    <div class="preview-thumb-wrap">
+      <img src="${src}" class="preview-thumb-34">
+      <button type="button" class="preview-thumb-del" onclick="clearPhotoPreview('carImage','carImagePreview')">✕</button>
+    </div>
+    <span class="preview-label">${label}</span>
+  </div>`;
+}
+
+function quizPreviewHtml(src) {
+  return `<div class="preview-thumb-wrap" style="display:inline-block;margin-top:6px">
+    <img src="${src}" class="preview-thumb-quiz">
+    <button type="button" class="preview-thumb-del" onclick="clearPhotoPreview('quizPhoto','quizPhotoPreview')">✕</button>
+  </div>`;
+}
+
+function clearPhotoPreview(inputId, previewId) {
+  const el = document.getElementById(inputId);
+  el._croppedData = null;
+  el._deleted = true;
+  document.getElementById(previewId).innerHTML = '';
+}
+
 function addGalleryPreview(dataUrl) {
   const preview = document.getElementById('galleryPhotoPreview');
   const wrap = document.createElement('div');
@@ -1771,7 +1799,8 @@ document.addEventListener('DOMContentLoaded', () => {
     e.target.value = '';
     openCropModal(file, 1, dataUrl => {
       document.getElementById('memberImage')._croppedData = dataUrl;
-      document.getElementById('memberImagePreview').innerHTML = `<img src="${dataUrl}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid var(--border)"><span style="font-size:.78rem;color:var(--text3);margin-left:8px;vertical-align:middle">선택된 새 사진</span>`;
+      document.getElementById('memberImage')._deleted = false;
+      document.getElementById('memberImagePreview').innerHTML = profilePreviewHtml(dataUrl, true);
     });
   });
   document.getElementById('carImage').addEventListener('change', e => {
@@ -1780,7 +1809,8 @@ document.addEventListener('DOMContentLoaded', () => {
     e.target.value = '';
     openCropModal(file, 3/4, dataUrl => {
       document.getElementById('carImage')._croppedData = dataUrl;
-      document.getElementById('carImagePreview').innerHTML = `<img src="${dataUrl}" style="width:80px;height:56px;border-radius:8px;object-fit:cover;border:2px solid var(--border)"><span style="font-size:.78rem;color:var(--text3);margin-left:8px;vertical-align:middle">선택된 새 사진</span>`;
+      document.getElementById('carImage')._deleted = false;
+      document.getElementById('carImagePreview').innerHTML = carPreviewHtml(dataUrl, true);
     });
   });
 
@@ -1805,7 +1835,8 @@ document.addEventListener('DOMContentLoaded', () => {
     e.target.value = '';
     openCropModal(file, 3/4, dataUrl => {
       document.getElementById('quizPhoto')._croppedData = dataUrl;
-      document.getElementById('quizPhotoPreview').innerHTML = `<img src="${dataUrl}" style="max-width:100%;max-height:160px;border-radius:8px;margin-top:6px">`;
+      document.getElementById('quizPhoto')._deleted = false;
+      document.getElementById('quizPhotoPreview').innerHTML = quizPreviewHtml(dataUrl);
     });
   });
 

@@ -624,6 +624,13 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 .gallery-photo-preview { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .preview-photo-wrap { position: relative; }
 .preview-photo { width: 56px; aspect-ratio: 3/4; object-fit: cover; border-radius: 8px; }
+.preview-inline { display: inline-flex; align-items: center; gap: 10px; margin-top: 8px; }
+.preview-label { font-size: .78rem; color: var(--text3); }
+.preview-thumb-wrap { position: relative; display: inline-block; flex-shrink: 0; }
+.preview-thumb-profile { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; border: 2px solid var(--border); display: block; }
+.preview-thumb-34 { width: 60px; aspect-ratio: 3/4; border-radius: 8px; object-fit: cover; border: 2px solid var(--border); display: block; }
+.preview-thumb-quiz { width: 100%; max-width: 240px; aspect-ratio: 3/4; border-radius: 8px; object-fit: cover; border: 2px solid var(--border); display: block; }
+.preview-thumb-del { position: absolute; top: -6px; right: -6px; background: var(--accent); color: #fff; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: .65rem; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 1; }
 .preview-photo-del { position: absolute; top: -6px; right: -6px; background: var(--accent); color: #fff; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: .65rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .modal-wide { max-width: 700px; }
 .lightbox { position: fixed; inset: 0; background: rgba(0,0,0,.92); z-index: 9999; display: none; align-items: center; justify-content: center; }
