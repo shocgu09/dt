@@ -899,3 +899,20 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 }
 .notice-color-btn:hover { transform: scale(1.15); }
 .notice-color-btn.selected { border-color: #fff; box-shadow: 0 0 0 2px var(--primary); }
+
+/* ===== NOTICE LIST (admin) ===== */
+.notice-list-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-radius: 10px; background: var(--bg3);
+  border: 1px solid var(--border); margin-bottom: 8px; gap: 10px;
+}
+.notice-list-info { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.notice-list-badge {
+  font-size: .72rem; font-weight: 700; padding: 2px 8px;
+  border-radius: 10px; flex-shrink: 0;
+}
+.notice-list-badge.on { background: rgba(74,222,128,.15); color: #4ade80; border: 1px solid rgba(74,222,128,.3); }
+.notice-list-badge.off { background: var(--bg2); color: var(--text3); border: 1px solid var(--border); }
+.notice-list-title { font-size: .88rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.notice-list-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.notice-counter { font-size: .8rem; color: var(--text3); font-weight: 600; }

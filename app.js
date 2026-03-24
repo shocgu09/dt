@@ -554,15 +554,20 @@ function renderPage(name) {
 }
 
 /* ===== NOTICE POPUP ===== */
+let _noticeQueue = [];
+let _noticeQueueIdx = 0;
+
 async function checkAndShowNotice() {
   try {
-    const doc = await state.db.collection('notices').doc('main').get();
-    if (!doc.exists) return;
-    const n = doc.data();
-    if (!n.active) return;
-    const skipKey = 'noticeSkip_' + (n.updatedAt || 'v1');
-    if (localStorage.getItem(skipKey) === 'true') return;
-    showNoticePopup(n);
+    const snap = await state.db.collection('notices').orderBy('createdAt', 'asc').get();
+    const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    _noticeQueue = all.filter(n => {
+      if (!n.active) return false;
+      const skipKey = 'noticeSkip_' + n.id + '_' + (n.updatedAt || 'v1');
+      return localStorage.getItem(skipKey) !== 'true';
+    });
+    _noticeQueueIdx = 0;
+    if (_noticeQueue.length > 0) showNoticePopup(_noticeQueue[0]);
   } catch(e) {}
 }
 
@@ -573,56 +578,118 @@ function showNoticePopup(n) {
   sub.style.display = n.subtitle ? '' : 'none';
   document.getElementById('noticePopupContent').textContent = n.content || '';
   document.getElementById('noticeSkipToday').checked = false;
+  const counter = document.getElementById('noticeCounter');
+  if (_noticeQueue.length > 1) {
+    counter.textContent = `${_noticeQueueIdx + 1} / ${_noticeQueue.length}`;
+    counter.style.display = '';
+  } else {
+    counter.style.display = 'none';
+  }
   document.getElementById('noticePopup').style.display = 'flex';
-  document.getElementById('noticePopup')._noticeKey = 'noticeSkip_' + (n.updatedAt || 'v1');
 }
 
 function closeNoticePopup() {
-  const popup = document.getElementById('noticePopup');
-  if (document.getElementById('noticeSkipToday').checked) {
-    localStorage.setItem(popup._noticeKey, 'true');
+  const n = _noticeQueue[_noticeQueueIdx];
+  if (n && document.getElementById('noticeSkipToday').checked) {
+    localStorage.setItem('noticeSkip_' + n.id + '_' + (n.updatedAt || 'v1'), 'true');
   }
-  popup.style.display = 'none';
+  _noticeQueueIdx++;
+  if (_noticeQueueIdx < _noticeQueue.length) {
+    showNoticePopup(_noticeQueue[_noticeQueueIdx]);
+  } else {
+    document.getElementById('noticePopup').style.display = 'none';
+  }
 }
 
 /* ===== NOTICE ADMIN ===== */
 async function renderAdminNotice() {
+  const list = document.getElementById('noticeList');
+  if (!list) return;
   try {
-    const doc = await state.db.collection('notices').doc('main').get();
-    if (!doc.exists) return;
-    const n = doc.data();
-    document.getElementById('noticeTitle').value = n.title || '';
-    document.getElementById('noticeSubtitle').value = n.subtitle || '';
-    document.getElementById('noticeContent').value = n.content || '';
-    document.getElementById('noticeActive').checked = !!n.active;
-  } catch(e) {}
+    const snap = await state.db.collection('notices').orderBy('createdAt', 'asc').get();
+    if (snap.empty) {
+      list.innerHTML = '<div class="empty-state" style="padding:20px 0;font-size:.88rem">등록된 공지가 없습니다</div>';
+      return;
+    }
+    list.innerHTML = snap.docs.map(d => {
+      const n = d.data();
+      return `
+        <div class="notice-list-item">
+          <div class="notice-list-info">
+            <span class="notice-list-badge ${n.active ? 'on' : 'off'}">${n.active ? '활성' : '비활성'}</span>
+            <span class="notice-list-title">${n.title}</span>
+          </div>
+          <div class="notice-list-actions">
+            <button class="btn btn-sm btn-outline" onclick="openNoticeModal('${d.id}')">수정</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteNotice('${d.id}')">삭제</button>
+          </div>
+        </div>`;
+    }).join('');
+  } catch(e) {
+    list.innerHTML = '<div class="empty-state">불러오기 실패</div>';
+  }
+}
+
+function openNoticeModal(id) {
+  document.getElementById('noticeEditId').value = id || '';
+  document.getElementById('noticeEditTitle').value = '';
+  document.getElementById('noticeEditSubtitle').value = '';
+  document.getElementById('noticeEditContent').value = '';
+  document.getElementById('noticeEditActive').checked = true;
+  document.getElementById('noticeEditModalTitle').textContent = id ? '공지 수정' : '공지 추가';
+  if (id) {
+    state.db.collection('notices').doc(id).get().then(doc => {
+      if (!doc.exists) return;
+      const n = doc.data();
+      document.getElementById('noticeEditTitle').value = n.title || '';
+      document.getElementById('noticeEditSubtitle').value = n.subtitle || '';
+      document.getElementById('noticeEditContent').value = n.content || '';
+      document.getElementById('noticeEditActive').checked = !!n.active;
+    });
+  }
+  openModal('noticeEditModal');
 }
 
 async function saveNotice() {
-  const title = document.getElementById('noticeTitle').value.trim();
+  const title = document.getElementById('noticeEditTitle').value.trim();
   if (!title) { alert('제목을 입력해주세요.'); return; }
+  const id = document.getElementById('noticeEditId').value;
+  const now = new Date().toISOString().slice(0, 16);
   const data = {
     title,
-    subtitle: document.getElementById('noticeSubtitle').value.trim(),
-    content: document.getElementById('noticeContent').value.trim(),
-    active: document.getElementById('noticeActive').checked,
-    updatedAt: new Date().toISOString().slice(0, 16),
+    subtitle: document.getElementById('noticeEditSubtitle').value.trim(),
+    content: document.getElementById('noticeEditContent').value.trim(),
+    active: document.getElementById('noticeEditActive').checked,
+    updatedAt: now,
   };
   try {
-    await state.db.collection('notices').doc('main').set(data);
+    if (id) {
+      await state.db.collection('notices').doc(id).update(data);
+    } else {
+      data.createdAt = now;
+      await state.db.collection('notices').add(data);
+    }
+    closeModal('noticeEditModal');
     showToast('✅ 공지가 저장되었습니다.');
+    renderAdminNotice();
   } catch(e) { alert('저장 실패: ' + e.message); }
 }
 
+async function deleteNotice(id) {
+  if (!confirm('이 공지를 삭제할까요?')) return;
+  try {
+    await state.db.collection('notices').doc(id).delete();
+    showToast('🗑 공지가 삭제되었습니다.');
+    renderAdminNotice();
+  } catch(e) { alert('삭제 실패: ' + e.message); }
+}
+
 function previewNotice() {
-  const title = document.getElementById('noticeTitle').value.trim();
+  const title = document.getElementById('noticeEditTitle').value.trim();
   if (!title) { alert('제목을 입력해주세요.'); return; }
-  showNoticePopup({
-    title,
-    subtitle: document.getElementById('noticeSubtitle').value.trim(),
-    content: document.getElementById('noticeContent').value.trim(),
-    updatedAt: '__preview__',
-  });
+  _noticeQueue = [{ id: '__preview__', title, subtitle: document.getElementById('noticeEditSubtitle').value.trim(), content: document.getElementById('noticeEditContent').value.trim(), updatedAt: '__preview__' }];
+  _noticeQueueIdx = 0;
+  showNoticePopup(_noticeQueue[0]);
 }
 
 /* ===== ADMIN PAGE ===== */
