@@ -163,14 +163,20 @@ function initAuth() {
   });
 }
 
+function updateNavUserName() {
+  state.db.collection('users').doc(state.currentUserId).get().then(doc => {
+    if (!doc.exists) return;
+    const { name, title } = doc.data();
+    const el = document.getElementById('navUserName');
+    if (!el) return;
+    el.innerHTML = escapeHtml(name) + (title ? titleBadge(title) : '');
+  });
+}
+
 function showApp() {
   document.getElementById('loginScreen').classList.add('hidden');
   // 네비바 사용자 정보 표시
-  const userDoc = state.db.collection('users').doc(state.currentUserId);
-  userDoc.get().then(doc => {
-    const name = doc.exists ? doc.data().name : state.currentUser.email;
-    document.getElementById('navUserName').textContent = name;
-  });
+  updateNavUserName();
   // 관리자 전용 UI (superadmin 포함)
   const isAdmin = state.currentUserRole === 'admin' || state.currentUserRole === 'superadmin';
   document.querySelectorAll('.admin-only').forEach(el => {
@@ -382,6 +388,24 @@ async function updateUserRole(uid, role) {
   } catch (e) {
     alert('역할 변경 실패: ' + e.message);
   }
+}
+
+async function updateUserTitle(uid, title) {
+  if (state.currentUserRole !== 'superadmin') return;
+  try {
+    await state.db.collection('users').doc(uid).update({ title: title || '' });
+    renderAdmin();
+    // 본인 칭호 변경 시 네비바도 갱신
+    if (uid === state.currentUserId) updateNavUserName();
+  } catch (e) {
+    alert('칭호 변경 실패: ' + e.message);
+  }
+}
+
+const TITLE_OPTIONS = ['', '회장', '부회장', '총무', '운영진'];
+function titleBadge(title) {
+  if (!title) return '';
+  return `<span style="color:#a78bfa;font-size:.75rem;font-weight:700;background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.35);padding:1px 7px;border-radius:0;margin-left:5px">${escapeHtml(title)}</span>`;
 }
 
 async function deleteUserAccount(uid) {
@@ -863,18 +887,25 @@ async function renderAdmin() {
     return;
   }
   const isSuperAdmin = state.currentUserRole === 'superadmin';
+  const isAdminRole = r => r === 'admin' || r === 'superadmin';
   list.innerHTML = users.map(u => `
     <div class="user-item">
       <div class="user-item-info">
         <div class="user-item-name">
           ${escapeHtml(u.name)}
-          ${u.uid === state.currentUserId ? '<span style="color:var(--primary-light);font-size:.76rem">(나)</span>' : ''}
-          ${u.role === 'superadmin' ? '<span style="color:#f59e0b;font-size:.76rem;font-weight:700">슈퍼관리자</span>' : ''}
+          ${u.title ? titleBadge(u.title) : ''}
+          ${u.uid === state.currentUserId ? '<span style="color:var(--primary-light);font-size:.76rem;margin-left:4px">(나)</span>' : ''}
+          ${u.role === 'superadmin' ? '<span style="color:#f59e0b;font-size:.76rem;font-weight:700;margin-left:4px">슈퍼관리자</span>' : ''}
         </div>
         <div class="user-item-email">${escapeHtml(u.email)}</div>
         ${isSuperAdmin ? `<div class="user-item-lastseen">마지막 접속: ${formatLastSeen(u.lastSeen)}</div>` : ''}
       </div>
       <div class="user-item-actions">
+        ${isSuperAdmin && isAdminRole(u.role) ? `
+          <select class="role-select" style="min-width:80px" onchange="updateUserTitle('${u.uid}', this.value)">
+            ${TITLE_OPTIONS.map(t => `<option value="${t}" ${(u.title||'')=== t ? 'selected' : ''}>${t || '칭호 없음'}</option>`).join('')}
+          </select>
+        ` : u.title ? '' : ''}
         ${u.role === 'superadmin' ? `
           <span style="font-size:.82rem;color:#f59e0b;padding:6px 10px">슈퍼관리자</span>
         ` : isSuperAdmin ? `
