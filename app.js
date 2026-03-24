@@ -2233,18 +2233,11 @@ async function openDMChat(otherUid) {
   openModal('dmChatModal');
   closeDMPanel();
 
-  // 대화방 문서 생성 또는 읽음 처리 (메시지 구독 전에 반드시 완료)
+  // 기존 대화방이면 읽음 처리만 (문서 생성은 첫 메시지 전송 시)
   const convRef = state.db.collection('dms').doc(convId);
   try {
     const convSnap = await convRef.get();
-    if (!convSnap.exists) {
-      await convRef.set({
-        participants: [uid, otherUid],
-        lastMessage: '',
-        lastAt: firebase.firestore.FieldValue.serverTimestamp(),
-        unread: { [uid]: 0, [otherUid]: 0 }
-      });
-    } else {
+    if (convSnap.exists) {
       await convRef.update({ [`unread.${uid}`]: 0 });
     }
   } catch(e) {}
@@ -2305,16 +2298,27 @@ async function sendDMMessage() {
   const convRef = state.db.collection('dms').doc(convId);
 
   try {
+    // 대화방 문서 없으면 첫 메시지 전송 시 생성
+    const convSnap = await convRef.get();
+    if (!convSnap.exists) {
+      await convRef.set({
+        participants: [uid, otherUid],
+        lastMessage: text,
+        lastAt: FieldValue.serverTimestamp(),
+        unread: { [uid]: 0, [otherUid]: 1 }
+      });
+    } else {
+      await convRef.update({
+        lastMessage: text,
+        lastAt: FieldValue.serverTimestamp(),
+        [`unread.${otherUid}`]: FieldValue.increment(1),
+        [`unread.${uid}`]: 0
+      });
+    }
     await convRef.collection('messages').add({
       senderId: uid,
       text,
       createdAt: FieldValue.serverTimestamp()
-    });
-    await convRef.update({
-      lastMessage: text,
-      lastAt: FieldValue.serverTimestamp(),
-      [`unread.${otherUid}`]: FieldValue.increment(1),
-      [`unread.${uid}`]: 0
     });
   } catch (err) {
     input.value = text;
