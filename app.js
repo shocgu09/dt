@@ -1023,10 +1023,8 @@ function renderMembers() {
       <div class="member-card-footer">
         <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openMemberDetail('${m.id}')">상세보기</button>
         ${m.createdBy && m.createdBy !== state.currentUserId ? `<button class="btn btn-sm btn-outline" title="DM 보내기" onclick="event.stopPropagation();openDMChat('${m.createdBy}')">💬</button>` : ''}
-        ${canEdit(m) ? `
-          <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openEditMember('${m.id}')">수정</button>
-          <button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="event.stopPropagation();deleteMember('${m.id}')">삭제</button>
-        ` : ''}
+        ${m.createdBy === state.currentUserId ? `<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openEditMember('${m.id}')">수정</button>` : ''}
+        ${canEdit(m) ? `<button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="event.stopPropagation();deleteMember('${m.id}')">삭제</button>` : ''}
       </div>
     </div>`).join('');
 }
@@ -1064,10 +1062,10 @@ function openMemberDetail(id) {
           </div>
         </div>
       </div>` : ''}
-    ${canEdit(m) ? `
+    ${(m.createdBy === state.currentUserId || canEdit(m)) ? `
     <div class="detail-actions">
-      <button class="btn btn-outline" onclick="openEditMember('${m.id}');closeModal('memberDetailModal')">수정</button>
-      <button class="btn btn-danger" onclick="deleteMember('${m.id}');closeModal('memberDetailModal')">삭제</button>
+      ${m.createdBy === state.currentUserId ? `<button class="btn btn-outline" onclick="openEditMember('${m.id}');closeModal('memberDetailModal')">수정</button>` : ''}
+      ${canEdit(m) ? `<button class="btn btn-danger" onclick="deleteMember('${m.id}');closeModal('memberDetailModal')">삭제</button>` : ''}
     </div>` : ''}
     `;
   openModal('memberDetailModal');
