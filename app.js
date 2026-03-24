@@ -940,6 +940,59 @@ async function renderAdmin() {
     </div>`).join('');
 }
 
+/* ===== BROADCAST DM ===== */
+async function broadcastDM() {
+  const text = document.getElementById('broadcastDMText').value.trim();
+  if (!text) return;
+  const uid = state.currentUserId;
+  if (!uid) return;
+
+  const status = document.getElementById('broadcastDMStatus');
+  const btn = document.querySelector('[onclick="broadcastDM()"]');
+  btn.disabled = true;
+  status.textContent = '발송 중…';
+
+  const FieldValue = firebase.firestore.FieldValue;
+  // 본인 제외 전체 유저 목록
+  const targets = state.users.filter(u => u.uid !== uid);
+  let sent = 0;
+  for (const target of targets) {
+    const convId = [uid, target.uid].sort().join('_');
+    const convRef = state.db.collection('dms').doc(convId);
+    try {
+      const convSnap = await convRef.get();
+      if (!convSnap.exists) {
+        await convRef.set({
+          participants: [uid, target.uid],
+          lastMessage: text,
+          lastAt: FieldValue.serverTimestamp(),
+          unread: { [uid]: 0, [target.uid]: 1 }
+        });
+      } else {
+        await convRef.update({
+          lastMessage: text,
+          lastAt: FieldValue.serverTimestamp(),
+          [`unread.${target.uid}`]: FieldValue.increment(1),
+          [`unread.${uid}`]: 0
+        });
+      }
+      await convRef.collection('messages').add({
+        senderId: uid,
+        text,
+        createdAt: FieldValue.serverTimestamp()
+      });
+      sent++;
+      status.textContent = `발송 중… (${sent}/${targets.length})`;
+    } catch(e) {
+      console.error('DM 발송 실패:', target.uid, e);
+    }
+  }
+  document.getElementById('broadcastDMText').value = '';
+  btn.disabled = false;
+  status.textContent = `✅ ${sent}명에게 발송 완료`;
+  setTimeout(() => { status.textContent = ''; }, 4000);
+}
+
 /* ===== HOME ===== */
 function renderHome() {
   const { members, events } = state;

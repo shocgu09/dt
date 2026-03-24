@@ -258,6 +258,17 @@
           <div id="noticeList"></div>
         </div>
         <div class="admin-card" style="grid-column:1/-1">
+          <h3>📨 전체 DM 발송</h3>
+          <p class="admin-desc">모든 회원에게 DM을 일괄 전송합니다. 공지나 안내사항에 활용하세요.</p>
+          <div style="display:flex;flex-direction:column;gap:10px;max-width:600px">
+            <textarea id="broadcastDMText" placeholder="전송할 메시지를 입력하세요..." rows="3" style="resize:vertical;padding:10px 14px;background:var(--bg3);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;font-family:inherit;outline:none"></textarea>
+            <div style="display:flex;align-items:center;gap:10px">
+              <button class="btn btn-primary btn-sm" onclick="broadcastDM()">📨 전체 발송</button>
+              <span id="broadcastDMStatus" style="font-size:.82rem;color:var(--text3)"></span>
+            </div>
+          </div>
+        </div>
+        <div class="admin-card" style="grid-column:1/-1">
           <h3>🚫 블랙리스트 관리</h3>
           <p class="admin-desc">등록된 이메일은 재가입이 차단됩니다.</p>
           <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
