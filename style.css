@@ -51,7 +51,7 @@ body {
 
 /* ===== NAVBAR ===== */
 .navbar {
-  position: sticky; top: 0; z-index: 100;
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
   display: flex; align-items: center; gap: 16px;
   padding: 0 24px; height: 56px;
   background: var(--bg);
@@ -72,14 +72,16 @@ body {
 .hamburger { display: none; background: none; border: none; color: var(--text); font-size: 1.4rem; cursor: pointer; }
 .mobile-menu {
   display: none; flex-direction: column;
+  position: fixed; top: 56px; left: 0; right: 0; z-index: 99;
   background: var(--bg2); border-bottom: 1px solid var(--border);
   padding: 8px 16px 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.4);
 }
 .mobile-menu.open { display: flex; }
 .mobile-menu .nav-btn { text-align: left; padding: 10px 14px; }
 
 /* ===== PAGES ===== */
-main { padding: 24px 20px; max-width: 1200px; margin: 0 auto; }
+main { padding: 80px 20px 24px; max-width: 1200px; margin: 0 auto; }
 .page { display: none; }
 .page.active { display: block; }
 
