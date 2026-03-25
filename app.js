@@ -2401,8 +2401,11 @@ async function initPushNotifications() {
   if (Notification.permission === 'granted') {
     await registerPushSubscription();
   } else if (Notification.permission === 'default') {
-    // DM 패널 열 때 배너 표시하도록 플래그
     state._showNotiBanner = true;
+    // PWA(홈 화면 설치) 실행 시 → 2초 후 자동으로 알림 허용 팝업
+    if (isStandalone()) {
+      setTimeout(() => requestNotificationPermission(), 2000);
+    }
   }
 
   // SW로부터 OPEN_DM 메시지 수신 → 해당 대화 열기
