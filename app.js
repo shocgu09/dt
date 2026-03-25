@@ -686,6 +686,7 @@ async function renderAdminNotice() {
             <button class="btn btn-sm btn-danger" onclick="deleteNotice('${n.id}')">삭제</button>
           </div>
         </div>`).join('');
+    initNoticeTouchDrag();
   } catch(e) {
     list.innerHTML = '<div class="empty-state">불러오기 실패</div>';
   }
@@ -727,6 +728,60 @@ async function onNoticeDrop(e, id) {
 
   const newOrder = [...list.querySelectorAll('.notice-list-item')].map(el => el.dataset.id);
   await saveNoticeOrder(newOrder);
+}
+
+function initNoticeTouchDrag() {
+  const list = document.getElementById('noticeList');
+  if (!list) return;
+  let dragEl = null, clone = null, startY = 0, offsetY = 0;
+
+  list.querySelectorAll('.notice-drag-handle').forEach(handle => {
+    handle.addEventListener('touchstart', e => {
+      dragEl = handle.closest('.notice-list-item');
+      const touch = e.touches[0];
+      const rect = dragEl.getBoundingClientRect();
+      offsetY = touch.clientY - rect.top;
+      startY = touch.clientY;
+
+      clone = dragEl.cloneNode(true);
+      clone.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;opacity:.85;z-index:9999;pointer-events:none;background:var(--bg3);border:1.5px solid var(--primary);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.4)`;
+      document.body.appendChild(clone);
+      dragEl.style.opacity = '0.3';
+      e.preventDefault();
+    }, { passive: false });
+  });
+
+  list.addEventListener('touchmove', e => {
+    if (!dragEl || !clone) return;
+    const touch = e.touches[0];
+    clone.style.top = (touch.clientY - offsetY) + 'px';
+
+    // 현재 손가락 아래 아이템 찾기
+    clone.style.display = 'none';
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    clone.style.display = '';
+    const target = el?.closest('.notice-list-item');
+    if (target && target !== dragEl) {
+      list.querySelectorAll('.notice-list-item').forEach(i => i.classList.remove('drag-over'));
+      target.classList.add('drag-over');
+      const items = [...list.querySelectorAll('.notice-list-item')];
+      const si = items.indexOf(dragEl), ti = items.indexOf(target);
+      if (si < ti) target.after(dragEl);
+      else target.before(dragEl);
+    }
+    e.preventDefault();
+  }, { passive: false });
+
+  list.addEventListener('touchend', async () => {
+    if (!dragEl) return;
+    dragEl.style.opacity = '';
+    list.querySelectorAll('.notice-list-item').forEach(i => i.classList.remove('drag-over'));
+    clone?.remove();
+    clone = null;
+    const newOrder = [...list.querySelectorAll('.notice-list-item')].map(el => el.dataset.id);
+    await saveNoticeOrder(newOrder);
+    dragEl = null;
+  });
 }
 
 async function saveNoticeOrder(orderedIds) {
