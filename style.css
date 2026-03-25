@@ -1053,6 +1053,17 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
   display: flex; flex-direction: column;
 }
 .dm-panel.open { right: 0; }
+.noti-banner {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, rgba(124,111,255,.15), rgba(124,111,255,.05));
+  border-bottom: 1px solid var(--border);
+  animation: slideDown .3s ease;
+}
+.noti-banner-text { font-size: .82rem; color: var(--text); line-height: 1.5; }
+.noti-banner-btns { display: flex; gap: 8px; }
+.noti-banner.ios-install { background: linear-gradient(135deg, rgba(74,222,128,.15), rgba(74,222,128,.05)); }
+@keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
 .dm-panel-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 14px 16px; border-bottom: 1px solid var(--border);

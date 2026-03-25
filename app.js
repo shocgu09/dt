@@ -97,7 +97,12 @@ const state = {
   _dmMsgUnsub: null,
   _activeDMConvId: null,
   _activeDMOtherUid: null,
+  _pushSubscription: null,
 };
+
+/* ===== PUSH NOTIFICATION CONFIG ===== */
+const VAPID_PUBLIC_KEY = 'BNqwFgtzaRcVcN1mJ2jtDv5XNLdmEHgG1oN8kd92rWv0VBuCbaG9ZnnNWaebBeKP7LLo3ZW-rS91QTDi0r6ssDw';
+const PUSH_WORKER_URL = 'https://dt-push.<YOUR_CF_SUBDOMAIN>.workers.dev'; // Worker 배포 후 실제 URL로 교체
 
 /* ===== FIREBASE INIT ===== */
 function initFirebase() {
@@ -197,6 +202,7 @@ function showApp() {
     state.subscribed = true;
     subscribeAll();
     initDMs();
+    initPushNotifications();
     // 공지 팝업 체크
     checkAndShowNotice();
     // 회원 프로필 미등록 시 안내 토스트
@@ -261,6 +267,7 @@ async function signup(name, email, password) {
 }
 
 async function logout() {
+  await unregisterPushSubscription();
   await state.auth.signOut();
 }
 
@@ -2216,6 +2223,9 @@ function openDMPanel() {
   document.getElementById('dmPanel').classList.add('open');
   document.getElementById('dmPanelOverlay').classList.add('open');
   renderDMList();
+  // 알림 배너 표시
+  if (state._showNotiBanner) showNotificationBanner();
+  if (state._showIOSInstallBanner) showIOSInstallBanner();
 }
 
 function closeDMPanel() {
@@ -2360,10 +2370,158 @@ async function sendDMMessage() {
       text,
       createdAt: FieldValue.serverTimestamp()
     });
+    // 푸시 알림 발송 (실패해도 DM은 정상 전송)
+    triggerPushNotification(otherUid, text, convId).catch(() => {});
   } catch (err) {
     input.value = text;
     alert('전송 실패: ' + err.message);
   }
+}
+
+/* ===== PUSH NOTIFICATIONS ===== */
+
+function isIOS() { return /iPad|iPhone|iPod/.test(navigator.userAgent); }
+function isStandalone() {
+  return window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+}
+
+async function initPushNotifications() {
+  // Push API 미지원 브라우저
+  if (!('Notification' in window) || !('PushManager' in window) || !('serviceWorker' in navigator)) return;
+
+  // iOS인데 PWA로 설치 안 된 경우 → 설치 안내만
+  if (isIOS() && !isStandalone()) {
+    state._showIOSInstallBanner = true;
+    return;
+  }
+
+  if (Notification.permission === 'granted') {
+    await registerPushSubscription();
+  } else if (Notification.permission === 'default') {
+    // DM 패널 열 때 배너 표시하도록 플래그
+    state._showNotiBanner = true;
+  }
+
+  // SW로부터 OPEN_DM 메시지 수신 → 해당 대화 열기
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data?.type === 'OPEN_DM' && event.data.convId) {
+      const otherUid = event.data.convId.split('_').find(id => id !== state.currentUserId);
+      if (otherUid) openDMChat(otherUid);
+    }
+  });
+
+  // URL 파라미터로 딥링크 처리 (?dm=convId)
+  const params = new URLSearchParams(location.search);
+  const dmConv = params.get('dm');
+  if (dmConv) {
+    const otherUid = dmConv.split('_').find(id => id !== state.currentUserId);
+    if (otherUid) setTimeout(() => openDMChat(otherUid), 1000);
+    history.replaceState(null, '', '/');
+  }
+}
+
+async function requestNotificationPermission() {
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm === 'granted') {
+      await registerPushSubscription();
+      hideNotificationBanner();
+      showToast('🔔 알림이 활성화되었습니다!');
+    } else {
+      showToast('알림이 차단되었습니다. 브라우저 설정에서 변경할 수 있습니다.');
+    }
+  } catch (err) {
+    console.error('Notification permission error:', err);
+  }
+}
+
+async function registerPushSubscription() {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      // VAPID 공개키를 Uint8Array로 변환
+      const keyBytes = Uint8Array.from(atob(VAPID_PUBLIC_KEY.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: keyBytes
+      });
+    }
+    state._pushSubscription = sub;
+
+    // Worker에 구독 등록
+    const token = await state.currentUser.getIdToken();
+    await fetch(PUSH_WORKER_URL + '/api/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({
+        uid: state.currentUserId,
+        subscription: sub.toJSON()
+      })
+    });
+  } catch (err) {
+    console.error('Push subscription error:', err);
+  }
+}
+
+async function unregisterPushSubscription() {
+  try {
+    if (!state._pushSubscription || !state.currentUser) return;
+    const token = await state.currentUser.getIdToken();
+    await fetch(PUSH_WORKER_URL + '/api/unsubscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({
+        uid: state.currentUserId,
+        endpoint: state._pushSubscription.endpoint
+      })
+    });
+    await state._pushSubscription.unsubscribe();
+    state._pushSubscription = null;
+  } catch (err) {
+    console.error('Push unsubscribe error:', err);
+  }
+}
+
+async function triggerPushNotification(recipientUid, text, convId) {
+  if (!state.currentUser) return;
+  // 발신자 이름 가져오기
+  let senderName = 'DT Club';
+  try {
+    const userDoc = await state.db.collection('users').doc(state.currentUserId).get();
+    if (userDoc.exists) senderName = userDoc.data().name || senderName;
+  } catch {}
+
+  const token = await state.currentUser.getIdToken();
+  await fetch(PUSH_WORKER_URL + '/api/push', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: JSON.stringify({
+      recipientUid,
+      title: senderName,
+      body: text.length > 80 ? text.substring(0, 80) + '...' : text,
+      convId
+    })
+  });
+}
+
+function showNotificationBanner() {
+  const banner = document.getElementById('notiBanner');
+  if (banner) banner.style.display = 'flex';
+}
+function hideNotificationBanner() {
+  const banner = document.getElementById('notiBanner');
+  if (banner) banner.style.display = 'none';
+  state._showNotiBanner = false;
+}
+function showIOSInstallBanner() {
+  const banner = document.getElementById('iosInstallBanner');
+  if (banner) banner.style.display = 'flex';
+}
+function hideIOSInstallBanner() {
+  const banner = document.getElementById('iosInstallBanner');
+  if (banner) banner.style.display = 'none';
+  state._showIOSInstallBanner = false;
 }
 
 /* ===== IMAGE 압축 (base64 → Firestore 직접 저장) ===== */

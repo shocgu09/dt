@@ -823,6 +823,18 @@
       <h3 style="font-size:1rem;font-weight:700">💬 메시지</h3>
       <button style="background:none;border:none;color:var(--text2);font-size:1.2rem;cursor:pointer;padding:4px 8px" onclick="closeDMPanel()">✕</button>
     </div>
+    <!-- 알림 배너 -->
+    <div class="noti-banner" id="notiBanner" style="display:none">
+      <span class="noti-banner-text">🔔 알림을 켜면 새 메시지를 바로 받을 수 있어요</span>
+      <div class="noti-banner-btns">
+        <button class="btn btn-sm btn-primary" onclick="requestNotificationPermission()">알림 켜기</button>
+        <button class="btn btn-sm btn-outline" onclick="hideNotificationBanner()">나중에</button>
+      </div>
+    </div>
+    <div class="noti-banner ios-install" id="iosInstallBanner" style="display:none">
+      <span class="noti-banner-text">📲 알림을 받으려면 홈 화면에 앱을 추가해 주세요</span>
+      <button class="btn btn-sm btn-outline" onclick="hideIOSInstallBanner()">확인</button>
+    </div>
     <div class="dm-panel-list" id="dmPanelList"></div>
   </div>
   <div class="dm-panel-overlay" id="dmPanelOverlay" onclick="closeDMPanel()"></div>
