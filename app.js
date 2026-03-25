@@ -2545,10 +2545,6 @@ function formatDate(dateStr) {
 
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
-function openInstallGuide() {
-  closeMobileMenu();
-  setTimeout(() => openModal('installGuideModal'), 50);
-}
 
 // 관리자이거나 본인이 만든 항목이면 수정/삭제 가능
 function canEdit(item) {
@@ -2655,6 +2651,15 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   window.closeMobileMenu = () => document.getElementById('mobileMenu').classList.remove('open');
+
+  document.getElementById('btnInstallGuide').addEventListener('click', () => {
+    document.getElementById('mobileMenu').classList.remove('open');
+    setTimeout(() => {
+      const modal = document.getElementById('installGuideModal');
+      modal.style.display = 'flex';
+      modal.classList.add('open');
+    }, 100);
+  });
 
   document.querySelectorAll('.modal-close, [data-modal]').forEach(btn => {
     btn.addEventListener('click', () => closeModal(btn.dataset.modal || btn.closest('.modal-overlay')?.id));
