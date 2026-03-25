@@ -97,6 +97,7 @@ const state = {
   _dmMsgUnsub: null,
   _activeDMConvId: null,
   _activeDMOtherUid: null,
+  _attendanceChecked: false,
 };
 
 /* ===== FIREBASE INIT ===== */
@@ -137,15 +138,26 @@ function initAuth() {
       if (userDoc.exists) {
         const data = userDoc.data();
         state.currentUserRole = data.role;
-        // 마지막 접속 시간 갱신 + 출석 체크 (KST 기준)
-        const kstNow = new Date(Date.now() + 9 * 3600 * 1000);
-        const today = kstNow.toISOString().slice(0, 10);
-        const updates = { lastSeen: new Date().toISOString() };
-        if (data.lastAttendance !== today) {
-          updates.lastAttendance = today;
-          updates.attendanceCount = (data.attendanceCount || 0) + 1;
+        // 마지막 접속 시간 갱신 + 출석 체크 (KST 기준, 세션당 1회 + 트랜잭션)
+        const userRef = state.db.collection('users').doc(user.uid);
+        if (!state._attendanceChecked) {
+          state._attendanceChecked = true;
+          state.db.runTransaction(async tx => {
+            const snap = await tx.get(userRef);
+            if (!snap.exists) return;
+            const kstNow = new Date(Date.now() + 9 * 3600 * 1000);
+            const today = kstNow.toISOString().slice(0, 10);
+            const d = snap.data();
+            const updates = { lastSeen: new Date().toISOString() };
+            if (d.lastAttendance !== today) {
+              updates.lastAttendance = today;
+              updates.attendanceCount = (d.attendanceCount || 0) + 1;
+            }
+            tx.update(userRef, updates);
+          }).catch(() => {});
+        } else {
+          userRef.update({ lastSeen: new Date().toISOString() }).catch(() => {});
         }
-        state.db.collection('users').doc(user.uid).update(updates).catch(() => {});
       } else {
         if (state.isSigningUp) {
           // 회원가입 직후 race condition - 역할만 임시 설정
