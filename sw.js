@@ -1,4 +1,4 @@
-const CACHE = 'dt-club-v2';
+const CACHE = 'dt-club-v3';
 const STATIC = [
   '/',
   '/index.html',
@@ -50,6 +50,13 @@ self.addEventListener('push', event => {
       tag: convId ? `dm-${convId}` : 'dm-general',
       renotify: true,
       data: { convId }
+    }).then(() => {
+      // 앱 아이콘 뱃지 표시 (읽지 않은 알림 수)
+      if (navigator.setAppBadge) {
+        return self.registration.getNotifications().then(notifications => {
+          navigator.setAppBadge(notifications.length || 1);
+        });
+      }
     })
   );
 });
@@ -60,17 +67,22 @@ self.addEventListener('notificationclick', event => {
   const convId = event.notification.data?.convId;
 
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-      // 이미 열려 있는 창 찾기
-      for (const client of windowClients) {
-        if (client.url.includes(self.location.origin)) {
-          client.focus();
-          client.postMessage({ type: 'OPEN_DM', convId });
-          return;
-        }
+    // 남은 알림 수로 뱃지 업데이트 (0이면 제거)
+    self.registration.getNotifications().then(notifications => {
+      if (navigator.setAppBadge) {
+        notifications.length > 0 ? navigator.setAppBadge(notifications.length) : navigator.clearAppBadge();
       }
-      // 새 창 열기
-      return clients.openWindow('/' + (convId ? '?dm=' + convId : ''));
-    })
+    }).then(() =>
+      clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
+        for (const client of windowClients) {
+          if (client.url.includes(self.location.origin)) {
+            client.focus();
+            client.postMessage({ type: 'OPEN_DM', convId });
+            return;
+          }
+        }
+        return clients.openWindow('/' + (convId ? '?dm=' + convId : ''));
+      })
+    )
   );
 });

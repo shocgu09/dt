@@ -2283,6 +2283,9 @@ async function openDMChat(otherUid) {
   openModal('dmChatModal');
   closeDMPanel();
 
+  // 앱 아이콘 뱃지 클리어
+  if (navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
+
   // 기존 대화방이면 읽음 처리만 (문서 생성은 첫 메시지 전송 시)
   const convRef = state.db.collection('dms').doc(convId);
   try {
