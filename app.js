@@ -97,7 +97,6 @@ const state = {
   _dmMsgUnsub: null,
   _activeDMConvId: null,
   _activeDMOtherUid: null,
-  _attendanceChecked: false,
 };
 
 /* ===== FIREBASE INIT ===== */
@@ -138,26 +137,8 @@ function initAuth() {
       if (userDoc.exists) {
         const data = userDoc.data();
         state.currentUserRole = data.role;
-        // 마지막 접속 시간 갱신 + 출석 체크 (KST 기준, 세션당 1회 + 트랜잭션)
-        const userRef = state.db.collection('users').doc(user.uid);
-        if (!state._attendanceChecked) {
-          state._attendanceChecked = true;
-          state.db.runTransaction(async tx => {
-            const snap = await tx.get(userRef);
-            if (!snap.exists) return;
-            const kstNow = new Date(Date.now() + 9 * 3600 * 1000);
-            const today = kstNow.toISOString().slice(0, 10);
-            const d = snap.data();
-            const updates = { lastSeen: new Date().toISOString() };
-            if (d.lastAttendance !== today) {
-              updates.lastAttendance = today;
-              updates.attendanceCount = (d.attendanceCount || 0) + 1;
-            }
-            tx.update(userRef, updates);
-          }).catch(() => {});
-        } else {
-          userRef.update({ lastSeen: new Date().toISOString() }).catch(() => {});
-        }
+        // 마지막 접속 시간 갱신
+        state.db.collection('users').doc(user.uid).update({ lastSeen: new Date().toISOString() }).catch(() => {});
       } else {
         if (state.isSigningUp) {
           // 회원가입 직후 race condition - 역할만 임시 설정
@@ -1074,7 +1055,6 @@ function renderMembers() {
         <div class="member-avatar">${avatarEl(m)}</div>
         <div class="member-info">
           <div class="member-name">${escapeHtml(m.name)}${titleBadge(userTitle(m.createdBy))}${m.createdBy === state.currentUserId ? ' <span style="color:var(--primary-light);font-size:.75rem;font-weight:600">나</span>' : ''}</div>
-          ${(() => { const cnt = state.users.find(u => u.uid === m.createdBy)?.attendanceCount; return cnt ? `<div style="font-size:.75rem;color:var(--text3);margin-top:2px">🗓 출석 ${cnt}회</div>` : ''; })()}
           <div class="member-nick">${escapeHtml(m.nickname || '-')}</div>
           <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px">
             <span class="role-badge ${m.role}">${m.role === 'driver' ? '🚗 운전자' : '💺 동승자'}</span>
