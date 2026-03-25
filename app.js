@@ -2545,6 +2545,7 @@ function formatDate(dateStr) {
 
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function openInstallGuide() { openModal('installGuideModal'); }
 
 // 관리자이거나 본인이 만든 항목이면 수정/삭제 가능
 function canEdit(item) {
