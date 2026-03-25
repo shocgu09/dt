@@ -646,6 +646,10 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
   background: var(--bg2); border: 1px solid var(--border); color: var(--text);
   padding: 5px 10px; border-radius: 8px; font-size: .82rem; cursor: pointer; outline: none;
 }
+/* iOS 자동 줌 방지: input/select/textarea 16px 미만이면 줌인됨 */
+@supports (-webkit-touch-callout: none) {
+  select, input, textarea, .role-select { font-size: 16px !important; }
+}
 
 /* ===== GALLERY ===== */
 .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px; }
