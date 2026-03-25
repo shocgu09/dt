@@ -146,14 +146,16 @@ async function handlePush(request, env) {
         env.VAPID_PUBLIC_KEY,
         env.VAPID_PRIVATE_KEY
       );
+      console.log('Push result for', subKey, ':', result.status, result.statusText);
       if (result.ok) {
         sent++;
       } else if (result.status === 404 || result.status === 410) {
-        // 만료된 구독 정리
         invalidKeys.push(subKey);
+      } else {
+        console.error('Push failed:', result.status, result.statusText, await result.text?.() || '');
       }
     } catch (err) {
-      console.error('Push send error:', err);
+      console.error('Push send error:', err.message, err.stack);
     }
   }
 
@@ -192,7 +194,8 @@ async function sendWebPush(subscription, payload, vapidPublicKey, vapidPrivateKe
     body: encrypted,
   });
 
-  return { ok: response.ok, status: response.status };
+  const statusText = response.ok ? 'OK' : await response.text().catch(() => '');
+  return { ok: response.ok, status: response.status, statusText };
 }
 
 /* ===== VAPID JWT 생성 ===== */

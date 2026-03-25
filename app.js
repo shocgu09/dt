@@ -2439,8 +2439,12 @@ async function registerPushSubscription() {
   try {
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      // VAPID 키 변경 시 기존 구독 무효화 → 재구독
+      await sub.unsubscribe();
+      sub = null;
+    }
     if (!sub) {
-      // VAPID 공개키를 Uint8Array로 변환
       const keyBytes = Uint8Array.from(atob(VAPID_PUBLIC_KEY.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
       sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
@@ -2451,7 +2455,7 @@ async function registerPushSubscription() {
 
     // Worker에 구독 등록
     const token = await state.currentUser.getIdToken();
-    await fetch(PUSH_WORKER_URL + '/api/subscribe', {
+    const resp = await fetch(PUSH_WORKER_URL + '/api/subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
       body: JSON.stringify({
@@ -2459,8 +2463,16 @@ async function registerPushSubscription() {
         subscription: sub.toJSON()
       })
     });
+    const result = await resp.json();
+    if (!resp.ok) {
+      console.error('Push subscribe failed:', result);
+      showToast('알림 등록 실패: ' + (result.error || '서버 오류'));
+    } else {
+      console.log('Push subscription registered:', result);
+    }
   } catch (err) {
     console.error('Push subscription error:', err);
+    showToast('알림 설정 중 오류가 발생했습니다.');
   }
 }
 
@@ -2493,7 +2505,7 @@ async function triggerPushNotification(recipientUid, text, convId) {
   } catch {}
 
   const token = await state.currentUser.getIdToken();
-  await fetch(PUSH_WORKER_URL + '/api/push', {
+  const resp = await fetch(PUSH_WORKER_URL + '/api/push', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
     body: JSON.stringify({
@@ -2503,6 +2515,8 @@ async function triggerPushNotification(recipientUid, text, convId) {
       convId
     })
   });
+  const result = await resp.json();
+  console.log('Push send result:', result);
 }
 
 function showNotificationBanner() {
