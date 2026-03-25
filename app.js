@@ -101,7 +101,7 @@ const state = {
 };
 
 /* ===== PUSH NOTIFICATION CONFIG ===== */
-const VAPID_PUBLIC_KEY = 'BNqwFgtzaRcVcN1mJ2jtDv5XNLdmEHgG1oN8kd92rWv0VBuCbaG9ZnnNWaebBeKP7LLo3ZW-rS91QTDi0r6ssDw';
+const VAPID_PUBLIC_KEY = 'BKwd57WtNgaA_SPFMaKdlVMQd_-VMDspL0P8n32PXdaFW2NKDn1MOZi3vCkCAnu2v0yzwurjxoPt3zzmom90FVM';
 const PUSH_WORKER_URL = 'https://dt-push.shocguna.workers.dev';
 
 /* ===== FIREBASE INIT ===== */
@@ -3088,6 +3088,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ⑦ Firebase 초기화 및 Auth 감지
   document.getElementById('dmInput').addEventListener('keydown', e => {
+    if (e.isComposing || e.keyCode === 229) return; // 한글 IME 조합 중이면 무시
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendDMMessage(); }
   });
 
