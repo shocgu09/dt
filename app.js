@@ -2386,14 +2386,14 @@ function isStandalone() {
 }
 
 async function initPushNotifications() {
-  // Push API 미지원 브라우저
-  if (!('Notification' in window) || !('PushManager' in window) || !('serviceWorker' in navigator)) return;
-
-  // iOS인데 PWA로 설치 안 된 경우 → 설치 안내만
+  // iOS인데 PWA로 설치 안 된 경우 → 설치 안내만 (PushManager 체크보다 먼저!)
   if (isIOS() && !isStandalone()) {
     state._showIOSInstallBanner = true;
     return;
   }
+
+  // Push API 미지원 브라우저
+  if (!('Notification' in window) || !('PushManager' in window) || !('serviceWorker' in navigator)) return;
 
   if (Notification.permission === 'granted') {
     await registerPushSubscription();
