@@ -2656,7 +2656,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('mobileMenu').classList.remove('open');
     setTimeout(() => {
       const modal = document.getElementById('installGuideModal');
-      modal.style.display = 'flex';
+      modal.style.display = '';
       modal.classList.add('open');
     }, 100);
   });
