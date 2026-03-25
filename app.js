@@ -2713,6 +2713,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.closeMobileMenu = () => document.getElementById('mobileMenu').classList.remove('open');
 
+  // 메뉴 외부 클릭 시 닫기
+  document.addEventListener('click', e => {
+    const menu = document.getElementById('mobileMenu');
+    const hamburger = document.getElementById('hamburger');
+    if (menu.classList.contains('open') && !menu.contains(e.target) && !hamburger.contains(e.target)) {
+      menu.classList.remove('open');
+    }
+  });
+
   document.getElementById('btnInstallGuide').addEventListener('click', () => {
     document.getElementById('mobileMenu').classList.remove('open');
     setTimeout(() => {
