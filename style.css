@@ -848,7 +848,7 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 .quiz-option-del:hover { background: rgba(255,107,107,.15); border-color: #ff6b6b; color: #ff9898; }
 
 @media (max-width: 480px) {
-  main { padding: 12px 12px calc(70px + env(safe-area-inset-bottom, 0px)); }
+  main { padding: 72px 12px calc(70px + env(safe-area-inset-bottom, 0px)); }
   .stats-bar { gap: 8px; }
   .stat-card { padding: 14px 10px; }
   .stat-num { font-size: 1.6rem; }
