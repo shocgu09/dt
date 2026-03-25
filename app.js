@@ -102,7 +102,7 @@ const state = {
 
 /* ===== PUSH NOTIFICATION CONFIG ===== */
 const VAPID_PUBLIC_KEY = 'BNqwFgtzaRcVcN1mJ2jtDv5XNLdmEHgG1oN8kd92rWv0VBuCbaG9ZnnNWaebBeKP7LLo3ZW-rS91QTDi0r6ssDw';
-const PUSH_WORKER_URL = 'https://dt-push.<YOUR_CF_SUBDOMAIN>.workers.dev'; // Worker 배포 후 실제 URL로 교체
+const PUSH_WORKER_URL = 'https://dt-push.shocguna.workers.dev';
 
 /* ===== FIREBASE INIT ===== */
 function initFirebase() {

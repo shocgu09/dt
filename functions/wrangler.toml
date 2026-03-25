@@ -12,4 +12,4 @@ VAPID_PUBLIC_KEY = "BNqwFgtzaRcVcN1mJ2jtDv5XNLdmEHgG1oN8kd92rWv0VBuCbaG9ZnnNWaeb
 # wrangler kv:namespace create PUSH_SUBS
 [[kv_namespaces]]
 binding = "PUSH_SUBS"
-id = "PLACEHOLDER_KV_ID"
+id = "0215883d4bdf4f3a9c32b823f2f8fa97"
