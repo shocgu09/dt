@@ -1056,7 +1056,7 @@ function renderHome() {
         <div class="home-list-item" onclick="goPage('events')">
           <span class="item-icon">${ev.type === 'lightning' ? '⚡' : ev.type === 'quiz' ? '🧩' : '🗓'}</span>
           <div class="item-info">
-            <div class="item-title">${ev.title}</div>
+            <div class="item-title">${escapeHtml(ev.title)}</div>
             <div class="item-sub">${ev.type === 'quiz' ? (ev.voteDeadline ? `⏰ 마감 ${ev.voteDeadline.replace('T', ' ')}` : '퀴즈') : `${formatDate(ev.date)} ${ev.time || ''} ${ev.location ? '· ' + ev.location : ''}`}</div>
           </div>
         </div>`)
@@ -1070,7 +1070,7 @@ function renderHome() {
         <div class="home-list-item" onclick="openMemberDetail('${m.id}')">
           <span class="item-icon">${avatarSmall(m)}</span>
           <div class="item-info">
-            <div class="item-title">${m.name} ${m.nickname ? `<small style="color:var(--text2)">(${m.nickname})</small>` : ''}</div>
+            <div class="item-title">${escapeHtml(m.name)} ${m.nickname ? `<small style="color:var(--text2)">(${escapeHtml(m.nickname)})</small>` : ''}</div>
             <div class="item-sub">${m.role === 'driver' ? '🚗 운전자' : '💺 동승자'} · ${m.joinDate}</div>
           </div>
         </div>`)
@@ -1161,9 +1161,9 @@ function openMemberDetail(id) {
         <div class="detail-car">
           <div class="detail-car-img${m.car.image ? '' : ' no-img'}">${m.car.image ? `<img src="${m.car.image}" alt="차량">` : '🚗'}</div>
           <div class="detail-car-info">
-            <div class="detail-car-name">${m.car.brand} ${m.car.model}</div>
-            <div class="detail-car-sub">${m.car.year || ''} · ${m.car.color || ''}</div>
-            <div class="detail-car-desc">${m.car.desc || ''}</div>
+            <div class="detail-car-name">${escapeHtml(m.car.brand)} ${escapeHtml(m.car.model)}</div>
+            <div class="detail-car-sub">${escapeHtml(m.car.year || '')} · ${escapeHtml(m.car.color || '')}</div>
+            <div class="detail-car-desc">${escapeHtml(m.car.desc || '')}</div>
           </div>
         </div>
       </div>` : ''}
@@ -1439,11 +1439,11 @@ function renderComments(comments, galleryId) {
   list.innerHTML = comments.map(c => `
     <div class="comment-item">
       <div class="comment-meta">
-        <span class="comment-author">${c.authorName}${titleBadge(userTitle(c.authorUid))}</span>
+        <span class="comment-author">${escapeHtml(c.authorName)}${titleBadge(userTitle(c.authorUid))}</span>
         <span class="comment-time">${c.createdAt?.toDate ? c.createdAt.toDate().toLocaleDateString('ko') : ''}</span>
         ${(c.authorUid === uid || isAdmin) ? `<button class="comment-del" onclick="deleteComment('${galleryId}','${c.id}')">✕</button>` : ''}
       </div>
-      <div class="comment-text">${c.text}</div>
+      <div class="comment-text">${escapeHtml(c.text)}</div>
     </div>`).join('');
 }
 
@@ -1636,15 +1636,15 @@ function renderCars() {
   }
   grid.innerHTML = drivers.map(m => `
     <div class="car-card" onclick="openMemberDetail('${m.id}')">
-      <div class="car-card-img">${m.car.image ? `<img src="${m.car.image}" alt="${m.car.model}">` : '🚗'}</div>
+      <div class="car-card-img">${m.car.image ? `<img src="${m.car.image}" alt="${escapeHtml(m.car.model)}">` : '🚗'}</div>
       <div class="car-card-body">
-        <div class="car-name" style="display:flex;align-items:center;gap:6px">${brandLogoHtml(m.car.brand, 20)} ${m.car.brand} ${m.car.model}</div>
-        <div class="car-year-color">${m.car.year || ''} ${m.car.year && m.car.color ? '·' : ''} ${m.car.color || ''}</div>
-        <div class="car-desc">${m.car.desc || '설명 없음'}</div>
+        <div class="car-name" style="display:flex;align-items:center;gap:6px">${brandLogoHtml(m.car.brand, 20)} ${escapeHtml(m.car.brand)} ${escapeHtml(m.car.model)}</div>
+        <div class="car-year-color">${escapeHtml(m.car.year || '')} ${m.car.year && m.car.color ? '·' : ''} ${escapeHtml(m.car.color || '')}</div>
+        <div class="car-desc">${escapeHtml(m.car.desc || '설명 없음')}</div>
         <div class="car-owner">
           <div class="car-owner-avatar">${avatarEl(m)}</div>
           <div>
-            <div class="car-owner-name">${m.name}${titleBadge(userTitle(m.createdBy))}</div>
+            <div class="car-owner-name">${escapeHtml(m.name)}${titleBadge(userTitle(m.createdBy))}</div>
             <div style="font-size:.76rem;color:var(--text3)">오너</div>
           </div>
         </div>

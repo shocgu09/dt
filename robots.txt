@@ -1,0 +1,8 @@
+# DT Club - robots.txt
+User-agent: *
+Allow: /
+Allow: /contact.html
+Allow: /privacy.html
+
+# Sitemap
+Sitemap: https://dt-1js.pages.dev/sitemap.xml
