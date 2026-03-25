@@ -743,8 +743,6 @@ function openNoticeModal(id) {
   document.getElementById('noticeEditSubtitle').value = '';
   document.getElementById('noticeEditContent').value = '';
   document.getElementById('noticeExpiresDate').value = '';
-  document.getElementById('noticeExpiresHour').value = '';
-  document.getElementById('noticeExpiresMin').value = '';
   document.getElementById('noticeEditModalTitle').textContent = id ? '공지 수정' : '공지 추가';
   if (id) {
     state.db.collection('notices').doc(id).get().then(doc => {
@@ -754,11 +752,7 @@ function openNoticeModal(id) {
       document.getElementById('noticeEditSubtitle').value = n.subtitle || '';
       document.getElementById('noticeEditContent').value = n.content || '';
       if (n.expiresAt) {
-        const [datePart, timePart] = n.expiresAt.split('T');
-        const [hh, mm] = (timePart || '').split(':');
-        document.getElementById('noticeExpiresDate').value = datePart || '';
-        document.getElementById('noticeExpiresHour').value = hh || '';
-        document.getElementById('noticeExpiresMin').value = mm || '';
+        document.getElementById('noticeExpiresDate').value = n.expiresAt.slice(0, 10);
       }
     });
   }
@@ -769,10 +763,8 @@ async function saveNotice() {
   const title = document.getElementById('noticeEditTitle').value.trim();
   if (!title) { alert('제목을 입력해주세요.'); return; }
   const expDate = document.getElementById('noticeExpiresDate').value;
-  const expHour = document.getElementById('noticeExpiresHour').value;
-  const expMin  = document.getElementById('noticeExpiresMin').value;
-  if (!expDate || !expHour || !expMin) { alert('마감 기한 날짜와 시간을 모두 설정해주세요.'); return; }
-  const expiresAt = `${expDate}T${expHour}:${expMin}`;
+  if (!expDate) { alert('마감 기한 날짜를 설정해주세요.'); return; }
+  const expiresAt = `${expDate}T23:59`;
   const id = document.getElementById('noticeEditId').value;
   const now = new Date().toISOString().slice(0, 16);
   const data = {
@@ -2614,6 +2606,20 @@ function applyTheme(theme) {
 
 /* ===== INIT ===== */
 document.addEventListener('DOMContentLoaded', () => {
+  // iOS 자동 줌 방지: 포커스 시 maximum-scale=1, 해제 시 복원
+  const metaVp = document.querySelector('meta[name=viewport]');
+  if (metaVp) {
+    const orig = metaVp.getAttribute('content');
+    document.addEventListener('focusin', e => {
+      if (['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)) {
+        metaVp.setAttribute('content', orig + ', maximum-scale=1');
+      }
+    });
+    document.addEventListener('focusout', () => {
+      metaVp.setAttribute('content', orig);
+    });
+  }
+
   // 저장된 테마 복원
   applyTheme(localStorage.getItem('theme') || 'dark');
   // Firebase config 미설정 시 안내
