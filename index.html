@@ -844,10 +844,7 @@
   <div class="dm-panel" id="dmPanel">
     <div class="dm-panel-header">
       <h3 style="font-size:1rem;font-weight:700">💬 메시지</h3>
-      <div style="display:flex;gap:6px;align-items:center">
-        <button class="btn btn-sm btn-outline" onclick="openCreateGroupModal()" title="새 그룹">👥+</button>
-        <button style="background:none;border:none;color:var(--text2);font-size:1.2rem;cursor:pointer;padding:4px 8px" onclick="closeDMPanel()">✕</button>
-      </div>
+      <button style="background:none;border:none;color:var(--text2);font-size:1.2rem;cursor:pointer;padding:4px 8px" onclick="closeDMPanel()">✕</button>
     </div>
     <!-- 알림 배너 -->
     <div class="noti-banner" id="notiBanner" style="display:none">
@@ -872,62 +869,11 @@
         <h3 id="dmChatTitle">대화</h3>
         <button class="modal-close" onclick="closeDMChat()">×</button>
       </div>
-      <div class="dm-toolbar hidden" id="dmToolbar">
-        <button class="dm-toolbar-btn" id="btnInviteGroup" onclick="openInviteGroupModal()">👥+ 초대</button>
-        <button class="dm-toolbar-btn dm-group-only hidden" id="btnRenameGroup" onclick="renameGroup()">✏️ 이름변경</button>
-        <button class="dm-toolbar-btn dm-group-only hidden" id="btnLeaveGroup" onclick="leaveGroup()">🚪 나가기</button>
-      </div>
       <div class="dm-messages" id="dmMessages"></div>
       <div class="dm-input-area">
         <label class="dm-photo-btn" title="사진 전송">🖼️<input type="file" id="dmImageInput" accept="image/*" style="display:none" onchange="handleDMImage(this)"></label>
         <input id="dmInput" placeholder="메시지를 입력하세요…" autocomplete="off">
         <button class="btn btn-sm btn-primary" onclick="sendDMMessage()">전송</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Group Members Modal -->
-  <div class="modal-overlay" id="groupMembersModal" style="z-index:320">
-    <div class="modal" style="max-width:360px">
-      <div class="modal-header">
-        <h3 id="groupMembersTitle">참여자</h3>
-        <button class="modal-close" data-modal="groupMembersModal">&times;</button>
-      </div>
-      <div class="modal-body" style="padding:8px 0" id="groupMembersBody"></div>
-    </div>
-  </div>
-
-  <!-- Group Create Modal -->
-  <div class="modal-overlay" id="groupCreateModal">
-    <div class="modal" style="max-width:440px">
-      <div class="modal-header">
-        <h3>👥 새 그룹 만들기</h3>
-        <button class="modal-close" data-modal="groupCreateModal">&times;</button>
-      </div>
-      <div class="modal-body" style="padding:16px">
-        <div class="form-group">
-          <label>그룹 이름</label>
-          <input type="text" id="groupNameInput" placeholder="그룹 이름 입력" maxlength="30">
-        </div>
-        <div class="form-group">
-          <label>멤버 선택 (2명 이상)</label>
-          <div class="group-member-list" id="groupMemberList"></div>
-        </div>
-        <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="createGroupChat()">그룹 만들기</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Group Invite Modal -->
-  <div class="modal-overlay" id="groupInviteModal">
-    <div class="modal" style="max-width:440px">
-      <div class="modal-header">
-        <h3>👥 멤버 초대</h3>
-        <button class="modal-close" data-modal="groupInviteModal">&times;</button>
-      </div>
-      <div class="modal-body" style="padding:16px">
-        <div class="group-member-list" id="groupInviteMemberList"></div>
-        <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="inviteToGroup()">초대하기</button>
       </div>
     </div>
   </div>
@@ -986,7 +932,7 @@
 <!-- 🔧 Firebase 설정 파일 (본인 config로 교체하세요) -->
   <script src="firebase-config.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=6"></script>
 
   <!-- 공지 팝업 -->
   <div class="modal-overlay" id="noticePopup" style="display:none;z-index:999">

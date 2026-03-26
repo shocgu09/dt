@@ -2265,14 +2265,6 @@ function initDMs() {
         });
       updateDMBadge();
       if (document.getElementById('dmPanel').classList.contains('open')) renderDMList();
-      // 현재 열린 그룹 채팅의 타이틀(인원수) 실시간 갱신
-      if (state._activeDMConvId) {
-        const activeConv = state.dms.find(c => c.id === state._activeDMConvId);
-        if (activeConv?.isGroup) {
-          const count = activeConv.participants?.length || 0;
-          document.getElementById('dmChatTitle').innerHTML = `👥 ${escapeHtml(activeConv.groupName || '그룹')} <span style="color:var(--primary-light);font-size:.8rem;cursor:pointer;text-decoration:underline" onclick="showGroupMembers()">${count}명</span>`;
-        }
-      }
     }, err => console.error('DM 구독 오류:', err));
 }
 
@@ -2324,7 +2316,9 @@ function renderDMList() {
     return;
   }
   list.innerHTML = state.dms.map(conv => {
-    const isGroup = conv.isGroup || false;
+    const otherUid = conv.participants.find(p => p !== uid);
+    const other = state.users.find(u => u.uid === otherUid);
+    const name = other?.name || '알 수 없음';
     const unread = (conv.unread || {})[uid] || 0;
     const lastMsg = conv.lastMessage || '';
     const lastAt = conv.lastAt ? (() => {
@@ -2333,32 +2327,11 @@ function renderDMList() {
       const isToday = d.toDateString() === now.toDateString();
       return isToday ? d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
     })() : '';
-
-    let avatarHtml, displayNameHtml, clickAction;
-    if (isGroup) {
-      // 그룹: 멀티 아바타 + 그룹명
-      const others = conv.participants.filter(p => p !== uid).slice(0, 2).map(p => state.users.find(u => u.uid === p));
-      avatarHtml = `<div class="dm-multi-avatar">
-        <div>${avatarEl({ name: others[0]?.name || '?', image: others[0]?.image || null, gender: others[0]?.gender || 'male' })}</div>
-        <div>${avatarEl({ name: others[1]?.name || '?', image: others[1]?.image || null, gender: others[1]?.gender || 'male' })}</div>
-      </div>`;
-      displayNameHtml = `${escapeHtml(conv.groupName || '그룹')}<span class="dm-group-badge">${conv.participants.length}명</span>`;
-      clickAction = `event.stopPropagation();openGroupChat('${conv.id}')`;
-    } else {
-      // 1:1
-      const otherUid = conv.participants.find(p => p !== uid);
-      const other = state.users.find(u => u.uid === otherUid);
-      const name = other?.name || '알 수 없음';
-      avatarHtml = `<div class="mini-avatar dm-conv-avatar">${avatarEl({ name, image: other?.image || null, gender: other?.gender || 'male' })}</div>`;
-      displayNameHtml = `${escapeHtml(name)}${titleBadge(other?.title)}`;
-      clickAction = `event.stopPropagation();openDMChat('${otherUid}')`;
-    }
-
     return `
-      <div class="dm-conv-item" onclick="${clickAction}">
-        ${avatarHtml}
+      <div class="dm-conv-item" onclick="openDMChat('${otherUid}')">
+        <div class="mini-avatar dm-conv-avatar">${avatarEl({ name, image: other?.image || null, gender: other?.gender || 'male' })}</div>
         <div class="dm-conv-info">
-          <div class="dm-conv-name">${displayNameHtml}</div>
+          <div class="dm-conv-name">${escapeHtml(name)}${titleBadge(other?.title)}</div>
           <div class="dm-conv-last">${escapeHtml(lastMsg.length > 28 ? lastMsg.slice(0, 28) + '…' : lastMsg)}</div>
         </div>
         <div class="dm-conv-meta">
@@ -2369,8 +2342,7 @@ function renderDMList() {
   }).join('');
 }
 
-function openDMChat(otherUid) {
-  try {
+async function openDMChat(otherUid) {
   const uid = state.currentUserId;
   if (!uid || otherUid === uid) return;
 
@@ -2378,62 +2350,61 @@ function openDMChat(otherUid) {
   state._activeDMConvId = convId;
   state._activeDMOtherUid = otherUid;
 
-  try { if (navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage({ type: 'DM_VIEWING', convId }); } catch(e) {}
+  // SW에 현재 보고 있는 대화방 알림 → 푸시 알림 억제
+  try { navigator.serviceWorker?.controller?.postMessage({ type: 'DM_VIEWING', convId }); } catch(e) {}
 
-  const other = state.users.find(function(u) { return u.uid === otherUid; });
-  const name = (other && other.name) || '알 수 없음';
-  document.getElementById('dmChatTitle').innerHTML = '💬 ' + escapeHtml(name) + titleBadge(other ? other.title : '');
+  const other = state.users.find(u => u.uid === otherUid);
+  const name = other?.name || '알 수 없음';
+  document.getElementById('dmChatTitle').innerHTML = `💬 ${escapeHtml(name)}${titleBadge(other?.title)}`;
   document.getElementById('dmMessages').innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:.84rem">로딩 중…</div>';
 
-  var toolbar = document.getElementById('dmToolbar');
-  if (toolbar) { toolbar.classList.remove('hidden'); }
-  document.querySelectorAll('.dm-group-only').forEach(function(el) { el.classList.add('hidden'); });
-
-  closeDMPanel();
   openModal('dmChatModal');
+  closeDMPanel();
 
-  // 비동기 작업은 별도로 (모달은 이미 열린 상태)
-  _initDMChatAsync(convId, uid);
-
-  } catch(e) { alert('DM 열기 오류: ' + e.message); }
-}
-
-async function _initDMChatAsync(convId, uid) {
-  // 알림센터 알림 제거
+  // 해당 대화의 알림센터 알림 제거
   try {
     if ('serviceWorker' in navigator) {
-      var reg = await navigator.serviceWorker.ready;
-      var notifications = await reg.getNotifications({ tag: 'dm-' + convId });
-      notifications.forEach(function(n) { n.close(); });
+      navigator.serviceWorker.ready.then(reg => {
+        reg.getNotifications({ tag: `dm-${convId}` }).then(notifications => notifications.forEach(n => n.close()));
+      });
     }
   } catch(e) {}
 
-  // 읽음 처리
-  var convRef = state.db.collection('dms').doc(convId);
+  // 기존 대화방이면 읽음 처리 + 즉시 UI 반영
+  const convRef = state.db.collection('dms').doc(convId);
   try {
-    var convSnap = await convRef.get();
+    const convSnap = await convRef.get();
     if (convSnap.exists) {
-      await convRef.update({ ['unread.' + uid]: 0 });
-      var localConv = state.dms.find(function(c) { return c.id === convId; });
+      await convRef.update({ [`unread.${uid}`]: 0 });
+      // 로컬 state도 즉시 반영 (onSnapshot 도착 전에 뱃지 업데이트)
+      const localConv = state.dms.find(c => c.id === convId);
       if (localConv && localConv.unread) localConv.unread[uid] = 0;
       updateDMBadge();
     }
   } catch(e) {}
 
-  // 메시지 구독
+  // 메시지 실시간 구독 + 새 메시지 수신 시 자동 읽음 처리
   if (state._dmMsgUnsub) state._dmMsgUnsub();
   state._dmMsgUnsub = state.db.collection('dms').doc(convId).collection('messages')
     .orderBy('createdAt', 'asc')
-    .onSnapshot(function(snap) {
-      renderDMMessages(snap.docs.map(function(d) { return { id: d.id, ...d.data() }; }), uid);
-      var modal = document.getElementById('dmChatModal');
+    .onSnapshot(snap => {
+      renderDMMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })), uid);
+      // 채팅 모달이 열려있는 동안 새 메시지가 오면 즉시 읽음 처리 + UI 반영
+      const modal = document.getElementById('dmChatModal');
       if (modal && modal.classList.contains('open')) {
-        state.db.collection('dms').doc(convId).update({ ['unread.' + uid]: 0 }).catch(function() {});
-        var lc = state.dms.find(function(c) { return c.id === convId; });
-        if (lc && lc.unread) lc.unread[uid] = 0;
+        state.db.collection('dms').doc(convId).update({ [`unread.${uid}`]: 0 }).catch(() => {});
+        const localConv = state.dms.find(c => c.id === convId);
+        if (localConv && localConv.unread) localConv.unread[uid] = 0;
         updateDMBadge();
+        try {
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.ready.then(reg => {
+              reg.getNotifications({ tag: `dm-${convId}` }).then(notifications => notifications.forEach(n => n.close()));
+            });
+          }
+        } catch(e) {}
       }
-    }, function(err) { console.error('DM 메시지 구독 오류:', err); });
+    }, err => console.error('DM 메시지 구독 오류:', err));
 }
 
 function closeDMChat() {
@@ -2459,231 +2430,7 @@ function closeDMChat() {
   if (state._dmMsgUnsub) { state._dmMsgUnsub(); state._dmMsgUnsub = null; }
   state._activeDMConvId = null;
   state._activeDMOtherUid = null;
-  // 툴바 숨기기
-  var tb = document.getElementById('dmToolbar');
-  if (tb) tb.classList.add('hidden');
   closeModal('dmChatModal');
-}
-
-/* ===== GROUP CHAT ===== */
-function openCreateGroupModal() {
-  const uid = state.currentUserId;
-  const members = state.users.filter(u => u.uid !== uid);
-  document.getElementById('groupNameInput').value = '';
-  document.getElementById('groupMemberList').innerHTML = members.map(u => `
-    <label class="group-member-item">
-      <input type="checkbox" value="${u.uid}">
-      <div class="mini-avatar">${avatarEl({ name: u.name, image: u.image || null, gender: u.gender || 'male' })}</div>
-      <span class="group-member-item-name">${escapeHtml(u.name)}${titleBadge(u.title)}</span>
-    </label>`).join('');
-  closeDMPanel();
-  openModal('groupCreateModal');
-}
-
-async function createGroupChat() {
-  const uid = state.currentUserId;
-  const checked = [...document.querySelectorAll('#groupMemberList input:checked')].map(el => el.value);
-  if (checked.length < 1) { alert('멤버를 1명 이상 선택해주세요.'); return; }
-  const groupName = document.getElementById('groupNameInput').value.trim() || '그룹 대화';
-  const participants = [uid, ...checked];
-  const unread = {};
-  participants.forEach(p => unread[p] = 0);
-
-  const FieldValue = firebase.firestore.FieldValue;
-  try {
-    const ref = state.db.collection('dms').doc();
-    await ref.set({
-      participants,
-      isGroup: true,
-      groupName,
-      createdBy: uid,
-      lastMessage: '그룹이 생성되었습니다',
-      lastAt: FieldValue.serverTimestamp(),
-      unread
-    });
-    await ref.collection('messages').add({
-      senderId: uid,
-      text: `${state.users.find(u => u.uid === uid)?.name || ''}님이 그룹을 만들었습니다`,
-      createdAt: FieldValue.serverTimestamp(),
-      system: true
-    });
-    closeModal('groupCreateModal');
-    openGroupChat(ref.id);
-  } catch (e) {
-    alert('그룹 생성 실패: ' + e.message);
-  }
-}
-
-async function openGroupChat(convId) {
-  const uid = state.currentUserId;
-  state._activeDMConvId = convId;
-  state._activeDMOtherUid = null;
-
-  try { navigator.serviceWorker?.controller?.postMessage({ type: 'DM_VIEWING', convId }); } catch(e) {}
-
-  const conv = state.dms.find(c => c.id === convId);
-  const title = conv?.groupName || '그룹';
-  const count = conv?.participants?.length || 0;
-  document.getElementById('dmChatTitle').innerHTML = `👥 ${escapeHtml(title)} <span style="color:var(--primary-light);font-size:.8rem;cursor:pointer;text-decoration:underline" onclick="showGroupMembers()">${count}명</span>`;
-  document.getElementById('dmMessages').innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:.84rem">로딩 중…</div>';
-
-  // 그룹: 툴바 + 그룹 전용 버튼 모두 표시
-  var gtb = document.getElementById('dmToolbar');
-  if (gtb) gtb.classList.remove('hidden');
-  document.querySelectorAll('.dm-group-only').forEach(function(el) { el.classList.remove('hidden'); });
-
-  closeDMPanel();
-  openModal('dmChatModal');
-
-  // 알림 클리어
-  try { if ('serviceWorker' in navigator) { navigator.serviceWorker.ready.then(reg => { reg.getNotifications({ tag: `dm-${convId}` }).then(ns => ns.forEach(n => n.close())); }); } } catch(e) {}
-
-  // 읽음 처리
-  const convRef = state.db.collection('dms').doc(convId);
-  try {
-    const snap = await convRef.get();
-    if (snap.exists) {
-      await convRef.update({ [`unread.${uid}`]: 0 });
-      const local = state.dms.find(c => c.id === convId);
-      if (local?.unread) local.unread[uid] = 0;
-      updateDMBadge();
-    }
-  } catch(e) {}
-
-  // 메시지 구독
-  if (state._dmMsgUnsub) state._dmMsgUnsub();
-  state._dmMsgUnsub = state.db.collection('dms').doc(convId).collection('messages')
-    .orderBy('createdAt', 'asc')
-    .onSnapshot(snap => {
-      renderDMMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })), uid);
-      const modal = document.getElementById('dmChatModal');
-      if (modal && modal.classList.contains('open')) {
-        state.db.collection('dms').doc(convId).update({ [`unread.${uid}`]: 0 }).catch(() => {});
-        const local = state.dms.find(c => c.id === convId);
-        if (local?.unread) local.unread[uid] = 0;
-        updateDMBadge();
-      }
-    }, err => console.error('그룹 메시지 구독 오류:', err));
-}
-
-function openInviteGroupModal() {
-  const convId = state._activeDMConvId;
-  const conv = state.dms.find(c => c.id === convId);
-  if (!conv) return;
-
-  const existing = new Set(conv.participants);
-  const candidates = state.users.filter(u => !existing.has(u.uid));
-  if (!candidates.length) { alert('초대할 수 있는 멤버가 없습니다.'); return; }
-
-  document.getElementById('groupInviteMemberList').innerHTML = candidates.map(u => `
-    <label class="group-member-item">
-      <input type="checkbox" value="${u.uid}">
-      <div class="mini-avatar">${avatarEl({ name: u.name, image: u.image || null, gender: u.gender || 'male' })}</div>
-      <span class="group-member-item-name">${escapeHtml(u.name)}${titleBadge(u.title)}</span>
-    </label>`).join('');
-  openModal('groupInviteModal');
-}
-
-async function inviteToGroup() {
-  const convId = state._activeDMConvId;
-  if (!convId) return;
-  const checked = [...document.querySelectorAll('#groupInviteMemberList input:checked')].map(el => el.value);
-  if (!checked.length) { alert('초대할 멤버를 선택해주세요.'); return; }
-
-  const FieldValue = firebase.firestore.FieldValue;
-  const convRef = state.db.collection('dms').doc(convId);
-  try {
-    const updates = {
-      participants: FieldValue.arrayUnion(...checked),
-      isGroup: true
-    };
-    checked.forEach(uid => updates[`unread.${uid}`] = 0);
-    await convRef.update(updates);
-
-    // 그룹명이 없으면 자동 설정
-    const snap = await convRef.get();
-    if (snap.exists && !snap.data().groupName) {
-      await convRef.update({ groupName: '그룹 대화' });
-    }
-
-    const myName = state.users.find(u => u.uid === state.currentUserId)?.name || '';
-    const invitedNames = checked.map(uid => state.users.find(u => u.uid === uid)?.name || '').join(', ');
-    await convRef.collection('messages').add({
-      senderId: state.currentUserId,
-      text: `${myName}님이 ${invitedNames}님을 초대했습니다`,
-      createdAt: FieldValue.serverTimestamp(),
-      system: true
-    });
-
-    closeModal('groupInviteModal');
-    // 타이틀 갱신은 initDMs의 onSnapshot 콜백에서 자동 처리됨
-  } catch (e) {
-    alert('초대 실패: ' + e.message);
-  }
-}
-
-function showGroupMembers() {
-  const convId = state._activeDMConvId;
-  const conv = state.dms.find(c => c.id === convId);
-  if (!conv) return;
-  const uid = state.currentUserId;
-  document.getElementById('groupMembersTitle').textContent = `참여자 ${conv.participants.length}명`;
-  document.getElementById('groupMembersBody').innerHTML = conv.participants.map(pUid => {
-    const u = state.users.find(x => x.uid === pUid);
-    const name = u?.name || '알 수 없음';
-    const isMe = pUid === uid;
-    return `<div class="group-member-row">
-      <div class="mini-avatar" style="width:36px;height:36px;flex-shrink:0">${avatarEl({ name, image: u?.image || null, gender: u?.gender || 'male' })}</div>
-      <div style="flex:1;min-width:0">
-        <span style="font-size:.9rem;font-weight:600">${escapeHtml(name)}</span>${titleBadge(u?.title)}${isMe ? '<span style="color:var(--primary-light);font-size:.75rem;margin-left:4px">나</span>' : ''}
-      </div>
-    </div>`;
-  }).join('');
-  openModal('groupMembersModal');
-}
-
-async function renameGroup() {
-  const convId = state._activeDMConvId;
-  const conv = state.dms.find(c => c.id === convId);
-  if (!conv) return;
-  const newName = prompt('새 그룹 이름을 입력하세요:', conv.groupName || '');
-  if (newName === null || !newName.trim()) return;
-  try {
-    await state.db.collection('dms').doc(convId).update({ groupName: newName.trim() });
-    document.getElementById('dmChatTitle').innerHTML = `👥 ${escapeHtml(newName.trim())} <span style="color:var(--text3);font-size:.8rem">${conv.participants.length}명</span>`;
-  } catch (e) {
-    alert('이름 변경 실패: ' + e.message);
-  }
-}
-
-async function leaveGroup() {
-  const convId = state._activeDMConvId;
-  if (!convId) return;
-  if (!confirm('이 그룹을 나가시겠습니까?')) return;
-
-  const uid = state.currentUserId;
-  const FieldValue = firebase.firestore.FieldValue;
-  const convRef = state.db.collection('dms').doc(convId);
-  try {
-    // 시스템 메시지를 먼저 기록 (participants에서 제거 전이어야 권한이 있음)
-    const myName = state.users.find(u => u.uid === uid)?.name || '';
-    await convRef.collection('messages').add({
-      senderId: uid,
-      text: `${myName}님이 나갔습니다`,
-      createdAt: FieldValue.serverTimestamp(),
-      system: true
-    });
-    // 메시지 구독 해제 (participants 제거 후 권한 에러 방지)
-    if (state._dmMsgUnsub) { state._dmMsgUnsub(); state._dmMsgUnsub = null; }
-    // participants에서 자신 제거
-    await convRef.update({
-      participants: FieldValue.arrayRemove(uid),
-      [`unread.${uid}`]: FieldValue.delete()
-    });
-    closeDMChat();
-  } catch (e) {
-    alert('나가기 실패: ' + e.message);
-  }
 }
 
 function isSingleEmoji(str) {
@@ -2697,8 +2444,6 @@ function renderDMMessages(msgs, myUid) {
     container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:.84rem">아직 메시지가 없습니다.<br>첫 메시지를 보내보세요!</div>';
     return;
   }
-  const conv = state.dms.find(c => c.id === state._activeDMConvId);
-  const isGroup = conv?.isGroup || false;
   let html = '';
   let lastDate = '';
   msgs.forEach(msg => {
@@ -2711,19 +2456,6 @@ function renderDMMessages(msgs, myUid) {
     }
     const time = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
 
-    // 시스템 메시지 (그룹 생성, 초대, 나가기)
-    if (msg.system) {
-      html += `<div class="dm-date-sep" style="font-size:.78rem">${escapeHtml(msg.text)}</div>`;
-      return;
-    }
-
-    // 그룹 채팅: 상대방 메시지에 발신자 이름 표시
-    let senderLabel = '';
-    if (isGroup && !isMe) {
-      const sender = state.users.find(u => u.uid === msg.senderId);
-      senderLabel = `<div class="dm-msg-sender">${escapeHtml(sender?.name || '알 수 없음')}</div>`;
-    }
-
     let content = '';
     if (msg.image) {
       content = `<div class="dm-bubble dm-bubble-img"><img src="${msg.image}" alt="사진" onclick="openLightbox('${msg.image}')"></div>`;
@@ -2735,21 +2467,11 @@ function renderDMMessages(msgs, myUid) {
     }
 
     html += `<div class="dm-msg ${isMe ? 'dm-msg-me' : 'dm-msg-other'}">
-      ${senderLabel}${content}
+      ${content}
       <div class="dm-time">${time}</div>
     </div>`;
   });
   container.innerHTML = html;
-  // 이미지 로드 완료 후 스크롤 (이미지가 있으면 로드 대기)
-  const images = container.querySelectorAll('img');
-  if (images.length) {
-    let loaded = 0;
-    const onLoad = () => { if (++loaded >= images.length) container.scrollTop = container.scrollHeight; };
-    images.forEach(img => {
-      if (img.complete) onLoad();
-      else { img.addEventListener('load', onLoad); img.addEventListener('error', onLoad); }
-    });
-  }
   container.scrollTop = container.scrollHeight;
 }
 
@@ -2785,27 +2507,17 @@ async function sendDMMessage(imageDataUrl) {
   if (!text && !imageDataUrl) return;
   const convId = state._activeDMConvId;
   const uid = state.currentUserId;
-  if (!convId || !uid) return;
-
-  const conv = state.dms.find(c => c.id === convId);
-  const isGroup = conv?.isGroup || false;
-  const otherUid = state._activeDMOtherUid; // 1:1에서만 사용
-
-  if (!isGroup && !otherUid) return;
+  const otherUid = state._activeDMOtherUid;
+  if (!convId || !uid || !otherUid) return;
 
   input.value = '';
   const FieldValue = firebase.firestore.FieldValue;
   const convRef = state.db.collection('dms').doc(convId);
-
-  // 그룹이면 발신자 이름 접두사 추가
-  const myName = state.users.find(u => u.uid === uid)?.name || '';
-  const rawMsg = imageDataUrl ? '📷 사진' : text;
-  const lastMsg = isGroup ? `${myName}: ${rawMsg}` : rawMsg;
+  const lastMsg = imageDataUrl ? '📷 사진' : text;
 
   try {
     const convSnap = await convRef.get();
     if (!convSnap.exists) {
-      // 1:1 새 대화방 생성
       await convRef.set({
         participants: [uid, otherUid],
         lastMessage: lastMsg,
@@ -2813,21 +2525,12 @@ async function sendDMMessage(imageDataUrl) {
         unread: { [uid]: 0, [otherUid]: 1 }
       });
     } else {
-      // 기존 대화방 업데이트 (1:1 또는 그룹)
-      const updates = {
+      await convRef.update({
         lastMessage: lastMsg,
         lastAt: FieldValue.serverTimestamp(),
+        [`unread.${otherUid}`]: FieldValue.increment(1),
         [`unread.${uid}`]: 0
-      };
-      if (isGroup) {
-        // 그룹: 본인 외 모든 참여자 unread +1
-        conv.participants.filter(p => p !== uid).forEach(p => {
-          updates[`unread.${p}`] = FieldValue.increment(1);
-        });
-      } else {
-        updates[`unread.${otherUid}`] = FieldValue.increment(1);
-      }
-      await convRef.update(updates);
+      });
     }
     const msgData = {
       senderId: uid,
@@ -2836,14 +2539,7 @@ async function sendDMMessage(imageDataUrl) {
     };
     if (imageDataUrl) msgData.image = imageDataUrl;
     await convRef.collection('messages').add(msgData);
-
-    // 푸시 알림: 그룹이면 모든 참여자에게, 1:1이면 상대에게
-    const recipients = isGroup
-      ? conv.participants.filter(p => p !== uid)
-      : [otherUid];
-    recipients.forEach(recipientUid => {
-      triggerPushNotification(recipientUid, lastMsg, convId).catch(() => {});
-    });
+    triggerPushNotification(otherUid, lastMsg, convId).catch(() => {});
   } catch (err) {
     input.value = text;
     alert('전송 실패: ' + err.message);
@@ -3396,7 +3092,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => closeModal(btn.dataset.modal || btn.closest('.modal-overlay')?.id));
   });
   // 폼 모달은 외부 클릭으로 닫히지 않음 (데이터 손실 방지)
-  const formModals = new Set(['memberModal', 'eventModal', 'galleryFormModal', 'myAccountModal', 'inviteModal', 'noticeEditModal', 'dmChatModal']);
+  const formModals = new Set(['memberModal', 'eventModal', 'galleryFormModal', 'myAccountModal', 'inviteModal', 'noticeEditModal']);
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
     if (formModals.has(overlay.id)) return;
     overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(overlay.id); });
