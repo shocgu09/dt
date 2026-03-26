@@ -4025,30 +4025,30 @@ function openCropModal(file, aspectRatio, callback) {
   // 파일 크기 제한 (15MB)
   if (file.size > 15 * 1024 * 1024) { alert('15MB 이하의 이미지만 업로드할 수 있습니다.'); return; }
   _cropCallback = callback;
-  const reader = new FileReader();
-  reader.onerror = () => { alert('파일을 읽을 수 없습니다.'); };
-  reader.onload = e => {
-    const img = document.getElementById('cropImage');
-    img.src = e.target.result;
-    const overlay = document.getElementById('cropModal');
-    overlay.style.display = 'flex';
-    if (_cropperInstance) { _cropperInstance.destroy(); _cropperInstance = null; }
-    img.onload = () => {
-      _cropperInstance = new Cropper(img, {
-        aspectRatio: aspectRatio ?? NaN,
-        viewMode: 1,
-        autoCropArea: 1,       // 크롭 박스가 뷰 전체를 채움
-        dragMode: 'move',      // 드래그 시 이미지 이동
-        cropBoxMovable: false, // 크롭 박스 고정
-        cropBoxResizable: false, // 크롭 박스 크기 고정
-        movable: true,         // 이미지 이동 가능
-        zoomable: true,        // 핀치/휠 줌 가능
-        rotatable: false,
-        toggleDragModeOnDblclick: false,
-      });
-    };
+  const img = document.getElementById('cropImage');
+  // ObjectURL 사용 — 브라우저가 EXIF 방향을 자동 처리
+  if (img._objectUrl) URL.revokeObjectURL(img._objectUrl);
+  var objUrl = URL.createObjectURL(file);
+  img._objectUrl = objUrl;
+  img.src = objUrl;
+  const overlay = document.getElementById('cropModal');
+  overlay.style.display = 'flex';
+  if (_cropperInstance) { _cropperInstance.destroy(); _cropperInstance = null; }
+  img.onload = () => {
+    _cropperInstance = new Cropper(img, {
+      aspectRatio: aspectRatio ?? NaN,
+      viewMode: 1,
+      autoCropArea: 1,
+      dragMode: 'move',
+      cropBoxMovable: false,
+      cropBoxResizable: false,
+      movable: true,
+      zoomable: true,
+      rotatable: false,
+      checkOrientation: false, // 브라우저가 이미 EXIF 처리, Cropper 중복 방지
+      toggleDragModeOnDblclick: false,
+    });
   };
-  reader.readAsDataURL(file);
 }
 
 function confirmCrop() {
