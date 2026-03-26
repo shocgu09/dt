@@ -53,7 +53,7 @@ body {
 .navbar {
   position: fixed; top: 0; left: 0; right: 0; z-index: 100;
   display: flex; align-items: center; gap: 16px;
-  padding: 0 24px; height: 56px;
+  padding: env(safe-area-inset-top, 0) 24px 0; height: calc(56px + env(safe-area-inset-top, 0px));
   background: var(--bg);
   border-bottom: 2px solid var(--border);
 }
@@ -82,7 +82,7 @@ body {
 .mobile-menu .nav-btn { text-align: left; padding: 10px 14px; }
 
 /* ===== PAGES ===== */
-main { padding: 80px 20px 24px; max-width: 1200px; margin: 0 auto; }
+main { padding: calc(80px + env(safe-area-inset-top, 0px)) 20px 24px; max-width: 1200px; margin: 0 auto; }
 .page { display: none; }
 .page.active { display: block; }
 
@@ -849,7 +849,7 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 .quiz-option-del:hover { background: rgba(255,107,107,.15); border-color: #ff6b6b; color: #ff9898; }
 
 @media (max-width: 480px) {
-  main { padding: 72px 12px calc(70px + env(safe-area-inset-bottom, 0px)); }
+  main { padding: calc(72px + env(safe-area-inset-top, 0px)) 12px calc(70px + env(safe-area-inset-bottom, 0px)); }
   .stats-bar { gap: 8px; }
   .stat-card { padding: 14px 10px; }
   .stat-num { font-size: 1.6rem; }
