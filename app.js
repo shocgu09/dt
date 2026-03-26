@@ -2646,11 +2646,10 @@ function renameGroup() {
   const convId = state._activeDMConvId;
   const conv = state.dms.find(c => c.id === convId);
   if (!conv) return;
+  const input = document.getElementById('groupRenameInput');
+  input.value = conv.groupName || '';
   openModal('groupRenameModal');
-  setTimeout(() => {
-    const input = document.getElementById('groupRenameInput');
-    if (input) { input.value = conv.groupName || ''; input.focus(); }
-  }, 150);
+  setTimeout(() => input.focus(), 100);
 }
 
 async function submitRenameGroup() {
