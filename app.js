@@ -3801,8 +3801,6 @@ function _renderParkingMap(places) {
 
   if (!_parkingMap) {
     _parkingMap = new kakao.maps.Map(mapEl, { center: center, level: 4 });
-  } else {
-    _parkingMap.setCenter(center);
   }
 
   // 기존 마커 제거
@@ -3849,8 +3847,7 @@ function _renderParkingMap(places) {
     });
   });
 
-  _parkingMap.setBounds(bounds);
-  setTimeout(function() { _parkingMap.relayout(); _parkingMap.setBounds(bounds); }, 300);
+  setTimeout(function() { _parkingMap.relayout(); }, 300);
 }
 
 function parkingFocus(index) {
