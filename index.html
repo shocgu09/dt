@@ -107,28 +107,6 @@
         </div>
         <div class="hero-art">🏎️</div>
       </div>
-      <div class="weather-card" id="weatherCard" style="display:none">
-        <div class="weather-main">
-          <span class="weather-emoji" id="weatherEmoji">☀️</span>
-          <div class="weather-temp-wrap">
-            <span class="weather-temp" id="weatherTemp">-</span>
-            <span class="weather-desc" id="weatherDesc">로딩 중...</span>
-            <span class="weather-location" id="weatherLocation" style="font-size:.72rem;color:var(--text3)"></span>
-          </div>
-          <div class="weather-details">
-            <span id="weatherPop">💧 -</span>
-            <span id="weatherWind">💨 -</span>
-          </div>
-        </div>
-        <div class="drive-index">
-          <span>🚗 드라이브 지수</span>
-          <span class="drive-stars" id="driveStars">★★★★★</span>
-          <span class="drive-label" id="driveLabel">최고!</span>
-        </div>
-        <div class="drift-alert" id="driftAlert" style="display:none">
-          🏎️💨 공짜 드리프트 데이 예보!
-        </div>
-      </div>
       <div class="stats-bar">
         <div class="stat-card">
           <span class="stat-num" id="stat-total">0</span>
@@ -157,6 +135,30 @@
           <h3>📋 게시판</h3>
           <div id="home-anon-list" class="home-list"></div>
           <button class="btn btn-sm btn-outline member-only" onclick="goPage('anon')">더 보기</button>
+        </div>
+      </div>
+
+      <!-- 날씨 + 드라이브 지수 -->
+      <div class="weather-card" id="weatherCard" style="display:none">
+        <div class="weather-main">
+          <span class="weather-emoji" id="weatherEmoji">☀️</span>
+          <div class="weather-temp-wrap">
+            <span class="weather-temp" id="weatherTemp">-</span>
+            <span class="weather-desc" id="weatherDesc">로딩 중...</span>
+            <span class="weather-location" id="weatherLocation" style="font-size:.72rem;color:var(--text3)"></span>
+          </div>
+          <div class="weather-details">
+            <span id="weatherPop">💧 -</span>
+            <span id="weatherWind">💨 -</span>
+          </div>
+        </div>
+        <div class="drive-index">
+          <span>🚗 드라이브 지수</span>
+          <span class="drive-stars" id="driveStars">★★★★★</span>
+          <span class="drive-label" id="driveLabel">최고!</span>
+        </div>
+        <div class="drift-alert" id="driftAlert" style="display:none">
+          🏎️💨 공짜 드리프트 데이 예보!
         </div>
       </div>
 
