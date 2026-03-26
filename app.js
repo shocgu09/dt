@@ -2841,7 +2841,54 @@ let _gasMapLoaded = false;
 
 function openGasStationModal() {
   openModal('gasStationModal');
+  document.getElementById('gasDestInput').value = '';
+  document.getElementById('gasDestResults').style.display = 'none';
   findGasStations();
+}
+
+function searchGasDest() {
+  var query = document.getElementById('gasDestInput').value.trim();
+  if (!query) return;
+  var resultsEl = document.getElementById('gasDestResults');
+  resultsEl.style.display = 'block';
+  resultsEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text3);font-size:.84rem">검색 중...</div>';
+
+  if (typeof kakao === 'undefined' || !kakao.maps) {
+    resultsEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--accent);font-size:.84rem">카카오맵을 불러올 수 없습니다</div>';
+    return;
+  }
+
+  var doSearch = function() {
+    var ps = new kakao.maps.services.Places();
+    ps.keywordSearch(query, function(data, status) {
+      if (status !== kakao.maps.services.Status.OK || !data.length) {
+        resultsEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text3);font-size:.84rem">검색 결과가 없습니다</div>';
+        return;
+      }
+      var html = '';
+      data.slice(0, 8).forEach(function(place) {
+        html += '<div class="parking-dest-item" onclick="selectGasDest(' + place.y + ',' + place.x + ',\'' + escapeHtml(place.place_name).replace(/'/g, "\\'") + '\')">';
+        html += '<div class="parking-dest-name">' + escapeHtml(place.place_name) + '</div>';
+        html += '<div class="parking-dest-addr">' + escapeHtml(place.address_name || '') + '</div>';
+        html += '</div>';
+      });
+      resultsEl.innerHTML = html;
+    });
+  };
+
+  if (_gasMapLoaded) { doSearch(); }
+  else { kakao.maps.load(function() { _gasMapLoaded = true; doSearch(); }); }
+}
+
+function selectGasDest(lat, lng, name) {
+  _gasUserLocation = { lat: lat, lng: lng };
+  document.getElementById('gasDestInput').value = name;
+  document.getElementById('gasDestResults').style.display = 'none';
+  var addrEl = document.getElementById('gasMyAddr');
+  var locEl = document.getElementById('gasMyLocation');
+  if (addrEl) addrEl.textContent = name;
+  if (locEl) locEl.style.display = 'block';
+  _fetchGasStations();
 }
 
 function findGasStations() {

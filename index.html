@@ -1064,21 +1064,26 @@
         <button class="modal-close" data-modal="gasStationModal">&times;</button>
       </div>
       <div class="modal-body" style="padding:0">
+        <div class="parking-search-bar">
+          <input type="text" id="gasDestInput" placeholder="주소/장소 검색 (예: 강남역, 홍대입구)" onkeydown="if(event.key==='Enter')searchGasDest()">
+          <button onclick="searchGasDest()">🔍</button>
+        </div>
+        <div id="gasDestResults" class="parking-dest-results" style="display:none"></div>
         <div class="gas-filters">
-          <select id="gasFuelType" onchange="findGasStations()">
+          <select id="gasFuelType" onchange="_fetchGasStations()">
             <option value="B027">휘발유</option>
             <option value="D047">경유</option>
             <option value="K015">LPG</option>
             <option value="B034">고급휘발유</option>
           </select>
-          <select id="gasRadius" onchange="findGasStations()">
+          <select id="gasRadius" onchange="_fetchGasStations()">
             <option value="1000">반경 1km</option>
             <option value="3000" selected>반경 3km</option>
             <option value="5000">반경 5km</option>
             <option value="10000">반경 10km</option>
             <option value="30000">반경 30km</option>
           </select>
-          <select id="gasSort" onchange="findGasStations()">
+          <select id="gasSort" onchange="_fetchGasStations()">
             <option value="1">가격순</option>
             <option value="2">거리순</option>
           </select>
