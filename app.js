@@ -3131,6 +3131,31 @@ function clearAnonImage() {
   document.getElementById('anonImagePreview').innerHTML = '';
 }
 
+async function refineWithAI() {
+  var input = document.getElementById('anonInput');
+  var text = input.value.trim();
+  if (!text) { alert('정리할 내용을 입력해주세요.'); return; }
+  var btn = document.getElementById('btnAiRefine');
+  btn.disabled = true;
+  btn.textContent = '⏳ 정리 중...';
+  try {
+    var res = await fetch('https://dt-ai.shocguna.workers.dev/api/refine', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text })
+    });
+    var data = await res.json();
+    if (data.error) { alert('AI 정리 실패: ' + data.error); return; }
+    input.value = data.refined || text;
+    document.getElementById('anonCharCount').textContent = input.value.length;
+  } catch (e) {
+    alert('AI 정리 실패: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✨ AI 정리';
+  }
+}
+
 async function postAnon() {
   var titleInput = document.getElementById('anonTitleInput');
   var input = document.getElementById('anonInput');
