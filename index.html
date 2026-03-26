@@ -99,6 +99,7 @@
           <p class="hero-desc">드라이브를 사랑하는 사람들의 모임.<br>운전자와 동승자가 함께 달리는 공간입니다.</p>
           <button class="btn btn-primary" onclick="goPage('members')">회원 보기</button>
           <button class="btn btn-outline" onclick="goPage('events')">이벤트 보기</button>
+          <button class="btn" style="background:linear-gradient(135deg,#ff6b35,#f7c948);color:#000;font-weight:800;border:none" onclick="openGasStationModal()">⛽ 주변 주유소</button>
         </div>
         <div class="hero-art">🏎️</div>
       </div>
@@ -879,6 +880,41 @@
     </div>
   </div>
 
+  <!-- Gas Station Modal -->
+  <div class="modal-overlay" id="gasStationModal">
+    <div class="modal modal-wide">
+      <div class="modal-header">
+        <h3>⛽ 주변 주유소 찾기</h3>
+        <button class="modal-close" data-modal="gasStationModal">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:0">
+        <div class="gas-filters">
+          <select id="gasFuelType" onchange="findGasStations()">
+            <option value="B027">휘발유</option>
+            <option value="D047">경유</option>
+            <option value="K015">LPG</option>
+            <option value="B034">고급휘발유</option>
+          </select>
+          <select id="gasRadius" onchange="findGasStations()">
+            <option value="1000">반경 1km</option>
+            <option value="3000" selected>반경 3km</option>
+            <option value="5000">반경 5km</option>
+          </select>
+          <select id="gasSort" onchange="findGasStations()">
+            <option value="1">가격순</option>
+            <option value="2">거리순</option>
+          </select>
+        </div>
+        <div id="gasMap" style="width:100%;height:220px;display:none"></div>
+        <div id="gasStationList" style="padding:12px 16px;max-height:40vh;overflow-y:auto;-webkit-overflow-scrolling:touch">
+          <div style="text-align:center;padding:40px;color:var(--text3)">
+            📍 위치를 확인하고 있습니다...
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Vote Modal -->
   <div class="modal-overlay" id="voteModal">
     <div class="modal">
@@ -933,7 +969,8 @@
 <!-- 🔧 Firebase 설정 파일 (본인 config로 교체하세요) -->
   <script src="firebase-config.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
-  <script src="app.js?v=6"></script>
+  <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=4e6bf0a48d4d8a637a18a4ba1d82deaf&autoload=false"></script>
+  <script src="app.js?v=7"></script>
 
   <!-- 공지 팝업 -->
   <div class="modal-overlay" id="noticePopup" style="display:none;z-index:999">

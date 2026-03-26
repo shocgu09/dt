@@ -2739,6 +2739,197 @@ function hideIOSInstallBanner() {
   state._showIOSInstallBanner = false;
 }
 
+/* ===== GAS STATION (주변 주유소 찾기) ===== */
+const OPINET_WORKER_URL = 'https://dt-opinet.shocguna.workers.dev';
+let _gasUserLocation = null;
+let _gasMap = null;
+let _gasMarkers = [];
+let _gasMapLoaded = false;
+
+function openGasStationModal() {
+  openModal('gasStationModal');
+  findGasStations();
+}
+
+function findGasStations() {
+  var listEl = document.getElementById('gasStationList');
+  var mapEl = document.getElementById('gasMap');
+  listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">📍 위치를 확인하고 있습니다...</div>';
+  mapEl.style.display = 'none';
+
+  if (!navigator.geolocation) {
+    listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--accent)">❌ 이 브라우저에서는 위치 서비스를 지원하지 않습니다.</div>';
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    function(pos) {
+      _gasUserLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      _fetchGasStations();
+    },
+    function(err) {
+      var msg = '위치를 가져올 수 없습니다.';
+      if (err.code === 1) msg = '위치 권한이 거부되었습니다.<br>브라우저 설정에서 위치 권한을 허용해주세요.';
+      else if (err.code === 2) msg = '위치 정보를 사용할 수 없습니다.';
+      else if (err.code === 3) msg = '위치 요청 시간이 초과되었습니다.';
+      listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--accent)">❌ ' + msg + '</div>';
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+  );
+}
+
+async function _fetchGasStations() {
+  var listEl = document.getElementById('gasStationList');
+  var fuel = document.getElementById('gasFuelType').value;
+  var radius = document.getElementById('gasRadius').value;
+  var sort = document.getElementById('gasSort').value;
+
+  listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">🔍 주유소를 검색하고 있습니다...</div>';
+
+  try {
+    var url = OPINET_WORKER_URL + '/api/gas?lat=' + _gasUserLocation.lat + '&lng=' + _gasUserLocation.lng + '&radius=' + radius + '&fuel=' + fuel + '&sort=' + sort;
+    var res = await fetch(url);
+    if (!res.ok) throw new Error('서버 오류');
+    var data = await res.json();
+
+    if (data.error) throw new Error(data.error);
+
+    var stations = data.RESULT && data.RESULT.OIL ? data.RESULT.OIL : [];
+    if (!stations.length) {
+      listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">😢 반경 내 주유소를 찾을 수 없습니다.<br>반경을 늘려보세요.</div>';
+      document.getElementById('gasMap').style.display = 'none';
+      return;
+    }
+
+    _renderGasStations(stations, fuel);
+    _renderGasMap(stations);
+  } catch (err) {
+    listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--accent)">❌ 주유소 검색 실패<br><span style="font-size:.8rem">' + escapeHtml(err.message) + '</span></div>';
+  }
+}
+
+function _renderGasStations(stations, fuel) {
+  var listEl = document.getElementById('gasStationList');
+  var fuelNames = { 'B027': '휘발유', 'D047': '경유', 'K015': 'LPG', 'B034': '고급휘발유' };
+  var fuelName = fuelNames[fuel] || '휘발유';
+  var brandNames = {
+    'SKE': 'SK에너지', 'GSC': 'GS칼텍스', 'HDO': '현대오일뱅크',
+    'SOL': 'S-OIL', 'RTE': '자영알뜰', 'RTX': '고속도로알뜰',
+    'NHO': '농협', 'ETC': '기타', 'E1G': 'E1', 'SKG': 'SK가스'
+  };
+
+  var html = '<div style="padding:4px 0 8px;font-size:.78rem;color:var(--text3)">총 ' + stations.length + '개 · ' + fuelName + ' 기준</div>';
+
+  stations.forEach(function(s, i) {
+    var brand = brandNames[s.POLL_DIV_CD] || s.POLL_DIV_CD || '기타';
+    var price = Number(s.PRICE).toLocaleString();
+    var dist = s.DISTANCE ? (Number(s.DISTANCE) / 1000).toFixed(1) + 'km' : '';
+    var isSelf = s.SELF_YN === 'Y';
+    var isTop = i === 0;
+    var lat = s.GIS_Y_COOR;
+    var lng = s.GIS_X_COOR;
+    var name = s.OS_NM || '주유소';
+
+    html += '<div class="gas-card" id="gas-card-' + i + '">';
+    html += '<div class="gas-rank' + (isTop ? ' top' : '') + '">' + (i + 1) + '</div>';
+    html += '<div class="gas-info">';
+    html += '<div class="gas-name">' + escapeHtml(name) + (isSelf ? '<span class="gas-self">셀프</span>' : '') + '</div>';
+    html += '<div class="gas-brand">' + escapeHtml(brand) + (dist ? ' · ' + dist : '') + '</div>';
+    html += '<div class="gas-detail">' + escapeHtml(s.NEW_ADR || s.VAN_ADR || '') + '</div>';
+    html += '<button class="gas-nav-btn" onclick="openGasNavigation(' + lat + ',' + lng + ',\'' + escapeHtml(name).replace(/'/g, "\\'") + '\')">🗺️ 길안내</button>';
+    html += '</div>';
+    html += '<div class="gas-price-wrap">';
+    html += '<div class="gas-price">' + price + '</div>';
+    html += '<div class="gas-price-unit">원/L</div>';
+    html += '</div>';
+    html += '</div>';
+  });
+
+  listEl.innerHTML = html;
+}
+
+function _renderGasMap(stations) {
+  var mapEl = document.getElementById('gasMap');
+
+  function initMap() {
+    mapEl.style.display = 'block';
+    var center = new kakao.maps.LatLng(_gasUserLocation.lat, _gasUserLocation.lng);
+
+    if (!_gasMap) {
+      _gasMap = new kakao.maps.Map(mapEl, { center: center, level: 5 });
+    } else {
+      _gasMap.setCenter(center);
+    }
+
+    // 기존 마커 제거
+    _gasMarkers.forEach(function(m) { m.setMap(null); });
+    _gasMarkers = [];
+
+    // 내 위치 마커
+    var myMarker = new kakao.maps.Marker({
+      position: center,
+      map: _gasMap,
+      image: new kakao.maps.MarkerImage(
+        'https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/markerStar.png',
+        new kakao.maps.Size(24, 35)
+      )
+    });
+    _gasMarkers.push(myMarker);
+
+    var bounds = new kakao.maps.LatLngBounds();
+    bounds.extend(center);
+
+    // 주유소 마커
+    stations.forEach(function(s, i) {
+      var pos = new kakao.maps.LatLng(s.GIS_Y_COOR, s.GIS_X_COOR);
+      bounds.extend(pos);
+
+      var marker = new kakao.maps.Marker({ position: pos, map: _gasMap });
+      _gasMarkers.push(marker);
+
+      var price = Number(s.PRICE).toLocaleString();
+      var name = s.OS_NM || '주유소';
+      var isSelf = s.SELF_YN === 'Y';
+
+      var infoContent = '<div style="padding:4px 8px;font-size:12px;white-space:nowrap;background:#fff;border-radius:4px;color:#333">'
+        + '<b>' + (i + 1) + '. ' + escapeHtml(name) + '</b>' + (isSelf ? ' <span style="color:#22c55e;font-size:10px">셀프</span>' : '')
+        + '<br><span style="color:#e65100;font-weight:700">' + price + '원</span>'
+        + '</div>';
+
+      var infowindow = new kakao.maps.InfoWindow({ content: infoContent, removable: true });
+
+      kakao.maps.event.addListener(marker, 'click', function() {
+        infowindow.open(_gasMap, marker);
+        // 리스트에서 해당 카드 하이라이트
+        var card = document.getElementById('gas-card-' + i);
+        if (card) { card.style.background = 'rgba(124,111,255,.1)'; card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); setTimeout(function() { card.style.background = ''; }, 2000); }
+      });
+    });
+
+    _gasMap.setBounds(bounds);
+    setTimeout(function() { _gasMap.relayout(); }, 100);
+  }
+
+  // 카카오맵 SDK 로드
+  if (typeof kakao !== 'undefined' && kakao.maps) {
+    if (_gasMapLoaded) {
+      initMap();
+    } else {
+      kakao.maps.load(function() {
+        _gasMapLoaded = true;
+        initMap();
+      });
+    }
+  } else {
+    mapEl.style.display = 'none';
+  }
+}
+
+function openGasNavigation(lat, lng, name) {
+  var kakaoUrl = 'https://map.kakao.com/link/to/' + encodeURIComponent(name) + ',' + lat + ',' + lng;
+  window.open(kakaoUrl, '_blank');
+}
+
 /* ===== IMAGE 압축 (base64 → Firestore 직접 저장) ===== */
 function getExifOrientation(file) {
   return new Promise(resolve => {
