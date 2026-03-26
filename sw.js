@@ -40,7 +40,7 @@ self.addEventListener('push', event => {
     data = { body: event.data ? event.data.text() : '' };
   }
 
-  const { title, body, convId } = data;
+  const { title, body, convId, unreadCount } = data;
 
   event.waitUntil(
     self.registration.showNotification(title || 'DT Club', {
@@ -51,8 +51,9 @@ self.addEventListener('push', event => {
       renotify: true,
       data: { convId }
     }).then(() => {
-      // 앱 아이콘 뱃지 표시 (읽지 않은 알림 수)
+      // 앱 아이콘 뱃지: 전달받은 unread 수 사용, 없으면 알림 수로 fallback
       if (navigator.setAppBadge) {
+        if (unreadCount > 0) return navigator.setAppBadge(unreadCount);
         return self.registration.getNotifications().then(notifications => {
           navigator.setAppBadge(notifications.length || 1);
         });
@@ -67,10 +68,15 @@ self.addEventListener('notificationclick', event => {
   const convId = event.notification.data?.convId;
 
   event.waitUntil(
-    // 남은 알림 수로 뱃지 업데이트 (0이면 제거)
-    self.registration.getNotifications().then(notifications => {
+    // 해당 대화의 알림 모두 닫기
+    self.registration.getNotifications({ tag: convId ? `dm-${convId}` : undefined }).then(notifications => {
+      notifications.forEach(n => n.close());
+    }).then(() =>
+      // 남은 알림으로 뱃지 업데이트
+      self.registration.getNotifications()
+    ).then(remaining => {
       if (navigator.setAppBadge) {
-        notifications.length > 0 ? navigator.setAppBadge(notifications.length) : navigator.clearAppBadge();
+        remaining.length > 0 ? navigator.setAppBadge(remaining.length) : navigator.clearAppBadge();
       }
     }).then(() =>
       clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
@@ -85,4 +91,23 @@ self.addEventListener('notificationclick', event => {
       })
     )
   );
+});
+
+/* ===== 앱에서 뱃지 클리어 요청 수신 ===== */
+self.addEventListener('message', event => {
+  if (event.data?.type === 'CLEAR_NOTIFICATIONS') {
+    const convId = event.data.convId;
+    self.registration.getNotifications({ tag: convId ? `dm-${convId}` : undefined }).then(notifications => {
+      notifications.forEach(n => n.close());
+    }).then(() => self.registration.getNotifications()).then(remaining => {
+      if (navigator.setAppBadge) {
+        remaining.length > 0 ? navigator.setAppBadge(remaining.length) : navigator.clearAppBadge();
+      }
+    });
+  } else if (event.data?.type === 'CLEAR_ALL_BADGES') {
+    self.registration.getNotifications().then(notifications => {
+      notifications.forEach(n => n.close());
+    });
+    if (navigator.clearAppBadge) navigator.clearAppBadge();
+  }
 });

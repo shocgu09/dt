@@ -2278,6 +2278,10 @@ function updateDMBadge() {
     badge.textContent = label;
     badge.style.display = total > 0 ? '' : 'none';
   });
+  // 앱 뱃지도 동기화
+  if (total === 0 && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_ALL_BADGES' });
+  }
 }
 
 function openDMPanel() {
@@ -2344,15 +2348,21 @@ async function openDMChat(otherUid) {
   openModal('dmChatModal');
   closeDMPanel();
 
-  // 앱 아이콘 뱃지 클리어
-  if (navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
+  // 해당 대화의 알림 + 앱 뱃지 클리어
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_NOTIFICATIONS', convId });
+  }
 
-  // 기존 대화방이면 읽음 처리만 (문서 생성은 첫 메시지 전송 시)
+  // 기존 대화방이면 읽음 처리 + 즉시 UI 반영
   const convRef = state.db.collection('dms').doc(convId);
   try {
     const convSnap = await convRef.get();
     if (convSnap.exists) {
       await convRef.update({ [`unread.${uid}`]: 0 });
+      // 로컬 state도 즉시 반영 (onSnapshot 도착 전에 뱃지 업데이트)
+      const localConv = state.dms.find(c => c.id === convId);
+      if (localConv && localConv.unread) localConv.unread[uid] = 0;
+      updateDMBadge();
     }
   } catch(e) {}
 
@@ -2362,19 +2372,33 @@ async function openDMChat(otherUid) {
     .orderBy('createdAt', 'asc')
     .onSnapshot(snap => {
       renderDMMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })), uid);
-      // 채팅 모달이 열려있는 동안 새 메시지가 오면 즉시 읽음 처리
+      // 채팅 모달이 열려있는 동안 새 메시지가 오면 즉시 읽음 처리 + UI 반영
       const modal = document.getElementById('dmChatModal');
       if (modal && modal.classList.contains('open')) {
         state.db.collection('dms').doc(convId).update({ [`unread.${uid}`]: 0 }).catch(() => {});
+        const localConv = state.dms.find(c => c.id === convId);
+        if (localConv && localConv.unread) localConv.unread[uid] = 0;
+        updateDMBadge();
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_NOTIFICATIONS', convId });
+        }
       }
     }, err => console.error('DM 메시지 구독 오류:', err));
 }
 
 function closeDMChat() {
-  // 닫을 때 읽음 처리 한 번 더 확실히
+  // 닫을 때 읽음 처리 + 즉시 UI 반영
   if (state._activeDMConvId) {
-    state.db.collection('dms').doc(state._activeDMConvId)
-      .update({ [`unread.${state.currentUserId}`]: 0 }).catch(() => {});
+    const uid = state.currentUserId;
+    const convId = state._activeDMConvId;
+    state.db.collection('dms').doc(convId).update({ [`unread.${uid}`]: 0 }).catch(() => {});
+    const localConv = state.dms.find(c => c.id === convId);
+    if (localConv && localConv.unread) localConv.unread[uid] = 0;
+    updateDMBadge();
+    // 알림센터도 클리어
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_NOTIFICATIONS', convId });
+    }
   }
   if (state._dmMsgUnsub) { state._dmMsgUnsub(); state._dmMsgUnsub = null; }
   state._activeDMConvId = null;
