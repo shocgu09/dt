@@ -2608,11 +2608,12 @@ async function inviteToGroup() {
     });
 
     closeModal('groupInviteModal');
-    // 채팅 타이틀 갱신
-    const conv = state.dms.find(c => c.id === convId);
-    if (conv) {
-      const count = (conv.participants?.length || 0) + checked.length;
-      document.getElementById('dmChatTitle').innerHTML = `👥 ${escapeHtml(conv.groupName || '그룹')} <span style="color:var(--text3);font-size:.8rem">${count}명</span>`;
+    // 채팅 타이틀 갱신 — Firestore에서 최신 데이터 읽기
+    const freshSnap = await convRef.get();
+    if (freshSnap.exists) {
+      const freshData = freshSnap.data();
+      const count = freshData.participants?.length || 0;
+      document.getElementById('dmChatTitle').innerHTML = `👥 ${escapeHtml(freshData.groupName || '그룹')} <span style="color:var(--primary-light);font-size:.8rem;cursor:pointer;text-decoration:underline" onclick="showGroupMembers()">${count}명</span>`;
     }
   } catch (e) {
     alert('초대 실패: ' + e.message);
