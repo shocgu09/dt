@@ -3350,7 +3350,7 @@ function _renderAnonComments(comments) {
     var d = c.createdAt ? (c.createdAt.toDate ? c.createdAt.toDate() : new Date(c.createdAt)) : new Date();
     html += '<div class="anon-comment">';
     html += '<div class="anon-comment-header">';
-    var cmtAuthor = (c.anonymous !== false) ? '🎭 익명' : '👤 ' + escapeHtml(c.authorName || '알 수 없음');
+    var cmtAuthor = (c.anonymous !== false) ? '익명' : escapeHtml(c.authorName || '알 수 없음');
     html += '<span class="anon-comment-name">' + cmtAuthor + '</span>';
     html += '<span class="anon-comment-time">' + _timeAgo(d);
     if (isAdmin) html += ' <button onclick="deleteAnonComment(\'' + _anonDetailId + '\',\'' + c.id + '\')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:.68rem">🗑️</button>';
