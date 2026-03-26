@@ -2559,6 +2559,8 @@ async function sendDMMessage(imageDataUrl) {
         lastAt: FieldValue.serverTimestamp(),
         unread: { [uid]: 0, [otherUid]: 1 }
       });
+      // 새 대화방 생성 후 메시지 리스너 재설정
+      _initDMChatAsync(convId, uid);
     } else {
       await convRef.update({
         lastMessage: lastMsg,
