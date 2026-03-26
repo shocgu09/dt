@@ -2377,8 +2377,9 @@ async function openDMChat(otherUid) {
   document.getElementById('dmChatTitle').innerHTML = `💬 ${escapeHtml(name)}${titleBadge(other?.title)}`;
   document.getElementById('dmMessages').innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:.84rem">로딩 중…</div>';
 
-  // 1:1: 초대 버튼만 표시, 나가기 숨김
+  // 1:1: 초대만 표시, 이름변경/나가기 숨김
   document.getElementById('btnInviteGroup').classList.remove('hidden');
+  document.getElementById('btnRenameGroup').classList.add('hidden');
   document.getElementById('btnLeaveGroup').classList.add('hidden');
 
   openModal('dmChatModal');
@@ -2615,6 +2616,20 @@ async function inviteToGroup() {
     }
   } catch (e) {
     alert('초대 실패: ' + e.message);
+  }
+}
+
+async function renameGroup() {
+  const convId = state._activeDMConvId;
+  const conv = state.dms.find(c => c.id === convId);
+  if (!conv) return;
+  const newName = prompt('새 그룹 이름을 입력하세요:', conv.groupName || '');
+  if (newName === null || !newName.trim()) return;
+  try {
+    await state.db.collection('dms').doc(convId).update({ groupName: newName.trim() });
+    document.getElementById('dmChatTitle').innerHTML = `👥 ${escapeHtml(newName.trim())} <span style="color:var(--text3);font-size:.8rem">${conv.participants.length}명</span>`;
+  } catch (e) {
+    alert('이름 변경 실패: ' + e.message);
   }
 }
 
