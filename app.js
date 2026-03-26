@@ -634,7 +634,7 @@ function goPage(name, pushState = true) {
   document.querySelectorAll(`[data-page="${name}"]`).forEach(b => b.classList.add('active'));
   state.currentPage = name;
   window.scrollTo(0, 0);
-  if (pushState) history.pushState({ page: name }, '', '#' + name);
+  if (pushState) history.pushState({ page: name }, '', '/' + (name === 'home' ? '' : name));
   renderCurrentPage();
 }
 
@@ -3196,11 +3196,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendDMMessage(); }
   });
 
-  // 초기 URL 해시로 페이지 복원
-  const initPage = location.hash.replace('#', '') || 'home';
+  // 초기 URL로 페이지 복원 (pathname 또는 hash 호환)
+  const path = location.pathname.slice(1) || location.hash.replace('#', '') || 'home';
   const validPages = ['home', 'members', 'cars', 'events', 'gallery', 'admin'];
-  if (validPages.includes(initPage)) goPage(initPage, false);
-  history.replaceState({ page: state.currentPage }, '', '#' + state.currentPage);
+  const initPage = validPages.includes(path) ? path : 'home';
+  goPage(initPage, false);
+  history.replaceState({ page: state.currentPage }, '', '/' + (state.currentPage === 'home' ? '' : state.currentPage));
 
   initFirebase();
   initAuth();
