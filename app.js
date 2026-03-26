@@ -3975,7 +3975,6 @@ function getExifOrientation(file) {
 function compressImage(file, maxSize, quality) {
   return new Promise(async (resolve, reject) => {
     try {
-    const orientation = await getExifOrientation(file);
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('파일을 읽을 수 없습니다.'));
     reader.onload = e => {
@@ -3984,24 +3983,14 @@ function compressImage(file, maxSize, quality) {
       img.onload = () => {
         const canvas = document.createElement('canvas');
         let { width, height } = img;
-        // 회전이 필요한 orientation (5,6,7,8)은 width/height 교환
-        const rotated = orientation >= 5 && orientation <= 8;
         let dw = width, dh = height;
         if (width > maxSize || height > maxSize) {
           if (width > height) { dh = dh * maxSize / dw; dw = maxSize; }
           else { dw = dw * maxSize / dh; dh = maxSize; }
         }
-        canvas.width = rotated ? dh : dw;
-        canvas.height = rotated ? dw : dh;
+        canvas.width = dw;
+        canvas.height = dh;
         const ctx = canvas.getContext('2d');
-        // EXIF orientation에 따라 변환
-        if (orientation === 2) { ctx.transform(-1, 0, 0, 1, dw, 0); }
-        else if (orientation === 3) { ctx.transform(-1, 0, 0, -1, dw, dh); }
-        else if (orientation === 4) { ctx.transform(1, 0, 0, -1, 0, dh); }
-        else if (orientation === 5) { ctx.transform(0, 1, 1, 0, 0, 0); }
-        else if (orientation === 6) { ctx.transform(0, 1, -1, 0, dh, 0); }
-        else if (orientation === 7) { ctx.transform(0, -1, -1, 0, dh, dw); }
-        else if (orientation === 8) { ctx.transform(0, -1, 1, 0, 0, dw); }
         ctx.drawImage(img, 0, 0, dw, dh);
         resolve(canvas.toDataURL('image/jpeg', quality));
       };
