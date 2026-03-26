@@ -1171,6 +1171,9 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
   display: flex; gap: 6px; padding: 8px 14px; border-bottom: 1px solid var(--border);
   background: var(--bg2); flex-wrap: wrap; position: relative; z-index: 2; flex-shrink: 0;
 }
+.dm-toolbar.dm-toolbar-hide {
+  visibility: hidden; height: 0; padding: 0; border: none; overflow: hidden; margin: 0;
+}
 .dm-toolbar-btn {
   background: var(--bg3); border: 1px solid var(--border); color: var(--text2);
   padding: 5px 10px; border-radius: 16px; cursor: pointer;
