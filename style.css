@@ -1161,7 +1161,7 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 #groupCreateModal, #groupInviteModal { z-index: 310; }
 .dm-toolbar {
   display: flex; gap: 6px; padding: 8px 14px; border-bottom: 1px solid var(--border);
-  background: var(--bg2); flex-wrap: wrap;
+  background: var(--bg2); flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch;
 }
 .dm-toolbar-btn {
   background: var(--bg3); border: 1px solid var(--border); color: var(--text2);
