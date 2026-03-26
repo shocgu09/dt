@@ -68,6 +68,21 @@ function skyEmoji(code, pty) {
   return '☀️';
 }
 
+// GPS → 중기예보 지역코드 매핑
+function getRegionId(lat, lng) {
+  if (lat >= 37.0 && lng <= 127.5) return '11B00000'; // 서울/인천/경기
+  if (lat >= 37.0 && lng > 127.5 && lng <= 128.5) return '11D10000'; // 강원영서
+  if (lat >= 37.0 && lng > 128.5) return '11D20000'; // 강원영동
+  if (lat >= 36.0 && lat < 37.0 && lng <= 127.5) return '11C20000'; // 대전/세종/충남
+  if (lat >= 36.0 && lat < 37.0 && lng > 127.5) return '11C10000'; // 충북
+  if (lat >= 35.0 && lat < 36.0 && lng <= 127.0) return '11F20000'; // 광주/전남
+  if (lat >= 35.0 && lat < 36.0 && lng > 127.0 && lng <= 128.0) return '11F10000'; // 전북
+  if (lat >= 35.0 && lat < 36.0 && lng > 128.0) return '11H10000'; // 대구/경북
+  if (lat < 35.0 && lng > 127.0) return '11H20000'; // 부산/울산/경남
+  if (lat < 34.0) return '11G00000'; // 제주
+  return '11B00000'; // 기본: 서울
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS_HEADERS });
@@ -129,6 +144,52 @@ export default {
         score = Math.max(1, Math.min(5, score));
 
         const labels = ['', '비추 😢', '아쉬움 😐', '괜찮음 🙂', '좋음 😊', '최고! 🤩'];
+
+        // 중기예보 (4~7일) 비/눈 예보 추가
+        try {
+          const regId = getRegionId(lat, lng);
+          const midNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+          const midH = midNow.getHours();
+          // 중기예보 발표: 06시, 18시
+          let tmFc;
+          if (midH >= 18) {
+            tmFc = base_date + '1800';
+          } else if (midH >= 6) {
+            tmFc = base_date + '0600';
+          } else {
+            const yesterday = new Date(midNow);
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yy = yesterday.getFullYear();
+            const ym = String(yesterday.getMonth() + 1).padStart(2, '0');
+            const yd = String(yesterday.getDate()).padStart(2, '0');
+            tmFc = `${yy}${ym}${yd}1800`;
+          }
+          const midUrl = `http://apis.data.go.kr/1360000/MidFcstInfoService/getMidLandFcst?serviceKey=${apiKey}&pageNo=1&numOfRows=10&dataType=JSON&regId=${regId}&tmFc=${tmFc}`;
+          const midRes = await fetch(midUrl);
+          const midData = await midRes.json();
+          const midItems = midData?.response?.body?.items?.item || [];
+          if (midItems.length > 0) {
+            const m = midItems[0];
+            // 3~7일 후 강수확률 체크
+            const today = new Date(midNow);
+            for (let d = 3; d <= 7; d++) {
+              const amKey = 'rnSt' + d + 'Am';
+              const pmKey = 'rnSt' + d + 'Pm';
+              const amProb = m[amKey] || 0;
+              const pmProb = m[pmKey] || 0;
+              if (amProb >= 50 || pmProb >= 50) {
+                const futureDate = new Date(today);
+                futureDate.setDate(futureDate.getDate() + d);
+                const fd = futureDate.getFullYear() + String(futureDate.getMonth() + 1).padStart(2, '0') + String(futureDate.getDate()).padStart(2, '0');
+                if (rainDays.indexOf(fd) === -1) rainDays.push(fd);
+              }
+            }
+          }
+        } catch (midErr) {
+          // 중기예보 실패해도 무시
+        }
+
+        rainDays.sort();
 
         return new Response(JSON.stringify({
           temp: tmp,
