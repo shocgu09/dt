@@ -549,9 +549,20 @@ async function deleteUserAccount(uid) {
 }
 
 /* ===== REALTIME LISTENERS ===== */
+// members 컬렉션의 프로필 이미지를 users 캐시에 동기화
+function syncUserImages() {
+  if (!state.users?.length || !state.members?.length) return;
+  state.users.forEach(u => {
+    const member = state.members.find(m => m.createdBy === u.uid);
+    u.image = member?.image || null;
+    u.gender = member?.gender || u.gender || 'male';
+  });
+}
+
 function subscribeAll() {
   state.db.collection('members').orderBy('joinDate', 'desc').onSnapshot(snap => {
     state.members = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    syncUserImages();
     renderCurrentPage();
   });
 
@@ -568,6 +579,7 @@ function subscribeAll() {
   // users 캐시 (투표 칩 표시용)
   state.db.collection('users').onSnapshot(snap => {
     state.users = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+    syncUserImages();
   });
 }
 
