@@ -3013,8 +3013,9 @@ function _updateHomeAnonList() {
         var catBadge = p.category ? '<span class="anon-category anon-cat-' + escapeHtml(p.category) + '">' + escapeHtml(p.category) + '</span>' : '';
         var imgIcon = p.image ? '<span class="anon-has-img">📷</span>' : '';
         var d = p.createdAt ? (p.createdAt.toDate ? p.createdAt.toDate() : new Date(p.createdAt)) : new Date();
+        var catIcon = p.category === '공지' ? '📢' : p.category === '활동' ? '🚗' : p.category === '건의' ? '💡' : '💬';
         return '<div class="home-list-item" onclick="goPage(\'anon\');setTimeout(function(){openAnonDetail(\'' + p.id + '\')},300)">'
-          + '<span class="item-icon">📋</span>'
+          + '<span class="item-icon">' + catIcon + '</span>'
           + '<div class="item-info">'
           + '<div class="item-title">' + catBadge + escapeHtml(p.title || '제목 없음') + imgIcon + '</div>'
           + '<div class="item-sub">❤️ ' + (p.likes || 0) + ' · 💬 ' + (p.commentCount || 0) + ' · ' + _timeAgo(d) + '</div>'
@@ -3080,7 +3081,7 @@ function _renderAnonList() {
     var commentCount = post.commentCount || 0;
 
     html += '<div class="anon-card" onclick="openAnonDetail(\'' + post.id + '\')">';
-    var authorDisplay = (post.anonymous !== false) ? '🎭 익명' : '👤 ' + escapeHtml(post.authorName || '알 수 없음');
+    var authorDisplay = (post.anonymous !== false) ? '익명' : escapeHtml(post.authorName || '알 수 없음');
     html += '<div class="anon-card-header">';
     html += '<span class="anon-avatar">' + authorDisplay + '</span>';
     html += '<span class="anon-time">' + timeAgo + '</span>';
@@ -3288,7 +3289,7 @@ function openAnonDetail(postId) {
   var uid = state.currentUserId;
   var liked = post.likedBy && post.likedBy.indexOf(uid) !== -1;
 
-  var detailAuthor = (post.anonymous !== false) ? '🎭 익명' : '👤 ' + escapeHtml(post.authorName || '알 수 없음');
+  var detailAuthor = (post.anonymous !== false) ? '익명' : escapeHtml(post.authorName || '알 수 없음');
   var detailCatHtml = post.category ? '<span class="anon-category anon-cat-' + escapeHtml(post.category) + '">' + escapeHtml(post.category) + '</span>' : '';
   var html = '<div style="margin-bottom:8px;font-size:.82rem;color:var(--text2)">' + detailAuthor + '</div>';
   html += '<div class="anon-title" style="font-size:1.05rem;margin-bottom:8px">' + detailCatHtml + escapeHtml(post.title || '제목 없음') + '</div>';
