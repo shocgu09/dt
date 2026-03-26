@@ -188,6 +188,35 @@ main { padding: calc(80px + env(safe-area-inset-top, 0px)) 20px 24px; max-width:
 .page-header h2 { font-size: 1.6rem; font-weight: 800; letter-spacing: -1px;
   border-left: 4px solid var(--primary); padding-left: 12px; }
 
+/* ===== WEATHER CARD ===== */
+.weather-card {
+  background: linear-gradient(135deg, rgba(96,165,250,.15), rgba(167,139,250,.15));
+  border: 1px solid rgba(124,111,255,.2); border-radius: 14px;
+  padding: 16px 20px; margin-bottom: 16px;
+}
+.weather-main {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+}
+.weather-emoji { font-size: 2.2rem; }
+.weather-temp-wrap { display: flex; flex-direction: column; }
+.weather-temp { font-size: 1.6rem; font-weight: 800; color: var(--text); }
+.weather-desc { font-size: .82rem; color: var(--text2); }
+.weather-details {
+  margin-left: auto; display: flex; gap: 12px; font-size: .8rem; color: var(--text2);
+}
+.drive-index {
+  display: flex; align-items: center; gap: 8px; margin-top: 10px;
+  padding-top: 10px; border-top: 1px solid rgba(124,111,255,.15);
+  font-size: .88rem; color: var(--text2);
+}
+.drive-stars { color: #f7c948; font-size: 1rem; letter-spacing: 2px; }
+.drive-label { font-weight: 700; color: var(--primary-light); }
+.drift-alert {
+  margin-top: 8px; padding: 8px 12px; background: rgba(239,68,68,.12);
+  border-radius: 8px; font-size: .84rem; font-weight: 700;
+  color: #f87171; text-align: center;
+}
+
 /* ===== FILTER BAR ===== */
 .filter-bar {
   display: flex; align-items: center; gap: 8px;

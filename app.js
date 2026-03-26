@@ -1132,6 +1132,78 @@ function renderHome() {
 
   // 홈 익명글 리스트
   _updateHomeAnonList();
+
+  // 날씨 로드
+  loadWeather();
+}
+
+var _weatherLoaded = false;
+function loadWeather() {
+  if (_weatherLoaded) return;
+  var card = document.getElementById('weatherCard');
+  if (!card) return;
+
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(function(pos) {
+    var lat = pos.coords.latitude, lng = pos.coords.longitude;
+    fetch('https://dt-weather.shocguna.workers.dev/api/weather?lat=' + lat + '&lng=' + lng)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.error) { console.error('날씨 오류:', data.error); return; }
+        _weatherLoaded = true;
+        card.style.display = '';
+
+        document.getElementById('weatherEmoji').textContent = data.skyEmoji || '☀️';
+        document.getElementById('weatherTemp').textContent = data.temp + '°C';
+        document.getElementById('weatherDesc').textContent = data.sky || '맑음';
+        document.getElementById('weatherPop').textContent = '💧 ' + data.pop + '%';
+        document.getElementById('weatherWind').textContent = '💨 ' + data.wind + 'm/s';
+
+        // 드라이브 지수
+        var score = data.driveScore || 3;
+        var stars = '';
+        for (var i = 0; i < 5; i++) stars += i < score ? '★' : '☆';
+        document.getElementById('driveStars').textContent = stars;
+        document.getElementById('driveLabel').textContent = data.driveLabel || '';
+
+        // 드리프트 예보
+        var driftEl = document.getElementById('driftAlert');
+        if (data.rainDays && data.rainDays.length > 0) {
+          var nextRain = data.rainDays[0];
+          var m = nextRain.substring(4, 6), d = nextRain.substring(6, 8);
+          driftEl.textContent = '🏎️💨 ' + parseInt(m) + '/' + parseInt(d) + ' 비/눈 예보! 공짜 드리프트 데이!';
+          driftEl.style.display = '';
+        }
+      })
+      .catch(function(e) { console.error('날씨 로드 실패:', e); });
+  }, function() {
+    // 위치 거부 시 서울 기본값
+    fetch('https://dt-weather.shocguna.workers.dev/api/weather?lat=37.5665&lng=126.978')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.error) return;
+        _weatherLoaded = true;
+        card.style.display = '';
+        document.getElementById('weatherEmoji').textContent = data.skyEmoji || '☀️';
+        document.getElementById('weatherTemp').textContent = data.temp + '°C';
+        document.getElementById('weatherDesc').textContent = data.sky || '맑음';
+        document.getElementById('weatherPop').textContent = '💧 ' + data.pop + '%';
+        document.getElementById('weatherWind').textContent = '💨 ' + data.wind + 'm/s';
+        var score = data.driveScore || 3;
+        var stars = '';
+        for (var i = 0; i < 5; i++) stars += i < score ? '★' : '☆';
+        document.getElementById('driveStars').textContent = stars;
+        document.getElementById('driveLabel').textContent = data.driveLabel || '';
+        var driftEl = document.getElementById('driftAlert');
+        if (data.rainDays && data.rainDays.length > 0) {
+          var nextRain = data.rainDays[0];
+          var m = nextRain.substring(4, 6), d = nextRain.substring(6, 8);
+          driftEl.textContent = '🏎️💨 ' + parseInt(m) + '/' + parseInt(d) + ' 비/눈 예보! 공짜 드리프트 데이!';
+          driftEl.style.display = '';
+        }
+      })
+      .catch(function() {});
+  });
 }
 
 /* ===== MEMBERS ===== */
