@@ -2350,6 +2350,9 @@ async function openDMChat(otherUid) {
   state._activeDMConvId = convId;
   state._activeDMOtherUid = otherUid;
 
+  // SW에 현재 보고 있는 대화방 알림 → 푸시 알림 억제
+  try { navigator.serviceWorker?.controller?.postMessage({ type: 'DM_VIEWING', convId }); } catch(e) {}
+
   const other = state.users.find(u => u.uid === otherUid);
   const name = other?.name || '알 수 없음';
   document.getElementById('dmChatTitle').innerHTML = `💬 ${escapeHtml(name)}${titleBadge(other?.title)}`;
@@ -2405,6 +2408,8 @@ async function openDMChat(otherUid) {
 }
 
 function closeDMChat() {
+  // SW에 대화방 닫힘 알림
+  try { navigator.serviceWorker?.controller?.postMessage({ type: 'DM_VIEWING', convId: null }); } catch(e) {}
   // 닫을 때 읽음 처리 + 즉시 UI 반영
   if (state._activeDMConvId) {
     const uid = state.currentUserId;
@@ -2573,12 +2578,6 @@ async function initPushNotifications() {
     if (event.data?.type === 'OPEN_DM' && event.data.convId) {
       const otherUid = event.data.convId.split('_').find(id => id !== state.currentUserId);
       if (otherUid) openDMChat(otherUid);
-    }
-    // SW가 "이 대화방 보고 있어?" 확인 → 열려있으면 알림 생략용
-    if (event.data?.type === 'CHECK_VIEWING_DM' && event.ports?.[0]) {
-      const modal = document.getElementById('dmChatModal');
-      const isViewing = modal?.classList.contains('open') && state._activeDMConvId === event.data.convId;
-      event.ports[0].postMessage({ viewing: isViewing });
     }
   });
 

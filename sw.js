@@ -31,6 +31,9 @@ self.addEventListener('fetch', e => {
   );
 });
 
+/* ===== 현재 보고 있는 대화방 ID (앱에서 설정) ===== */
+let _viewingConvId = null;
+
 /* ===== 푸시 알림 수신 ===== */
 self.addEventListener('push', event => {
   let data = {};
@@ -42,39 +45,24 @@ self.addEventListener('push', event => {
 
   const { title, body, convId, unreadCount } = data;
 
+  // 해당 대화방을 보고 있으면 알림 생략
+  if (convId && _viewingConvId === convId) return;
+
   event.waitUntil(
-    // 앱이 포커스 상태이고 해당 DM 대화방을 보고 있으면 알림 생략
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-      const focusedClient = windowClients.find(c => c.focused && c.url.includes(self.location.origin));
-      if (focusedClient && convId) {
-        // 앱에 확인 요청 → 해당 대화방 열려있으면 알림 스킵
-        return new Promise(resolve => {
-          const channel = new MessageChannel();
-          channel.port1.onmessage = (e) => resolve(e.data?.viewing || false);
-          // 1초 내 응답 없으면 알림 표시
-          setTimeout(() => resolve(false), 1000);
-          focusedClient.postMessage({ type: 'CHECK_VIEWING_DM', convId }, [channel.port2]);
+    self.registration.showNotification(title || 'DT Club', {
+      body: body || '새 메시지가 도착했습니다',
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      tag: convId ? `dm-${convId}` : 'dm-general',
+      renotify: true,
+      data: { convId }
+    }).then(() => {
+      if (navigator.setAppBadge) {
+        if (unreadCount > 0) return navigator.setAppBadge(unreadCount);
+        return self.registration.getNotifications().then(notifications => {
+          navigator.setAppBadge(notifications.length || 1);
         });
       }
-      return false;
-    }).then(isViewing => {
-      if (isViewing) return; // 대화방 보고 있으면 알림 생략
-
-      return self.registration.showNotification(title || 'DT Club', {
-        body: body || '새 메시지가 도착했습니다',
-        icon: '/icon-192.png',
-        badge: '/icon-192.png',
-        tag: convId ? `dm-${convId}` : 'dm-general',
-        renotify: true,
-        data: { convId }
-      }).then(() => {
-        if (navigator.setAppBadge) {
-          if (unreadCount > 0) return navigator.setAppBadge(unreadCount);
-          return self.registration.getNotifications().then(notifications => {
-            navigator.setAppBadge(notifications.length || 1);
-          });
-        }
-      });
     })
   );
 });
@@ -110,8 +98,12 @@ self.addEventListener('notificationclick', event => {
   );
 });
 
-/* ===== 앱에서 뱃지 클리어 요청 수신 ===== */
+/* ===== 앱에서 메시지 수신 ===== */
 self.addEventListener('message', event => {
+  // 대화방 열림/닫힘 알림 → 푸시 알림 억제용
+  if (event.data?.type === 'DM_VIEWING') {
+    _viewingConvId = event.data.convId || null;
+  }
   if (event.data?.type === 'CLEAR_NOTIFICATIONS') {
     const convId = event.data.convId;
     self.registration.getNotifications({ tag: convId ? `dm-${convId}` : undefined }).then(notifications => {
