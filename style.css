@@ -1169,6 +1169,11 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
   font-size: .78rem; white-space: nowrap; transition: background .15s;
 }
 .dm-toolbar-btn:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
+.group-member-row {
+  display: flex; align-items: center; gap: 12px; padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.group-member-row:last-child { border-bottom: none; }
 @media (max-width: 600px) {
   .dm-panel { width: 100%; right: -100%; }
 }

@@ -2623,11 +2623,20 @@ function showGroupMembers() {
   const convId = state._activeDMConvId;
   const conv = state.dms.find(c => c.id === convId);
   if (!conv) return;
-  const members = conv.participants.map(uid => {
-    const u = state.users.find(x => x.uid === uid);
-    return u?.name || '알 수 없음';
-  });
-  alert(`참여자 (${members.length}명)\n\n${members.join('\n')}`);
+  const uid = state.currentUserId;
+  document.getElementById('groupMembersTitle').textContent = `참여자 ${conv.participants.length}명`;
+  document.getElementById('groupMembersBody').innerHTML = conv.participants.map(pUid => {
+    const u = state.users.find(x => x.uid === pUid);
+    const name = u?.name || '알 수 없음';
+    const isMe = pUid === uid;
+    return `<div class="group-member-row">
+      <div class="mini-avatar" style="width:36px;height:36px;flex-shrink:0">${avatarEl({ name, image: u?.image || null, gender: u?.gender || 'male' })}</div>
+      <div style="flex:1;min-width:0">
+        <span style="font-size:.9rem;font-weight:600">${escapeHtml(name)}</span>${titleBadge(u?.title)}${isMe ? '<span style="color:var(--primary-light);font-size:.75rem;margin-left:4px">나</span>' : ''}
+      </div>
+    </div>`;
+  }).join('');
+  openModal('groupMembersModal');
 }
 
 async function renameGroup() {
