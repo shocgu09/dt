@@ -2728,7 +2728,6 @@ function leaveDM() {
   if (!convId) return;
   const conv = state.dms.find(c => c.id === convId);
   const isGroup = conv?.isGroup || false;
-
   const msg = isGroup ? '이 그룹을 나가시겠습니까?' : '대화방을 나가시겠습니까?\n모든 대화 내용이 삭제됩니다.';
   document.getElementById('dmLeaveConfirmMsg').textContent = msg;
   openModal('dmLeaveConfirmModal');
@@ -3523,10 +3522,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.modal-close, [data-modal]').forEach(btn => {
     btn.addEventListener('click', () => closeModal(btn.dataset.modal || btn.closest('.modal-overlay')?.id));
   });
-
-  // DM 나가기 확인 모달 버튼
-  document.getElementById('btnLeaveCancel')?.addEventListener('click', () => closeModal('dmLeaveConfirmModal'));
-  document.getElementById('btnLeaveConfirm')?.addEventListener('click', () => { closeModal('dmLeaveConfirmModal'); _executeLeaveDM(); });
   // 폼 모달은 외부 클릭으로 닫히지 않음 (데이터 손실 방지)
   const formModals = new Set(['memberModal', 'eventModal', 'galleryFormModal', 'myAccountModal', 'inviteModal', 'noticeEditModal', 'dmChatModal', 'groupRenameModal']);
   document.querySelectorAll('.modal-overlay').forEach(overlay => {

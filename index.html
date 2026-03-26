@@ -868,16 +868,14 @@
   <!-- DM Chat Modal -->
   <div class="modal-overlay" id="dmChatModal">
     <div class="modal dm-chat-modal">
-      <div class="modal-header dm-chat-header">
-        <div>
-          <h3 id="dmChatTitle" style="margin:0">대화</h3>
-          <div class="dm-toolbar-btns hidden" id="dmToolbar">
-            <button type="button" class="dm-toolbar-btn" id="btnInviteGroup" onclick="openInviteGroupModal()">👥+ 초대</button>
-            <button type="button" class="dm-toolbar-btn dm-group-only hidden" id="btnRenameGroup" onclick="renameGroup()">✏️ 이름변경</button>
-            <button type="button" class="dm-toolbar-btn" id="btnLeaveGroup" onclick="leaveDM()">🚪 나가기</button>
-          </div>
-        </div>
+      <div class="modal-header">
+        <h3 id="dmChatTitle">대화</h3>
         <button class="modal-close" onclick="closeDMChat()">×</button>
+      </div>
+      <div class="dm-toolbar hidden" id="dmToolbar">
+        <button class="dm-toolbar-btn" id="btnInviteGroup" onclick="openInviteGroupModal()">👥+ 초대</button>
+        <button class="dm-toolbar-btn dm-group-only hidden" id="btnRenameGroup" onclick="renameGroup()">✏️ 이름변경</button>
+        <button class="dm-toolbar-btn" id="btnLeaveGroup" onclick="leaveDM()">🚪 나가기</button>
       </div>
       <div class="dm-messages" id="dmMessages"></div>
       <div class="dm-input-area">
@@ -961,8 +959,8 @@
       <div class="modal-body" style="padding:20px;text-align:center">
         <p id="dmLeaveConfirmMsg" style="margin-bottom:16px;font-size:.92rem;color:var(--text2)"></p>
         <div style="display:flex;gap:8px">
-          <button class="btn" style="flex:1;background:var(--bg3);color:var(--text2);border:1px solid var(--border)" id="btnLeaveCancel">취소</button>
-          <button class="btn btn-primary" style="flex:1" id="btnLeaveConfirm">나가기</button>
+          <button class="btn" style="flex:1;background:var(--bg3);color:var(--text2);border:1px solid var(--border)" onclick="closeModal('dmLeaveConfirmModal')">취소</button>
+          <button class="btn btn-primary" style="flex:1" onclick="closeModal('dmLeaveConfirmModal');_executeLeaveDM()">나가기</button>
         </div>
       </div>
     </div>
