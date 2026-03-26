@@ -3255,6 +3255,7 @@ async function deleteAnon(postId) {
     comments.forEach(function(doc) { batch.delete(doc.ref); });
     batch.delete(state.db.collection('anon_posts').doc(postId));
     await batch.commit();
+    closeModal('anonDetailModal');
   } catch (err) {
     alert('삭제 실패: ' + err.message);
   }
