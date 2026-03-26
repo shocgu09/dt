@@ -1028,7 +1028,7 @@ async function renderAdmin() {
         ${isSuperAdmin ? `<div class="user-item-lastseen">마지막 접속: ${formatLastSeen(u.lastSeen)}</div>` : ''}
       </div>
       <div class="user-item-actions">
-        ${isSuperAdmin ? `<input class="role-select" style="min-width:80px;text-align:center" value="${escapeHtml(u.title || '')}" placeholder="칭호 입력" onchange="updateUserTitle('${u.uid}', this.value.trim())" onkeydown="if(event.key==='Enter'){this.blur()}">` : (u.title ? titleBadge(u.title) : '')}
+        ${isSuperAdmin ? `<input class="role-select" style="min-width:80px;text-align:center" value="${escapeHtml(u.title || '')}" placeholder="칭호 입력" onchange="updateUserTitle('${u.uid}', this.value.trim())" onkeydown="if(event.key==='Enter'){this.blur()}">` : ''}
         ${u.role === 'superadmin' ? `
           <span style="font-size:.82rem;color:#f59e0b;padding:6px 10px">슈퍼관리자</span>
         ` : isSuperAdmin ? `
