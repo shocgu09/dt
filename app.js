@@ -2265,6 +2265,14 @@ function initDMs() {
         });
       updateDMBadge();
       if (document.getElementById('dmPanel').classList.contains('open')) renderDMList();
+      // 현재 열린 그룹 채팅의 타이틀(인원수) 실시간 갱신
+      if (state._activeDMConvId) {
+        const activeConv = state.dms.find(c => c.id === state._activeDMConvId);
+        if (activeConv?.isGroup) {
+          const count = activeConv.participants?.length || 0;
+          document.getElementById('dmChatTitle').innerHTML = `👥 ${escapeHtml(activeConv.groupName || '그룹')} <span style="color:var(--primary-light);font-size:.8rem;cursor:pointer;text-decoration:underline" onclick="showGroupMembers()">${count}명</span>`;
+        }
+      }
     }, err => console.error('DM 구독 오류:', err));
 }
 
@@ -2608,12 +2616,7 @@ async function inviteToGroup() {
     });
 
     closeModal('groupInviteModal');
-    // 채팅 타이틀 갱신
-    const conv = state.dms.find(c => c.id === convId);
-    if (conv) {
-      const count = (conv.participants?.length || 0) + checked.length;
-      document.getElementById('dmChatTitle').innerHTML = `👥 ${escapeHtml(conv.groupName || '그룹')} <span style="color:var(--text3);font-size:.8rem">${count}명</span>`;
-    }
+    // 타이틀 갱신은 initDMs의 onSnapshot 콜백에서 자동 처리됨
   } catch (e) {
     alert('초대 실패: ' + e.message);
   }
@@ -2662,15 +2665,20 @@ async function leaveGroup() {
   const FieldValue = firebase.firestore.FieldValue;
   const convRef = state.db.collection('dms').doc(convId);
   try {
-    await convRef.update({
-      participants: FieldValue.arrayRemove(uid)
-    });
+    // 시스템 메시지를 먼저 기록 (participants에서 제거 전이어야 권한이 있음)
     const myName = state.users.find(u => u.uid === uid)?.name || '';
     await convRef.collection('messages').add({
       senderId: uid,
       text: `${myName}님이 나갔습니다`,
       createdAt: FieldValue.serverTimestamp(),
       system: true
+    });
+    // 메시지 구독 해제 (participants 제거 후 권한 에러 방지)
+    if (state._dmMsgUnsub) { state._dmMsgUnsub(); state._dmMsgUnsub = null; }
+    // participants에서 자신 제거
+    await convRef.update({
+      participants: FieldValue.arrayRemove(uid),
+      [`unread.${uid}`]: FieldValue.delete()
     });
     closeDMChat();
   } catch (e) {
