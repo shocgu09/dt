@@ -3041,8 +3041,9 @@ function _renderAnonList() {
     var commentCount = post.commentCount || 0;
 
     html += '<div class="anon-card" onclick="openAnonDetail(\'' + post.id + '\')">';
+    var authorDisplay = (post.anonymous !== false) ? '🎭 익명' : '👤 ' + escapeHtml(post.authorName || '알 수 없음');
     html += '<div class="anon-card-header">';
-    html += '<span class="anon-avatar">🎭 익명</span>';
+    html += '<span class="anon-avatar">' + authorDisplay + '</span>';
     html += '<span class="anon-time">' + timeAgo + '</span>';
     html += '</div>';
     var catHtml = post.category ? '<span class="anon-category anon-cat-' + escapeHtml(post.category) + '">' + escapeHtml(post.category) + '</span>' : '';
@@ -3103,10 +3104,18 @@ async function postAnon() {
   if (!state.currentUserId) { alert('로그인이 필요합니다.'); return; }
 
   try {
+    var isAnon = document.getElementById('anonAnonymous').checked;
+    var authorName = '';
+    if (!isAnon) {
+      var member = state.members.find(function(m) { return m.createdBy === state.currentUserId; });
+      authorName = member ? displayName(member.name) : (state.currentUser?.displayName || '');
+    }
     var data = {
       title: title,
       text: text,
       category: category,
+      anonymous: isAnon,
+      authorName: isAnon ? '' : authorName,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       createdBy: state.currentUserId,
       likes: 0,
@@ -3168,8 +3177,10 @@ function openAnonDetail(postId) {
   var uid = state.currentUserId;
   var liked = post.likedBy && post.likedBy.indexOf(uid) !== -1;
 
+  var detailAuthor = (post.anonymous !== false) ? '🎭 익명' : '👤 ' + escapeHtml(post.authorName || '알 수 없음');
   var detailCatHtml = post.category ? '<span class="anon-category anon-cat-' + escapeHtml(post.category) + '">' + escapeHtml(post.category) + '</span>' : '';
-  var html = '<div class="anon-title" style="font-size:1.05rem;margin-bottom:8px">' + detailCatHtml + escapeHtml(post.title || '제목 없음') + '</div>';
+  var html = '<div style="margin-bottom:8px;font-size:.82rem;color:var(--text2)">' + detailAuthor + '</div>';
+  html += '<div class="anon-title" style="font-size:1.05rem;margin-bottom:8px">' + detailCatHtml + escapeHtml(post.title || '제목 없음') + '</div>';
   html += '<div class="anon-text" style="margin-bottom:12px">' + escapeHtml(post.text) + '</div>';
   if (post.image) {
     html += '<div style="margin-bottom:12px"><img src="' + post.image + '" style="max-width:100%;border-radius:8px;cursor:pointer" onclick="openLightbox(\'' + post.image + '\')" onerror="this.outerHTML=\'<div style=padding:12px;color:var(--text3);font-size:.82rem>⚠️ 이미지를 불러올 수 없습니다</div>\'"></div>';
@@ -3205,7 +3216,8 @@ function _renderAnonComments(comments) {
     var d = c.createdAt ? (c.createdAt.toDate ? c.createdAt.toDate() : new Date(c.createdAt)) : new Date();
     html += '<div class="anon-comment">';
     html += '<div class="anon-comment-header">';
-    html += '<span class="anon-comment-name">🎭 익명</span>';
+    var cmtAuthor = (c.anonymous !== false) ? '🎭 익명' : '👤 ' + escapeHtml(c.authorName || '알 수 없음');
+    html += '<span class="anon-comment-name">' + cmtAuthor + '</span>';
     html += '<span class="anon-comment-time">' + _timeAgo(d);
     if (isAdmin) html += ' <button onclick="deleteAnonComment(\'' + _anonDetailId + '\',\'' + c.id + '\')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:.68rem">🗑️</button>';
     html += '</span>';
@@ -3224,8 +3236,16 @@ async function postAnonComment() {
   if (!text) return;
 
   try {
+    var cmtAnon = document.getElementById('anonCommentAnonymous').checked;
+    var cmtName = '';
+    if (!cmtAnon) {
+      var cmtMember = state.members.find(function(m) { return m.createdBy === state.currentUserId; });
+      cmtName = cmtMember ? displayName(cmtMember.name) : '';
+    }
     await state.db.collection('anon_posts').doc(_anonDetailId).collection('comments').add({
       text: text,
+      anonymous: cmtAnon,
+      authorName: cmtAnon ? '' : cmtName,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       createdBy: state.currentUserId
     });

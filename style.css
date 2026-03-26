@@ -760,6 +760,8 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 .anon-title { font-weight: 700; font-size: .95rem; color: var(--text); margin-bottom: 4px; }
 .anon-has-img { color: var(--primary-light); font-size: .75rem; margin-left: 4px; }
 .anon-category { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: .7rem; font-weight: 700; margin-right: 6px; vertical-align: middle; }
+.anon-cat-공지 { background: rgba(124,111,255,.15); color: var(--primary-light); }
+.anon-cat-활동 { background: rgba(74,222,128,.15); color: #4ade80; }
 .anon-cat-건의 { background: rgba(251,146,60,.15); color: #fb923c; }
 .anon-card {
   background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
