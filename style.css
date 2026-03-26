@@ -106,7 +106,8 @@ main { padding: calc(80px + env(safe-area-inset-top, 0px)) 20px 24px; max-width:
 .hero h1 { font-size: 2.4rem; font-weight: 800; margin-bottom: 4px; }
 .hero-sub { color: var(--primary-light); font-size: 1rem; font-weight: 600; margin-bottom: 12px; }
 .hero-desc { color: var(--text2); margin-bottom: 24px; line-height: 1.8; }
-.hero .btn + .btn { margin-left: 10px; }
+.hero-buttons { display: flex; flex-wrap: wrap; gap: 10px; }
+.hero .btn + .btn { margin-left: 0; }
 .hero-art { font-size: 7rem; opacity: .7; position: relative; z-index: 1; }
 
 /* ===== STATS BAR ===== */
@@ -842,7 +843,8 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
   .hero { flex-direction: column; padding: 28px 20px; gap: 16px; text-align: center; }
   .hero h1 { font-size: 1.8rem; }
   .hero-art { font-size: 3.5rem; }
-  .hero .btn + .btn { margin-left: 8px; }
+  .hero-buttons { justify-content: center; }
+  .hero .btn + .btn { margin-left: 0; }
 
   /* Stats */
   .stats-bar { grid-template-columns: repeat(2, 1fr); }
