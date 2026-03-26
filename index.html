@@ -275,11 +275,17 @@
         <h2>🎭 익명 게시판</h2>
       </div>
       <div class="anon-write-box member-only">
-        <textarea id="anonInput" placeholder="익명으로 자유롭게 적어보세요..." rows="3" maxlength="500"></textarea>
+        <input type="text" id="anonTitleInput" placeholder="제목" maxlength="50" style="width:100%;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:.92rem;font-weight:700;margin-bottom:8px">
+        <textarea id="anonInput" placeholder="내용을 적어보세요..." rows="3" maxlength="1000"></textarea>
         <div class="anon-write-footer">
-          <span class="anon-char-count"><span id="anonCharCount">0</span>/500</span>
+          <div style="display:flex;align-items:center;gap:10px">
+            <label class="anon-photo-btn" title="사진 첨부">🖼️<input type="file" id="anonImageInput" accept="image/*" style="display:none" onchange="previewAnonImage(this)"></label>
+            <span id="anonImageName" style="font-size:.72rem;color:var(--text3)"></span>
+            <span class="anon-char-count"><span id="anonCharCount">0</span>/1000</span>
+          </div>
           <button class="btn btn-primary" onclick="postAnon()">작성하기</button>
         </div>
+        <div id="anonImagePreview" style="margin-top:8px"></div>
       </div>
       <div id="anonList"></div>
     </section>
