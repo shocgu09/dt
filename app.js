@@ -2382,7 +2382,8 @@ async function openDMChat(otherUid) {
   document.querySelectorAll('.dm-group-only').forEach(el => el.classList.add('hidden'));
 
   closeDMPanel();
-  openModal('dmChatModal');
+  // iOS PWA에서 터치 이벤트 관통 방지를 위해 약간의 딜레이 후 모달 열기
+  setTimeout(() => openModal('dmChatModal'), 50);
 
   // 해당 대화의 알림센터 알림 제거
   try {
@@ -2525,7 +2526,7 @@ async function openGroupChat(convId) {
   document.querySelectorAll('.dm-group-only').forEach(el => el.classList.remove('hidden'));
 
   closeDMPanel();
-  openModal('dmChatModal');
+  setTimeout(() => openModal('dmChatModal'), 50);
 
   // 알림 클리어
   try { if ('serviceWorker' in navigator) { navigator.serviceWorker.ready.then(reg => { reg.getNotifications({ tag: `dm-${convId}` }).then(ns => ns.forEach(n => n.close())); }); } } catch(e) {}
@@ -3388,7 +3389,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => closeModal(btn.dataset.modal || btn.closest('.modal-overlay')?.id));
   });
   // 폼 모달은 외부 클릭으로 닫히지 않음 (데이터 손실 방지)
-  const formModals = new Set(['memberModal', 'eventModal', 'galleryFormModal', 'myAccountModal', 'inviteModal', 'noticeEditModal']);
+  const formModals = new Set(['memberModal', 'eventModal', 'galleryFormModal', 'myAccountModal', 'inviteModal', 'noticeEditModal', 'dmChatModal']);
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
     if (formModals.has(overlay.id)) return;
     overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(overlay.id); });
