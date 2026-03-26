@@ -3532,16 +3532,15 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => closeModal(btn.dataset.modal || btn.closest('.modal-overlay')?.id));
   });
 
-  // DM 툴바 버튼 이벤트 (iOS PWA 호환)
-  function iosTap(el, fn) {
-    if (!el) return;
-    let touched = false;
-    el.addEventListener('touchend', e => { e.preventDefault(); touched = true; fn(); }, { passive: false });
-    el.addEventListener('click', () => { if (!touched) fn(); touched = false; });
-  }
-  iosTap(document.getElementById('btnInviteGroup'), openInviteGroupModal);
-  iosTap(document.getElementById('btnRenameGroup'), renameGroup);
-  iosTap(document.getElementById('btnLeaveGroup'), leaveDM);
+  // DM 툴바 버튼 이벤트 (iOS Safari/PWA 호환 — 이벤트 위임)
+  document.getElementById('dmToolbar').addEventListener('click', e => {
+    const btn = e.target.closest('.dm-toolbar-btn');
+    if (!btn) return;
+    e.stopPropagation();
+    if (btn.id === 'btnInviteGroup') openInviteGroupModal();
+    else if (btn.id === 'btnRenameGroup') renameGroup();
+    else if (btn.id === 'btnLeaveGroup') leaveDM();
+  });
   // 폼 모달은 외부 클릭으로 닫히지 않음 (데이터 손실 방지)
   const formModals = new Set(['memberModal', 'eventModal', 'galleryFormModal', 'myAccountModal', 'inviteModal', 'noticeEditModal', 'dmChatModal', 'groupRenameModal']);
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
