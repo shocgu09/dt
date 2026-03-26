@@ -2700,16 +2700,14 @@ function showGroupMembers() {
 }
 
 function renameGroup() {
-  try {
-    document.getElementById('dmChatTitle').textContent = '✅ 이름변경 클릭됨!';
-    const convId = state._activeDMConvId;
-    const conv = state.dms.find(c => c.id === convId);
-    if (!conv) { document.getElementById('dmChatTitle').textContent = '❌ conv 없음: ' + convId; return; }
+  const convId = state._activeDMConvId;
+  const conv = state.dms.find(c => c.id === convId);
+  if (!conv) return;
+  openModal('groupRenameModal');
+  setTimeout(() => {
     const input = document.getElementById('groupRenameInput');
-    input.value = conv.groupName || '';
-    openModal('groupRenameModal');
-    setTimeout(() => input.focus(), 100);
-  } catch(e) { document.getElementById('dmChatTitle').textContent = '❌ 에러: ' + e.message; }
+    if (input) { input.value = conv.groupName || ''; input.focus(); }
+  }, 150);
 }
 
 async function submitRenameGroup() {
@@ -2727,16 +2725,13 @@ async function submitRenameGroup() {
 }
 
 function leaveDM() {
-  try {
-    document.getElementById('dmChatTitle').textContent = '✅ 나가기 클릭됨!';
-    const convId = state._activeDMConvId;
-    if (!convId) { document.getElementById('dmChatTitle').textContent = '❌ convId 없음'; return; }
-    const conv = state.dms.find(c => c.id === convId);
-    const isGroup = conv?.isGroup || false;
-    const msg = isGroup ? '이 그룹을 나가시겠습니까?' : '대화방을 나가시겠습니까?\n모든 대화 내용이 삭제됩니다.';
-    document.getElementById('dmLeaveConfirmMsg').textContent = msg;
-    openModal('dmLeaveConfirmModal');
-  } catch(e) { document.getElementById('dmChatTitle').textContent = '❌ 에러: ' + e.message; }
+  const convId = state._activeDMConvId;
+  if (!convId) return;
+  const conv = state.dms.find(c => c.id === convId);
+  const isGroup = conv?.isGroup || false;
+  const msg = isGroup ? '이 그룹을 나가시겠습니까?' : '대화방을 나가시겠습니까?\n모든 대화 내용이 삭제됩니다.';
+  document.getElementById('dmLeaveConfirmMsg').textContent = msg;
+  openModal('dmLeaveConfirmModal');
 }
 
 async function _executeLeaveDM() {
