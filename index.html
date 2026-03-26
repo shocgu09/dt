@@ -897,10 +897,7 @@
       <div class="modal-body" style="padding:16px">
         <div class="team-controls">
           <label class="team-toggle"><input type="checkbox" id="teamSelectAll" onchange="toggleAllTeamMembers(this.checked)" checked> 전체 선택</label>
-          <div class="team-count-wrap">
-            <label>조 수</label>
-            <input type="number" id="teamCount" value="2" min="1" max="20" style="width:60px;padding:6px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;text-align:center;font-size:.92rem">
-          </div>
+          <span id="teamCountInfo" style="font-size:.82rem;color:var(--text3)"></span>
         </div>
         <div id="teamMemberList" style="max-height:240px;overflow-y:auto;margin:12px 0;-webkit-overflow-scrolling:touch"></div>
         <button class="btn btn-primary" style="width:100%" onclick="divideTeams()">🎲 조 배정하기</button>
