@@ -3117,10 +3117,7 @@ function renderTeamResults(teams) {
   var total = 0;
   teams.forEach(function(t) { total += t.drivers.length + t.passengers.length; });
 
-  var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
-  html += '<span style="font-size:.82rem;color:var(--text3)">총 ' + total + '명 → ' + teams.length + '조</span>';
-  html += '<button class="btn" style="padding:6px 14px;font-size:.78rem" onclick="divideTeams()">🔄 다시 섞기</button>';
-  html += '</div>';
+  var html = '<div style="margin-bottom:12px;font-size:.82rem;color:var(--text3)">총 ' + total + '명 → ' + teams.length + '조</div>';
   html += '<div class="team-result-grid">';
 
   teams.forEach(function(team, i) {
