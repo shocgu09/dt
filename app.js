@@ -3532,11 +3532,22 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => closeModal(btn.dataset.modal || btn.closest('.modal-overlay')?.id));
   });
 
-  // DM 툴바 버튼 이벤트 (iOS Safari/PWA 호환 — 이벤트 위임)
-  document.getElementById('dmToolbar').addEventListener('click', e => {
+  // DM 툴바 버튼 이벤트 (iOS Safari + PWA 호환)
+  function iosTap(el, fn) {
+    if (!el) return;
+    let last = 0;
+    const run = () => { const now = Date.now(); if (now - last < 400) return; last = now; fn(); };
+    el.addEventListener('touchend', run);
+    el.addEventListener('click', run);
+  }
+  iosTap(document.getElementById('btnInviteGroup'), openInviteGroupModal);
+  iosTap(document.getElementById('btnRenameGroup'), renameGroup);
+  iosTap(document.getElementById('btnLeaveGroup'), leaveDM);
+  // 이벤트 위임 백업
+  document.getElementById('dmToolbar').addEventListener('touchend', e => {
     const btn = e.target.closest('.dm-toolbar-btn');
     if (!btn) return;
-    e.stopPropagation();
+    const now = Date.now(); if (btn._lastTap && now - btn._lastTap < 400) return; btn._lastTap = now;
     if (btn.id === 'btnInviteGroup') openInviteGroupModal();
     else if (btn.id === 'btnRenameGroup') renameGroup();
     else if (btn.id === 'btnLeaveGroup') leaveDM();

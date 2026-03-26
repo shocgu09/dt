@@ -873,9 +873,9 @@
         <button class="modal-close" onclick="closeDMChat()">×</button>
       </div>
       <div class="dm-toolbar hidden" id="dmToolbar">
-        <button class="dm-toolbar-btn" id="btnInviteGroup">👥+ 초대</button>
-        <button class="dm-toolbar-btn dm-group-only hidden" id="btnRenameGroup">✏️ 이름변경</button>
-        <button class="dm-toolbar-btn" id="btnLeaveGroup">🚪 나가기</button>
+        <button class="dm-toolbar-btn" id="btnInviteGroup" onclick="openInviteGroupModal()">👥+ 초대</button>
+        <button class="dm-toolbar-btn dm-group-only hidden" id="btnRenameGroup" onclick="renameGroup()">✏️ 이름변경</button>
+        <button class="dm-toolbar-btn" id="btnLeaveGroup" onclick="leaveDM()">🚪 나가기</button>
       </div>
       <div class="dm-messages" id="dmMessages"></div>
       <div class="dm-input-area">
