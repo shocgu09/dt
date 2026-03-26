@@ -1091,14 +1091,6 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 }
 .dm-chat-modal {
   display: flex; flex-direction: column; height: 72vh; max-height: 620px;
-  overflow-y: hidden;
-}
-.dm-chat-modal .modal-header {
-  position: relative; flex-shrink: 0;
-}
-.dm-chat-modal .dm-toolbar {
-  flex-shrink: 0; position: relative; z-index: 2;
-  -webkit-transform: translateZ(0);
 }
 .dm-messages {
   flex: 1; overflow-y: auto; padding: 14px 16px;
@@ -1175,10 +1167,6 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
   background: var(--bg3); border: 1px solid var(--border); color: var(--text2);
   padding: 5px 10px; border-radius: 16px; cursor: pointer;
   font-size: .78rem; white-space: nowrap; transition: background .15s;
-  touch-action: manipulation; -webkit-transform: translateZ(0);
-  position: relative; z-index: 3;
-  -webkit-transform: translateZ(0); touch-action: manipulation;
-  position: relative; z-index: 3;
 }
 .dm-toolbar-btn:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
 .group-member-row {
