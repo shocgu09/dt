@@ -221,7 +221,10 @@
     <section id="page-members" class="page">
       <div class="page-header">
         <h2>회원 목록</h2>
-        <button class="btn btn-primary" id="btnAddMember">+ 회원 등록</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn admin-only hidden" style="background:linear-gradient(135deg,#f472b6,#a78bfa);border:none;color:#fff;font-weight:800" onclick="openTeamDivideModal()">🎲 조 나누기</button>
+          <button class="btn btn-primary" id="btnAddMember">+ 회원 등록</button>
+        </div>
       </div>
       <div class="filter-bar">
         <button class="filter-btn active" data-filter="all">전체</button>
@@ -880,6 +883,28 @@
         <label class="dm-photo-btn" title="사진 전송">🖼️<input type="file" id="dmImageInput" accept="image/*" style="display:none" onchange="handleDMImage(this)"></label>
         <input id="dmInput" placeholder="메시지를 입력하세요…" autocomplete="off">
         <button class="btn btn-sm btn-primary" onclick="sendDMMessage()">전송</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Team Divide Modal -->
+  <div class="modal-overlay" id="teamDivideModal">
+    <div class="modal modal-wide">
+      <div class="modal-header">
+        <h3>🎲 조 나누기</h3>
+        <button class="modal-close" data-modal="teamDivideModal">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:16px">
+        <div class="team-controls">
+          <label class="team-toggle"><input type="checkbox" id="teamSelectAll" onchange="toggleAllTeamMembers(this.checked)" checked> 전체 선택</label>
+          <div class="team-count-wrap">
+            <label>조 수</label>
+            <input type="number" id="teamCount" value="2" min="1" max="20" style="width:60px;padding:6px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;text-align:center;font-size:.92rem">
+          </div>
+        </div>
+        <div id="teamMemberList" style="max-height:240px;overflow-y:auto;margin:12px 0;-webkit-overflow-scrolling:touch"></div>
+        <button class="btn btn-primary" style="width:100%" onclick="divideTeams()">🎲 조 배정하기</button>
+        <div id="teamResults" style="margin-top:16px"></div>
       </div>
     </div>
   </div>

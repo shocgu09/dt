@@ -2980,6 +2980,130 @@ function openGasNavigation(lat, lng, name) {
   window.open(kakaoUrl, '_blank');
 }
 
+/* ===== TEAM DIVIDE (조 나누기) ===== */
+function openTeamDivideModal() {
+  var members = state.members || [];
+  if (!members.length) { alert('등록된 회원이 없습니다.'); return; }
+
+  var drivers = members.filter(function(m) { return m.role === 'driver'; });
+  var passengers = members.filter(function(m) { return m.role === 'passenger'; });
+
+  var html = '';
+  if (drivers.length) {
+    html += '<div class="team-section-label">🟢 운전자 (' + drivers.length + '명)</div>';
+    drivers.forEach(function(m) {
+      html += '<div class="team-member-row">';
+      html += '<input type="checkbox" class="team-cb" id="team-' + m.id + '" data-id="' + m.id + '" data-role="driver" checked>';
+      html += '<label for="team-' + m.id + '">' + escapeHtml(displayName(m.name)) + '</label>';
+      html += '<span class="team-role-badge team-role-driver">운전자</span>';
+      html += '</div>';
+    });
+  }
+  if (passengers.length) {
+    html += '<div class="team-section-label">🔵 동승자 (' + passengers.length + '명)</div>';
+    passengers.forEach(function(m) {
+      html += '<div class="team-member-row">';
+      html += '<input type="checkbox" class="team-cb" id="team-' + m.id + '" data-id="' + m.id + '" data-role="passenger" checked>';
+      html += '<label for="team-' + m.id + '">' + escapeHtml(displayName(m.name)) + '</label>';
+      html += '<span class="team-role-badge team-role-passenger">동승자</span>';
+      html += '</div>';
+    });
+  }
+
+  document.getElementById('teamMemberList').innerHTML = html;
+  document.getElementById('teamSelectAll').checked = true;
+  document.getElementById('teamCount').value = Math.max(1, drivers.length);
+  document.getElementById('teamResults').innerHTML = '';
+  openModal('teamDivideModal');
+}
+
+function toggleAllTeamMembers(checked) {
+  document.querySelectorAll('.team-cb').forEach(function(cb) { cb.checked = checked; });
+}
+
+function _shuffleArray(arr) {
+  var a = arr.slice();
+  for (var i = a.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+  }
+  return a;
+}
+
+function divideTeams() {
+  var checkboxes = document.querySelectorAll('.team-cb:checked');
+  if (!checkboxes.length) { alert('참여할 회원을 선택해주세요.'); return; }
+
+  var teamCount = parseInt(document.getElementById('teamCount').value) || 2;
+  if (teamCount < 1) { alert('조 수는 1 이상이어야 합니다.'); return; }
+
+  var selectedDrivers = [];
+  var selectedPassengers = [];
+
+  checkboxes.forEach(function(cb) {
+    var member = state.members.find(function(m) { return m.id === cb.dataset.id; });
+    if (!member) return;
+    if (cb.dataset.role === 'driver') selectedDrivers.push(member);
+    else selectedPassengers.push(member);
+  });
+
+  // 조 초기화
+  var teams = [];
+  for (var i = 0; i < teamCount; i++) {
+    teams.push({ drivers: [], passengers: [] });
+  }
+
+  // 운전자 랜덤 셔플 후 각 조에 배치
+  var shuffledDrivers = _shuffleArray(selectedDrivers);
+  shuffledDrivers.forEach(function(d, idx) {
+    teams[idx % teamCount].drivers.push(d);
+  });
+
+  // 동승자 랜덤 셔플 후 균등 배분
+  var shuffledPassengers = _shuffleArray(selectedPassengers);
+  shuffledPassengers.forEach(function(p, idx) {
+    teams[idx % teamCount].passengers.push(p);
+  });
+
+  renderTeamResults(teams);
+}
+
+function renderTeamResults(teams) {
+  var resultsEl = document.getElementById('teamResults');
+  var total = 0;
+  teams.forEach(function(t) { total += t.drivers.length + t.passengers.length; });
+
+  var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
+  html += '<span style="font-size:.82rem;color:var(--text3)">총 ' + total + '명 → ' + teams.length + '조</span>';
+  html += '<button class="btn" style="padding:6px 14px;font-size:.78rem" onclick="divideTeams()">🔄 다시 섞기</button>';
+  html += '</div>';
+  html += '<div class="team-result-grid">';
+
+  teams.forEach(function(team, i) {
+    html += '<div class="team-result-card">';
+    html += '<div class="team-result-title">' + (i + 1) + '조 (' + (team.drivers.length + team.passengers.length) + '명)</div>';
+
+    team.drivers.forEach(function(d) {
+      html += '<div class="team-result-member">';
+      html += '<span class="team-role-badge team-role-driver">운전</span>';
+      html += '<span>' + escapeHtml(displayName(d.name)) + '</span>';
+      html += '</div>';
+    });
+
+    team.passengers.forEach(function(p) {
+      html += '<div class="team-result-member">';
+      html += '<span class="team-role-badge team-role-passenger">동승</span>';
+      html += '<span>' + escapeHtml(displayName(p.name)) + '</span>';
+      html += '</div>';
+    });
+
+    html += '</div>';
+  });
+
+  html += '</div>';
+  resultsEl.innerHTML = html;
+}
+
 /* ===== PARKING (주차장 찾기) ===== */
 let _parkingMap = null;
 let _parkingMarkers = [];

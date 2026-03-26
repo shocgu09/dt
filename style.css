@@ -742,6 +742,41 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 .gas-nav-btn:hover { background: var(--primary-dark); }
 .gas-self { display: inline-block; padding: 1px 6px; background: rgba(74,222,128,.15); color: #4ade80; border-radius: 4px; font-size: .68rem; font-weight: 700; margin-left: 6px; }
 
+/* ===== TEAM DIVIDE ===== */
+.team-controls {
+  display: flex; justify-content: space-between; align-items: center;
+  padding-bottom: 12px; border-bottom: 1px solid var(--border);
+}
+.team-toggle { display: flex; align-items: center; gap: 6px; font-size: .88rem; cursor: pointer; color: var(--text); }
+.team-toggle input { width: 18px; height: 18px; accent-color: var(--primary); }
+.team-count-wrap { display: flex; align-items: center; gap: 8px; font-size: .88rem; color: var(--text2); }
+.team-section-label { font-size: .78rem; font-weight: 700; padding: 10px 0 6px; color: var(--text3); }
+.team-member-row {
+  display: flex; align-items: center; gap: 8px; padding: 6px 4px;
+  border-radius: 6px; cursor: pointer;
+}
+.team-member-row:hover { background: rgba(124,111,255,.06); }
+.team-member-row input { width: 18px; height: 18px; accent-color: var(--primary); flex-shrink: 0; }
+.team-member-row label { flex: 1; cursor: pointer; font-size: .88rem; color: var(--text); }
+.team-role-badge {
+  font-size: .68rem; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+}
+.team-role-driver { background: rgba(74,222,128,.15); color: #4ade80; }
+.team-role-passenger { background: rgba(96,165,250,.15); color: #60a5fa; }
+.team-result-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.team-result-card {
+  background: var(--bg3); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px; border-top: 3px solid var(--primary);
+}
+.team-result-title {
+  font-weight: 800; font-size: 1rem; margin-bottom: 10px;
+  color: var(--primary-light); text-align: center;
+}
+.team-result-member {
+  display: flex; align-items: center; gap: 6px; padding: 4px 0; font-size: .85rem;
+}
+.team-result-member .team-role-badge { font-size: .62rem; }
+
 /* ===== PARKING ===== */
 .parking-search-bar {
   display: flex; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--border);
