@@ -2278,10 +2278,20 @@ function updateDMBadge() {
     badge.textContent = label;
     badge.style.display = total > 0 ? '' : 'none';
   });
-  // 앱 뱃지도 동기화
-  if (total === 0 && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
-    navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_ALL_BADGES' });
-  }
+  // 앱 아이콘 뱃지를 Firestore unread 수 기준으로 직접 설정
+  try {
+    if (total > 0) {
+      if (navigator.setAppBadge) navigator.setAppBadge(total);
+    } else {
+      if (navigator.clearAppBadge) navigator.clearAppBadge();
+      // 알림센터의 모든 알림도 제거 시도
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then(reg => {
+          reg.getNotifications().then(notifications => notifications.forEach(n => n.close()));
+        }).catch(() => {});
+      }
+    }
+  } catch(e) {}
 }
 
 function openDMPanel() {
@@ -2348,10 +2358,14 @@ async function openDMChat(otherUid) {
   openModal('dmChatModal');
   closeDMPanel();
 
-  // 해당 대화의 알림 + 앱 뱃지 클리어
-  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-    navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_NOTIFICATIONS', convId });
-  }
+  // 해당 대화의 알림센터 알림 제거
+  try {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then(reg => {
+        reg.getNotifications({ tag: `dm-${convId}` }).then(notifications => notifications.forEach(n => n.close()));
+      });
+    }
+  } catch(e) {}
 
   // 기존 대화방이면 읽음 처리 + 즉시 UI 반영
   const convRef = state.db.collection('dms').doc(convId);
@@ -2379,9 +2393,13 @@ async function openDMChat(otherUid) {
         const localConv = state.dms.find(c => c.id === convId);
         if (localConv && localConv.unread) localConv.unread[uid] = 0;
         updateDMBadge();
-        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-          navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_NOTIFICATIONS', convId });
-        }
+        try {
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.ready.then(reg => {
+              reg.getNotifications({ tag: `dm-${convId}` }).then(notifications => notifications.forEach(n => n.close()));
+            });
+          }
+        } catch(e) {}
       }
     }, err => console.error('DM 메시지 구독 오류:', err));
 }
@@ -2396,9 +2414,13 @@ function closeDMChat() {
     if (localConv && localConv.unread) localConv.unread[uid] = 0;
     updateDMBadge();
     // 알림센터도 클리어
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_NOTIFICATIONS', convId });
-    }
+    try {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then(reg => {
+          reg.getNotifications({ tag: `dm-${convId}` }).then(notifications => notifications.forEach(n => n.close()));
+        });
+      }
+    } catch(e) {}
   }
   if (state._dmMsgUnsub) { state._dmMsgUnsub(); state._dmMsgUnsub = null; }
   state._activeDMConvId = null;
