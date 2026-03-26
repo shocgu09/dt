@@ -2984,6 +2984,7 @@ let _anonPosts = [];
 let _anonUnsub = null;
 let _anonDetailId = null;
 let _anonCommentUnsub = null;
+let _boardFilter = 'all';
 
 function renderAnon() {
   // 실시간 구독
@@ -3022,10 +3023,48 @@ function _updateHomeAnonList() {
     : '<div class="empty-state">아직 게시글이 없습니다</div>';
 }
 
+function filterBoard(cat) {
+  if (cat !== undefined) {
+    _boardFilter = cat;
+    document.querySelectorAll('[data-board-filter]').forEach(function(btn) {
+      btn.classList.toggle('active', btn.dataset.boardFilter === cat);
+    });
+  }
+  _renderAnonList();
+}
+
 function _renderAnonList() {
   var listEl = document.getElementById('anonList');
   if (!_anonPosts.length) {
-    listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">아직 게시글이 없습니다.<br>첫 글을 남겨보세요! 🎭</div>';
+    listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">아직 게시글이 없습니다.<br>첫 글을 남겨보세요! 📋</div>';
+    return;
+  }
+
+  var searchQuery = (document.getElementById('boardSearch')?.value || '').trim().toLowerCase();
+
+  // 공지를 최상단으로 분리
+  var notices = _anonPosts.filter(function(p) { return p.category === '공지'; });
+  var others = _anonPosts.filter(function(p) { return p.category !== '공지'; });
+  var sorted = notices.concat(others);
+
+  // 필터 적용
+  var filtered = sorted;
+  if (_boardFilter !== 'all') {
+    filtered = sorted.filter(function(p) { return p.category === _boardFilter; });
+  }
+
+  // 검색 적용
+  if (searchQuery) {
+    var searchType = (document.getElementById('boardSearchType')?.value) || 'title';
+    filtered = filtered.filter(function(p) {
+      var titleMatch = (p.title || '').toLowerCase().indexOf(searchQuery) !== -1;
+      if (searchType === 'title') return titleMatch;
+      return titleMatch || (p.text || '').toLowerCase().indexOf(searchQuery) !== -1;
+    });
+  }
+
+  if (!filtered.length) {
+    listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">검색 결과가 없습니다.</div>';
     return;
   }
 
@@ -3033,7 +3072,7 @@ function _renderAnonList() {
   var isAdmin = state.currentUserRole === 'superadmin' || state.currentUserRole === 'admin';
   var html = '';
 
-  _anonPosts.forEach(function(post) {
+  filtered.forEach(function(post) {
     var d = post.createdAt ? (post.createdAt.toDate ? post.createdAt.toDate() : new Date(post.createdAt)) : new Date();
     var timeAgo = _timeAgo(d);
     var liked = post.likedBy && post.likedBy.indexOf(uid) !== -1;
@@ -3110,12 +3149,14 @@ async function postAnon() {
       var member = state.members.find(function(m) { return m.createdBy === state.currentUserId; });
       authorName = member ? displayName(member.name) : (state.currentUser?.displayName || '');
     }
+    var noComment = document.getElementById('anonNoComment').checked;
     var data = {
       title: title,
       text: text,
       category: category,
       anonymous: isAnon,
       authorName: isAnon ? '' : authorName,
+      noComment: noComment,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       createdBy: state.currentUserId,
       likes: 0,
@@ -3192,6 +3233,19 @@ function openAnonDetail(postId) {
 
   document.getElementById('anonDetailContent').innerHTML = html;
   openModal('anonDetailModal');
+
+  // 댓글 막기 처리
+  var commentSection = document.querySelector('.anon-comment-input');
+  var commentHeader = document.querySelector('#anonDetailModal h4');
+  if (post.noComment) {
+    if (commentSection) commentSection.style.display = 'none';
+    if (commentHeader) commentHeader.innerHTML = '💬 댓글이 막힌 게시글입니다';
+    document.getElementById('anonCommentList').innerHTML = '<div style="text-align:center;padding:16px;color:var(--text3);font-size:.82rem">작성자가 댓글을 막았습니다.</div>';
+    return;
+  } else {
+    if (commentSection) commentSection.style.display = '';
+    if (commentHeader) commentHeader.innerHTML = '💬 댓글 <span id="anonCommentCount">0</span>';
+  }
 
   // 댓글 실시간 구독
   if (_anonCommentUnsub) _anonCommentUnsub();
