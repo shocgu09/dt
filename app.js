@@ -2725,13 +2725,18 @@ async function submitRenameGroup() {
 }
 
 function leaveDM() {
-  const convId = state._activeDMConvId;
-  if (!convId) return;
-  const conv = state.dms.find(c => c.id === convId);
-  const isGroup = conv?.isGroup || false;
-  const msg = isGroup ? '이 그룹을 나가시겠습니까?' : '대화방을 나가시겠습니까?\n모든 대화 내용이 삭제됩니다.';
-  document.getElementById('dmLeaveConfirmMsg').textContent = msg;
-  openModal('dmLeaveConfirmModal');
+  document.getElementById('dmChatTitle').textContent = '🔵 leaveDM 호출됨';
+  try {
+    const convId = state._activeDMConvId;
+    if (!convId) { document.getElementById('dmChatTitle').textContent = '❌ convId없음'; return; }
+    const conv = state.dms.find(function(c) { return c.id === convId; });
+    const isGroup = conv && conv.isGroup ? true : false;
+    const msg = isGroup ? '이 그룹을 나가시겠습니까?' : '대화방을 나가시겠습니까?\n모든 대화 내용이 삭제됩니다.';
+    var el = document.getElementById('dmLeaveConfirmMsg');
+    if (!el) { document.getElementById('dmChatTitle').textContent = '❌ dmLeaveConfirmMsg 없음'; return; }
+    el.textContent = msg;
+    openModal('dmLeaveConfirmModal');
+  } catch(e) { document.getElementById('dmChatTitle').textContent = '❌ ' + e.message; }
 }
 
 async function _executeLeaveDM() {
