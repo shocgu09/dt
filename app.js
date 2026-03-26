@@ -2744,6 +2744,7 @@ const OPINET_WORKER_URL = 'https://dt-opinet.shocguna.workers.dev';
 let _gasUserLocation = null;
 let _gasMap = null;
 let _gasMarkers = [];
+let _gasInfoWindows = [];
 let _gasMapLoaded = false;
 
 function openGasStationModal() {
@@ -2851,7 +2852,7 @@ function _renderGasStations(stations, fuel) {
     var lng = s.GIS_X_COOR;
     var name = s.OS_NM || '주유소';
 
-    html += '<div class="gas-card" id="gas-card-' + i + '">';
+    html += '<div class="gas-card" id="gas-card-' + i + '" onclick="gasFocusStation(' + i + ')" style="cursor:pointer">';
     html += '<div class="gas-rank' + (isTop ? ' top' : '') + '">' + (i + 1) + '</div>';
     html += '<div class="gas-info">';
     html += '<div class="gas-name">' + escapeHtml(name) + (isSelf ? '<span class="gas-self">셀프</span>' : '') + '</div>';
@@ -2882,9 +2883,10 @@ function _renderGasMap(stations) {
       _gasMap.setCenter(center);
     }
 
-    // 기존 마커 제거
+    // 기존 마커 및 인포윈도우 제거
     _gasMarkers.forEach(function(m) { m.setMap(null); });
     _gasMarkers = [];
+    _gasInfoWindows = [];
 
     // 내 위치 마커
     var myMarker = new kakao.maps.Marker({
@@ -2918,8 +2920,10 @@ function _renderGasMap(stations) {
         + '</div>';
 
       var infowindow = new kakao.maps.InfoWindow({ content: infoContent, removable: true });
+      _gasInfoWindows.push({ marker: marker, infowindow: infowindow, position: pos });
 
       kakao.maps.event.addListener(marker, 'click', function() {
+        _gasInfoWindows.forEach(function(iw) { iw.infowindow.close(); });
         infowindow.open(_gasMap, marker);
         // 리스트에서 해당 카드 하이라이트
         var card = document.getElementById('gas-card-' + i);
@@ -2948,6 +2952,19 @@ function _renderGasMap(stations) {
   } else {
     mapEl.style.display = 'none';
   }
+}
+
+function gasFocusStation(index) {
+  if (!_gasMap || !_gasInfoWindows[index]) return;
+  var item = _gasInfoWindows[index];
+  // 모든 인포윈도우 닫기
+  _gasInfoWindows.forEach(function(iw) { iw.infowindow.close(); });
+  // 해당 마커로 이동 + 인포윈도우 열기
+  _gasMap.setCenter(item.position);
+  _gasMap.setLevel(3);
+  item.infowindow.open(_gasMap, item.marker);
+  // 지도 영역으로 스크롤
+  document.getElementById('gasMap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function gasGoToMyLocation() {
