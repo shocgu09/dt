@@ -275,7 +275,13 @@
         <h2>🎭 익명 게시판</h2>
       </div>
       <div class="anon-write-box member-only">
-        <input type="text" id="anonTitleInput" placeholder="제목" maxlength="50" style="width:100%;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:.92rem;font-weight:700;margin-bottom:8px">
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <select id="anonCategory" style="padding:8px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:.88rem">
+            <option value="">말머리 선택</option>
+            <option value="건의">건의</option>
+          </select>
+          <input type="text" id="anonTitleInput" placeholder="제목" maxlength="50" style="flex:1;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:.92rem;font-weight:700">
+        </div>
         <textarea id="anonInput" placeholder="내용을 적어보세요..." rows="3" maxlength="1000"></textarea>
         <div class="anon-write-footer">
           <div style="display:flex;align-items:center;gap:10px">

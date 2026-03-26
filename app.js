@@ -3028,7 +3028,8 @@ function _renderAnonList() {
     html += '<span class="anon-avatar">🎭 익명</span>';
     html += '<span class="anon-time">' + timeAgo + '</span>';
     html += '</div>';
-    html += '<div class="anon-title">' + escapeHtml(post.title || '제목 없음') + (post.image ? '<span class="anon-has-img">📷</span>' : '') + '</div>';
+    var catHtml = post.category ? '<span class="anon-category anon-cat-' + escapeHtml(post.category) + '">' + escapeHtml(post.category) + '</span>' : '';
+    html += '<div class="anon-title">' + catHtml + escapeHtml(post.title || '제목 없음') + (post.image ? '<span class="anon-has-img">📷</span>' : '') + '</div>';
     html += '<div class="anon-text" style="color:var(--text2);font-size:.84rem;max-height:3.6em;overflow:hidden">' + escapeHtml(post.text) + '</div>';
     html += '<div class="anon-actions">';
     html += '<button class="anon-action-btn' + (liked ? ' liked' : '') + '" onclick="event.stopPropagation();toggleAnonLike(\'' + post.id + '\')">' + (liked ? '❤️' : '🤍') + ' ' + likeCount + '</button>';
@@ -3076,8 +3077,10 @@ function clearAnonImage() {
 async function postAnon() {
   var titleInput = document.getElementById('anonTitleInput');
   var input = document.getElementById('anonInput');
+  var catSelect = document.getElementById('anonCategory');
   var title = titleInput.value.trim();
   var text = input.value.trim();
+  var category = catSelect.value;
   if (!title) { alert('제목을 입력해주세요.'); return; }
   if (!text) { alert('내용을 입력해주세요.'); return; }
   if (!state.currentUserId) { alert('로그인이 필요합니다.'); return; }
@@ -3086,6 +3089,7 @@ async function postAnon() {
     var data = {
       title: title,
       text: text,
+      category: category,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       createdBy: state.currentUserId,
       likes: 0,
@@ -3096,6 +3100,7 @@ async function postAnon() {
     await state.db.collection('anon_posts').add(data);
     titleInput.value = '';
     input.value = '';
+    catSelect.value = '';
     document.getElementById('anonCharCount').textContent = '0';
     clearAnonImage();
   } catch (err) {
@@ -3145,7 +3150,8 @@ function openAnonDetail(postId) {
   var uid = state.currentUserId;
   var liked = post.likedBy && post.likedBy.indexOf(uid) !== -1;
 
-  var html = '<div class="anon-title" style="font-size:1.05rem;margin-bottom:8px">' + escapeHtml(post.title || '제목 없음') + '</div>';
+  var detailCatHtml = post.category ? '<span class="anon-category anon-cat-' + escapeHtml(post.category) + '">' + escapeHtml(post.category) + '</span>' : '';
+  var html = '<div class="anon-title" style="font-size:1.05rem;margin-bottom:8px">' + detailCatHtml + escapeHtml(post.title || '제목 없음') + '</div>';
   html += '<div class="anon-text" style="margin-bottom:12px">' + escapeHtml(post.text) + '</div>';
   if (post.image) {
     html += '<div style="margin-bottom:12px"><img src="' + post.image + '" style="max-width:100%;border-radius:8px;cursor:pointer" onclick="openLightbox(\'' + post.image + '\')" onerror="this.outerHTML=\'<div style=padding:12px;color:var(--text3);font-size:.82rem>⚠️ 이미지를 불러올 수 없습니다</div>\'"></div>';
