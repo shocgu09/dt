@@ -3651,9 +3651,60 @@ function openParkingModal() {
   openModal('parkingModal');
   document.getElementById('parkingDestInput').value = '';
   document.getElementById('parkingDestResults').style.display = 'none';
-  document.getElementById('parkingMap').style.display = 'none';
-  document.getElementById('parkingList').innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">🔍 도착지를 검색하면<br>주변 주차장을 찾아드립니다</div>';
+  document.getElementById('parkingList').innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">🔍 도착지를 검색하거나<br>지도를 탭하여 주차장을 찾으세요</div>';
   setTimeout(function() { document.getElementById('parkingDestInput').focus(); }, 200);
+
+  // 기본 지도 표시 (내 위치 또는 서울)
+  var mapEl = document.getElementById('parkingMap');
+  mapEl.style.display = 'block';
+
+  var initMap = function(lat, lng) {
+    var doInit = function() {
+      var center = new kakao.maps.LatLng(lat, lng);
+      if (!_parkingMap) {
+        _parkingMap = new kakao.maps.Map(mapEl, { center: center, level: 5 });
+        // 지도 클릭 시 해당 위치 기준 주차장 검색
+        kakao.maps.event.addListener(_parkingMap, 'click', function(mouseEvent) {
+          var latlng = mouseEvent.latLng;
+          _parkingDest = { lat: latlng.getLat(), lng: latlng.getLng(), name: '선택한 위치' };
+          // 역지오코딩으로 주소 표시
+          var geocoder = new kakao.maps.services.Geocoder();
+          geocoder.coord2Address(latlng.getLng(), latlng.getLat(), function(result, status) {
+            if (status === kakao.maps.services.Status.OK && result[0]) {
+              var addr = result[0].road_address ? result[0].road_address.address_name : result[0].address.address_name;
+              _parkingDest.name = addr;
+              document.getElementById('parkingDestInput').value = addr;
+            }
+          });
+          document.getElementById('parkingDestInput').value = '선택한 위치';
+          document.getElementById('parkingDestResults').style.display = 'none';
+          _searchNearbyParking();
+        });
+      } else {
+        _parkingMap.setCenter(center);
+        _parkingMap.setLevel(5);
+      }
+      // 기존 마커 제거
+      _parkingMarkers.forEach(function(m) { m.setMap(null); });
+      _parkingMarkers = [];
+      _parkingInfoWindows = [];
+      setTimeout(function() { _parkingMap.relayout(); }, 300);
+    };
+
+    if (typeof kakao !== 'undefined' && kakao.maps) {
+      if (_gasMapLoaded) { doInit(); }
+      else { kakao.maps.load(function() { _gasMapLoaded = true; doInit(); }); }
+    }
+  };
+
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      function(pos) { initMap(pos.coords.latitude, pos.coords.longitude); },
+      function() { initMap(37.5665, 126.978); }
+    );
+  } else {
+    initMap(37.5665, 126.978);
+  }
 }
 
 function searchParkingDest() {
