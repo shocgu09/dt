@@ -69,7 +69,8 @@ body {
 }
 .nav-btn:hover { color: var(--text); background: var(--bg3); }
 .nav-btn.active { color: #fff; background: var(--primary); }
-.hamburger { display: none; background: none; border: none; color: var(--text); font-size: 1.4rem; cursor: pointer; }
+.hamburger { display: none; background: none; border: none; color: var(--text); font-size: 1.4rem; cursor: pointer; position: relative; }
+.hamburger .dm-unread-badge { position: absolute; top: -2px; right: -6px; }
 .mobile-menu {
   display: none; flex-direction: column;
   position: fixed; top: 56px; left: 0; right: 0; z-index: 99;
