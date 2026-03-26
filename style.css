@@ -776,6 +776,21 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
   display: flex; align-items: center; gap: 6px; padding: 4px 0; font-size: .85rem;
 }
 .team-result-member .team-role-badge { font-size: .62rem; }
+.team-add-guest {
+  display: flex; gap: 6px; padding: 10px 0; border-top: 1px solid var(--border);
+}
+.team-add-guest input {
+  flex: 1; padding: 6px 10px; background: var(--bg3); border: 1px solid var(--border);
+  color: var(--text); border-radius: 8px; font-size: .84rem;
+}
+.team-add-guest select {
+  padding: 6px 8px; background: var(--bg3); border: 1px solid var(--border);
+  color: var(--text); border-radius: 8px; font-size: .82rem;
+}
+.team-add-guest button {
+  padding: 6px 12px; background: var(--primary); border: none; color: #fff;
+  border-radius: 8px; cursor: pointer; font-size: .82rem; font-weight: 700; white-space: nowrap;
+}
 
 /* ===== PARKING ===== */
 .parking-search-bar {

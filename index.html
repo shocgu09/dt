@@ -899,8 +899,13 @@
           <label class="team-toggle"><input type="checkbox" id="teamSelectAll" onchange="toggleAllTeamMembers(this.checked)" checked> 전체 선택</label>
           <span id="teamCountInfo" style="font-size:.82rem;color:var(--text3)"></span>
         </div>
-        <div id="teamMemberList" style="max-height:240px;overflow-y:auto;margin:12px 0;-webkit-overflow-scrolling:touch"></div>
-        <button class="btn btn-primary" style="width:100%" onclick="divideTeams()">🎲 조 배정하기</button>
+        <div id="teamMemberList" style="max-height:200px;overflow-y:auto;margin:12px 0;-webkit-overflow-scrolling:touch"></div>
+        <div class="team-add-guest">
+          <input type="text" id="teamGuestName" placeholder="비회원 이름 입력" onkeydown="if(event.key==='Enter')addTeamGuest()">
+          <select id="teamGuestRole"><option value="driver">🚗 운전</option><option value="passenger" selected>🧑 동승</option></select>
+          <button onclick="addTeamGuest()">+ 추가</button>
+        </div>
+        <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="divideTeams()">🎲 조 배정하기</button>
         <div id="teamResults" style="margin-top:16px"></div>
       </div>
     </div>

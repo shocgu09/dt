@@ -3007,6 +3007,29 @@ function openTeamDivideModal() {
   openModal('teamDivideModal');
 }
 
+let _teamGuestId = 0;
+
+function addTeamGuest() {
+  var nameInput = document.getElementById('teamGuestName');
+  var name = nameInput.value.trim();
+  if (!name) return;
+  var role = document.getElementById('teamGuestRole').value;
+  var isDriver = role === 'driver';
+  var roleClass = isDriver ? 'team-role-driver' : 'team-role-passenger';
+  var roleText = isDriver ? '운전' : '동승';
+  var guestId = 'guest-' + (++_teamGuestId);
+
+  var row = document.createElement('div');
+  row.className = 'team-member-row';
+  row.innerHTML = '<input type="checkbox" class="team-cb" id="team-' + guestId + '" data-id="' + guestId + '" data-guest="true" data-name="' + escapeHtml(name) + '" checked onchange="updateTeamCount()">'
+    + '<label for="team-' + guestId + '">' + escapeHtml(name) + ' <span style="font-size:.68rem;color:var(--text3)">(비회원)</span></label>'
+    + '<button class="team-role-badge ' + roleClass + '" style="border:none;cursor:pointer" onclick="toggleTeamRole(this)">🚗 ' + roleText + '</button>';
+
+  document.getElementById('teamMemberList').appendChild(row);
+  nameInput.value = '';
+  updateTeamCount();
+}
+
 function toggleAllTeamMembers(checked) {
   document.querySelectorAll('.team-cb').forEach(function(cb) { cb.checked = checked; });
   updateTeamCount();
@@ -3052,12 +3075,17 @@ function divideTeams() {
   var selectedPassengers = [];
 
   checkboxes.forEach(function(cb) {
-    var member = state.members.find(function(m) { return m.id === cb.dataset.id; });
-    if (!member) return;
+    var person;
+    if (cb.dataset.guest === 'true') {
+      person = { id: cb.dataset.id, name: cb.dataset.name, role: 'guest' };
+    } else {
+      person = state.members.find(function(m) { return m.id === cb.dataset.id; });
+    }
+    if (!person) return;
     var roleBtn = cb.closest('.team-member-row').querySelector('.team-role-badge');
     var isDriver = roleBtn && roleBtn.classList.contains('team-role-driver');
-    if (isDriver) selectedDrivers.push(member);
-    else selectedPassengers.push(member);
+    if (isDriver) selectedDrivers.push(person);
+    else selectedPassengers.push(person);
   });
 
   var teamCount = Math.max(1, selectedDrivers.length);
