@@ -2377,10 +2377,9 @@ async function openDMChat(otherUid) {
   document.getElementById('dmChatTitle').innerHTML = `💬 ${escapeHtml(name)}${titleBadge(other?.title)}`;
   document.getElementById('dmMessages').innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:.84rem">로딩 중…</div>';
 
-  // 1:1: 초대만 표시, 이름변경/나가기 숨김
-  document.getElementById('btnInviteGroup').classList.remove('hidden');
-  document.getElementById('btnRenameGroup').classList.add('hidden');
-  document.getElementById('btnLeaveGroup').classList.add('hidden');
+  // 1:1: 툴바 표시, 그룹 전용 버튼 숨김
+  document.getElementById('dmToolbar').classList.remove('hidden');
+  document.querySelectorAll('.dm-group-only').forEach(el => el.classList.add('hidden'));
 
   openModal('dmChatModal');
   closeDMPanel();
@@ -2454,8 +2453,8 @@ function closeDMChat() {
   if (state._dmMsgUnsub) { state._dmMsgUnsub(); state._dmMsgUnsub = null; }
   state._activeDMConvId = null;
   state._activeDMOtherUid = null;
-  // 그룹 관리 버튼 숨기기
-  document.querySelectorAll('.dm-group-action').forEach(el => el.classList.add('hidden'));
+  // 툴바 숨기기
+  document.getElementById('dmToolbar').classList.add('hidden');
   closeModal('dmChatModal');
 }
 
@@ -2518,11 +2517,12 @@ async function openGroupChat(convId) {
   const conv = state.dms.find(c => c.id === convId);
   const title = conv?.groupName || '그룹';
   const count = conv?.participants?.length || 0;
-  document.getElementById('dmChatTitle').innerHTML = `👥 ${escapeHtml(title)} <span style="color:var(--text3);font-size:.8rem">${count}명</span>`;
+  document.getElementById('dmChatTitle').innerHTML = `👥 ${escapeHtml(title)} <span style="color:var(--primary-light);font-size:.8rem;cursor:pointer;text-decoration:underline" onclick="showGroupMembers()">${count}명</span>`;
   document.getElementById('dmMessages').innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:.84rem">로딩 중…</div>';
 
-  // 그룹 관리 버튼 표시
-  document.querySelectorAll('.dm-group-action').forEach(el => el.classList.remove('hidden'));
+  // 그룹: 툴바 + 그룹 전용 버튼 모두 표시
+  document.getElementById('dmToolbar').classList.remove('hidden');
+  document.querySelectorAll('.dm-group-only').forEach(el => el.classList.remove('hidden'));
 
   openModal('dmChatModal');
   closeDMPanel();
@@ -2617,6 +2617,17 @@ async function inviteToGroup() {
   } catch (e) {
     alert('초대 실패: ' + e.message);
   }
+}
+
+function showGroupMembers() {
+  const convId = state._activeDMConvId;
+  const conv = state.dms.find(c => c.id === convId);
+  if (!conv) return;
+  const members = conv.participants.map(uid => {
+    const u = state.users.find(x => x.uid === uid);
+    return u?.name || '알 수 없음';
+  });
+  alert(`참여자 (${members.length}명)\n\n${members.join('\n')}`);
 }
 
 async function renameGroup() {

@@ -868,14 +868,14 @@
   <!-- DM Chat Modal -->
   <div class="modal-overlay" id="dmChatModal">
     <div class="modal dm-chat-modal">
-      <div class="modal-header" style="padding:12px 14px 10px">
-        <h3 id="dmChatTitle" style="font-size:.95rem;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">대화</h3>
-        <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
-          <button class="dm-header-btn dm-group-action hidden" id="btnInviteGroup" onclick="openInviteGroupModal()" title="멤버 초대">👥+</button>
-          <button class="dm-header-btn dm-group-action hidden" id="btnRenameGroup" onclick="renameGroup()" title="그룹명 변경">✏️</button>
-          <button class="dm-header-btn dm-group-action hidden" id="btnLeaveGroup" onclick="leaveGroup()" title="나가기">🚪</button>
-          <button class="modal-close" onclick="closeDMChat()" style="font-size:1.1rem">×</button>
-        </div>
+      <div class="modal-header">
+        <h3 id="dmChatTitle">대화</h3>
+        <button class="modal-close" onclick="closeDMChat()">×</button>
+      </div>
+      <div class="dm-toolbar hidden" id="dmToolbar">
+        <button class="dm-toolbar-btn" id="btnInviteGroup" onclick="openInviteGroupModal()">👥+ 초대</button>
+        <button class="dm-toolbar-btn dm-group-only hidden" id="btnRenameGroup" onclick="renameGroup()">✏️ 이름변경</button>
+        <button class="dm-toolbar-btn dm-group-only hidden" id="btnLeaveGroup" onclick="leaveGroup()">🚪 나가기</button>
       </div>
       <div class="dm-messages" id="dmMessages"></div>
       <div class="dm-input-area">
