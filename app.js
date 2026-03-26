@@ -467,7 +467,8 @@ async function updateUserTitle(uid, title) {
   }
 }
 
-const TITLE_OPTIONS = ['', '회장', '부회장', '총무', '운영진', '감자'];
+const ADMIN_TITLE_OPTIONS = ['', '회장', '부회장', '총무', '운영진'];
+const MEMBER_TITLE_OPTIONS = ['', '감자'];
 function titleBadge(title) {
   if (!title) return '';
   return `<span style="color:#a78bfa;font-size:.75rem;font-weight:700;background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.35);padding:1px 7px;border-radius:0;margin-left:5px">${escapeHtml(title)}</span>`;
@@ -1016,11 +1017,12 @@ async function renderAdmin() {
         ${isSuperAdmin ? `<div class="user-item-lastseen">마지막 접속: ${formatLastSeen(u.lastSeen)}</div>` : ''}
       </div>
       <div class="user-item-actions">
-        ${isSuperAdmin && isAdminRole(u.role) ? `
-          <select class="role-select" style="min-width:80px" onchange="updateUserTitle('${u.uid}', this.value)">
-            ${TITLE_OPTIONS.map(t => `<option value="${t}" ${(u.title||'')=== t ? 'selected' : ''}>${t || '칭호 없음'}</option>`).join('')}
-          </select>
-        ` : u.title ? '' : ''}
+        ${isSuperAdmin ? (() => {
+          const opts = isAdminRole(u.role) ? ADMIN_TITLE_OPTIONS : MEMBER_TITLE_OPTIONS;
+          return `<select class="role-select" style="min-width:80px" onchange="updateUserTitle('${u.uid}', this.value)">
+            ${opts.map(t => `<option value="${t}" ${(u.title||'')=== t ? 'selected' : ''}>${t || '칭호 없음'}</option>`).join('')}
+          </select>`;
+        })() : ''}
         ${u.role === 'superadmin' ? `
           <span style="font-size:.82rem;color:#f59e0b;padding:6px 10px">슈퍼관리자</span>
         ` : isSuperAdmin ? `
