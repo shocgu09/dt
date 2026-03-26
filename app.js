@@ -2928,6 +2928,8 @@ function _renderGasMap(stations) {
     });
 
     _gasMap.setBounds(bounds);
+    var myLocBtn = document.getElementById('gasMyLocBtn');
+    if (myLocBtn) myLocBtn.style.display = 'block';
     setTimeout(function() { _gasMap.relayout(); _gasMap.setBounds(bounds); }, 300);
   }
 
@@ -2945,6 +2947,14 @@ function _renderGasMap(stations) {
     }
   } else {
     mapEl.style.display = 'none';
+  }
+}
+
+function gasGoToMyLocation() {
+  if (_gasMap && _gasUserLocation) {
+    var center = new kakao.maps.LatLng(_gasUserLocation.lat, _gasUserLocation.lng);
+    _gasMap.setCenter(center);
+    _gasMap.setLevel(4);
   }
 }
 
