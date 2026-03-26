@@ -208,7 +208,6 @@ function showApp() {
   // 게스트/회원 전용 UI 토글
   document.querySelectorAll('.guest-only').forEach(el => el.classList.toggle('hidden', !isGuest));
   document.querySelectorAll('.member-only').forEach(el => el.classList.toggle('hidden', isGuest));
-  document.getElementById('guestBanner').classList.toggle('hidden', !isGuest);
 
   if (!isGuest) {
     // 네비바 사용자 정보 표시
