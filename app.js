@@ -2971,6 +2971,23 @@ function _renderGasMap(stations) {
 
     if (!_gasMap) {
       _gasMap = new kakao.maps.Map(mapEl, { center: center, level: 5 });
+      // 지도 클릭 시 해당 위치 기준 주유소 검색
+      kakao.maps.event.addListener(_gasMap, 'click', function(mouseEvent) {
+        var latlng = mouseEvent.latLng;
+        _gasUserLocation = { lat: latlng.getLat(), lng: latlng.getLng() };
+        // 역지오코딩으로 주소 표시
+        var geocoder = new kakao.maps.services.Geocoder();
+        geocoder.coord2Address(latlng.getLng(), latlng.getLat(), function(result, status) {
+          var locEl = document.getElementById('gasMyAddr');
+          if (status === kakao.maps.services.Status.OK && result[0]) {
+            var addr = result[0].road_address ? result[0].road_address.address_name : result[0].address.address_name;
+            if (locEl) locEl.textContent = '📍 ' + addr;
+          } else {
+            if (locEl) locEl.textContent = '📍 선택한 위치';
+          }
+        });
+        searchGasStation();
+      });
     } else {
       _gasMap.setCenter(center);
     }
