@@ -2381,8 +2381,8 @@ async function openDMChat(otherUid) {
   document.getElementById('dmToolbar').classList.remove('hidden');
   document.querySelectorAll('.dm-group-only').forEach(el => el.classList.add('hidden'));
 
-  openModal('dmChatModal');
   closeDMPanel();
+  openModal('dmChatModal');
 
   // 해당 대화의 알림센터 알림 제거
   try {
@@ -2524,8 +2524,8 @@ async function openGroupChat(convId) {
   document.getElementById('dmToolbar').classList.remove('hidden');
   document.querySelectorAll('.dm-group-only').forEach(el => el.classList.remove('hidden'));
 
-  openModal('dmChatModal');
   closeDMPanel();
+  openModal('dmChatModal');
 
   // 알림 클리어
   try { if ('serviceWorker' in navigator) { navigator.serviceWorker.ready.then(reg => { reg.getNotifications({ tag: `dm-${convId}` }).then(ns => ns.forEach(n => n.close())); }); } } catch(e) {}
