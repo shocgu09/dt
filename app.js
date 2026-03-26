@@ -2377,6 +2377,10 @@ async function openDMChat(otherUid) {
   document.getElementById('dmChatTitle').innerHTML = `💬 ${escapeHtml(name)}${titleBadge(other?.title)}`;
   document.getElementById('dmMessages').innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:.84rem">로딩 중…</div>';
 
+  // 1:1: 초대 버튼만 표시, 나가기 숨김
+  document.getElementById('btnInviteGroup').classList.remove('hidden');
+  document.getElementById('btnLeaveGroup').classList.add('hidden');
+
   openModal('dmChatModal');
   closeDMPanel();
 
@@ -2556,7 +2560,7 @@ async function openGroupChat(convId) {
 function openInviteGroupModal() {
   const convId = state._activeDMConvId;
   const conv = state.dms.find(c => c.id === convId);
-  if (!conv?.isGroup) return;
+  if (!conv) return;
 
   const existing = new Set(conv.participants);
   const candidates = state.users.filter(u => !existing.has(u.uid));
