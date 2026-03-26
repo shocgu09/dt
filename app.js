@@ -2475,8 +2475,10 @@ function renderDMMessages(msgs, myUid) {
       </div>`;
     } else {
       const sender = state.users.find(u => u.uid === msg.senderId);
-      const senderName = sender?.name || '알 수 없음';
-      const avatar = avatarSmall({ name: senderName, image: sender?.image || null, gender: sender?.gender || 'male' });
+      const member = state.members.find(m => m.createdBy === msg.senderId);
+      const senderName = sender?.name || member?.name || '알 수 없음';
+      const senderImage = member?.image || sender?.image || null;
+      const avatar = avatarSmall({ name: senderName, image: senderImage, gender: member?.gender || 'male' });
       html += `<div class="dm-msg dm-msg-other dm-msg-with-avatar">
         <div class="dm-avatar-wrap">${avatar}</div>
         <div class="dm-msg-content">
