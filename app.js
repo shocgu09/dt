@@ -2553,24 +2553,12 @@ async function createGroupChat() {
 
 async function openGroupChat(convId) {
   const uid = state.currentUserId;
-  const conv = state.dms.find(c => c.id === convId);
-
-  // 2명이면서 isGroup인 경우 → DB 전환 후 1:1 DM으로 열기
-  if (conv?.isGroup && conv.participants?.length === 2) {
-    try {
-      const FieldValue = firebase.firestore.FieldValue;
-      await state.db.collection('dms').doc(convId).update({ isGroup: false, groupName: FieldValue.delete() });
-      if (conv) { conv.isGroup = false; delete conv.groupName; }
-    } catch(e) {}
-    const otherUid = conv.participants.find(p => p !== uid);
-    if (otherUid) { openDMChat(otherUid); return; }
-  }
-
   state._activeDMConvId = convId;
   state._activeDMOtherUid = null;
 
   try { navigator.serviceWorker?.controller?.postMessage({ type: 'DM_VIEWING', convId }); } catch(e) {}
 
+  const conv = state.dms.find(c => c.id === convId);
   const title = conv?.groupName || '그룹';
   const count = conv?.participants?.length || 0;
   document.getElementById('dmChatTitle').innerHTML = `👥 ${escapeHtml(title)} <span style="color:var(--primary-light);font-size:.8rem;cursor:pointer;text-decoration:underline" onclick="showGroupMembers()">${count}명</span>`;
@@ -2747,30 +2735,25 @@ async function leaveDM() {
       const convSnap = await convRef.get();
       const currentParticipants = convSnap.data()?.participants || [];
 
-      if (currentParticipants.length <= 2) {
-        // 나가면 1명 이하 남음 → 대화방 삭제
-        await deleteConversation(convId);
-      } else {
-        // 시스템 메시지를 먼저 기록 (participants에서 제거 전이어야 권한이 있음)
-        const myName = state.users.find(u => u.uid === uid)?.name || '';
-        await convRef.collection('messages').add({
-          senderId: uid,
-          text: `${myName}님이 나갔습니다`,
-          createdAt: FieldValue.serverTimestamp(),
-          system: true
-        });
-        // participants에서 자신 제거
-        const updateData = {
-          participants: FieldValue.arrayRemove(uid),
-          [`unread.${uid}`]: FieldValue.delete()
-        };
-        // 나간 후 2명 남으면 1:1 DM으로 자동 전환
-        if (currentParticipants.length === 3) {
-          updateData.isGroup = false;
-          updateData.groupName = FieldValue.delete();
-        }
-        await convRef.update(updateData);
+      // 시스템 메시지를 먼저 기록 (participants에서 제거 전이어야 권한이 있음)
+      const myName = state.users.find(u => u.uid === uid)?.name || '';
+      await convRef.collection('messages').add({
+        senderId: uid,
+        text: `${myName}님이 나갔습니다`,
+        createdAt: FieldValue.serverTimestamp(),
+        system: true
+      });
+      // participants에서 자신 제거
+      const updateData = {
+        participants: FieldValue.arrayRemove(uid),
+        [`unread.${uid}`]: FieldValue.delete()
+      };
+      // 나간 후 2명 남으면 1:1 DM으로 자동 전환
+      if (currentParticipants.length === 3) {
+        updateData.isGroup = false;
+        updateData.groupName = FieldValue.delete();
       }
+      await convRef.update(updateData);
     }
     closeDMChat();
   } catch (e) {

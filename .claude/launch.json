@@ -2,16 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "dt-club",
-      "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "3000"],
+      "name": "dt-app",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "3000", "--directory", "/Users/jeongdoyeong/Documents/Claude/dt"],
       "port": 3000
-    },
-    {
-      "name": "carfit",
-      "runtimeExecutable": "C:\\Program Files\\nodejs\\npm.cmd",
-      "runtimeArgs": ["--prefix", "C:\\Users\\shocg\\문서\\Claude\\my-app", "run", "dev"],
-      "port": 3001
     }
   ]
 }
