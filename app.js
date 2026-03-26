@@ -2335,7 +2335,7 @@ function renderDMList() {
         <div>${avatarEl({ name: others[1]?.name || '?', image: others[1]?.image || null, gender: others[1]?.gender || 'male' })}</div>
       </div>`;
       displayNameHtml = `${escapeHtml(conv.groupName || '그룹')}<span class="dm-group-badge">${conv.participants.length}명</span>`;
-      clickAction = `openGroupChat('${conv.id}')`;
+      clickAction = `event.stopPropagation();openGroupChat('${conv.id}')`;
     } else {
       // 1:1
       const otherUid = conv.participants.find(p => p !== uid);
@@ -2343,7 +2343,7 @@ function renderDMList() {
       const name = other?.name || '알 수 없음';
       avatarHtml = `<div class="mini-avatar dm-conv-avatar">${avatarEl({ name, image: other?.image || null, gender: other?.gender || 'male' })}</div>`;
       displayNameHtml = `${escapeHtml(name)}${titleBadge(other?.title)}`;
-      clickAction = `openDMChat('${otherUid}')`;
+      clickAction = `event.stopPropagation();openDMChat('${otherUid}')`;
     }
 
     return `
@@ -2361,7 +2361,8 @@ function renderDMList() {
   }).join('');
 }
 
-async function openDMChat(otherUid) {
+function openDMChat(otherUid) {
+  try {
   const uid = state.currentUserId;
   if (!uid || otherUid === uid) return;
 
@@ -2369,66 +2370,61 @@ async function openDMChat(otherUid) {
   state._activeDMConvId = convId;
   state._activeDMOtherUid = otherUid;
 
-  // SW에 현재 보고 있는 대화방 알림 → 푸시 알림 억제
-  try { navigator.serviceWorker?.controller?.postMessage({ type: 'DM_VIEWING', convId }); } catch(e) {}
+  try { if (navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage({ type: 'DM_VIEWING', convId }); } catch(e) {}
 
-  const other = state.users.find(u => u.uid === otherUid);
-  const name = other?.name || '알 수 없음';
-  document.getElementById('dmChatTitle').innerHTML = `💬 ${escapeHtml(name)}${titleBadge(other?.title)}`;
+  const other = state.users.find(function(u) { return u.uid === otherUid; });
+  const name = (other && other.name) || '알 수 없음';
+  document.getElementById('dmChatTitle').innerHTML = '💬 ' + escapeHtml(name) + titleBadge(other ? other.title : '');
   document.getElementById('dmMessages').innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:.84rem">로딩 중…</div>';
 
-  // 1:1: 툴바 표시, 그룹 전용 버튼 숨김
   document.getElementById('dmToolbar').classList.remove('hidden');
-  document.querySelectorAll('.dm-group-only').forEach(el => el.classList.add('hidden'));
+  document.querySelectorAll('.dm-group-only').forEach(function(el) { el.classList.add('hidden'); });
 
   closeDMPanel();
-  // iOS PWA에서 터치 이벤트 관통 방지를 위해 약간의 딜레이 후 모달 열기
-  setTimeout(() => openModal('dmChatModal'), 50);
+  openModal('dmChatModal');
 
-  // 해당 대화의 알림센터 알림 제거
+  // 비동기 작업은 별도로 (모달은 이미 열린 상태)
+  _initDMChatAsync(convId, uid);
+
+  } catch(e) { alert('DM 열기 오류: ' + e.message); }
+}
+
+async function _initDMChatAsync(convId, uid) {
+  // 알림센터 알림 제거
   try {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.ready.then(reg => {
-        reg.getNotifications({ tag: `dm-${convId}` }).then(notifications => notifications.forEach(n => n.close()));
-      });
+      var reg = await navigator.serviceWorker.ready;
+      var notifications = await reg.getNotifications({ tag: 'dm-' + convId });
+      notifications.forEach(function(n) { n.close(); });
     }
   } catch(e) {}
 
-  // 기존 대화방이면 읽음 처리 + 즉시 UI 반영
-  const convRef = state.db.collection('dms').doc(convId);
+  // 읽음 처리
+  var convRef = state.db.collection('dms').doc(convId);
   try {
-    const convSnap = await convRef.get();
+    var convSnap = await convRef.get();
     if (convSnap.exists) {
-      await convRef.update({ [`unread.${uid}`]: 0 });
-      // 로컬 state도 즉시 반영 (onSnapshot 도착 전에 뱃지 업데이트)
-      const localConv = state.dms.find(c => c.id === convId);
+      await convRef.update({ ['unread.' + uid]: 0 });
+      var localConv = state.dms.find(function(c) { return c.id === convId; });
       if (localConv && localConv.unread) localConv.unread[uid] = 0;
       updateDMBadge();
     }
   } catch(e) {}
 
-  // 메시지 실시간 구독 + 새 메시지 수신 시 자동 읽음 처리
+  // 메시지 구독
   if (state._dmMsgUnsub) state._dmMsgUnsub();
   state._dmMsgUnsub = state.db.collection('dms').doc(convId).collection('messages')
     .orderBy('createdAt', 'asc')
-    .onSnapshot(snap => {
-      renderDMMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })), uid);
-      // 채팅 모달이 열려있는 동안 새 메시지가 오면 즉시 읽음 처리 + UI 반영
-      const modal = document.getElementById('dmChatModal');
+    .onSnapshot(function(snap) {
+      renderDMMessages(snap.docs.map(function(d) { return { id: d.id, ...d.data() }; }), uid);
+      var modal = document.getElementById('dmChatModal');
       if (modal && modal.classList.contains('open')) {
-        state.db.collection('dms').doc(convId).update({ [`unread.${uid}`]: 0 }).catch(() => {});
-        const localConv = state.dms.find(c => c.id === convId);
-        if (localConv && localConv.unread) localConv.unread[uid] = 0;
+        state.db.collection('dms').doc(convId).update({ ['unread.' + uid]: 0 }).catch(function() {});
+        var lc = state.dms.find(function(c) { return c.id === convId; });
+        if (lc && lc.unread) lc.unread[uid] = 0;
         updateDMBadge();
-        try {
-          if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.ready.then(reg => {
-              reg.getNotifications({ tag: `dm-${convId}` }).then(notifications => notifications.forEach(n => n.close()));
-            });
-          }
-        } catch(e) {}
       }
-    }, err => console.error('DM 메시지 구독 오류:', err));
+    }, function(err) { console.error('DM 메시지 구독 오류:', err); });
 }
 
 function closeDMChat() {
@@ -2526,7 +2522,7 @@ async function openGroupChat(convId) {
   document.querySelectorAll('.dm-group-only').forEach(el => el.classList.remove('hidden'));
 
   closeDMPanel();
-  setTimeout(() => openModal('dmChatModal'), 50);
+  openModal('dmChatModal');
 
   // 알림 클리어
   try { if ('serviceWorker' in navigator) { navigator.serviceWorker.ready.then(reg => { reg.getNotifications({ tag: `dm-${convId}` }).then(ns => ns.forEach(n => n.close())); }); } } catch(e) {}
