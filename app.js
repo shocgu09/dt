@@ -3014,7 +3014,7 @@ function _updateHomeAnonList() {
         var imgIcon = p.image ? '<span class="anon-has-img">📷</span>' : '';
         var d = p.createdAt ? (p.createdAt.toDate ? p.createdAt.toDate() : new Date(p.createdAt)) : new Date();
         return '<div class="home-list-item" onclick="goPage(\'anon\');setTimeout(function(){openAnonDetail(\'' + p.id + '\')},300)">'
-          + '<span class="item-icon">🎭</span>'
+          + '<span class="item-icon">📋</span>'
           + '<div class="item-info">'
           + '<div class="item-title">' + catBadge + escapeHtml(p.title || '제목 없음') + imgIcon + '</div>'
           + '<div class="item-sub">❤️ ' + (p.likes || 0) + ' · 💬 ' + (p.commentCount || 0) + ' · ' + _timeAgo(d) + '</div>'
