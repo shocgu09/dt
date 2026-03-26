@@ -1144,18 +1144,43 @@ function loadWeather() {
   if (!card) return;
 
   if (!navigator.geolocation) return;
+  var _renderWeather = function(data, locName) {
+    _weatherLoaded = true;
+    card.style.display = '';
+    document.getElementById('weatherEmoji').textContent = data.skyEmoji || '☀️';
+    document.getElementById('weatherTemp').textContent = data.temp + '°C';
+    document.getElementById('weatherDesc').textContent = data.sky || '맑음';
+    if (locName) document.getElementById('weatherLocation').textContent = '📍 ' + locName;
+  };
+
   navigator.geolocation.getCurrentPosition(function(pos) {
     var lat = pos.coords.latitude, lng = pos.coords.longitude;
+
+    // 역지오코딩으로 위치명 가져오기
+    var _locName = '';
+    var _setLoc = function() {
+      if (typeof kakao !== 'undefined' && kakao.maps) {
+        var doGeo = function() {
+          var geocoder = new kakao.maps.services.Geocoder();
+          geocoder.coord2RegionCode(lng, lat, function(result, status) {
+            if (status === kakao.maps.services.Status.OK && result[0]) {
+              _locName = result[0].region_1depth_name + ' ' + result[0].region_2depth_name;
+              var el = document.getElementById('weatherLocation');
+              if (el) el.textContent = '📍 ' + _locName;
+            }
+          });
+        };
+        if (_gasMapLoaded) doGeo();
+        else kakao.maps.load(function() { _gasMapLoaded = true; doGeo(); });
+      }
+    };
+    _setLoc();
+
     fetch('https://dt-weather.shocguna.workers.dev/api/weather?lat=' + lat + '&lng=' + lng)
       .then(function(r) { return r.json(); })
       .then(function(data) {
         if (data.error) { console.error('날씨 오류:', data.error); return; }
-        _weatherLoaded = true;
-        card.style.display = '';
-
-        document.getElementById('weatherEmoji').textContent = data.skyEmoji || '☀️';
-        document.getElementById('weatherTemp').textContent = data.temp + '°C';
-        document.getElementById('weatherDesc').textContent = data.sky || '맑음';
+        _renderWeather(data, _locName);
         document.getElementById('weatherPop').textContent = '💧 ' + data.pop + '%';
         document.getElementById('weatherWind').textContent = '💨 ' + data.wind + 'm/s';
 
@@ -1182,11 +1207,7 @@ function loadWeather() {
       .then(function(r) { return r.json(); })
       .then(function(data) {
         if (data.error) return;
-        _weatherLoaded = true;
-        card.style.display = '';
-        document.getElementById('weatherEmoji').textContent = data.skyEmoji || '☀️';
-        document.getElementById('weatherTemp').textContent = data.temp + '°C';
-        document.getElementById('weatherDesc').textContent = data.sky || '맑음';
+        _renderWeather(data, '서울');
         document.getElementById('weatherPop').textContent = '💧 ' + data.pop + '%';
         document.getElementById('weatherWind').textContent = '💨 ' + data.wind + 'm/s';
         var score = data.driveScore || 3;
