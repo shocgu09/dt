@@ -2500,14 +2500,6 @@ async function createGroupChat() {
   const uid = state.currentUserId;
   const checked = [...document.querySelectorAll('#groupMemberList input:checked')].map(el => el.value);
   if (checked.length < 1) { alert('멤버를 1명 이상 선택해주세요.'); return; }
-
-  // 2명(나+1명)이면 1:1 DM으로 열기
-  if (checked.length === 1) {
-    closeModal('groupCreateModal');
-    openDMChat(checked[0]);
-    return;
-  }
-
   const groupName = document.getElementById('groupNameInput').value.trim() || '그룹 대화';
   const participants = [uid, ...checked];
   const unread = {};
@@ -2614,7 +2606,6 @@ async function inviteToGroup() {
   const checked = [...document.querySelectorAll('#groupInviteMemberList input:checked')].map(el => el.value);
   if (!checked.length) { alert('초대할 멤버를 선택해주세요.'); return; }
 
-  const uid = state.currentUserId;
   const FieldValue = firebase.firestore.FieldValue;
   const convRef = state.db.collection('dms').doc(convId);
   try {
@@ -2622,32 +2613,25 @@ async function inviteToGroup() {
       participants: FieldValue.arrayUnion(...checked),
       isGroup: true
     };
-    checked.forEach(u => updates[`unread.${u}`] = 0);
+    checked.forEach(uid => updates[`unread.${uid}`] = 0);
+    await convRef.update(updates);
 
     // 그룹명이 없으면 자동 설정
     const snap = await convRef.get();
     if (snap.exists && !snap.data().groupName) {
-      updates.groupName = '그룹 대화';
+      await convRef.update({ groupName: '그룹 대화' });
     }
 
-    await convRef.update(updates);
-
-    const myName = state.users.find(u => u.uid === uid)?.name || '';
-    const invitedNames = checked.map(u => state.users.find(x => x.uid === u)?.name || '').join(', ');
+    const myName = state.users.find(u => u.uid === state.currentUserId)?.name || '';
+    const invitedNames = checked.map(uid => state.users.find(u => u.uid === uid)?.name || '').join(', ');
     await convRef.collection('messages').add({
-      senderId: uid,
+      senderId: state.currentUserId,
       text: `${myName}님이 ${invitedNames}님을 초대했습니다`,
       createdAt: FieldValue.serverTimestamp(),
       system: true
     });
 
     closeModal('groupInviteModal');
-
-    // 1:1에서 그룹으로 전환된 경우 그룹 채팅 UI로 다시 열기
-    if (!snap.data()?.isGroup) {
-      closeDMChat();
-      openGroupChat(convId);
-    }
     // 타이틀 갱신은 initDMs의 onSnapshot 콜백에서 자동 처리됨
   } catch (e) {
     alert('초대 실패: ' + e.message);
