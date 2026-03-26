@@ -467,7 +467,7 @@ async function updateUserTitle(uid, title) {
   }
 }
 
-const TITLE_OPTIONS = ['', '회장', '부회장', '총무', '운영진'];
+const TITLE_OPTIONS = ['', '회장', '부회장', '총무', '운영진', '감자'];
 function titleBadge(title) {
   if (!title) return '';
   return `<span style="color:#a78bfa;font-size:.75rem;font-weight:700;background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.35);padding:1px 7px;border-radius:0;margin-left:5px">${escapeHtml(title)}</span>`;
