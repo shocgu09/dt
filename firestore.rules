@@ -130,6 +130,25 @@ service cloud.firestore {
       }
     }
 
+    // ── anon_posts 컬렉션 (익명 게시판) ────────────────────────
+    // - 실제 회원만 읽기/작성
+    // - 좋아요(likes, likedBy) 업데이트는 실제 회원
+    // - 삭제는 관리자만
+    match /anon_posts/{postId} {
+      allow read: if isRealUser();
+      allow create: if isRealUser()
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isRealUser();
+      allow delete: if isAdmin();
+
+      match /comments/{commentId} {
+        allow read: if isRealUser();
+        allow create: if isRealUser()
+          && request.resource.data.createdBy == request.auth.uid;
+        allow delete: if isAdmin();
+      }
+    }
+
     // ── blacklist 컬렉션 ─────────────────────────────────────
     // - 회원가입 시 이메일 체크는 비인증 상태에서도 필요하므로 read는 전체 허용
     // - 쓰기(추가·삭제)는 관리자만

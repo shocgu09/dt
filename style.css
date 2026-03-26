@@ -742,6 +742,55 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 .gas-nav-btn:hover { background: var(--primary-dark); }
 .gas-self { display: inline-block; padding: 1px 6px; background: rgba(74,222,128,.15); color: #4ade80; border-radius: 4px; font-size: .68rem; font-weight: 700; margin-left: 6px; }
 
+/* ===== ANON BOARD ===== */
+.anon-write-box {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px; margin-bottom: 16px;
+}
+.anon-write-box textarea {
+  width: 100%; background: var(--bg3); border: 1px solid var(--border);
+  color: var(--text); border-radius: 8px; padding: 10px 12px; font-size: .88rem;
+  resize: vertical; font-family: inherit; line-height: 1.5;
+}
+.anon-write-footer {
+  display: flex; justify-content: space-between; align-items: center; margin-top: 8px;
+}
+.anon-char-count { font-size: .75rem; color: var(--text3); }
+.anon-card {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px; margin-bottom: 10px; cursor: pointer; transition: var(--transition);
+}
+.anon-card:hover { border-color: rgba(124,111,255,.3); transform: translate(-1px, -1px); }
+.anon-card-header {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+}
+.anon-avatar { font-size: .88rem; font-weight: 700; color: var(--primary-light); }
+.anon-time { font-size: .72rem; color: var(--text3); }
+.anon-text { font-size: .9rem; color: var(--text); line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+.anon-actions {
+  display: flex; gap: 14px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border);
+}
+.anon-action-btn {
+  background: none; border: none; color: var(--text3); cursor: pointer;
+  font-size: .8rem; display: flex; align-items: center; gap: 4px; padding: 2px 0;
+  transition: color .15s;
+}
+.anon-action-btn:hover { color: var(--text); }
+.anon-action-btn.liked { color: #ff6b6b; }
+.anon-delete-btn {
+  margin-left: auto; background: none; border: none; color: var(--text3);
+  cursor: pointer; font-size: .75rem;
+}
+.anon-delete-btn:hover { color: var(--accent); }
+.anon-comment {
+  padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.05);
+}
+.anon-comment:last-child { border-bottom: none; }
+.anon-comment-header { display: flex; justify-content: space-between; margin-bottom: 3px; }
+.anon-comment-name { font-size: .78rem; font-weight: 700; color: var(--primary-light); }
+.anon-comment-time { font-size: .68rem; color: var(--text3); }
+.anon-comment-text { font-size: .84rem; color: var(--text); line-height: 1.5; }
+
 /* ===== TEAM DIVIDE ===== */
 .team-controls {
   display: flex; justify-content: space-between; align-items: center;
@@ -848,7 +897,7 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
   backdrop-filter: blur(16px);
   border-top: 1px solid var(--border);
   padding: 6px 0 calc(env(safe-area-inset-bottom, 6px) + 4px);
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
 }
 .bottom-nav-btn {
   display: flex; flex-direction: column; align-items: center; gap: 3px;

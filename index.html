@@ -65,6 +65,7 @@
       <button class="nav-btn" data-page="cars">차량</button>
       <button class="nav-btn" data-page="events">이벤트</button>
       <button class="nav-btn" data-page="gallery">활동</button>
+      <button class="nav-btn member-only" data-page="anon">익명</button>
       <button class="nav-btn admin-only hidden" data-page="admin">⚙️ 관리자</button>
     </div>
     <div class="nav-user" id="navUser">
@@ -267,6 +268,21 @@
       </div>
       <div class="events-list" id="eventsList"></div>
     </section>
+    <!-- ANON -->
+    <section id="page-anon" class="page">
+      <div class="page-header">
+        <h2>🎭 익명 게시판</h2>
+      </div>
+      <div class="anon-write-box member-only">
+        <textarea id="anonInput" placeholder="익명으로 자유롭게 적어보세요..." rows="3" maxlength="500"></textarea>
+        <div class="anon-write-footer">
+          <span class="anon-char-count"><span id="anonCharCount">0</span>/500</span>
+          <button class="btn btn-primary" onclick="postAnon()">작성하기</button>
+        </div>
+      </div>
+      <div id="anonList"></div>
+    </section>
+
     <!-- ADMIN -->
     <section id="page-admin" class="page">
       <div class="page-header">
@@ -412,6 +428,10 @@
     <button class="bottom-nav-btn" data-page="gallery" onclick="goPage('gallery')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
       <span>활동</span>
+    </button>
+    <button class="bottom-nav-btn member-only" data-page="anon" onclick="goPage('anon')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <span>익명</span>
     </button>
   </nav>
 
@@ -883,6 +903,27 @@
         <label class="dm-photo-btn" title="사진 전송">🖼️<input type="file" id="dmImageInput" accept="image/*" style="display:none" onchange="handleDMImage(this)"></label>
         <input id="dmInput" placeholder="메시지를 입력하세요…" autocomplete="off">
         <button class="btn btn-sm btn-primary" onclick="sendDMMessage()">전송</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Anon Detail Modal -->
+  <div class="modal-overlay" id="anonDetailModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>🎭 익명 글</h3>
+        <button class="modal-close" data-modal="anonDetailModal">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:16px">
+        <div id="anonDetailContent"></div>
+        <div class="anon-comments-section">
+          <h4 style="font-size:.88rem;margin:16px 0 8px;color:var(--text2)">💬 댓글 <span id="anonCommentCount">0</span></h4>
+          <div id="anonCommentList" style="max-height:240px;overflow-y:auto"></div>
+          <div class="anon-comment-input member-only" style="margin-top:10px;display:flex;gap:8px">
+            <input type="text" id="anonCommentInput" placeholder="익명 댓글 작성..." style="flex:1;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:.84rem" onkeydown="if(event.key==='Enter')postAnonComment()">
+            <button class="btn btn-primary" style="padding:8px 14px;font-size:.82rem" onclick="postAnonComment()">작성</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>

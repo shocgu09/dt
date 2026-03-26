@@ -666,6 +666,7 @@ function renderPage(name) {
   else if (name === 'events') renderEvents();
   else if (name === 'gallery') renderGallery();
   else if (name === 'admin') renderAdmin();
+  else if (name === 'anon') renderAnon();
 }
 
 /* ===== NOTICE POPUP ===== */
@@ -2978,6 +2979,218 @@ function gasGoToMyLocation() {
 function openGasNavigation(lat, lng, name) {
   var kakaoUrl = 'https://map.kakao.com/link/to/' + encodeURIComponent(name) + ',' + lat + ',' + lng;
   window.open(kakaoUrl, '_blank');
+}
+
+/* ===== ANON BOARD (익명 게시판) ===== */
+let _anonPosts = [];
+let _anonUnsub = null;
+let _anonDetailId = null;
+let _anonCommentUnsub = null;
+
+function renderAnon() {
+  // 실시간 구독
+  if (_anonUnsub) _anonUnsub();
+  _anonUnsub = state.db.collection('anon_posts').orderBy('createdAt', 'desc').limit(100)
+    .onSnapshot(function(snap) {
+      _anonPosts = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; });
+      _renderAnonList();
+    }, function(err) { console.error('익명 게시판 구독 오류:', err); });
+
+  // 글자 수 카운트
+  var input = document.getElementById('anonInput');
+  if (input) {
+    input.oninput = function() {
+      document.getElementById('anonCharCount').textContent = input.value.length;
+    };
+  }
+}
+
+function _renderAnonList() {
+  var listEl = document.getElementById('anonList');
+  if (!_anonPosts.length) {
+    listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">아직 게시글이 없습니다.<br>첫 글을 남겨보세요! 🎭</div>';
+    return;
+  }
+
+  var uid = state.currentUserId;
+  var isAdmin = state.currentUserRole === 'superadmin' || state.currentUserRole === 'admin';
+  var html = '';
+
+  _anonPosts.forEach(function(post) {
+    var d = post.createdAt ? (post.createdAt.toDate ? post.createdAt.toDate() : new Date(post.createdAt)) : new Date();
+    var timeAgo = _timeAgo(d);
+    var liked = post.likedBy && post.likedBy.indexOf(uid) !== -1;
+    var likeCount = post.likes || 0;
+    var commentCount = post.commentCount || 0;
+
+    html += '<div class="anon-card" onclick="openAnonDetail(\'' + post.id + '\')">';
+    html += '<div class="anon-card-header">';
+    html += '<span class="anon-avatar">🎭 익명</span>';
+    html += '<span class="anon-time">' + timeAgo + '</span>';
+    html += '</div>';
+    html += '<div class="anon-text">' + escapeHtml(post.text) + '</div>';
+    html += '<div class="anon-actions">';
+    html += '<button class="anon-action-btn' + (liked ? ' liked' : '') + '" onclick="event.stopPropagation();toggleAnonLike(\'' + post.id + '\')">' + (liked ? '❤️' : '🤍') + ' ' + likeCount + '</button>';
+    html += '<button class="anon-action-btn" onclick="event.stopPropagation();openAnonDetail(\'' + post.id + '\')">💬 ' + commentCount + '</button>';
+    if (isAdmin) {
+      html += '<button class="anon-delete-btn" onclick="event.stopPropagation();deleteAnon(\'' + post.id + '\')">🗑️ 삭제</button>';
+    }
+    html += '</div>';
+    html += '</div>';
+  });
+
+  listEl.innerHTML = html;
+}
+
+function _timeAgo(date) {
+  var now = new Date();
+  var diff = Math.floor((now - date) / 1000);
+  if (diff < 60) return '방금 전';
+  if (diff < 3600) return Math.floor(diff / 60) + '분 전';
+  if (diff < 86400) return Math.floor(diff / 3600) + '시간 전';
+  if (diff < 604800) return Math.floor(diff / 86400) + '일 전';
+  return date.toLocaleDateString('ko-KR');
+}
+
+async function postAnon() {
+  var input = document.getElementById('anonInput');
+  var text = input.value.trim();
+  if (!text) { alert('내용을 입력해주세요.'); return; }
+  if (!state.currentUserId) { alert('로그인이 필요합니다.'); return; }
+
+  try {
+    await state.db.collection('anon_posts').add({
+      text: text,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdBy: state.currentUserId,
+      likes: 0,
+      likedBy: [],
+      commentCount: 0
+    });
+    input.value = '';
+    document.getElementById('anonCharCount').textContent = '0';
+  } catch (err) {
+    alert('작성 실패: ' + err.message);
+  }
+}
+
+async function deleteAnon(postId) {
+  if (!confirm('이 게시글을 삭제하시겠습니까?')) return;
+  try {
+    // 댓글 서브컬렉션도 삭제
+    var comments = await state.db.collection('anon_posts').doc(postId).collection('comments').get();
+    var batch = state.db.batch();
+    comments.forEach(function(doc) { batch.delete(doc.ref); });
+    batch.delete(state.db.collection('anon_posts').doc(postId));
+    await batch.commit();
+  } catch (err) {
+    alert('삭제 실패: ' + err.message);
+  }
+}
+
+async function toggleAnonLike(postId) {
+  if (!state.currentUserId) { alert('로그인이 필요합니다.'); return; }
+  var uid = state.currentUserId;
+  var ref = state.db.collection('anon_posts').doc(postId);
+  var FV = firebase.firestore.FieldValue;
+
+  try {
+    var snap = await ref.get();
+    var likedBy = snap.data()?.likedBy || [];
+    if (likedBy.indexOf(uid) !== -1) {
+      await ref.update({ likes: FV.increment(-1), likedBy: FV.arrayRemove(uid) });
+    } else {
+      await ref.update({ likes: FV.increment(1), likedBy: FV.arrayUnion(uid) });
+    }
+  } catch (err) {
+    console.error('좋아요 실패:', err);
+  }
+}
+
+function openAnonDetail(postId) {
+  _anonDetailId = postId;
+  var post = _anonPosts.find(function(p) { return p.id === postId; });
+  if (!post) return;
+
+  var d = post.createdAt ? (post.createdAt.toDate ? post.createdAt.toDate() : new Date(post.createdAt)) : new Date();
+  var uid = state.currentUserId;
+  var liked = post.likedBy && post.likedBy.indexOf(uid) !== -1;
+
+  var html = '<div class="anon-text" style="margin-bottom:12px">' + escapeHtml(post.text) + '</div>';
+  html += '<div style="display:flex;gap:14px;align-items:center;padding-bottom:8px;border-bottom:1px solid var(--border)">';
+  html += '<button class="anon-action-btn' + (liked ? ' liked' : '') + '" onclick="toggleAnonLike(\'' + postId + '\');setTimeout(function(){openAnonDetail(\'' + postId + '\')},500)">' + (liked ? '❤️' : '🤍') + ' ' + (post.likes || 0) + '</button>';
+  html += '<span class="anon-time">' + _timeAgo(d) + '</span>';
+  html += '</div>';
+
+  document.getElementById('anonDetailContent').innerHTML = html;
+  openModal('anonDetailModal');
+
+  // 댓글 실시간 구독
+  if (_anonCommentUnsub) _anonCommentUnsub();
+  _anonCommentUnsub = state.db.collection('anon_posts').doc(postId).collection('comments')
+    .orderBy('createdAt', 'asc')
+    .onSnapshot(function(snap) {
+      var comments = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; });
+      document.getElementById('anonCommentCount').textContent = comments.length;
+      _renderAnonComments(comments);
+    }, function(err) { console.error('댓글 구독 오류:', err); });
+}
+
+function _renderAnonComments(comments) {
+  var listEl = document.getElementById('anonCommentList');
+  if (!comments.length) {
+    listEl.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text3);font-size:.82rem">아직 댓글이 없습니다</div>';
+    return;
+  }
+  var isAdmin = state.currentUserRole === 'superadmin' || state.currentUserRole === 'admin';
+  var html = '';
+  comments.forEach(function(c) {
+    var d = c.createdAt ? (c.createdAt.toDate ? c.createdAt.toDate() : new Date(c.createdAt)) : new Date();
+    html += '<div class="anon-comment">';
+    html += '<div class="anon-comment-header">';
+    html += '<span class="anon-comment-name">🎭 익명</span>';
+    html += '<span class="anon-comment-time">' + _timeAgo(d);
+    if (isAdmin) html += ' <button onclick="deleteAnonComment(\'' + _anonDetailId + '\',\'' + c.id + '\')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:.68rem">🗑️</button>';
+    html += '</span>';
+    html += '</div>';
+    html += '<div class="anon-comment-text">' + escapeHtml(c.text) + '</div>';
+    html += '</div>';
+  });
+  listEl.innerHTML = html;
+}
+
+async function postAnonComment() {
+  if (!state.currentUserId) { alert('로그인이 필요합니다.'); return; }
+  if (!_anonDetailId) return;
+  var input = document.getElementById('anonCommentInput');
+  var text = input.value.trim();
+  if (!text) return;
+
+  try {
+    await state.db.collection('anon_posts').doc(_anonDetailId).collection('comments').add({
+      text: text,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdBy: state.currentUserId
+    });
+    await state.db.collection('anon_posts').doc(_anonDetailId).update({
+      commentCount: firebase.firestore.FieldValue.increment(1)
+    });
+    input.value = '';
+  } catch (err) {
+    alert('댓글 작성 실패: ' + err.message);
+  }
+}
+
+async function deleteAnonComment(postId, commentId) {
+  if (!confirm('이 댓글을 삭제하시겠습니까?')) return;
+  try {
+    await state.db.collection('anon_posts').doc(postId).collection('comments').doc(commentId).delete();
+    await state.db.collection('anon_posts').doc(postId).update({
+      commentCount: firebase.firestore.FieldValue.increment(-1)
+    });
+  } catch (err) {
+    alert('삭제 실패: ' + err.message);
+  }
 }
 
 /* ===== TEAM DIVIDE (조 나누기) ===== */
