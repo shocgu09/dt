@@ -1,4 +1,4 @@
-// AI 글 정리 Worker (OpenAI API 프록시)
+// AI 글 정리 Worker (OpenAI Responses API 프록시)
 export default {
   async fetch(request, env) {
     const corsHeaders = {
@@ -22,28 +22,55 @@ export default {
           });
         }
 
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        const response = await fetch('https://api.openai.com/v1/responses', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${env.OPENAI_API_KEY}`
           },
           body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: [
+            model: 'gpt-4.1',
+            input: [
               {
                 role: 'system',
-                content: '당신은 한국어 글 교정 도우미입니다. 사용자의 글을 맞춤법, 띄어쓰기, 문장 구조를 교정하고 가독성을 높여주세요. 원래 의미와 톤을 유지하면서 자연스럽게 다듬어주세요. 교정된 글만 출력하세요. 설명은 하지 마세요.'
+                content: [
+                  {
+                    type: 'input_text',
+                    text: '당신은 한국어 글 교정 도우미입니다. 사용자의 글을 맞춤법, 띄어쓰기, 문장 구조를 교정하고 가독성을 높여주세요. 원래 의미와 톤을 유지하면서 자연스럽게 다듬어주세요. 교정된 글만 출력하세요. 설명은 하지 마세요.'
+                  }
+                ]
               },
-              { role: 'user', content: text }
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'input_text',
+                    text: text
+                  }
+                ]
+              }
             ],
-            max_tokens: 2000,
-            temperature: 0.3
+            text: { format: { type: 'text' } },
+            temperature: 1,
+            max_output_tokens: 2048,
+            top_p: 1
           })
         });
 
         const data = await response.json();
-        const refined = data.choices?.[0]?.message?.content || text;
+
+        // Responses API: output[0].content[0].text
+        let refined = text;
+        if (data.output && data.output.length > 0) {
+          const msg = data.output.find(o => o.role === 'assistant');
+          if (msg && msg.content && msg.content.length > 0) {
+            refined = msg.content[0].text || text;
+          }
+        } else if (data.error) {
+          return new Response(JSON.stringify({ error: data.error.message || 'OpenAI API 오류' }), {
+            status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
 
         return new Response(JSON.stringify({ refined }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
