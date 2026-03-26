@@ -303,7 +303,7 @@
             <span id="anonImageName" style="font-size:.72rem;color:var(--text3)"></span>
             <span class="anon-char-count"><span id="anonCharCount">0</span>/1000</span>
           </div>
-          <label style="display:flex;align-items:center;gap:4px;font-size:.8rem;color:var(--text2);cursor:pointer"><input type="checkbox" id="anonAnonymous" checked style="accent-color:var(--primary)"> 익명</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:.8rem;color:var(--text2);cursor:pointer"><input type="checkbox" id="anonAnonymous" style="accent-color:var(--primary)"> 익명</label>
           <label style="display:flex;align-items:center;gap:4px;font-size:.8rem;color:var(--text2);cursor:pointer"><input type="checkbox" id="anonNoComment" style="accent-color:var(--primary)"> 댓글 막기</label>
           <button class="btn" onclick="refineWithAI()" id="btnAiRefine" style="padding:6px 12px;font-size:.78rem;background:var(--bg3);border:1px solid var(--border);color:var(--text2)">✨ AI 정리</button>
           <button class="btn btn-primary" onclick="postAnon()">작성하기</button>
@@ -948,7 +948,7 @@
           <div class="anon-comment-input member-only" style="margin-top:10px">
             <div style="display:flex;gap:8px">
               <input type="text" id="anonCommentInput" placeholder="댓글 작성..." style="flex:1;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:.84rem" onkeydown="if(event.key==='Enter')postAnonComment()">
-              <label style="display:flex;align-items:center;gap:3px;font-size:.75rem;color:var(--text2);cursor:pointer;white-space:nowrap"><input type="checkbox" id="anonCommentAnonymous" checked style="accent-color:var(--primary)"> 익명</label>
+              <label style="display:flex;align-items:center;gap:3px;font-size:.75rem;color:var(--text2);cursor:pointer;white-space:nowrap"><input type="checkbox" id="anonCommentAnonymous" style="accent-color:var(--primary)"> 익명</label>
               <button class="btn btn-primary" style="padding:8px 14px;font-size:.82rem" onclick="postAnonComment()">작성</button>
             </div>
           </div>
