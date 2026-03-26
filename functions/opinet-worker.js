@@ -38,112 +38,121 @@ export default {
   }
 };
 
-// WGS84 → KATEC 좌표 변환
-function wgs84ToKatec(lat, lng) {
-  const PI = Math.PI;
-  const DEGRAD = PI / 180.0;
+// ===== 좌표 변환: Bessel 1841 타원체 + KATEC TM 투영 =====
+const BESSEL_A = 6377397.155;
+const BESSEL_F = 1.0 / 299.1528128;
+const BESSEL_B = BESSEL_A * (1 - BESSEL_F);
+const BESSEL_E2 = (BESSEL_A * BESSEL_A - BESSEL_B * BESSEL_B) / (BESSEL_A * BESSEL_A);
+const BESSEL_EP2 = (BESSEL_A * BESSEL_A - BESSEL_B * BESSEL_B) / (BESSEL_B * BESSEL_B);
 
-  // GRS80 타원체
-  const a = 6378137.0;
-  const f = 1.0 / 298.257222101;
-  const b = a * (1 - f);
-  const e2 = (a * a - b * b) / (a * a);
-  const ep2 = (a * a - b * b) / (b * b);
+const DEG2RAD = Math.PI / 180.0;
+const RAD2DEG = 180.0 / Math.PI;
+const KATEC_LON0 = 128.0 * DEG2RAD;
+const KATEC_LAT0 = 38.0 * DEG2RAD;
+const KATEC_K0 = 0.9999;
+const KATEC_X0 = 400000.0;
+const KATEC_Y0 = 600000.0;
 
-  // KATEC 투영 파라미터 (TM 투영)
-  const lon0 = 128.0 * DEGRAD; // 중앙 경선
-  const lat0 = 38.0 * DEGRAD;  // 원점 위도
-  const k0 = 0.9999;           // 축척 계수
-  const x0 = 400000.0;         // 가산 X
-  const y0 = 600000.0;         // 가산 Y
+// Molodensky 변환 파라미터 (WGS84 ↔ Bessel)
+const DX = -146.43;
+const DY = 507.89;
+const DZ = 681.46;
 
-  const phi = lat * DEGRAD;
-  const lam = lng * DEGRAD;
-  const dlam = lam - lon0;
-
-  const sinPhi = Math.sin(phi);
-  const cosPhi = Math.cos(phi);
-  const tanPhi = Math.tan(phi);
-
-  const N = a / Math.sqrt(1 - e2 * sinPhi * sinPhi);
-  const T = tanPhi * tanPhi;
-  const C = ep2 * cosPhi * cosPhi;
-  const A = cosPhi * dlam;
-
-  // 자오선 호 길이
-  const e4 = e2 * e2;
-  const e6 = e4 * e2;
-  const M = a * ((1 - e2 / 4 - 3 * e4 / 64 - 5 * e6 / 256) * phi
-    - (3 * e2 / 8 + 3 * e4 / 32 + 45 * e6 / 1024) * Math.sin(2 * phi)
-    + (15 * e4 / 256 + 45 * e6 / 1024) * Math.sin(4 * phi)
-    - (35 * e6 / 3072) * Math.sin(6 * phi));
-
-  const M0 = a * ((1 - e2 / 4 - 3 * e4 / 64 - 5 * e6 / 256) * lat0
-    - (3 * e2 / 8 + 3 * e4 / 32 + 45 * e6 / 1024) * Math.sin(2 * lat0)
-    + (15 * e4 / 256 + 45 * e6 / 1024) * Math.sin(4 * lat0)
-    - (35 * e6 / 3072) * Math.sin(6 * lat0));
-
-  const x = k0 * N * (A + (1 - T + C) * A * A * A / 6
-    + (5 - 18 * T + T * T + 72 * C - 58 * ep2) * A * A * A * A * A / 120) + x0;
-
-  const y = k0 * (M - M0 + N * tanPhi * (A * A / 2
-    + (5 - T + 9 * C + 4 * C * C) * A * A * A * A / 24
-    + (61 - 58 * T + T * T + 600 * C - 330 * ep2) * A * A * A * A * A * A / 720)) + y0;
-
-  return { x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 };
+// WGS84 → Bessel 경위도 변환 (Molodensky)
+function wgs84ToBessel(lat, lng) {
+  const WGS_A = 6378137.0, WGS_F = 1/298.257223563;
+  const da = BESSEL_A - WGS_A;
+  const df = BESSEL_F - WGS_F;
+  const phi = lat * DEG2RAD, lam = lng * DEG2RAD;
+  const sinP = Math.sin(phi), cosP = Math.cos(phi), sinL = Math.sin(lam), cosL = Math.cos(lam);
+  const e2 = 2 * WGS_F - WGS_F * WGS_F;
+  const Rn = WGS_A / Math.sqrt(1 - e2 * sinP * sinP);
+  const Rm = WGS_A * (1 - e2) / Math.pow(1 - e2 * sinP * sinP, 1.5);
+  const dPhi = ((-DX) * sinP * cosL - DY * sinP * sinL + DZ * cosP
+    + da * (Rn * e2 * sinP * cosP) / WGS_A
+    + df * (Rm / (1 - WGS_F) + Rn * (1 - WGS_F)) * sinP * cosP) / Rm;
+  const dLam = ((-DX) * sinL - (-DY) * cosL) / (Rn * cosP);
+  // 주의: Molodensky에서 WGS84→Bessel은 dx를 반대로
+  const dPhi2 = ((DX) * sinP * cosL + DY * sinP * sinL - DZ * cosP
+    + da * (Rn * e2 * sinP * cosP) / WGS_A
+    + df * (Rm / (1 - WGS_F) + Rn * (1 - WGS_F)) * sinP * cosP) / Rm;
+  const dLam2 = ((DX) * sinL - (DY) * cosL) / (Rn * cosP);
+  return { lat: (phi - dPhi2) * RAD2DEG, lng: (lam - dLam2) * RAD2DEG };
 }
 
-// KATEC → WGS84 좌표 변환 (결과 좌표를 GPS로 변환)
+// Bessel 경위도 → WGS84 변환 (Molodensky)
+function besselToWgs84(lat, lng) {
+  const phi = lat * DEG2RAD, lam = lng * DEG2RAD;
+  const sinP = Math.sin(phi), cosP = Math.cos(phi), sinL = Math.sin(lam), cosL = Math.cos(lam);
+  const Rn = BESSEL_A / Math.sqrt(1 - BESSEL_E2 * sinP * sinP);
+  const Rm = BESSEL_A * (1 - BESSEL_E2) / Math.pow(1 - BESSEL_E2 * sinP * sinP, 1.5);
+  const da = 6378137.0 - BESSEL_A;
+  const df = (1/298.257223563) - BESSEL_F;
+  const dPhi = ((-DX) * sinP * cosL - DY * sinP * sinL + DZ * cosP
+    + da * (Rn * BESSEL_E2 * sinP * cosP) / BESSEL_A
+    + df * (Rm / (1 - BESSEL_F) + Rn * (1 - BESSEL_F)) * sinP * cosP) / Rm;
+  const dLam = ((-DX) * sinL - (-DY) * cosL) / (Rn * cosP);
+  return { lat: (phi + dPhi) * RAD2DEG, lng: (lam + dLam) * RAD2DEG };
+}
+
+// TM 정변환: Bessel 경위도 → KATEC XY
+function besselToKatecXY(lat, lng) {
+  const phi = lat * DEG2RAD, lam = lng * DEG2RAD;
+  const dlam = lam - KATEC_LON0;
+  const sinP = Math.sin(phi), cosP = Math.cos(phi), tanP = Math.tan(phi);
+  const N = BESSEL_A / Math.sqrt(1 - BESSEL_E2 * sinP * sinP);
+  const T = tanP * tanP, C = BESSEL_EP2 * cosP * cosP, A = cosP * dlam;
+  const e4 = BESSEL_E2 * BESSEL_E2, e6 = e4 * BESSEL_E2;
+  const M = BESSEL_A * ((1 - BESSEL_E2/4 - 3*e4/64 - 5*e6/256) * phi
+    - (3*BESSEL_E2/8 + 3*e4/32 + 45*e6/1024) * Math.sin(2*phi)
+    + (15*e4/256 + 45*e6/1024) * Math.sin(4*phi)
+    - (35*e6/3072) * Math.sin(6*phi));
+  const M0 = BESSEL_A * ((1 - BESSEL_E2/4 - 3*e4/64 - 5*e6/256) * KATEC_LAT0
+    - (3*BESSEL_E2/8 + 3*e4/32 + 45*e6/1024) * Math.sin(2*KATEC_LAT0)
+    + (15*e4/256 + 45*e6/1024) * Math.sin(4*KATEC_LAT0)
+    - (35*e6/3072) * Math.sin(6*KATEC_LAT0));
+  const x = KATEC_K0 * N * (A + (1-T+C)*A*A*A/6 + (5-18*T+T*T+72*C-58*BESSEL_EP2)*A*A*A*A*A/120) + KATEC_X0;
+  const y = KATEC_K0 * (M - M0 + N * tanP * (A*A/2 + (5-T+9*C+4*C*C)*A*A*A*A/24 + (61-58*T+T*T+600*C-330*BESSEL_EP2)*A*A*A*A*A*A/720)) + KATEC_Y0;
+  return { x, y };
+}
+
+// TM 역변환: KATEC XY → Bessel 경위도
+function katecXYToBessel(x, y) {
+  const e4 = BESSEL_E2 * BESSEL_E2, e6 = e4 * BESSEL_E2;
+  const e1 = (1 - Math.sqrt(1 - BESSEL_E2)) / (1 + Math.sqrt(1 - BESSEL_E2));
+  const M0 = BESSEL_A * ((1 - BESSEL_E2/4 - 3*e4/64 - 5*e6/256) * KATEC_LAT0
+    - (3*BESSEL_E2/8 + 3*e4/32 + 45*e6/1024) * Math.sin(2*KATEC_LAT0)
+    + (15*e4/256 + 45*e6/1024) * Math.sin(4*KATEC_LAT0)
+    - (35*e6/3072) * Math.sin(6*KATEC_LAT0));
+  const M = M0 + (y - KATEC_Y0) / KATEC_K0;
+  const mu = M / (BESSEL_A * (1 - BESSEL_E2/4 - 3*e4/64 - 5*e6/256));
+  const phi1 = mu + (3*e1/2 - 27*e1*e1*e1/32)*Math.sin(2*mu)
+    + (21*e1*e1/16 - 55*e1*e1*e1*e1/32)*Math.sin(4*mu)
+    + (151*e1*e1*e1/96)*Math.sin(6*mu);
+  const sinP = Math.sin(phi1), cosP = Math.cos(phi1), tanP = Math.tan(phi1);
+  const N1 = BESSEL_A / Math.sqrt(1 - BESSEL_E2 * sinP * sinP);
+  const T1 = tanP * tanP, C1 = BESSEL_EP2 * cosP * cosP;
+  const R1 = BESSEL_A * (1 - BESSEL_E2) / Math.pow(1 - BESSEL_E2 * sinP * sinP, 1.5);
+  const D = (x - KATEC_X0) / (N1 * KATEC_K0);
+  const lat = (phi1 - (N1*tanP/R1)*(D*D/2 - (5+3*T1+10*C1-4*C1*C1-9*BESSEL_EP2)*D*D*D*D/24
+    + (61+90*T1+298*C1+45*T1*T1-252*BESSEL_EP2-3*C1*C1)*D*D*D*D*D*D/720)) * RAD2DEG;
+  const lng = (KATEC_LON0 + (D - (1+2*T1+C1)*D*D*D/6
+    + (5-2*C1+28*T1-3*C1*C1+8*BESSEL_EP2+24*T1*T1)*D*D*D*D*D/120) / cosP) * RAD2DEG;
+  return { lat, lng };
+}
+
+// 공개 API: WGS84 → KATEC
+function wgs84ToKatec(lat, lng) {
+  const bessel = wgs84ToBessel(lat, lng);
+  const katec = besselToKatecXY(bessel.lat, bessel.lng);
+  return { x: Math.round(katec.x * 100) / 100, y: Math.round(katec.y * 100) / 100 };
+}
+
+// 공개 API: KATEC → WGS84
 function katecToWgs84(x, y) {
-  const PI = Math.PI;
-  const RADDEG = 180.0 / PI;
-
-  const a = 6378137.0;
-  const f = 1.0 / 298.257222101;
-  const b = a * (1 - f);
-  const e2 = (a * a - b * b) / (a * a);
-  const ep2 = (a * a - b * b) / (b * b);
-  const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
-
-  const lon0 = 128.0 * PI / 180.0;
-  const lat0 = 38.0 * PI / 180.0;
-  const k0 = 0.9999;
-  const x0 = 400000.0;
-  const y0 = 600000.0;
-
-  const e4 = e2 * e2;
-  const e6 = e4 * e2;
-
-  const M0 = a * ((1 - e2 / 4 - 3 * e4 / 64 - 5 * e6 / 256) * lat0
-    - (3 * e2 / 8 + 3 * e4 / 32 + 45 * e6 / 1024) * Math.sin(2 * lat0)
-    + (15 * e4 / 256 + 45 * e6 / 1024) * Math.sin(4 * lat0)
-    - (35 * e6 / 3072) * Math.sin(6 * lat0));
-
-  const M = M0 + (y - y0) / k0;
-  const mu = M / (a * (1 - e2 / 4 - 3 * e4 / 64 - 5 * e6 / 256));
-
-  const phi1 = mu + (3 * e1 / 2 - 27 * e1 * e1 * e1 / 32) * Math.sin(2 * mu)
-    + (21 * e1 * e1 / 16 - 55 * e1 * e1 * e1 * e1 / 32) * Math.sin(4 * mu)
-    + (151 * e1 * e1 * e1 / 96) * Math.sin(6 * mu);
-
-  const sinPhi1 = Math.sin(phi1);
-  const cosPhi1 = Math.cos(phi1);
-  const tanPhi1 = Math.tan(phi1);
-
-  const N1 = a / Math.sqrt(1 - e2 * sinPhi1 * sinPhi1);
-  const T1 = tanPhi1 * tanPhi1;
-  const C1 = ep2 * cosPhi1 * cosPhi1;
-  const R1 = a * (1 - e2) / Math.pow(1 - e2 * sinPhi1 * sinPhi1, 1.5);
-  const D = (x - x0) / (N1 * k0);
-
-  const lat = (phi1 - (N1 * tanPhi1 / R1) * (D * D / 2
-    - (5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * ep2) * D * D * D * D / 24
-    + (61 + 90 * T1 + 298 * C1 + 45 * T1 * T1 - 252 * ep2 - 3 * C1 * C1) * D * D * D * D * D * D / 720)) * RADDEG;
-
-  const lng = (lon0 + (D - (1 + 2 * T1 + C1) * D * D * D / 6
-    + (5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * ep2 + 24 * T1 * T1) * D * D * D * D * D / 120) / cosPhi1) * RADDEG;
-
-  return { lat: Math.round(lat * 1000000) / 1000000, lng: Math.round(lng * 1000000) / 1000000 };
+  const bessel = katecXYToBessel(x, y);
+  const wgs = besselToWgs84(bessel.lat, bessel.lng);
+  return { lat: Math.round(wgs.lat * 1000000) / 1000000, lng: Math.round(wgs.lng * 1000000) / 1000000 };
 }
 
 async function handleGasSearch(params) {
