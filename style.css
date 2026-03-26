@@ -73,7 +73,7 @@ body {
 .hamburger .dm-unread-badge { position: absolute; top: -2px; right: -6px; }
 .mobile-menu {
   display: none; flex-direction: column;
-  position: fixed; top: 56px; left: 0; right: 0; z-index: 99;
+  position: fixed; top: calc(56px + env(safe-area-inset-top, 0px)); left: 0; right: 0; z-index: 99;
   background: var(--bg2); border-bottom: 1px solid var(--border);
   padding: 8px 16px 12px;
   box-shadow: 0 8px 24px rgba(0,0,0,.4);
