@@ -3087,7 +3087,7 @@ function _renderAnonList() {
     html += '</div>';
     var catHtml = post.category ? '<span class="anon-category anon-cat-' + escapeHtml(post.category) + '">' + escapeHtml(post.category) + '</span>' : '';
     html += '<div class="anon-title">' + catHtml + escapeHtml(post.title || '제목 없음') + (post.image ? '<span class="anon-has-img">📷</span>' : '') + '</div>';
-    html += '<div class="anon-text" style="color:var(--text2);font-size:.84rem;max-height:3.6em;overflow:hidden">' + escapeHtml(post.text) + '</div>';
+    html += '<div class="anon-text anon-text-preview">' + escapeHtml(post.text) + '</div>';
     html += '<div class="anon-actions">';
     html += '<button class="anon-action-btn' + (liked ? ' liked' : '') + '" onclick="event.stopPropagation();toggleAnonLike(\'' + post.id + '\')">' + (liked ? '❤️' : '🤍') + ' ' + likeCount + '</button>';
     html += '<button class="anon-action-btn" onclick="event.stopPropagation();openAnonDetail(\'' + post.id + '\')">💬 ' + commentCount + '</button>';
@@ -3200,6 +3200,51 @@ async function postAnon() {
   }
 }
 
+var _editingPostId = null;
+
+function openEditAnon(postId) {
+  var post = _anonPosts.find(function(p) { return p.id === postId; });
+  if (!post || post.createdBy !== state.currentUserId) { alert('수정 권한이 없습니다.'); return; }
+  _editingPostId = postId;
+  document.getElementById('editAnonCategory').value = post.category || '';
+  document.getElementById('editAnonTitle').value = post.title || '';
+  document.getElementById('editAnonText').value = post.text || '';
+  document.getElementById('editAnonAnonymous').checked = post.anonymous !== false;
+  document.getElementById('editAnonNoComment').checked = !!post.noComment;
+  openModal('anonEditModal');
+}
+
+async function submitEditAnon() {
+  if (!_editingPostId) return;
+  var title = document.getElementById('editAnonTitle').value.trim();
+  var text = document.getElementById('editAnonText').value.trim();
+  if (!title) { alert('제목을 입력해주세요.'); return; }
+  if (!text) { alert('내용을 입력해주세요.'); return; }
+
+  var isAnon = document.getElementById('editAnonAnonymous').checked;
+  var authorName = '';
+  if (!isAnon) {
+    var member = state.members.find(function(m) { return m.createdBy === state.currentUserId; });
+    authorName = member ? displayName(member.name) : (state.currentUser?.displayName || '');
+  }
+
+  try {
+    await state.db.collection('anon_posts').doc(_editingPostId).update({
+      title: title,
+      text: text,
+      category: document.getElementById('editAnonCategory').value,
+      anonymous: isAnon,
+      authorName: isAnon ? '' : authorName,
+      noComment: document.getElementById('editAnonNoComment').checked
+    });
+    closeModal('anonEditModal');
+    closeModal('anonDetailModal');
+    _editingPostId = null;
+  } catch (e) {
+    alert('수정 실패: ' + e.message);
+  }
+}
+
 async function deleteAnon(postId) {
   if (!confirm('이 게시글을 삭제하시겠습니까?')) return;
   try {
@@ -3251,9 +3296,17 @@ function openAnonDetail(postId) {
   if (post.image) {
     html += '<div style="margin-bottom:12px"><img src="' + post.image + '" style="max-width:100%;border-radius:8px;cursor:pointer" onclick="openLightbox(\'' + post.image + '\')" onerror="this.outerHTML=\'<div style=padding:12px;color:var(--text3);font-size:.82rem>⚠️ 이미지를 불러올 수 없습니다</div>\'"></div>';
   }
-  html += '<div style="display:flex;gap:14px;align-items:center;padding-bottom:8px;border-bottom:1px solid var(--border)">';
+  html += '<div style="display:flex;gap:14px;align-items:center;padding-bottom:8px;border-bottom:1px solid var(--border);flex-wrap:wrap">';
   html += '<button class="anon-action-btn' + (liked ? ' liked' : '') + '" onclick="toggleAnonLike(\'' + postId + '\');setTimeout(function(){openAnonDetail(\'' + postId + '\')},500)">' + (liked ? '❤️' : '🤍') + ' ' + (post.likes || 0) + '</button>';
   html += '<span class="anon-time">' + _timeAgo(d) + '</span>';
+  var isOwner = post.createdBy === uid;
+  var isAdmin = state.currentUserRole === 'superadmin' || state.currentUserRole === 'admin';
+  if (isOwner) {
+    html += '<button class="anon-action-btn" onclick="openEditAnon(\'' + postId + '\')" style="margin-left:auto">✏️ 수정</button>';
+  }
+  if (isOwner || isAdmin) {
+    html += '<button class="anon-action-btn" onclick="deleteAnon(\'' + postId + '\')" style="color:#ef4444">🗑️ 삭제</button>';
+  }
   html += '</div>';
 
   document.getElementById('anonDetailContent').innerHTML = html;
@@ -4088,7 +4141,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => closeModal(btn.dataset.modal || btn.closest('.modal-overlay')?.id));
   });
   // 폼 모달은 외부 클릭으로 닫히지 않음 (데이터 손실 방지)
-  const formModals = new Set(['memberModal', 'eventModal', 'galleryFormModal', 'myAccountModal', 'inviteModal', 'noticeEditModal']);
+  const formModals = new Set(['memberModal', 'eventModal', 'galleryFormModal', 'myAccountModal', 'inviteModal', 'noticeEditModal', 'anonEditModal']);
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
     if (formModals.has(overlay.id)) return;
     overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(overlay.id); });

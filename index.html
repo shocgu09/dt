@@ -957,6 +957,33 @@
     </div>
   </div>
 
+  <!-- Board Edit Modal -->
+  <div class="modal-overlay" id="anonEditModal" style="z-index:320">
+    <div class="modal" style="max-width:500px">
+      <div class="modal-header">
+        <h3>✏️ 게시글 수정</h3>
+        <button class="modal-close" data-modal="anonEditModal">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:16px">
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <select id="editAnonCategory" style="padding:8px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:.88rem">
+            <option value="">말머리 선택</option>
+            <option value="공지">공지</option>
+            <option value="활동">활동</option>
+            <option value="건의">건의</option>
+          </select>
+          <input type="text" id="editAnonTitle" placeholder="제목" maxlength="50" style="flex:1;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:.92rem;font-weight:700">
+        </div>
+        <textarea id="editAnonText" placeholder="내용" rows="5" maxlength="1000" style="width:100%;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:.88rem;resize:vertical"></textarea>
+        <div style="display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:4px;font-size:.8rem;color:var(--text2);cursor:pointer"><input type="checkbox" id="editAnonAnonymous" style="accent-color:var(--primary)"> 익명</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:.8rem;color:var(--text2);cursor:pointer"><input type="checkbox" id="editAnonNoComment" style="accent-color:var(--primary)"> 댓글 막기</label>
+          <button class="btn btn-primary" style="margin-left:auto" onclick="submitEditAnon()">수정 완료</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Team Divide Modal -->
   <div class="modal-overlay" id="teamDivideModal">
     <div class="modal modal-wide">
