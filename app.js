@@ -1102,7 +1102,7 @@ async function broadcastDM() {
 /* ===== HOME ===== */
 function renderHome() {
   // 홈에서도 익명글 구독 시작 (아직 안 되어 있으면)
-  if (!_anonUnsub && state.currentUserId && !state.isGuest) {
+  if (!_anonUnsub && state.currentUserId) {
     _anonUnsub = state.db.collection('anon_posts').orderBy('createdAt', 'desc').limit(100)
       .onSnapshot(function(snap) {
         _anonPosts = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; });
@@ -3159,6 +3159,7 @@ async function toggleAnonLike(postId) {
 }
 
 function openAnonDetail(postId) {
+  if (state.isGuest) { alert('회원만 상세 보기가 가능합니다.\n로그인 후 이용해주세요.'); return; }
   _anonDetailId = postId;
   var post = _anonPosts.find(function(p) { return p.id === postId; });
   if (!post) return;

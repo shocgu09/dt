@@ -135,7 +135,7 @@ service cloud.firestore {
     // - 좋아요(likes, likedBy) 업데이트는 실제 회원
     // - 삭제는 관리자만
     match /anon_posts/{postId} {
-      allow read: if isRealUser();
+      allow read: if isAuth();
       allow create: if isRealUser()
         && request.resource.data.createdBy == request.auth.uid;
       allow update: if isRealUser();
