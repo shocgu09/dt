@@ -2362,16 +2362,26 @@ async function openDMChat(otherUid) {
     }
   } catch(e) {}
 
-  // 메시지 실시간 구독
+  // 메시지 실시간 구독 + 새 메시지 수신 시 자동 읽음 처리
   if (state._dmMsgUnsub) state._dmMsgUnsub();
   state._dmMsgUnsub = state.db.collection('dms').doc(convId).collection('messages')
     .orderBy('createdAt', 'asc')
     .onSnapshot(snap => {
       renderDMMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })), uid);
+      // 채팅 모달이 열려있는 동안 새 메시지가 오면 즉시 읽음 처리
+      const modal = document.getElementById('dmChatModal');
+      if (modal && modal.classList.contains('open')) {
+        state.db.collection('dms').doc(convId).update({ [`unread.${uid}`]: 0 }).catch(() => {});
+      }
     }, err => console.error('DM 메시지 구독 오류:', err));
 }
 
 function closeDMChat() {
+  // 닫을 때 읽음 처리 한 번 더 확실히
+  if (state._activeDMConvId) {
+    state.db.collection('dms').doc(state._activeDMConvId)
+      .update({ [`unread.${state.currentUserId}`]: 0 }).catch(() => {});
+  }
   if (state._dmMsgUnsub) { state._dmMsgUnsub(); state._dmMsgUnsub = null; }
   state._activeDMConvId = null;
   state._activeDMOtherUid = null;
