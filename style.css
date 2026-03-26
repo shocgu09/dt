@@ -1140,3 +1140,36 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
   border-color: var(--primary);
   color: var(--text);
 }
+
+/* ===== GUEST MODE ===== */
+.guest-divider {
+  display: flex; align-items: center; gap: 12px; margin: 18px 0 14px;
+  color: var(--text3); font-size: .82rem;
+}
+.guest-divider::before, .guest-divider::after {
+  content: ''; flex: 1; height: 1px; background: var(--border);
+}
+.btn-guest {
+  display: block; width: 100%; padding: 12px; border-radius: 10px;
+  background: transparent; border: 1px dashed var(--border);
+  color: var(--text2); font-size: .92rem; cursor: pointer; transition: all .2s;
+}
+.btn-guest:hover { border-color: var(--primary); color: var(--primary-light); background: rgba(124,58,237,.06); }
+
+.guest-banner {
+  position: sticky; top: 56px; z-index: 90;
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 10px 20px; background: linear-gradient(135deg, #7c3aed22, #4f46e522);
+  border-bottom: 1px solid var(--border); font-size: .88rem; color: var(--text2);
+}
+.guest-banner .btn { white-space: nowrap; }
+
+.guest-cta-box {
+  margin-top: 16px; padding: 16px; border-radius: 12px;
+  background: var(--bg3); border: 1px solid var(--border); text-align: center;
+}
+.guest-cta-box p { margin: 0 0 12px; font-size: .88rem; color: var(--text2); }
+
+@media (max-width: 600px) {
+  .guest-banner { top: 54px; flex-wrap: wrap; font-size: .82rem; padding: 8px 14px; gap: 8px; }
+}

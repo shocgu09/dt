@@ -71,9 +71,10 @@
       <span class="nav-user-name" id="navUserName"></span>
       <span class="admin-badge hidden" id="navAdminBadge">관리자</span>
       <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="테마 변경">🌙</button>
-      <button class="btn btn-sm btn-outline dm-nav-btn" id="btnDM" onclick="openDMPanel()">💬<span class="dm-unread-badge" id="dmUnreadBadge" style="display:none">0</span></button>
-      <button class="btn btn-sm btn-outline" id="btnMyProfile">내 정보</button>
-      <button class="btn btn-sm btn-outline" id="btnLogout">로그아웃</button>
+      <button class="btn btn-sm btn-outline dm-nav-btn member-only" id="btnDM" onclick="openDMPanel()">💬<span class="dm-unread-badge" id="dmUnreadBadge" style="display:none">0</span></button>
+      <button class="btn btn-sm btn-outline member-only" id="btnMyProfile">내 정보</button>
+      <button class="btn btn-sm btn-outline member-only" id="btnLogout">로그아웃</button>
+      <button class="btn btn-sm btn-primary guest-only hidden" id="btnGuestToLogin" onclick="guestToLogin()">로그인 / 회원가입</button>
     </div>
     <button class="hamburger" id="hamburger">&#9776;</button>
   </nav>
@@ -81,9 +82,16 @@
     <button class="nav-btn admin-only hidden" data-page="admin">⚙️ 관리자</button>
     <button class="nav-btn" onclick="toggleTheme()">🌙 테마 변경</button>
     <button class="nav-btn" onclick="openDMPanel();closeMobileMenu()">💬 메시지<span class="dm-unread-badge" id="dmUnreadBadgeMobile" style="display:none;margin-left:6px">0</span></button>
-    <button class="nav-btn" id="btnInstallGuide">📲 앱 설치</button>
-    <button class="nav-btn" id="btnMyProfileMobile">내 정보</button>
-    <button class="nav-btn" id="btnLogoutMobile">로그아웃</button>
+    <button class="nav-btn member-only" id="btnInstallGuide">📲 앱 설치</button>
+    <button class="nav-btn member-only" id="btnMyProfileMobile">내 정보</button>
+    <button class="nav-btn member-only" id="btnLogoutMobile">로그아웃</button>
+    <button class="nav-btn guest-only hidden" onclick="guestToLogin();closeMobileMenu()">🔑 로그인 / 회원가입</button>
+  </div>
+
+  <!-- 게스트 안내 배너 -->
+  <div class="guest-banner hidden" id="guestBanner">
+    <span>👀 게스트 모드로 둘러보는 중입니다</span>
+    <button class="btn btn-sm btn-primary" onclick="guestToLogin()">회원가입</button>
   </div>
 
   <!-- PAGES -->
@@ -500,6 +508,9 @@
         <div class="auth-error" id="signupError"></div>
         <button type="submit" class="btn btn-primary" style="width:100%">가입하기</button>
       </form>
+      <!-- 게스트 모드 -->
+      <div class="guest-divider"><span>또는</span></div>
+      <button class="btn btn-guest" id="btnGuestLogin" onclick="guestLogin()">👀 비회원으로 둘러보기</button>
     </div>
 
   </div>
@@ -926,7 +937,7 @@
 <!-- 🔧 Firebase 설정 파일 (본인 config로 교체하세요) -->
   <script src="firebase-config.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
 
   <!-- 공지 팝업 -->
   <div class="modal-overlay" id="noticePopup" style="display:none;z-index:999">

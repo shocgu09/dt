@@ -98,6 +98,7 @@ const state = {
   _activeDMConvId: null,
   _activeDMOtherUid: null,
   _pushSubscription: null,
+  isGuest: false,
 };
 
 /* ===== PUSH NOTIFICATION CONFIG ===== */
@@ -119,6 +120,19 @@ function initFirebase() {
 function initAuth() {
   state.auth.onAuthStateChanged(async (user) => {
     if (user) {
+      // ── 게스트(익명) 로그인 ──
+      if (user.isAnonymous) {
+        state.currentUser = user;
+        state.currentUserId = user.uid;
+        state.currentUserRole = 'guest';
+        state.isGuest = true;
+        showApp();
+        return;
+      }
+
+      // ── 일반 로그인 ──
+      state.isGuest = false;
+
       // 이메일 미인증 계정 차단 (회원가입 진행 중이면 스킵)
       if (!user.emailVerified) {
         if (state.isSigningUp) return;
@@ -170,6 +184,7 @@ function initAuth() {
       state.currentUser = null;
       state.currentUserRole = null;
       state.currentUserId = null;
+      state.isGuest = false;
       state.subscribed = false;
       showLoginScreen();
     }
@@ -188,28 +203,53 @@ function updateNavUserName() {
 
 function showApp() {
   document.getElementById('loginScreen').classList.add('hidden');
-  // 네비바 사용자 정보 표시
-  updateNavUserName();
+  const isGuest = state.isGuest;
+
+  // 게스트/회원 전용 UI 토글
+  document.querySelectorAll('.guest-only').forEach(el => el.classList.toggle('hidden', !isGuest));
+  document.querySelectorAll('.member-only').forEach(el => el.classList.toggle('hidden', isGuest));
+  document.getElementById('guestBanner').classList.toggle('hidden', !isGuest);
+
+  if (!isGuest) {
+    // 네비바 사용자 정보 표시
+    updateNavUserName();
+  } else {
+    const el = document.getElementById('navUserName');
+    if (el) el.innerHTML = '게스트';
+  }
+
   // 관리자 전용 UI (superadmin 포함)
   const isAdmin = state.currentUserRole === 'admin' || state.currentUserRole === 'superadmin';
   document.querySelectorAll('.admin-only').forEach(el => {
     el.classList.toggle('hidden', !isAdmin);
   });
   document.getElementById('navAdminBadge').classList.toggle('hidden', !isAdmin);
-  applyRoleUI();
+  if (!isGuest) applyRoleUI();
+
   // 인증 완료 후 Firestore 구독 시작 (최초 1회만)
   if (!state.subscribed) {
     state.subscribed = true;
     subscribeAll();
-    initDMs();
-    initPushNotifications();
-    // 공지 팝업 체크
-    checkAndShowNotice();
-    // 회원 프로필 미등록 시 안내 토스트
-    state.db.collection('members').where('createdBy', '==', state.currentUserId).limit(1).get().then(snap => {
-      if (snap.empty) showToast('👋 환영합니다! 회원 탭에서 프로필을 등록해주세요.', 6000);
-    });
+    if (!isGuest) {
+      initDMs();
+      initPushNotifications();
+      // 공지 팝업 체크
+      checkAndShowNotice();
+      // 회원 프로필 미등록 시 안내 토스트
+      state.db.collection('members').where('createdBy', '==', state.currentUserId).limit(1).get().then(snap => {
+        if (snap.empty) showToast('👋 환영합니다! 회원 탭에서 프로필을 등록해주세요.', 6000);
+      });
+    }
   }
+}
+
+async function guestLogin() {
+  try { await state.auth.signInAnonymously(); }
+  catch (e) { alert('게스트 로그인 실패: ' + e.message); }
+}
+
+function guestToLogin() {
+  state.auth.signOut();
 }
 
 function showToast(msg, duration = 3000) {
@@ -1090,6 +1130,11 @@ function updateAddMemberBtn() {
 
 function renderMembers() {
   updateAddMemberBtn();
+  const g = state.isGuest;
+  // 게스트: 회원 등록 버튼 숨기기
+  const addBtn = document.getElementById('btnAddMember');
+  if (addBtn) addBtn.style.display = g ? 'none' : '';
+
   const { memberFilter, memberSearch } = state;
   const members = state.members.filter(m => {
     const matchRole = memberFilter === 'all' || m.role === memberFilter;
@@ -1108,7 +1153,7 @@ function renderMembers() {
       <div class="member-card-top">
         <div class="member-avatar">${avatarEl(m)}</div>
         <div class="member-info">
-          <div class="member-name">${escapeHtml(m.name)}${titleBadge(userTitle(m.createdBy))}${m.createdBy === state.currentUserId ? ' <span style="color:var(--primary-light);font-size:.75rem;font-weight:600">나</span>' : ''}</div>
+          <div class="member-name">${escapeHtml(m.name)}${titleBadge(userTitle(m.createdBy))}${!g && m.createdBy === state.currentUserId ? ' <span style="color:var(--primary-light);font-size:.75rem;font-weight:600">나</span>' : ''}</div>
           <div class="member-nick">${escapeHtml(m.nickname || '-')}</div>
           <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px">
             <span class="role-badge ${m.role}">${m.role === 'driver' ? '🚗 운전자' : '💺 동승자'}</span>
@@ -1122,14 +1167,14 @@ function renderMembers() {
       </div>
       <div class="member-card-footer">
         <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openMemberDetail('${m.id}')">상세보기</button>
-        ${(() => {
+        ${g ? '' : (() => {
           const dmUid = m.createdBy || state.users.find(u => u.name === m.name)?.uid;
           return dmUid && dmUid !== state.currentUserId
             ? `<button class="btn btn-sm btn-outline" title="DM 보내기" onclick="event.stopPropagation();openDMChat('${dmUid}')">💬 DM</button>`
             : '';
         })()}
-        ${m.createdBy === state.currentUserId ? `<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openEditMember('${m.id}')">수정</button>` : ''}
-        ${canEdit(m) ? `<button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="event.stopPropagation();deleteMember('${m.id}')">삭제</button>` : ''}
+        ${!g && m.createdBy === state.currentUserId ? `<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openEditMember('${m.id}')">수정</button>` : ''}
+        ${!g && canEdit(m) ? `<button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="event.stopPropagation();deleteMember('${m.id}')">삭제</button>` : ''}
       </div>
     </div>`).join('');
 }
@@ -1137,6 +1182,7 @@ function renderMembers() {
 function openMemberDetail(id) {
   const m = state.members.find(x => x.id === id);
   if (!m) return;
+  const g = state.isGuest;
   document.getElementById('detailModalTitle').textContent = `${m.name} 회원 정보`;
   document.getElementById('memberDetailBody').innerHTML = `
     <div class="detail-hero">
@@ -1152,7 +1198,7 @@ function openMemberDetail(id) {
       </div>
     </div>
     <div class="info-grid">
-      <div class="info-item"><div class="info-label">연락처</div><div class="info-value">${m.phone ? m.phone.slice(0, -4) + '****' : '-'}</div></div>
+      <div class="info-item"><div class="info-label">연락처</div><div class="info-value">${g ? '***-****-****' : (m.phone ? m.phone.slice(0, -4) + '****' : '-')}</div></div>
       <div class="info-item"><div class="info-label">가입일</div><div class="info-value">${m.joinDate || '-'}</div></div>
     </div>
     ${m.car ? `
@@ -1167,7 +1213,8 @@ function openMemberDetail(id) {
           </div>
         </div>
       </div>` : ''}
-    ${(m.createdBy === state.currentUserId || canEdit(m)) ? `
+    ${g ? `<div class="guest-cta-box"><p>회원 가입하면 DM, 이벤트 참여 등 모든 기능을 이용할 수 있습니다.</p><button class="btn btn-primary" onclick="guestToLogin();closeModal('memberDetailModal')">회원가입하기</button></div>` : ''}
+    ${(!g && (m.createdBy === state.currentUserId || canEdit(m))) ? `
     <div class="detail-actions">
       ${m.createdBy === state.currentUserId ? `<button class="btn btn-outline" onclick="openEditMember('${m.id}');closeModal('memberDetailModal')">수정</button>` : ''}
       ${canEdit(m) ? `<button class="btn btn-danger" onclick="deleteMember('${m.id}');closeModal('memberDetailModal')">삭제</button>` : ''}
@@ -1409,6 +1456,9 @@ function openGalleryDetail(id) {
     ? `<img src="${g.photo}" style="width:100%;max-height:340px;object-fit:cover;border-radius:12px;cursor:zoom-in" onclick="openLightbox('${g.photo}')">`
     : '';
   document.getElementById('commentInput').value = '';
+  // 게스트: 댓글 입력폼 숨기기
+  const commentWrap = document.querySelector('.comment-input-wrap');
+  if (commentWrap) commentWrap.style.display = state.isGuest ? 'none' : '';
 
   document.getElementById('galleryDetailFooter').innerHTML = isAdmin ? `
     <button class="btn btn-sm btn-outline" onclick="openEditGallery('${id}')">수정</button>
@@ -1654,6 +1704,10 @@ function renderCars() {
 
 /* ===== EVENTS ===== */
 function renderEvents() {
+  // 게스트: 이벤트 만들기 버튼 숨기기
+  const addEvBtn = document.getElementById('btnAddEvent');
+  if (addEvBtn) addEvBtn.style.display = state.isGuest ? 'none' : '';
+
   const today = new Date().toISOString().slice(0, 10);
   const { eventFilter } = state;
   const events = state.events.filter(ev => {
@@ -1717,6 +1771,14 @@ function renderEvents() {
             </div>
             ${total > 0 ? `<div class="vote-progress"><div class="vote-bar-attend" style="width:${aW}%"></div><div class="vote-bar-maybe" style="width:${mW}%"></div><div class="vote-bar-absent" style="width:${bW}%"></div></div>` : ''}
             <div style="font-size:.8rem;color:var(--text3);margin-bottom:8px">🔒 투표 마감됨</div>`;
+          if (state.isGuest) return `
+            <div class="event-votes">
+              <div class="vote-count attending">✅ 참여 <span class="num">${votes.attending.length}</span></div>
+              <div class="vote-count maybe">🕐 늦참 <span class="num">${votes.maybe.length}</span></div>
+              <div class="vote-count absent">❌ 불참 <span class="num">${votes.absent.length}</span></div>
+            </div>
+            ${total > 0 ? `<div class="vote-progress"><div class="vote-bar-attend" style="width:${aW}%"></div><div class="vote-bar-maybe" style="width:${mW}%"></div><div class="vote-bar-absent" style="width:${bW}%"></div></div>` : ''}
+            <div style="font-size:.8rem;color:var(--text3);margin-bottom:8px">🔒 투표는 회원만 가능합니다</div>`;
           return `
             <div class="event-votes">
               <button class="vote-count attending ${myVote === 'attending' ? 'voted' : ''}" onclick="castVote('${ev.id}','attending')">✅ 참여 <span class="num">${votes.attending.length}</span></button>
@@ -1725,22 +1787,22 @@ function renderEvents() {
             </div>
             ${total > 0 ? `<div class="vote-progress"><div class="vote-bar-attend" style="width:${aW}%"></div><div class="vote-bar-maybe" style="width:${mW}%"></div><div class="vote-bar-absent" style="width:${bW}%"></div></div>` : ''}`;
         })()}
-        ${renderReactions(ev)}
+        ${state.isGuest ? '' : renderReactions(ev)}
         <div class="event-actions">
           <button class="btn btn-sm btn-outline" onclick="openVoteModal('${ev.id}')">📊 투표 현황</button>
-          <button class="btn btn-sm btn-outline" id="ev-comment-btn-${ev.id}" onclick="toggleEventComments('${ev.id}')">💬 댓글</button>
-          ${canEdit(ev) ? `
+          ${state.isGuest ? '' : `<button class="btn btn-sm btn-outline" id="ev-comment-btn-${ev.id}" onclick="toggleEventComments('${ev.id}')">💬 댓글</button>`}
+          ${!state.isGuest && canEdit(ev) ? `
             <button class="btn btn-sm btn-outline" onclick="openEditEvent('${ev.id}')">수정</button>
             <button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="deleteEvent('${ev.id}')">삭제</button>
           ` : ''}
         </div>
-        <div class="event-comments-section" id="ev-comments-${ev.id}" style="display:none">
+        ${state.isGuest ? '' : `<div class="event-comments-section" id="ev-comments-${ev.id}" style="display:none">
           <div class="ev-comment-list" id="ev-comment-list-${ev.id}"></div>
           <div class="ev-comment-form">
             <input class="ev-comment-input" id="ev-comment-input-${ev.id}" placeholder="댓글을 입력하세요..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitEventComment('${ev.id}')}">
             <button class="btn btn-sm btn-primary" onclick="submitEventComment('${ev.id}')">등록</button>
           </div>
-        </div>
+        </div>`}
       </div>`;
   }).join('');
   restoreOpenEventComments();
@@ -2094,7 +2156,7 @@ function renderQuizCard(ev, today) {
     winnerHtml = `<div class="quiz-winner-banner" style="background:rgba(255,107,107,.13);border-color:rgba(255,107,107,.3);color:#ff9898">😢 정답자 없음 — 추첨 불가</div>`;
   }
 
-  const canVote = !deadlinePassed && !revealed && myAnswer === null;
+  const canVote = !state.isGuest && !deadlinePassed && !revealed && myAnswer === null;
   const optionsHtml = options.map((opt, i) => {
     let cls = 'quiz-opt-btn';
     if (revealed) {
@@ -2136,19 +2198,19 @@ function renderQuizCard(ev, today) {
       ${canVote ? `<button class="btn btn-sm btn-primary vote-confirm-btn" id="quiz-confirm-${ev.id}" style="display:none;margin-bottom:8px" onclick="confirmQuizAnswer('${ev.id}')">답변 제출</button>` : ''}
       <div style="font-size:.78rem;color:var(--text3);margin:6px 0 8px">${myAnswer !== null ? `✅ 답변 완료 (${labels[myAnswer]})` : deadlinePassed ? '⏰ 마감됨' : '👆 정답을 고르고 제출하세요'} · 참여 ${totalAnswers}명</div>
       ${winnerHtml}
-      ${renderReactions(ev)}
+      ${state.isGuest ? '' : renderReactions(ev)}
       <div class="event-actions">
-        ${isMe ? `<button class="btn btn-sm btn-outline" onclick="openQuizAnswersModal('${ev.id}')">📊 응답 현황</button>` : ''}
-        <button class="btn btn-sm btn-outline" id="ev-comment-btn-${ev.id}" onclick="toggleEventComments('${ev.id}')">💬 댓글</button>
-        ${adminActions}
+        ${!state.isGuest && isMe ? `<button class="btn btn-sm btn-outline" onclick="openQuizAnswersModal('${ev.id}')">📊 응답 현황</button>` : ''}
+        ${state.isGuest ? '' : `<button class="btn btn-sm btn-outline" id="ev-comment-btn-${ev.id}" onclick="toggleEventComments('${ev.id}')">💬 댓글</button>`}
+        ${state.isGuest ? '' : adminActions}
       </div>
-      <div class="event-comments-section" id="ev-comments-${ev.id}" style="display:none">
+      ${state.isGuest ? '' : `<div class="event-comments-section" id="ev-comments-${ev.id}" style="display:none">
         <div class="ev-comment-list" id="ev-comment-list-${ev.id}"></div>
         <div class="ev-comment-form">
           <input class="ev-comment-input" id="ev-comment-input-${ev.id}" placeholder="댓글을 입력하세요..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitEventComment('${ev.id}')}">
           <button class="btn btn-sm btn-primary" onclick="submitEventComment('${ev.id}')">등록</button>
         </div>
-      </div>
+      </div>`}
     </div>`;
 }
 
