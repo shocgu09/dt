@@ -2490,6 +2490,12 @@ function renderDMMessages(msgs, myUid) {
   });
   container.innerHTML = html;
   container.scrollTop = container.scrollHeight;
+  // 이미지 로드 완료 후 다시 최하단 스크롤
+  container.querySelectorAll('img').forEach(function(img) {
+    if (!img.complete) {
+      img.onload = function() { container.scrollTop = container.scrollHeight; };
+    }
+  });
 }
 
 function handleDMImage(fileInput) {
