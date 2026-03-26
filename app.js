@@ -2918,6 +2918,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // PWA 설치 프롬프트 캡처 (Android)
+  window._deferredInstallPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    window._deferredInstallPrompt = e;
+  });
+
   // 저장된 테마 복원
   applyTheme(localStorage.getItem('theme') || 'dark');
   // Firebase config 미설정 시 안내
@@ -2965,8 +2972,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  document.getElementById('btnInstallGuide').addEventListener('click', () => {
+  document.getElementById('btnInstallGuide').addEventListener('click', async () => {
     document.getElementById('mobileMenu').classList.remove('open');
+    // Android: beforeinstallprompt 캡처된 경우 즉시 설치 팝업
+    if (window._deferredInstallPrompt) {
+      const prompt = window._deferredInstallPrompt;
+      prompt.prompt();
+      const result = await prompt.userChoice;
+      if (result.outcome === 'accepted') {
+        window._deferredInstallPrompt = null;
+        showToast('🎉 앱이 설치되었습니다!');
+      }
+      return;
+    }
+    // iOS 또는 이미 설치된 경우: 가이드 모달 표시
     setTimeout(() => {
       const modal = document.getElementById('installGuideModal');
       modal.style.display = '';
