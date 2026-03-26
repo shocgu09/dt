@@ -2376,10 +2376,12 @@ async function openDMChat(otherUid) {
     const convSnap = await convRef.get();
     if (convSnap.exists) {
       await convRef.update({ [`unread.${uid}`]: 0 });
-      // 로컬 state도 즉시 반영 (onSnapshot 도착 전에 뱃지 업데이트)
       const localConv = state.dms.find(c => c.id === convId);
       if (localConv && localConv.unread) localConv.unread[uid] = 0;
       updateDMBadge();
+    } else {
+      // 대화방이 아직 없으면 빈 상태 표시
+      document.getElementById('dmMessages').innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:.84rem">아직 메시지가 없습니다.<br>첫 메시지를 보내보세요!</div>';
     }
   } catch(e) {}
 
@@ -2466,10 +2468,23 @@ function renderDMMessages(msgs, myUid) {
       content = `<div class="dm-bubble">${escapeHtml(msg.text)}</div>`;
     }
 
-    html += `<div class="dm-msg ${isMe ? 'dm-msg-me' : 'dm-msg-other'}">
-      ${content}
-      <div class="dm-time">${time}</div>
-    </div>`;
+    if (isMe) {
+      html += `<div class="dm-msg dm-msg-me">
+        ${content}
+        <div class="dm-time">${time}</div>
+      </div>`;
+    } else {
+      const sender = state.users.find(u => u.uid === msg.senderId);
+      const senderName = sender?.name || '알 수 없음';
+      const avatar = avatarSmall({ name: senderName, image: sender?.image || null, gender: sender?.gender || 'male' });
+      html += `<div class="dm-msg dm-msg-other dm-msg-with-avatar">
+        <div class="dm-avatar-wrap">${avatar}</div>
+        <div class="dm-msg-content">
+          ${content}
+          <div class="dm-time">${time}</div>
+        </div>
+      </div>`;
+    }
   });
   container.innerHTML = html;
   container.scrollTop = container.scrollHeight;

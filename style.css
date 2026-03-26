@@ -1103,6 +1103,9 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 .dm-msg { display: flex; flex-direction: column; max-width: 72%; }
 .dm-msg-me { align-self: flex-end; align-items: flex-end; }
 .dm-msg-other { align-self: flex-start; align-items: flex-start; }
+.dm-msg-with-avatar { flex-direction: row; gap: 8px; max-width: 80%; }
+.dm-avatar-wrap { flex-shrink: 0; width: 28px; height: 28px; margin-top: 2px; }
+.dm-msg-content { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
 .dm-bubble {
   padding: 8px 13px; font-size: .88rem; word-break: break-word;
   background: var(--bg3); border-radius: 18px 18px 18px 4px;
