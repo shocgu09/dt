@@ -2574,6 +2574,12 @@ async function initPushNotifications() {
       const otherUid = event.data.convId.split('_').find(id => id !== state.currentUserId);
       if (otherUid) openDMChat(otherUid);
     }
+    // SW가 "이 대화방 보고 있어?" 확인 → 열려있으면 알림 생략용
+    if (event.data?.type === 'CHECK_VIEWING_DM' && event.ports?.[0]) {
+      const modal = document.getElementById('dmChatModal');
+      const isViewing = modal?.classList.contains('open') && state._activeDMConvId === event.data.convId;
+      event.ports[0].postMessage({ viewing: isViewing });
+    }
   });
 
   // URL 파라미터로 딥링크 처리 (?dm=convId)
