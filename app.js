@@ -1772,6 +1772,8 @@ function renderEvents() {
           const myVote = votes.attending.includes(uid) ? 'attending'
             : votes.maybe.includes(uid) ? 'maybe'
             : votes.absent.includes(uid) ? 'absent' : null;
+          if (state.isGuest) return `
+            <div style="font-size:.85rem;color:var(--text3);margin-bottom:8px;padding:12px;background:var(--bg3);border-radius:8px;text-align:center">🔒 투표 현황은 회원만 볼 수 있습니다</div>`;
           if (closed) return `
             <div class="event-votes">
               <div class="vote-count attending">✅ 참여 <span class="num">${votes.attending.length}</span></div>
@@ -1780,14 +1782,6 @@ function renderEvents() {
             </div>
             ${total > 0 ? `<div class="vote-progress"><div class="vote-bar-attend" style="width:${aW}%"></div><div class="vote-bar-maybe" style="width:${mW}%"></div><div class="vote-bar-absent" style="width:${bW}%"></div></div>` : ''}
             <div style="font-size:.8rem;color:var(--text3);margin-bottom:8px">🔒 투표 마감됨</div>`;
-          if (state.isGuest) return `
-            <div class="event-votes">
-              <div class="vote-count attending">✅ 참여 <span class="num">${votes.attending.length}</span></div>
-              <div class="vote-count maybe">🕐 늦참 <span class="num">${votes.maybe.length}</span></div>
-              <div class="vote-count absent">❌ 불참 <span class="num">${votes.absent.length}</span></div>
-            </div>
-            ${total > 0 ? `<div class="vote-progress"><div class="vote-bar-attend" style="width:${aW}%"></div><div class="vote-bar-maybe" style="width:${mW}%"></div><div class="vote-bar-absent" style="width:${bW}%"></div></div>` : ''}
-            <div style="font-size:.8rem;color:var(--text3);margin-bottom:8px">🔒 투표는 회원만 가능합니다</div>`;
           return `
             <div class="event-votes">
               <button class="vote-count attending ${myVote === 'attending' ? 'voted' : ''}" onclick="castVote('${ev.id}','attending')">✅ 참여 <span class="num">${votes.attending.length}</span></button>
@@ -1798,7 +1792,7 @@ function renderEvents() {
         })()}
         ${state.isGuest ? '' : renderReactions(ev)}
         <div class="event-actions">
-          <button class="btn btn-sm btn-outline" onclick="openVoteModal('${ev.id}')">📊 투표 현황</button>
+          ${state.isGuest ? '' : `<button class="btn btn-sm btn-outline" onclick="openVoteModal('${ev.id}')">📊 투표 현황</button>`}
           ${state.isGuest ? '' : `<button class="btn btn-sm btn-outline" id="ev-comment-btn-${ev.id}" onclick="toggleEventComments('${ev.id}')">💬 댓글</button>`}
           ${!state.isGuest && canEdit(ev) ? `
             <button class="btn btn-sm btn-outline" onclick="openEditEvent('${ev.id}')">수정</button>
