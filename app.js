@@ -2472,7 +2472,7 @@ function renderDMMessages(msgs, myUid) {
 
     let content = '';
     if (msg.image) {
-      content = `<div class="dm-bubble dm-bubble-img"><img src="${msg.image}" alt="사진" onclick="openLightbox('${msg.image}')"></div>`;
+      content = `<div class="dm-bubble dm-bubble-img"><img src="${msg.image}" alt="사진" onclick="openLightbox('${msg.image}')" onerror="this.outerHTML='<div style=\\'padding:12px;color:var(--text3);font-size:.82rem\\'>⚠️ 이미지를 불러올 수 없습니다</div>'"></div>`;
       if (msg.text) content += `<div class="dm-bubble">${escapeHtml(msg.text)}</div>`;
     } else if (isSingleEmoji(msg.text)) {
       content = `<div class="dm-emoji-big">${msg.text}</div>`;
@@ -2514,26 +2514,19 @@ function handleDMImage(fileInput) {
   const file = fileInput.files[0];
   if (!file) return;
   fileInput.value = '';
-  // 이미지 리사이즈 후 base64 변환
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const maxSize = 600;
-      let w = img.width, h = img.height;
-      if (w > maxSize || h > maxSize) {
-        if (w > h) { h = Math.round(h * maxSize / w); w = maxSize; }
-        else { w = Math.round(w * maxSize / h); h = maxSize; }
-      }
-      canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-      sendDMMessage(dataUrl);
-    };
-    img.src = e.target.result;
-  };
-  reader.readAsDataURL(file);
+  // 파일 크기 제한 (10MB)
+  if (file.size > 10 * 1024 * 1024) { alert('10MB 이하의 이미지만 전송할 수 있습니다.'); return; }
+  // 로딩 표시
+  const sendBtn = document.querySelector('.dm-input-area button[onclick]');
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '전송 중…'; }
+  // EXIF 보정 + 압축 사용
+  compressImage(file, 600, 0.7).then(function(dataUrl) {
+    sendDMMessage(dataUrl);
+  }).catch(function(err) {
+    alert('이미지 처리 실패: ' + (err.message || err));
+  }).finally(function() {
+    if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = '전송'; }
+  });
 }
 
 async function sendDMMessage(imageDataUrl) {
@@ -2778,11 +2771,14 @@ function getExifOrientation(file) {
 }
 
 function compressImage(file, maxSize, quality) {
-  return new Promise(async resolve => {
+  return new Promise(async (resolve, reject) => {
+    try {
     const orientation = await getExifOrientation(file);
     const reader = new FileReader();
+    reader.onerror = () => reject(new Error('파일을 읽을 수 없습니다.'));
     reader.onload = e => {
       const img = new Image();
+      img.onerror = () => reject(new Error('이미지를 불러올 수 없습니다.'));
       img.onload = () => {
         const canvas = document.createElement('canvas');
         let { width, height } = img;
@@ -2810,22 +2806,29 @@ function compressImage(file, maxSize, quality) {
       img.src = e.target.result;
     };
     reader.readAsDataURL(file);
+    } catch(e) { reject(e); }
   });
 }
 
 /* ===== HELPERS ===== */
-function avatarEl(m) {
+function _avatarFallback(name) {
   const colors = ['#6c63ff', '#ff6b6b', '#4ade80', '#60a5fa', '#f472b6', '#fb923c'];
-  const color = colors[(m.name?.charCodeAt(0) || 0) % colors.length];
-  if (m.image) return `<img src="${m.image}" alt="${escapeHtml(displayName(m.name))}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`;
-  return `<span style="background:${color};color:#fff;width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:inherit;font-weight:700">${escapeHtml(m.name?.[0] || '?')}</span>`;
+  return colors[(name?.charCodeAt(0) || 0) % colors.length];
+}
+function avatarEl(m) {
+  const color = _avatarFallback(m.name);
+  const initial = escapeHtml(m.name?.[0] || '?');
+  const fallback = `<span style="background:${color};color:#fff;width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:inherit;font-weight:700">${initial}</span>`;
+  if (m.image) return `<img src="${m.image}" alt="${escapeHtml(displayName(m.name))}" style="width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.outerHTML=this.dataset.fallback" data-fallback='${fallback.replace(/'/g, "&#39;")}'>`;
+  return fallback;
 }
 
 function avatarSmall(m) {
-  const colors = ['#6c63ff', '#ff6b6b', '#4ade80', '#60a5fa', '#f472b6', '#fb923c'];
-  const color = colors[(m.name?.charCodeAt(0) || 0) % colors.length];
-  if (m.image) return `<img src="${m.image}" style="width:28px;height:28px;border-radius:50%;object-fit:cover">`;
-  return `<span style="background:${color};color:#fff;width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700;flex-shrink:0">${escapeHtml(m.name?.[0] || '?')}</span>`;
+  const color = _avatarFallback(m.name);
+  const initial = escapeHtml(m.name?.[0] || '?');
+  const fallback = `<span style="background:${color};color:#fff;width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700;flex-shrink:0">${initial}</span>`;
+  if (m.image) return `<img src="${m.image}" style="width:28px;height:28px;border-radius:50%;object-fit:cover" onerror="this.outerHTML=this.dataset.fallback" data-fallback='${fallback.replace(/'/g, "&#39;")}'>`;
+  return fallback;
 }
 
 /* ===== CROP ===== */
@@ -2835,8 +2838,11 @@ let _galleryQueue = [];
 let _galleryResults = [];
 
 function openCropModal(file, aspectRatio, callback) {
+  // 파일 크기 제한 (15MB)
+  if (file.size > 15 * 1024 * 1024) { alert('15MB 이하의 이미지만 업로드할 수 있습니다.'); return; }
   _cropCallback = callback;
   const reader = new FileReader();
+  reader.onerror = () => { alert('파일을 읽을 수 없습니다.'); };
   reader.onload = e => {
     const img = document.getElementById('cropImage');
     img.src = e.target.result;
@@ -2893,6 +2899,8 @@ function cancelCrop() {
 function closeCropModal() {
   if (_cropperInstance) { _cropperInstance.destroy(); _cropperInstance = null; }
   _cropCallback = null;
+  const cropImg = document.getElementById('cropImage');
+  if (cropImg) cropImg.src = '';
   document.getElementById('cropModal').style.display = 'none';
 }
 
