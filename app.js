@@ -2429,6 +2429,10 @@ async function _initDMChatAsync(convId, uid) {
       var localConv = state.dms.find(function(c) { return c.id === convId; });
       if (localConv && localConv.unread) localConv.unread[uid] = 0;
       updateDMBadge();
+    } else {
+      // 대화방이 아직 없음 (첫 DM) → 빈 메시지 화면 표시
+      renderDMMessages([], uid);
+      return;
     }
   } catch(e) {}
 
@@ -2867,6 +2871,20 @@ async function sendDMMessage(imageDataUrl) {
         lastAt: FieldValue.serverTimestamp(),
         unread: { [uid]: 0, [otherUid]: 1 }
       });
+      // 대화방 생성 후 메시지 구독 시작
+      if (state._dmMsgUnsub) state._dmMsgUnsub();
+      state._dmMsgUnsub = convRef.collection('messages')
+        .orderBy('createdAt', 'asc')
+        .onSnapshot(function(snap) {
+          renderDMMessages(snap.docs.map(function(d) { return { id: d.id, ...d.data() }; }), uid);
+          var modal = document.getElementById('dmChatModal');
+          if (modal && modal.classList.contains('open')) {
+            convRef.update({ ['unread.' + uid]: 0 }).catch(function() {});
+            var lc = state.dms.find(function(c) { return c.id === convId; });
+            if (lc && lc.unread) lc.unread[uid] = 0;
+            updateDMBadge();
+          }
+        }, function(err) { console.error('DM 메시지 구독 오류:', err); });
     } else {
       // 기존 대화방 업데이트 (1:1 또는 그룹)
       const updates = {
