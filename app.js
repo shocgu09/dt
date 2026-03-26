@@ -2987,8 +2987,6 @@ function _renderGasMap(stations) {
         });
         _fetchGasStations();
       });
-    } else {
-      _gasMap.setCenter(center);
     }
 
     // 기존 마커 및 인포윈도우 제거
@@ -3039,10 +3037,9 @@ function _renderGasMap(stations) {
       });
     });
 
-    _gasMap.setBounds(bounds);
     var myLocBtn = document.getElementById('gasMyLocBtn');
     if (myLocBtn) myLocBtn.style.display = 'block';
-    setTimeout(function() { _gasMap.relayout(); _gasMap.setBounds(bounds); }, 300);
+    setTimeout(function() { _gasMap.relayout(); }, 300);
   }
 
   // 카카오맵 SDK 로드
