@@ -192,7 +192,7 @@ main { padding: calc(80px + env(safe-area-inset-top, 0px)) 20px 24px; max-width:
 .weather-card {
   background: linear-gradient(135deg, rgba(96,165,250,.15), rgba(167,139,250,.15));
   border: 1px solid rgba(124,111,255,.2); border-radius: 14px;
-  padding: 16px 20px; margin-bottom: 16px;
+  padding: 16px 20px; margin-top: 20px; margin-bottom: 16px;
 }
 .weather-main {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
