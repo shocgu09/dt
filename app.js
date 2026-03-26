@@ -2284,7 +2284,7 @@ function updateDMBadge() {
   const uid = state.currentUserId;
   const total = state.dms.reduce((sum, c) => sum + ((c.unread || {})[uid] || 0), 0);
   const label = total > 99 ? '99+' : total;
-  ['dmUnreadBadge', 'dmUnreadBadgeMobile', 'dmUnreadBadgeHam'].forEach(id => {
+  ['dmUnreadBadge', 'dmUnreadBadgeMobile'].forEach(id => {
     const badge = document.getElementById(id);
     if (!badge) return;
     badge.textContent = label;
