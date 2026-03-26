@@ -871,6 +871,7 @@
       </div>
       <div class="dm-messages" id="dmMessages"></div>
       <div class="dm-input-area">
+        <label class="dm-photo-btn" title="사진 전송">🖼️<input type="file" id="dmImageInput" accept="image/*" style="display:none" onchange="handleDMImage(this)"></label>
         <input id="dmInput" placeholder="메시지를 입력하세요…" autocomplete="off">
         <button class="btn btn-sm btn-primary" onclick="sendDMMessage()">전송</button>
       </div>

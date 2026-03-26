@@ -1119,6 +1119,22 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
   border-radius: 20px; color: var(--text); font-size: .88rem; outline: none;
 }
 .dm-input-area input:focus { border-color: var(--primary); }
+.dm-photo-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px; cursor: pointer; font-size: 1.2rem;
+  border-radius: 50%; background: var(--bg3); border: 1px solid var(--border);
+  flex-shrink: 0; transition: background .2s;
+}
+.dm-photo-btn:hover { background: var(--primary); }
+.dm-bubble-img { padding: 4px; background: transparent; }
+.dm-bubble-img img {
+  max-width: 220px; max-height: 280px; border-radius: 14px; cursor: pointer;
+  display: block; object-fit: cover;
+}
+.dm-msg-me .dm-bubble-img { background: transparent; }
+.dm-emoji-big {
+  font-size: 3.2rem; line-height: 1.2; padding: 4px 0;
+}
 @media (max-width: 600px) {
   .dm-panel { width: 100%; right: -100%; }
 }

@@ -2378,6 +2378,11 @@ function closeDMChat() {
   closeModal('dmChatModal');
 }
 
+function isSingleEmoji(str) {
+  const emojiRegex = /^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)(\u200D(\p{Emoji_Presentation}|\p{Emoji}\uFE0F))*$/u;
+  return emojiRegex.test(str) && [...str].length <= 7;
+}
+
 function renderDMMessages(msgs, myUid) {
   const container = document.getElementById('dmMessages');
   if (!msgs.length) {
@@ -2395,8 +2400,19 @@ function renderDMMessages(msgs, myUid) {
       lastDate = dateStr;
     }
     const time = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+
+    let content = '';
+    if (msg.image) {
+      content = `<div class="dm-bubble dm-bubble-img"><img src="${msg.image}" alt="사진" onclick="openLightbox('${msg.image}')"></div>`;
+      if (msg.text) content += `<div class="dm-bubble">${escapeHtml(msg.text)}</div>`;
+    } else if (isSingleEmoji(msg.text)) {
+      content = `<div class="dm-emoji-big">${msg.text}</div>`;
+    } else {
+      content = `<div class="dm-bubble">${escapeHtml(msg.text)}</div>`;
+    }
+
     html += `<div class="dm-msg ${isMe ? 'dm-msg-me' : 'dm-msg-other'}">
-      <div class="dm-bubble">${escapeHtml(msg.text)}</div>
+      ${content}
       <div class="dm-time">${time}</div>
     </div>`;
   });
@@ -2404,10 +2420,36 @@ function renderDMMessages(msgs, myUid) {
   container.scrollTop = container.scrollHeight;
 }
 
-async function sendDMMessage() {
+function handleDMImage(fileInput) {
+  const file = fileInput.files[0];
+  if (!file) return;
+  fileInput.value = '';
+  // 이미지 리사이즈 후 base64 변환
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const maxSize = 600;
+      let w = img.width, h = img.height;
+      if (w > maxSize || h > maxSize) {
+        if (w > h) { h = Math.round(h * maxSize / w); w = maxSize; }
+        else { w = Math.round(w * maxSize / h); h = maxSize; }
+      }
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      sendDMMessage(dataUrl);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function sendDMMessage(imageDataUrl) {
   const input = document.getElementById('dmInput');
   const text = input.value.trim();
-  if (!text) return;
+  if (!text && !imageDataUrl) return;
   const convId = state._activeDMConvId;
   const uid = state.currentUserId;
   const otherUid = state._activeDMOtherUid;
@@ -2416,32 +2458,33 @@ async function sendDMMessage() {
   input.value = '';
   const FieldValue = firebase.firestore.FieldValue;
   const convRef = state.db.collection('dms').doc(convId);
+  const lastMsg = imageDataUrl ? '📷 사진' : text;
 
   try {
-    // 대화방 문서 없으면 첫 메시지 전송 시 생성
     const convSnap = await convRef.get();
     if (!convSnap.exists) {
       await convRef.set({
         participants: [uid, otherUid],
-        lastMessage: text,
+        lastMessage: lastMsg,
         lastAt: FieldValue.serverTimestamp(),
         unread: { [uid]: 0, [otherUid]: 1 }
       });
     } else {
       await convRef.update({
-        lastMessage: text,
+        lastMessage: lastMsg,
         lastAt: FieldValue.serverTimestamp(),
         [`unread.${otherUid}`]: FieldValue.increment(1),
         [`unread.${uid}`]: 0
       });
     }
-    await convRef.collection('messages').add({
+    const msgData = {
       senderId: uid,
-      text,
+      text: text || '',
       createdAt: FieldValue.serverTimestamp()
-    });
-    // 푸시 알림 발송 (실패해도 DM은 정상 전송)
-    triggerPushNotification(otherUid, text, convId).catch(() => {});
+    };
+    if (imageDataUrl) msgData.image = imageDataUrl;
+    await convRef.collection('messages').add(msgData);
+    triggerPushNotification(otherUid, lastMsg, convId).catch(() => {});
   } catch (err) {
     input.value = text;
     alert('전송 실패: ' + err.message);
