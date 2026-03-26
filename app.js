@@ -1101,6 +1101,15 @@ async function broadcastDM() {
 
 /* ===== HOME ===== */
 function renderHome() {
+  // 홈에서도 익명글 구독 시작 (아직 안 되어 있으면)
+  if (!_anonUnsub && state.currentUserId && !state.isGuest) {
+    _anonUnsub = state.db.collection('anon_posts').orderBy('createdAt', 'desc').limit(100)
+      .onSnapshot(function(snap) {
+        _anonPosts = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; });
+        if (state.currentPage === 'anon') _renderAnonList();
+        _updateHomeAnonList();
+      }, function(err) { console.error('익명 게시판 구독 오류:', err); });
+  }
   const { members, events } = state;
   document.getElementById('stat-total').textContent = members.length;
   document.getElementById('stat-drivers').textContent = members.filter(m => m.role === 'driver').length;
@@ -1121,19 +1130,8 @@ function renderHome() {
       .join('')
     : '<div class="empty-state">이벤트가 없습니다</div>';
 
-  const newEl = document.getElementById('home-new-members');
-  const newMem = [...members].slice(0, 4);
-  newEl.innerHTML = newMem.length
-    ? newMem.map(m => `
-        <div class="home-list-item" onclick="openMemberDetail('${m.id}')">
-          <span class="item-icon">${avatarSmall(m)}</span>
-          <div class="item-info">
-            <div class="item-title">${escapeHtml(displayName(m.name))} ${m.nickname ? `<small style="color:var(--text2)">(${escapeHtml(m.nickname)})</small>` : ''}</div>
-            <div class="item-sub">${m.role === 'driver' ? '🚗 운전자' : '💺 동승자'} · ${m.joinDate}</div>
-          </div>
-        </div>`)
-      .join('')
-    : '<div class="empty-state">회원이 없습니다</div>';
+  // 홈 익명글 리스트
+  _updateHomeAnonList();
 }
 
 /* ===== MEMBERS ===== */
@@ -3003,6 +3001,25 @@ function renderAnon() {
       document.getElementById('anonCharCount').textContent = input.value.length;
     };
   }
+}
+
+function _updateHomeAnonList() {
+  var homeAnonEl = document.getElementById('home-anon-list');
+  if (!homeAnonEl) return;
+  var recentAnon = (_anonPosts || []).slice(0, 5);
+  homeAnonEl.innerHTML = recentAnon.length
+    ? recentAnon.map(function(p) {
+        var catBadge = p.category ? '<span class="anon-category anon-cat-' + escapeHtml(p.category) + '">' + escapeHtml(p.category) + '</span>' : '';
+        var imgIcon = p.image ? '<span class="anon-has-img">📷</span>' : '';
+        var d = p.createdAt ? (p.createdAt.toDate ? p.createdAt.toDate() : new Date(p.createdAt)) : new Date();
+        return '<div class="home-list-item" onclick="goPage(\'anon\');setTimeout(function(){openAnonDetail(\'' + p.id + '\')},300)">'
+          + '<span class="item-icon">🎭</span>'
+          + '<div class="item-info">'
+          + '<div class="item-title">' + catBadge + escapeHtml(p.title || '제목 없음') + imgIcon + '</div>'
+          + '<div class="item-sub">❤️ ' + (p.likes || 0) + ' · 💬 ' + (p.commentCount || 0) + ' · ' + _timeAgo(d) + '</div>'
+          + '</div></div>';
+      }).join('')
+    : '<div class="empty-state">아직 게시글이 없습니다</div>';
 }
 
 function _renderAnonList() {
