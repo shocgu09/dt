@@ -2765,6 +2765,27 @@ function findGasStations() {
   navigator.geolocation.getCurrentPosition(
     function(pos) {
       _gasUserLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      // 내 위치 표시
+      var locEl = document.getElementById('gasMyLocation');
+      var addrEl = document.getElementById('gasMyAddr');
+      if (locEl) { locEl.style.display = 'block'; }
+      // 카카오 역지오코딩으로 주소 변환
+      if (typeof kakao !== 'undefined' && kakao.maps) {
+        var loadAndGeocode = function() {
+          var geocoder = new kakao.maps.services.Geocoder();
+          geocoder.coord2Address(_gasUserLocation.lng, _gasUserLocation.lat, function(result, status) {
+            if (status === kakao.maps.services.Status.OK && result[0]) {
+              addrEl.textContent = result[0].address.address_name;
+            } else {
+              addrEl.textContent = _gasUserLocation.lat.toFixed(4) + ', ' + _gasUserLocation.lng.toFixed(4);
+            }
+          });
+        };
+        if (_gasMapLoaded) { loadAndGeocode(); }
+        else { kakao.maps.load(function() { _gasMapLoaded = true; loadAndGeocode(); }); }
+      } else {
+        if (addrEl) addrEl.textContent = _gasUserLocation.lat.toFixed(4) + ', ' + _gasUserLocation.lng.toFixed(4);
+      }
       _fetchGasStations();
     },
     function(err) {
