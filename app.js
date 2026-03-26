@@ -1039,7 +1039,7 @@ async function renderAdmin() {
         ` : `
           <span style="font-size:.82rem;color:var(--text2);padding:6px 10px">${u.role === 'admin' ? '관리자' : '일반 회원'}</span>
         `}
-        ${u.uid !== state.currentUserId && u.role !== 'superadmin' ? `
+        ${u.uid !== state.currentUserId && u.role !== 'superadmin' && (isSuperAdmin || u.role === 'member') ? `
           <button class="btn btn-sm btn-danger" onclick="deleteUserAccount('${u.uid}')">강퇴</button>` : ''}
       </div>
     </div>`).join('');
