@@ -2928,18 +2928,20 @@ function _renderGasMap(stations) {
     });
 
     _gasMap.setBounds(bounds);
-    setTimeout(function() { _gasMap.relayout(); }, 100);
+    setTimeout(function() { _gasMap.relayout(); _gasMap.setBounds(bounds); }, 300);
   }
 
   // 카카오맵 SDK 로드
   if (typeof kakao !== 'undefined' && kakao.maps) {
+    var doInit = function() {
+      _gasMapLoaded = true;
+      // 모달이 완전히 열린 후 지도 초기화
+      setTimeout(initMap, 200);
+    };
     if (_gasMapLoaded) {
-      initMap();
+      setTimeout(initMap, 100);
     } else {
-      kakao.maps.load(function() {
-        _gasMapLoaded = true;
-        initMap();
-      });
+      kakao.maps.load(doInit);
     }
   } else {
     mapEl.style.display = 'none';
