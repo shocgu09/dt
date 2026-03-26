@@ -2703,11 +2703,10 @@ function renameGroup() {
   const convId = state._activeDMConvId;
   const conv = state.dms.find(c => c.id === convId);
   if (!conv) return;
+  const input = document.getElementById('groupRenameInput');
+  input.value = conv.groupName || '';
   openModal('groupRenameModal');
-  setTimeout(() => {
-    const input = document.getElementById('groupRenameInput');
-    if (input) { input.value = conv.groupName || ''; input.focus(); }
-  }, 150);
+  setTimeout(() => input.focus(), 100);
 }
 
 async function submitRenameGroup() {
@@ -2724,21 +2723,14 @@ async function submitRenameGroup() {
   }
 }
 
-function leaveDM() {
-  var convId = state._activeDMConvId;
-  if (!convId) return;
-  var conv = state.dms.find(function(c) { return c.id === convId; });
-  var isGroup = conv && conv.isGroup ? true : false;
-  var msg = isGroup ? '이 그룹을 나가시겠습니까?' : '대화방을 나가시겠습니까?\n모든 대화 내용이 삭제됩니다.';
-  document.getElementById('dmLeaveConfirmMsg').textContent = msg;
-  openModal('dmLeaveConfirmModal');
-}
-
-async function _executeLeaveDM() {
+async function leaveDM() {
   const convId = state._activeDMConvId;
   if (!convId) return;
   const conv = state.dms.find(c => c.id === convId);
   const isGroup = conv?.isGroup || false;
+
+  const msg = isGroup ? '이 그룹을 나가시겠습니까?' : '대화방을 나가시겠습니까?\n모든 대화 내용이 삭제됩니다.';
+  if (!confirm(msg)) return;
 
   const uid = state.currentUserId;
   const FieldValue = firebase.firestore.FieldValue;
