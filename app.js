@@ -2642,15 +2642,26 @@ function showGroupMembers() {
   openModal('groupMembersModal');
 }
 
-async function renameGroup() {
-  const convId = state._activeDMConvId;
-  const conv = state.dms.find(c => c.id === convId);
+function renameGroup() {
+  var convId = state._activeDMConvId;
+  var conv = state.dms.find(function(c) { return c.id === convId; });
   if (!conv) return;
-  const newName = prompt('새 그룹 이름을 입력하세요:', conv.groupName || '');
-  if (newName === null || !newName.trim()) return;
+  openModal('groupRenameModal');
+  setTimeout(function() {
+    var input = document.getElementById('groupRenameInput');
+    if (input) { input.value = conv.groupName || ''; input.focus(); }
+  }, 150);
+}
+
+async function submitRenameGroup() {
+  var convId = state._activeDMConvId;
+  var conv = state.dms.find(function(c) { return c.id === convId; });
+  if (!conv) return;
+  var newName = document.getElementById('groupRenameInput').value.trim();
+  if (!newName) { alert('그룹 이름을 입력해주세요.'); return; }
   try {
-    await state.db.collection('dms').doc(convId).update({ groupName: newName.trim() });
-    document.getElementById('dmChatTitle').innerHTML = `👥 ${escapeHtml(newName.trim())} <span style="color:var(--text3);font-size:.8rem">${conv.participants.length}명</span>`;
+    await state.db.collection('dms').doc(convId).update({ groupName: newName });
+    closeModal('groupRenameModal');
   } catch (e) {
     alert('이름 변경 실패: ' + e.message);
   }
