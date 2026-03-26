@@ -2277,21 +2277,12 @@ function initDMs() {
         });
       updateDMBadge();
       if (document.getElementById('dmPanel').classList.contains('open')) renderDMList();
-      // 현재 열린 채팅의 타이틀 실시간 갱신
+      // 현재 열린 그룹 채팅의 타이틀(인원수) 실시간 갱신
       if (state._activeDMConvId) {
         const activeConv = state.dms.find(c => c.id === state._activeDMConvId);
         if (activeConv?.isGroup) {
           const count = activeConv.participants?.length || 0;
           document.getElementById('dmChatTitle').innerHTML = `👥 ${escapeHtml(activeConv.groupName || '그룹')} <span style="color:var(--primary-light);font-size:.8rem;cursor:pointer;text-decoration:underline" onclick="showGroupMembers()">${count}명</span>`;
-          document.querySelectorAll('.dm-group-only').forEach(el => el.classList.remove('hidden'));
-        } else if (activeConv && !activeConv.isGroup) {
-          // 그룹→1:1 전환된 경우: 1:1 DM UI로 변경
-          const otherUid = activeConv.participants?.find(p => p !== state.currentUserId);
-          const other = state.users.find(u => u.uid === otherUid);
-          const name = other?.name || '알 수 없음';
-          document.getElementById('dmChatTitle').innerHTML = '💬 ' + escapeHtml(name) + titleBadge(other ? other.title : '');
-          document.querySelectorAll('.dm-group-only').forEach(el => el.classList.add('hidden'));
-          state._activeDMOtherUid = otherUid;
         }
       }
     }, err => console.error('DM 구독 오류:', err));
