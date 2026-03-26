@@ -242,6 +242,16 @@ function showApp() {
   }
 }
 
+function maskName(name) {
+  if (!name) return '';
+  if (name.length <= 1) return '*';
+  return name[0] + '*'.repeat(name.length - 1);
+}
+
+function displayName(name) {
+  return state.isGuest ? maskName(name) : name;
+}
+
 async function guestLogin() {
   try { await state.auth.signInAnonymously(); }
   catch (e) { alert('게스트 로그인 실패: ' + e.message); }
@@ -1109,7 +1119,7 @@ function renderHome() {
         <div class="home-list-item" onclick="openMemberDetail('${m.id}')">
           <span class="item-icon">${avatarSmall(m)}</span>
           <div class="item-info">
-            <div class="item-title">${escapeHtml(m.name)} ${m.nickname ? `<small style="color:var(--text2)">(${escapeHtml(m.nickname)})</small>` : ''}</div>
+            <div class="item-title">${escapeHtml(displayName(m.name))} ${m.nickname ? `<small style="color:var(--text2)">(${escapeHtml(m.nickname)})</small>` : ''}</div>
             <div class="item-sub">${m.role === 'driver' ? '🚗 운전자' : '💺 동승자'} · ${m.joinDate}</div>
           </div>
         </div>`)
@@ -1152,7 +1162,7 @@ function renderMembers() {
       <div class="member-card-top">
         <div class="member-avatar">${avatarEl(m)}</div>
         <div class="member-info">
-          <div class="member-name">${escapeHtml(m.name)}${titleBadge(userTitle(m.createdBy))}${!g && m.createdBy === state.currentUserId ? ' <span style="color:var(--primary-light);font-size:.75rem;font-weight:600">나</span>' : ''}</div>
+          <div class="member-name">${escapeHtml(displayName(m.name))}${titleBadge(userTitle(m.createdBy))}${!g && m.createdBy === state.currentUserId ? ' <span style="color:var(--primary-light);font-size:.75rem;font-weight:600">나</span>' : ''}</div>
           <div class="member-nick">${escapeHtml(m.nickname || '-')}</div>
           <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px">
             <span class="role-badge ${m.role}">${m.role === 'driver' ? '🚗 운전자' : '💺 동승자'}</span>
@@ -1182,12 +1192,12 @@ function openMemberDetail(id) {
   const m = state.members.find(x => x.id === id);
   if (!m) return;
   const g = state.isGuest;
-  document.getElementById('detailModalTitle').textContent = `${m.name} 회원 정보`;
+  document.getElementById('detailModalTitle').textContent = `${displayName(m.name)} 회원 정보`;
   document.getElementById('memberDetailBody').innerHTML = `
     <div class="detail-hero">
       <div class="detail-avatar">${avatarEl(m)}</div>
       <div class="detail-info-main">
-        <h2>${escapeHtml(m.name)}${titleBadge(userTitle(m.createdBy))}</h2>
+        <h2>${escapeHtml(displayName(m.name))}${titleBadge(userTitle(m.createdBy))}</h2>
         <div class="nick">${m.nickname ? `"${escapeHtml(m.nickname)}"` : ''}</div>
         <div class="detail-meta">
           <span class="role-badge ${m.role}">${m.role === 'driver' ? '🚗 운전자' : '💺 동승자'}</span>
@@ -1427,7 +1437,7 @@ function renderGallery() {
   }
   grid.innerHTML = state.gallery.map(g => {
     const author = state.users.find(u => u.uid === g.createdBy);
-    const authorName = author?.name || '';
+    const authorName = displayName(author?.name || '');
     return `
     <div class="gallery-card" onclick="openGalleryDetail('${g.id}')">
       <div class="gallery-card-img">
@@ -1693,7 +1703,7 @@ function renderCars() {
         <div class="car-owner">
           <div class="car-owner-avatar">${avatarEl(m)}</div>
           <div>
-            <div class="car-owner-name">${escapeHtml(m.name)}${titleBadge(userTitle(m.createdBy))}</div>
+            <div class="car-owner-name">${escapeHtml(displayName(m.name))}${titleBadge(userTitle(m.createdBy))}</div>
             <div style="font-size:.76rem;color:var(--text3)">오너</div>
           </div>
         </div>
@@ -1741,7 +1751,7 @@ function renderEvents() {
         ${(() => {
           const author = state.users.find(u => u.uid === ev.createdBy);
           const isMe = ev.createdBy === state.currentUserId;
-          const name = author?.name || '알 수 없음';
+          const name = displayName(author?.name || '알 수 없음');
           return `<div style="font-size:.78rem;color:var(--text3);margin-bottom:6px">✍️ ${escapeHtml(name)}${titleBadge(author?.title)}${isMe ? ' <span style="color:var(--primary-light);font-weight:600">(나)</span>' : ''}</div>`;
         })()}
         <div class="event-meta">
@@ -2145,7 +2155,7 @@ function renderQuizCard(ev, today) {
   const labels = ['A', 'B', 'C', 'D'];
   const author = state.users.find(u => u.uid === ev.createdBy);
   const isMe = ev.createdBy === uid;
-  const authorName = author?.name || '알 수 없음';
+  const authorName = displayName(author?.name || '알 수 없음');
 
   let winnerHtml = '';
   if (revealed && ev.quizWinner) {
@@ -2676,7 +2686,7 @@ function compressImage(file, maxSize, quality) {
 function avatarEl(m) {
   const colors = ['#6c63ff', '#ff6b6b', '#4ade80', '#60a5fa', '#f472b6', '#fb923c'];
   const color = colors[(m.name?.charCodeAt(0) || 0) % colors.length];
-  if (m.image) return `<img src="${m.image}" alt="${escapeHtml(m.name)}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`;
+  if (m.image) return `<img src="${m.image}" alt="${escapeHtml(displayName(m.name))}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`;
   return `<span style="background:${color};color:#fff;width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:inherit;font-weight:700">${escapeHtml(m.name?.[0] || '?')}</span>`;
 }
 
