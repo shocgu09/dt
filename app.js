@@ -2386,7 +2386,11 @@ function openDMChat(otherUid) {
   const uid = state.currentUserId;
   if (!uid || otherUid === uid) return;
 
-  const convId = [uid, otherUid].sort().join('_');
+  // 기존 1:1 대화방 찾기: 정규 ID 또는 그룹에서 전환된 대화방
+  const defaultConvId = [uid, otherUid].sort().join('_');
+  const existingConv = state.dms.find(c => !c.isGroup && c.participants?.length === 2
+    && c.participants.includes(uid) && c.participants.includes(otherUid));
+  const convId = existingConv ? existingConv.id : defaultConvId;
   state._activeDMConvId = convId;
   state._activeDMOtherUid = otherUid;
 
@@ -2722,24 +2726,25 @@ async function leaveDM() {
       const convSnap = await convRef.get();
       const currentParticipants = convSnap.data()?.participants || [];
 
-      if (currentParticipants.length <= 2) {
-        // 나가면 1명 이하 → 대화방 및 모든 메시지 삭제
-        await deleteConversation(convId);
-      } else {
-        // 시스템 메시지를 먼저 기록 (participants에서 제거 전이어야 권한이 있음)
-        const myName = state.users.find(u => u.uid === uid)?.name || '';
-        await convRef.collection('messages').add({
-          senderId: uid,
-          text: `${myName}님이 나갔습니다`,
-          createdAt: FieldValue.serverTimestamp(),
-          system: true
-        });
-        // participants에서 자신 제거
-        await convRef.update({
-          participants: FieldValue.arrayRemove(uid),
-          [`unread.${uid}`]: FieldValue.delete()
-        });
+      // 시스템 메시지를 먼저 기록 (participants에서 제거 전이어야 권한이 있음)
+      const myName = state.users.find(u => u.uid === uid)?.name || '';
+      await convRef.collection('messages').add({
+        senderId: uid,
+        text: `${myName}님이 나갔습니다`,
+        createdAt: FieldValue.serverTimestamp(),
+        system: true
+      });
+      // participants에서 자신 제거
+      const updateData = {
+        participants: FieldValue.arrayRemove(uid),
+        [`unread.${uid}`]: FieldValue.delete()
+      };
+      // 나간 후 2명 남으면 1:1 DM으로 자동 전환
+      if (currentParticipants.length === 3) {
+        updateData.isGroup = false;
+        updateData.groupName = FieldValue.delete();
       }
+      await convRef.update(updateData);
     }
     closeDMChat();
   } catch (e) {
