@@ -868,14 +868,14 @@
   <!-- DM Chat Modal -->
   <div class="modal-overlay" id="dmChatModal">
     <div class="modal dm-chat-modal">
-      <div class="modal-header">
+      <div class="modal-header dm-chat-header">
         <h3 id="dmChatTitle">대화</h3>
         <button class="modal-close" onclick="closeDMChat()">×</button>
       </div>
       <div class="dm-toolbar hidden" id="dmToolbar">
-        <button class="dm-toolbar-btn" id="btnInviteGroup" onclick="openInviteGroupModal()">👥+ 초대</button>
-        <button class="dm-toolbar-btn dm-group-only hidden" id="btnRenameGroup" onclick="renameGroup()">✏️ 이름변경</button>
-        <button class="dm-toolbar-btn" id="btnLeaveGroup" onclick="leaveDM()">🚪 나가기</button>
+        <button type="button" class="dm-toolbar-btn" id="btnInviteGroup" onclick="openInviteGroupModal()">👥+ 초대</button>
+        <button type="button" class="dm-toolbar-btn dm-group-only hidden" id="btnRenameGroup" onclick="renameGroup()">✏️ 이름변경</button>
+        <button type="button" class="dm-toolbar-btn" id="btnLeaveGroup" onclick="leaveDM()">🚪 나가기</button>
       </div>
       <div class="dm-messages" id="dmMessages"></div>
       <div class="dm-input-area">

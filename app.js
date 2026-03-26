@@ -2732,14 +2732,6 @@ function leaveDM() {
   const msg = isGroup ? '이 그룹을 나가시겠습니까?' : '대화방을 나가시겠습니까?\n모든 대화 내용이 삭제됩니다.';
   document.getElementById('dmLeaveConfirmMsg').textContent = msg;
   openModal('dmLeaveConfirmModal');
-
-  // 확인/취소 버튼 핸들러 (한 번만 동작)
-  const confirmBtn = document.getElementById('btnLeaveConfirm');
-  const cancelBtn = document.getElementById('btnLeaveCancel');
-  const cleanup = () => { confirmBtn.replaceWith(confirmBtn.cloneNode(true)); cancelBtn.replaceWith(cancelBtn.cloneNode(true)); };
-
-  cancelBtn.addEventListener('click', () => { closeModal('dmLeaveConfirmModal'); cleanup(); }, { once: true });
-  confirmBtn.addEventListener('click', () => { closeModal('dmLeaveConfirmModal'); cleanup(); _executeLeaveDM(); }, { once: true });
 }
 
 async function _executeLeaveDM() {
@@ -3532,26 +3524,9 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => closeModal(btn.dataset.modal || btn.closest('.modal-overlay')?.id));
   });
 
-  // DM 툴바 버튼 이벤트 (iOS Safari + PWA 호환)
-  function iosTap(el, fn) {
-    if (!el) return;
-    let last = 0;
-    const run = () => { const now = Date.now(); if (now - last < 400) return; last = now; fn(); };
-    el.addEventListener('touchend', run);
-    el.addEventListener('click', run);
-  }
-  iosTap(document.getElementById('btnInviteGroup'), openInviteGroupModal);
-  iosTap(document.getElementById('btnRenameGroup'), renameGroup);
-  iosTap(document.getElementById('btnLeaveGroup'), leaveDM);
-  // 이벤트 위임 백업
-  document.getElementById('dmToolbar').addEventListener('touchend', e => {
-    const btn = e.target.closest('.dm-toolbar-btn');
-    if (!btn) return;
-    const now = Date.now(); if (btn._lastTap && now - btn._lastTap < 400) return; btn._lastTap = now;
-    if (btn.id === 'btnInviteGroup') openInviteGroupModal();
-    else if (btn.id === 'btnRenameGroup') renameGroup();
-    else if (btn.id === 'btnLeaveGroup') leaveDM();
-  });
+  // DM 나가기 확인 모달 버튼
+  document.getElementById('btnLeaveCancel')?.addEventListener('click', () => closeModal('dmLeaveConfirmModal'));
+  document.getElementById('btnLeaveConfirm')?.addEventListener('click', () => { closeModal('dmLeaveConfirmModal'); _executeLeaveDM(); });
   // 폼 모달은 외부 클릭으로 닫히지 않음 (데이터 손실 방지)
   const formModals = new Set(['memberModal', 'eventModal', 'galleryFormModal', 'myAccountModal', 'inviteModal', 'noticeEditModal', 'dmChatModal', 'groupRenameModal']);
   document.querySelectorAll('.modal-overlay').forEach(overlay => {

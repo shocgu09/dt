@@ -1092,7 +1092,10 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 }
 .dm-chat-modal {
   display: flex; flex-direction: column; height: 72vh; max-height: 620px;
-  overflow-y: hidden;
+  overflow: hidden !important;
+}
+.dm-chat-header {
+  position: static !important; flex-shrink: 0;
 }
 .dm-messages {
   flex: 1; overflow-y: auto; padding: 14px 16px;
