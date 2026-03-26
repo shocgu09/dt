@@ -2559,11 +2559,8 @@ async function registerPushSubscription() {
   try {
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
-    if (sub) {
-      // VAPID 키 변경 시 기존 구독 무효화 → 재구독
-      await sub.unsubscribe();
-      sub = null;
-    }
+
+    // 기존 구독이 있으면 재사용, 없을 때만 새로 생성
     if (!sub) {
       const keyBytes = Uint8Array.from(atob(VAPID_PUBLIC_KEY.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
       sub = await reg.pushManager.subscribe({
@@ -2573,7 +2570,7 @@ async function registerPushSubscription() {
     }
     state._pushSubscription = sub;
 
-    // Worker에 구독 등록
+    // Worker에 구독 등록 (기존 구독이어도 서버에 다시 등록 → 유저 매핑 갱신)
     const token = await state.currentUser.getIdToken();
     const resp = await fetch(PUSH_WORKER_URL + '/api/subscribe', {
       method: 'POST',
@@ -2586,13 +2583,11 @@ async function registerPushSubscription() {
     const result = await resp.json();
     if (!resp.ok) {
       console.error('Push subscribe failed:', result);
-      showToast('알림 등록 실패: ' + (result.error || '서버 오류'));
     } else {
       console.log('Push subscription registered:', result);
     }
   } catch (err) {
     console.error('Push subscription error:', err);
-    showToast('알림 설정 중 오류가 발생했습니다.');
   }
 }
 
