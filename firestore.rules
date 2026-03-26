@@ -113,6 +113,8 @@ service cloud.firestore {
         && request.resource.data.participants.size() >= 2;
       allow update: if isRealUser()
         && request.auth.uid in resource.data.participants;
+      allow delete: if isRealUser()
+        && request.auth.uid in resource.data.participants;
 
       match /messages/{msgId} {
         allow read: if isRealUser()
@@ -120,6 +122,9 @@ service cloud.firestore {
             get(/databases/$(database)/documents/dms/$(convId)).data.participants;
         allow create: if isRealUser()
           && request.resource.data.senderId == request.auth.uid
+          && request.auth.uid in
+            get(/databases/$(database)/documents/dms/$(convId)).data.participants;
+        allow delete: if isRealUser()
           && request.auth.uid in
             get(/databases/$(database)/documents/dms/$(convId)).data.participants;
       }

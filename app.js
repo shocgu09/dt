@@ -2675,25 +2675,49 @@ async function leaveGroup() {
   const FieldValue = firebase.firestore.FieldValue;
   const convRef = state.db.collection('dms').doc(convId);
   try {
-    // 시스템 메시지를 먼저 기록 (participants에서 제거 전이어야 권한이 있음)
-    const myName = state.users.find(u => u.uid === uid)?.name || '';
-    await convRef.collection('messages').add({
-      senderId: uid,
-      text: `${myName}님이 나갔습니다`,
-      createdAt: FieldValue.serverTimestamp(),
-      system: true
-    });
+    // 현재 participants 수 확인
+    const convSnap = await convRef.get();
+    const currentParticipants = convSnap.data()?.participants || [];
+
     // 메시지 구독 해제 (participants 제거 후 권한 에러 방지)
     if (state._dmMsgUnsub) { state._dmMsgUnsub(); state._dmMsgUnsub = null; }
-    // participants에서 자신 제거
-    await convRef.update({
-      participants: FieldValue.arrayRemove(uid),
-      [`unread.${uid}`]: FieldValue.delete()
-    });
+
+    if (currentParticipants.length <= 2) {
+      // 나가면 1명 이하 → 대화방 및 모든 메시지 삭제
+      await deleteConversation(convId);
+    } else {
+      // 시스템 메시지를 먼저 기록 (participants에서 제거 전이어야 권한이 있음)
+      const myName = state.users.find(u => u.uid === uid)?.name || '';
+      await convRef.collection('messages').add({
+        senderId: uid,
+        text: `${myName}님이 나갔습니다`,
+        createdAt: FieldValue.serverTimestamp(),
+        system: true
+      });
+      // participants에서 자신 제거
+      await convRef.update({
+        participants: FieldValue.arrayRemove(uid),
+        [`unread.${uid}`]: FieldValue.delete()
+      });
+    }
     closeDMChat();
   } catch (e) {
     alert('나가기 실패: ' + e.message);
   }
+}
+
+async function deleteConversation(convId) {
+  const convRef = state.db.collection('dms').doc(convId);
+  // 서브컬렉션(messages) 일괄 삭제 (batch 500개 제한 대응)
+  const msgSnap = await convRef.collection('messages').get();
+  const docs = msgSnap.docs;
+  for (let i = 0; i < docs.length; i += 499) {
+    const batch = state.db.batch();
+    docs.slice(i, i + 499).forEach(doc => batch.delete(doc.ref));
+    if (i + 499 >= docs.length) batch.delete(convRef); // 마지막 batch에서 대화방 문서도 삭제
+    await batch.commit();
+  }
+  if (docs.length === 0) await convRef.delete(); // 메시지가 없는 경우
 }
 
 function isSingleEmoji(str) {
