@@ -2411,7 +2411,7 @@ function openDMChat(otherUid) {
   document.getElementById('dmMessages').innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:.84rem">로딩 중…</div>';
 
   var toolbar = document.getElementById('dmToolbar');
-  if (toolbar) { toolbar.classList.remove('dm-toolbar-hide'); }
+  if (toolbar) { toolbar.classList.remove('hidden'); }
   document.querySelectorAll('.dm-group-only').forEach(function(el) { el.classList.add('hidden'); });
 
   closeDMPanel();
@@ -2490,7 +2490,7 @@ function closeDMChat() {
   state._activeDMOtherUid = null;
   // 툴바 숨기기
   var tb = document.getElementById('dmToolbar');
-  if (tb) tb.classList.add('dm-toolbar-hide');
+  if (tb) tb.classList.add('hidden');
   closeModal('dmChatModal');
 }
 
@@ -2578,7 +2578,7 @@ async function openGroupChat(convId) {
 
   // 그룹: 툴바 + 그룹 전용 버튼 모두 표시
   var gtb = document.getElementById('dmToolbar');
-  if (gtb) gtb.classList.remove('dm-toolbar-hide');
+  if (gtb) gtb.classList.remove('hidden');
   document.querySelectorAll('.dm-group-only').forEach(function(el) { el.classList.remove('hidden'); });
 
   closeDMPanel();
