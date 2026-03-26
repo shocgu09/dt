@@ -2316,9 +2316,7 @@ function renderDMList() {
     return;
   }
   list.innerHTML = state.dms.map(conv => {
-    const otherUid = conv.participants.find(p => p !== uid);
-    const other = state.users.find(u => u.uid === otherUid);
-    const name = other?.name || '알 수 없음';
+    const isGroup = conv.isGroup || false;
     const unread = (conv.unread || {})[uid] || 0;
     const lastMsg = conv.lastMessage || '';
     const lastAt = conv.lastAt ? (() => {
@@ -2327,11 +2325,32 @@ function renderDMList() {
       const isToday = d.toDateString() === now.toDateString();
       return isToday ? d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
     })() : '';
+
+    let avatarHtml, displayNameHtml, clickAction;
+    if (isGroup) {
+      // 그룹: 멀티 아바타 + 그룹명
+      const others = conv.participants.filter(p => p !== uid).slice(0, 2).map(p => state.users.find(u => u.uid === p));
+      avatarHtml = `<div class="dm-multi-avatar">
+        <div>${avatarEl({ name: others[0]?.name || '?', image: others[0]?.image || null, gender: others[0]?.gender || 'male' })}</div>
+        <div>${avatarEl({ name: others[1]?.name || '?', image: others[1]?.image || null, gender: others[1]?.gender || 'male' })}</div>
+      </div>`;
+      displayNameHtml = `${escapeHtml(conv.groupName || '그룹')}<span class="dm-group-badge">${conv.participants.length}명</span>`;
+      clickAction = `openGroupChat('${conv.id}')`;
+    } else {
+      // 1:1
+      const otherUid = conv.participants.find(p => p !== uid);
+      const other = state.users.find(u => u.uid === otherUid);
+      const name = other?.name || '알 수 없음';
+      avatarHtml = `<div class="mini-avatar dm-conv-avatar">${avatarEl({ name, image: other?.image || null, gender: other?.gender || 'male' })}</div>`;
+      displayNameHtml = `${escapeHtml(name)}${titleBadge(other?.title)}`;
+      clickAction = `openDMChat('${otherUid}')`;
+    }
+
     return `
-      <div class="dm-conv-item" onclick="openDMChat('${otherUid}')">
-        <div class="mini-avatar dm-conv-avatar">${avatarEl({ name, image: other?.image || null, gender: other?.gender || 'male' })}</div>
+      <div class="dm-conv-item" onclick="${clickAction}">
+        ${avatarHtml}
         <div class="dm-conv-info">
-          <div class="dm-conv-name">${escapeHtml(name)}${titleBadge(other?.title)}</div>
+          <div class="dm-conv-name">${displayNameHtml}</div>
           <div class="dm-conv-last">${escapeHtml(lastMsg.length > 28 ? lastMsg.slice(0, 28) + '…' : lastMsg)}</div>
         </div>
         <div class="dm-conv-meta">
@@ -2430,7 +2449,194 @@ function closeDMChat() {
   if (state._dmMsgUnsub) { state._dmMsgUnsub(); state._dmMsgUnsub = null; }
   state._activeDMConvId = null;
   state._activeDMOtherUid = null;
+  // 그룹 관리 버튼 숨기기
+  document.querySelectorAll('.dm-group-action').forEach(el => el.classList.add('hidden'));
   closeModal('dmChatModal');
+}
+
+/* ===== GROUP CHAT ===== */
+function openCreateGroupModal() {
+  const uid = state.currentUserId;
+  const members = state.users.filter(u => u.uid !== uid);
+  document.getElementById('groupNameInput').value = '';
+  document.getElementById('groupMemberList').innerHTML = members.map(u => `
+    <label class="group-member-item">
+      <input type="checkbox" value="${u.uid}">
+      <div class="mini-avatar">${avatarEl({ name: u.name, image: u.image || null, gender: u.gender || 'male' })}</div>
+      <span class="group-member-item-name">${escapeHtml(u.name)}${titleBadge(u.title)}</span>
+    </label>`).join('');
+  closeDMPanel();
+  openModal('groupCreateModal');
+}
+
+async function createGroupChat() {
+  const uid = state.currentUserId;
+  const checked = [...document.querySelectorAll('#groupMemberList input:checked')].map(el => el.value);
+  if (checked.length < 1) { alert('멤버를 1명 이상 선택해주세요.'); return; }
+  const groupName = document.getElementById('groupNameInput').value.trim() || '그룹 대화';
+  const participants = [uid, ...checked];
+  const unread = {};
+  participants.forEach(p => unread[p] = 0);
+
+  const FieldValue = firebase.firestore.FieldValue;
+  try {
+    const ref = state.db.collection('dms').doc();
+    await ref.set({
+      participants,
+      isGroup: true,
+      groupName,
+      createdBy: uid,
+      lastMessage: '그룹이 생성되었습니다',
+      lastAt: FieldValue.serverTimestamp(),
+      unread
+    });
+    await ref.collection('messages').add({
+      senderId: uid,
+      text: `${state.users.find(u => u.uid === uid)?.name || ''}님이 그룹을 만들었습니다`,
+      createdAt: FieldValue.serverTimestamp(),
+      system: true
+    });
+    closeModal('groupCreateModal');
+    openGroupChat(ref.id);
+  } catch (e) {
+    alert('그룹 생성 실패: ' + e.message);
+  }
+}
+
+async function openGroupChat(convId) {
+  const uid = state.currentUserId;
+  state._activeDMConvId = convId;
+  state._activeDMOtherUid = null;
+
+  try { navigator.serviceWorker?.controller?.postMessage({ type: 'DM_VIEWING', convId }); } catch(e) {}
+
+  const conv = state.dms.find(c => c.id === convId);
+  const title = conv?.groupName || '그룹';
+  const count = conv?.participants?.length || 0;
+  document.getElementById('dmChatTitle').innerHTML = `👥 ${escapeHtml(title)} <span style="color:var(--text3);font-size:.8rem">${count}명</span>`;
+  document.getElementById('dmMessages').innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:.84rem">로딩 중…</div>';
+
+  // 그룹 관리 버튼 표시
+  document.querySelectorAll('.dm-group-action').forEach(el => el.classList.remove('hidden'));
+
+  openModal('dmChatModal');
+  closeDMPanel();
+
+  // 알림 클리어
+  try { if ('serviceWorker' in navigator) { navigator.serviceWorker.ready.then(reg => { reg.getNotifications({ tag: `dm-${convId}` }).then(ns => ns.forEach(n => n.close())); }); } } catch(e) {}
+
+  // 읽음 처리
+  const convRef = state.db.collection('dms').doc(convId);
+  try {
+    const snap = await convRef.get();
+    if (snap.exists) {
+      await convRef.update({ [`unread.${uid}`]: 0 });
+      const local = state.dms.find(c => c.id === convId);
+      if (local?.unread) local.unread[uid] = 0;
+      updateDMBadge();
+    }
+  } catch(e) {}
+
+  // 메시지 구독
+  if (state._dmMsgUnsub) state._dmMsgUnsub();
+  state._dmMsgUnsub = state.db.collection('dms').doc(convId).collection('messages')
+    .orderBy('createdAt', 'asc')
+    .onSnapshot(snap => {
+      renderDMMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })), uid);
+      const modal = document.getElementById('dmChatModal');
+      if (modal && modal.classList.contains('open')) {
+        state.db.collection('dms').doc(convId).update({ [`unread.${uid}`]: 0 }).catch(() => {});
+        const local = state.dms.find(c => c.id === convId);
+        if (local?.unread) local.unread[uid] = 0;
+        updateDMBadge();
+      }
+    }, err => console.error('그룹 메시지 구독 오류:', err));
+}
+
+function openInviteGroupModal() {
+  const convId = state._activeDMConvId;
+  const conv = state.dms.find(c => c.id === convId);
+  if (!conv?.isGroup) return;
+
+  const existing = new Set(conv.participants);
+  const candidates = state.users.filter(u => !existing.has(u.uid));
+  if (!candidates.length) { alert('초대할 수 있는 멤버가 없습니다.'); return; }
+
+  document.getElementById('groupInviteMemberList').innerHTML = candidates.map(u => `
+    <label class="group-member-item">
+      <input type="checkbox" value="${u.uid}">
+      <div class="mini-avatar">${avatarEl({ name: u.name, image: u.image || null, gender: u.gender || 'male' })}</div>
+      <span class="group-member-item-name">${escapeHtml(u.name)}${titleBadge(u.title)}</span>
+    </label>`).join('');
+  openModal('groupInviteModal');
+}
+
+async function inviteToGroup() {
+  const convId = state._activeDMConvId;
+  if (!convId) return;
+  const checked = [...document.querySelectorAll('#groupInviteMemberList input:checked')].map(el => el.value);
+  if (!checked.length) { alert('초대할 멤버를 선택해주세요.'); return; }
+
+  const FieldValue = firebase.firestore.FieldValue;
+  const convRef = state.db.collection('dms').doc(convId);
+  try {
+    const updates = {
+      participants: FieldValue.arrayUnion(...checked),
+      isGroup: true
+    };
+    checked.forEach(uid => updates[`unread.${uid}`] = 0);
+    await convRef.update(updates);
+
+    // 그룹명이 없으면 자동 설정
+    const snap = await convRef.get();
+    if (snap.exists && !snap.data().groupName) {
+      await convRef.update({ groupName: '그룹 대화' });
+    }
+
+    const myName = state.users.find(u => u.uid === state.currentUserId)?.name || '';
+    const invitedNames = checked.map(uid => state.users.find(u => u.uid === uid)?.name || '').join(', ');
+    await convRef.collection('messages').add({
+      senderId: state.currentUserId,
+      text: `${myName}님이 ${invitedNames}님을 초대했습니다`,
+      createdAt: FieldValue.serverTimestamp(),
+      system: true
+    });
+
+    closeModal('groupInviteModal');
+    // 채팅 타이틀 갱신
+    const conv = state.dms.find(c => c.id === convId);
+    if (conv) {
+      const count = (conv.participants?.length || 0) + checked.length;
+      document.getElementById('dmChatTitle').innerHTML = `👥 ${escapeHtml(conv.groupName || '그룹')} <span style="color:var(--text3);font-size:.8rem">${count}명</span>`;
+    }
+  } catch (e) {
+    alert('초대 실패: ' + e.message);
+  }
+}
+
+async function leaveGroup() {
+  const convId = state._activeDMConvId;
+  if (!convId) return;
+  if (!confirm('이 그룹을 나가시겠습니까?')) return;
+
+  const uid = state.currentUserId;
+  const FieldValue = firebase.firestore.FieldValue;
+  const convRef = state.db.collection('dms').doc(convId);
+  try {
+    await convRef.update({
+      participants: FieldValue.arrayRemove(uid)
+    });
+    const myName = state.users.find(u => u.uid === uid)?.name || '';
+    await convRef.collection('messages').add({
+      senderId: uid,
+      text: `${myName}님이 나갔습니다`,
+      createdAt: FieldValue.serverTimestamp(),
+      system: true
+    });
+    closeDMChat();
+  } catch (e) {
+    alert('나가기 실패: ' + e.message);
+  }
 }
 
 function isSingleEmoji(str) {
@@ -2444,6 +2650,8 @@ function renderDMMessages(msgs, myUid) {
     container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:.84rem">아직 메시지가 없습니다.<br>첫 메시지를 보내보세요!</div>';
     return;
   }
+  const conv = state.dms.find(c => c.id === state._activeDMConvId);
+  const isGroup = conv?.isGroup || false;
   let html = '';
   let lastDate = '';
   msgs.forEach(msg => {
@@ -2456,6 +2664,19 @@ function renderDMMessages(msgs, myUid) {
     }
     const time = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
 
+    // 시스템 메시지 (그룹 생성, 초대, 나가기)
+    if (msg.system) {
+      html += `<div class="dm-date-sep" style="font-size:.78rem">${escapeHtml(msg.text)}</div>`;
+      return;
+    }
+
+    // 그룹 채팅: 상대방 메시지에 발신자 이름 표시
+    let senderLabel = '';
+    if (isGroup && !isMe) {
+      const sender = state.users.find(u => u.uid === msg.senderId);
+      senderLabel = `<div class="dm-msg-sender">${escapeHtml(sender?.name || '알 수 없음')}</div>`;
+    }
+
     let content = '';
     if (msg.image) {
       content = `<div class="dm-bubble dm-bubble-img"><img src="${msg.image}" alt="사진" onclick="openLightbox('${msg.image}')"></div>`;
@@ -2467,11 +2688,21 @@ function renderDMMessages(msgs, myUid) {
     }
 
     html += `<div class="dm-msg ${isMe ? 'dm-msg-me' : 'dm-msg-other'}">
-      ${content}
+      ${senderLabel}${content}
       <div class="dm-time">${time}</div>
     </div>`;
   });
   container.innerHTML = html;
+  // 이미지 로드 완료 후 스크롤 (이미지가 있으면 로드 대기)
+  const images = container.querySelectorAll('img');
+  if (images.length) {
+    let loaded = 0;
+    const onLoad = () => { if (++loaded >= images.length) container.scrollTop = container.scrollHeight; };
+    images.forEach(img => {
+      if (img.complete) onLoad();
+      else { img.addEventListener('load', onLoad); img.addEventListener('error', onLoad); }
+    });
+  }
   container.scrollTop = container.scrollHeight;
 }
 
@@ -2507,17 +2738,27 @@ async function sendDMMessage(imageDataUrl) {
   if (!text && !imageDataUrl) return;
   const convId = state._activeDMConvId;
   const uid = state.currentUserId;
-  const otherUid = state._activeDMOtherUid;
-  if (!convId || !uid || !otherUid) return;
+  if (!convId || !uid) return;
+
+  const conv = state.dms.find(c => c.id === convId);
+  const isGroup = conv?.isGroup || false;
+  const otherUid = state._activeDMOtherUid; // 1:1에서만 사용
+
+  if (!isGroup && !otherUid) return;
 
   input.value = '';
   const FieldValue = firebase.firestore.FieldValue;
   const convRef = state.db.collection('dms').doc(convId);
-  const lastMsg = imageDataUrl ? '📷 사진' : text;
+
+  // 그룹이면 발신자 이름 접두사 추가
+  const myName = state.users.find(u => u.uid === uid)?.name || '';
+  const rawMsg = imageDataUrl ? '📷 사진' : text;
+  const lastMsg = isGroup ? `${myName}: ${rawMsg}` : rawMsg;
 
   try {
     const convSnap = await convRef.get();
     if (!convSnap.exists) {
+      // 1:1 새 대화방 생성
       await convRef.set({
         participants: [uid, otherUid],
         lastMessage: lastMsg,
@@ -2525,12 +2766,21 @@ async function sendDMMessage(imageDataUrl) {
         unread: { [uid]: 0, [otherUid]: 1 }
       });
     } else {
-      await convRef.update({
+      // 기존 대화방 업데이트 (1:1 또는 그룹)
+      const updates = {
         lastMessage: lastMsg,
         lastAt: FieldValue.serverTimestamp(),
-        [`unread.${otherUid}`]: FieldValue.increment(1),
         [`unread.${uid}`]: 0
-      });
+      };
+      if (isGroup) {
+        // 그룹: 본인 외 모든 참여자 unread +1
+        conv.participants.filter(p => p !== uid).forEach(p => {
+          updates[`unread.${p}`] = FieldValue.increment(1);
+        });
+      } else {
+        updates[`unread.${otherUid}`] = FieldValue.increment(1);
+      }
+      await convRef.update(updates);
     }
     const msgData = {
       senderId: uid,
@@ -2539,7 +2789,14 @@ async function sendDMMessage(imageDataUrl) {
     };
     if (imageDataUrl) msgData.image = imageDataUrl;
     await convRef.collection('messages').add(msgData);
-    triggerPushNotification(otherUid, lastMsg, convId).catch(() => {});
+
+    // 푸시 알림: 그룹이면 모든 참여자에게, 1:1이면 상대에게
+    const recipients = isGroup
+      ? conv.participants.filter(p => p !== uid)
+      : [otherUid];
+    recipients.forEach(recipientUid => {
+      triggerPushNotification(recipientUid, lastMsg, convId).catch(() => {});
+    });
   } catch (err) {
     input.value = text;
     alert('전송 실패: ' + err.message);
