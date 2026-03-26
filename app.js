@@ -3975,28 +3975,21 @@ function getExifOrientation(file) {
 function compressImage(file, maxSize, quality) {
   return new Promise(async (resolve, reject) => {
     try {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('파일을 읽을 수 없습니다.'));
-    reader.onload = e => {
-      const img = new Image();
-      img.onerror = () => reject(new Error('이미지를 불러올 수 없습니다.'));
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let { width, height } = img;
-        let dw = width, dh = height;
-        if (width > maxSize || height > maxSize) {
-          if (width > height) { dh = dh * maxSize / dw; dw = maxSize; }
-          else { dw = dw * maxSize / dh; dh = maxSize; }
-        }
-        canvas.width = dw;
-        canvas.height = dh;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, dw, dh);
-        resolve(canvas.toDataURL('image/jpeg', quality));
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
+      // createImageBitmap은 EXIF 방향을 자동 처리
+      var bitmap = await createImageBitmap(file);
+      var width = bitmap.width, height = bitmap.height;
+      var dw = width, dh = height;
+      if (width > maxSize || height > maxSize) {
+        if (width > height) { dh = dh * maxSize / dw; dw = maxSize; }
+        else { dw = dw * maxSize / dh; dh = maxSize; }
+      }
+      var canvas = document.createElement('canvas');
+      canvas.width = dw;
+      canvas.height = dh;
+      var ctx = canvas.getContext('2d');
+      ctx.drawImage(bitmap, 0, 0, dw, dh);
+      bitmap.close();
+      resolve(canvas.toDataURL('image/jpeg', quality));
     } catch(e) { reject(e); }
   });
 }
