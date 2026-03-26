@@ -870,12 +870,14 @@
     <div class="modal dm-chat-modal">
       <div class="modal-header">
         <h3 id="dmChatTitle">대화</h3>
-        <button class="modal-close" onclick="closeDMChat()">×</button>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="dm-header-leave" onclick="leaveDM()" title="나가기">🚪</button>
+          <button class="modal-close" onclick="closeDMChat()">×</button>
+        </div>
       </div>
       <div class="dm-toolbar hidden" id="dmToolbar">
         <button class="dm-toolbar-btn" id="btnInviteGroup" onclick="openInviteGroupModal()">👥+ 초대</button>
         <button class="dm-toolbar-btn dm-group-only hidden" id="btnRenameGroup" onclick="renameGroup()">✏️ 이름변경</button>
-        <button class="dm-toolbar-btn" id="btnLeaveGroup" onclick="leaveDM()">나가기</button>
       </div>
       <div class="dm-messages" id="dmMessages"></div>
       <div class="dm-input-area">
@@ -894,6 +896,9 @@
         <button class="modal-close" data-modal="groupMembersModal">&times;</button>
       </div>
       <div class="modal-body" style="padding:8px 0" id="groupMembersBody"></div>
+      <div style="padding:12px 20px; border-top:1px solid var(--border)">
+        <button class="btn" style="width:100%;background:var(--bg3);color:#e74c3c;border:1px solid #e74c3c;font-weight:600" onclick="closeModal('groupMembersModal');leaveDM()">🚪 나가기</button>
+      </div>
     </div>
   </div>
 
