@@ -741,6 +741,42 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 .gas-nav-btn:hover { background: var(--primary-dark); }
 .gas-self { display: inline-block; padding: 1px 6px; background: rgba(74,222,128,.15); color: #4ade80; border-radius: 4px; font-size: .68rem; font-weight: 700; margin-left: 6px; }
 
+/* ===== PARKING ===== */
+.parking-search-bar {
+  display: flex; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+}
+.parking-search-bar input {
+  flex: 1; padding: 8px 12px; background: var(--bg3); border: 1px solid var(--border);
+  color: var(--text); border-radius: 8px; font-size: .88rem;
+}
+.parking-search-bar button {
+  padding: 8px 14px; background: var(--primary); border: none; color: #fff;
+  border-radius: 8px; cursor: pointer; font-size: .88rem; font-weight: 700;
+}
+.parking-dest-results {
+  max-height: 180px; overflow-y: auto; border-bottom: 1px solid var(--border);
+}
+.parking-dest-item {
+  padding: 10px 16px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,.05);
+  transition: background .15s;
+}
+.parking-dest-item:hover { background: rgba(124,111,255,.1); }
+.parking-dest-name { font-weight: 700; font-size: .88rem; color: var(--text); }
+.parking-dest-addr { font-size: .75rem; color: var(--text3); margin-top: 2px; }
+.parking-card {
+  display: flex; align-items: flex-start; gap: 12px; padding: 14px 0;
+  border-bottom: 1px solid var(--border); cursor: pointer;
+}
+.parking-card:last-child { border-bottom: none; }
+.parking-card:hover { background: rgba(124,111,255,.05); }
+.parking-info { flex: 1; min-width: 0; }
+.parking-name { font-weight: 700; font-size: .92rem; color: var(--text); margin-bottom: 2px; }
+.parking-addr { font-size: .75rem; color: var(--text3); margin-top: 2px; }
+.parking-dist { font-size: .78rem; color: var(--primary-light); font-weight: 600; flex-shrink: 0; }
+.parking-phone { font-size: .72rem; color: var(--text3); }
+.parking-phone a { color: var(--primary-light); text-decoration: none; }
+
 /* ===== APP FOOTER ===== */
 .app-footer {
   display: flex; align-items: center; justify-content: center;

@@ -2980,6 +2980,177 @@ function openGasNavigation(lat, lng, name) {
   window.open(kakaoUrl, '_blank');
 }
 
+/* ===== PARKING (주차장 찾기) ===== */
+let _parkingMap = null;
+let _parkingMarkers = [];
+let _parkingInfoWindows = [];
+let _parkingDest = null; // { lat, lng, name }
+
+function openParkingModal() {
+  openModal('parkingModal');
+  document.getElementById('parkingDestInput').value = '';
+  document.getElementById('parkingDestResults').style.display = 'none';
+  document.getElementById('parkingMap').style.display = 'none';
+  document.getElementById('parkingList').innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">🔍 도착지를 검색하면<br>주변 주차장을 찾아드립니다</div>';
+  setTimeout(function() { document.getElementById('parkingDestInput').focus(); }, 200);
+}
+
+function searchParkingDest() {
+  var query = document.getElementById('parkingDestInput').value.trim();
+  if (!query) return;
+
+  var resultsEl = document.getElementById('parkingDestResults');
+  resultsEl.style.display = 'block';
+  resultsEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text3);font-size:.84rem">검색 중...</div>';
+
+  if (typeof kakao === 'undefined' || !kakao.maps) {
+    resultsEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--accent);font-size:.84rem">카카오맵을 불러올 수 없습니다</div>';
+    return;
+  }
+
+  var doSearch = function() {
+    var ps = new kakao.maps.services.Places();
+    ps.keywordSearch(query, function(data, status) {
+      if (status !== kakao.maps.services.Status.OK || !data.length) {
+        resultsEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text3);font-size:.84rem">검색 결과가 없습니다</div>';
+        return;
+      }
+      var html = '';
+      data.slice(0, 8).forEach(function(place) {
+        html += '<div class="parking-dest-item" onclick="selectParkingDest(' + place.y + ',' + place.x + ',\'' + escapeHtml(place.place_name).replace(/'/g, "\\'") + '\')">';
+        html += '<div class="parking-dest-name">' + escapeHtml(place.place_name) + '</div>';
+        html += '<div class="parking-dest-addr">' + escapeHtml(place.address_name || '') + '</div>';
+        html += '</div>';
+      });
+      resultsEl.innerHTML = html;
+    });
+  };
+
+  if (_gasMapLoaded) { doSearch(); }
+  else { kakao.maps.load(function() { _gasMapLoaded = true; doSearch(); }); }
+}
+
+function selectParkingDest(lat, lng, name) {
+  _parkingDest = { lat: lat, lng: lng, name: name };
+  document.getElementById('parkingDestInput').value = name;
+  document.getElementById('parkingDestResults').style.display = 'none';
+  _searchNearbyParking();
+}
+
+function _searchNearbyParking() {
+  var listEl = document.getElementById('parkingList');
+  listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">🔍 주변 주차장을 검색하고 있습니다...</div>';
+
+  var ps = new kakao.maps.services.Places();
+  var location = new kakao.maps.LatLng(_parkingDest.lat, _parkingDest.lng);
+
+  ps.categorySearch('PK6', function(data, status) {
+    if (status !== kakao.maps.services.Status.OK || !data.length) {
+      listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">😢 주변에 주차장을 찾을 수 없습니다</div>';
+      document.getElementById('parkingMap').style.display = 'none';
+      return;
+    }
+    _renderParkingList(data);
+    _renderParkingMap(data);
+  }, {
+    location: location,
+    radius: 1000,
+    sort: kakao.maps.services.SortBy.DISTANCE,
+    size: 15
+  });
+}
+
+function _renderParkingList(places) {
+  var listEl = document.getElementById('parkingList');
+  var html = '<div style="padding:4px 0 8px;font-size:.78rem;color:var(--text3)">📍 ' + escapeHtml(_parkingDest.name) + ' 주변 · ' + places.length + '개</div>';
+
+  places.forEach(function(p, i) {
+    var dist = p.distance ? (Number(p.distance) < 1000 ? p.distance + 'm' : (Number(p.distance) / 1000).toFixed(1) + 'km') : '';
+    html += '<div class="parking-card" id="parking-card-' + i + '" onclick="parkingFocus(' + i + ')">';
+    html += '<div class="gas-rank' + (i === 0 ? ' top' : '') + '">' + (i + 1) + '</div>';
+    html += '<div class="parking-info">';
+    html += '<div class="parking-name">' + escapeHtml(p.place_name) + '</div>';
+    html += '<div class="parking-addr">' + escapeHtml(p.road_address_name || p.address_name || '') + '</div>';
+    if (p.phone) html += '<div class="parking-phone">📞 <a href="tel:' + p.phone + '">' + escapeHtml(p.phone) + '</a></div>';
+    html += '<button class="gas-nav-btn" onclick="event.stopPropagation();openGasNavigation(' + p.y + ',' + p.x + ',\'' + escapeHtml(p.place_name).replace(/'/g, "\\'") + '\')">🗺️ 길안내</button>';
+    html += '</div>';
+    html += '<div class="parking-dist">' + dist + '</div>';
+    html += '</div>';
+  });
+
+  listEl.innerHTML = html;
+}
+
+function _renderParkingMap(places) {
+  var mapEl = document.getElementById('parkingMap');
+  mapEl.style.display = 'block';
+
+  var center = new kakao.maps.LatLng(_parkingDest.lat, _parkingDest.lng);
+
+  if (!_parkingMap) {
+    _parkingMap = new kakao.maps.Map(mapEl, { center: center, level: 4 });
+  } else {
+    _parkingMap.setCenter(center);
+  }
+
+  // 기존 마커 제거
+  _parkingMarkers.forEach(function(m) { m.setMap(null); });
+  _parkingMarkers = [];
+  _parkingInfoWindows = [];
+
+  // 도착지 마커 (별 모양)
+  var destMarker = new kakao.maps.Marker({
+    position: center,
+    map: _parkingMap,
+    image: new kakao.maps.MarkerImage(
+      'https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/markerStar.png',
+      new kakao.maps.Size(24, 35)
+    )
+  });
+  _parkingMarkers.push(destMarker);
+
+  var bounds = new kakao.maps.LatLngBounds();
+  bounds.extend(center);
+
+  // 주차장 마커
+  places.forEach(function(p, i) {
+    var pos = new kakao.maps.LatLng(p.y, p.x);
+    bounds.extend(pos);
+
+    var marker = new kakao.maps.Marker({ position: pos, map: _parkingMap });
+    _parkingMarkers.push(marker);
+
+    var dist = p.distance ? (Number(p.distance) < 1000 ? p.distance + 'm' : (Number(p.distance) / 1000).toFixed(1) + 'km') : '';
+    var infoContent = '<div style="padding:4px 8px;font-size:12px;white-space:nowrap;background:#fff;border-radius:4px;color:#333">'
+      + '<b>' + (i + 1) + '. ' + escapeHtml(p.place_name) + '</b>'
+      + (dist ? '<br><span style="color:#60a5fa">' + dist + '</span>' : '')
+      + '</div>';
+
+    var infowindow = new kakao.maps.InfoWindow({ content: infoContent, removable: true });
+    _parkingInfoWindows.push({ marker: marker, infowindow: infowindow, position: pos });
+
+    kakao.maps.event.addListener(marker, 'click', function() {
+      _parkingInfoWindows.forEach(function(iw) { iw.infowindow.close(); });
+      infowindow.open(_parkingMap, marker);
+      var card = document.getElementById('parking-card-' + i);
+      if (card) { card.style.background = 'rgba(124,111,255,.1)'; card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); setTimeout(function() { card.style.background = ''; }, 2000); }
+    });
+  });
+
+  _parkingMap.setBounds(bounds);
+  setTimeout(function() { _parkingMap.relayout(); _parkingMap.setBounds(bounds); }, 300);
+}
+
+function parkingFocus(index) {
+  if (!_parkingMap || !_parkingInfoWindows[index]) return;
+  var item = _parkingInfoWindows[index];
+  _parkingInfoWindows.forEach(function(iw) { iw.infowindow.close(); });
+  _parkingMap.setCenter(item.position);
+  _parkingMap.setLevel(3);
+  item.infowindow.open(_parkingMap, item.marker);
+  document.getElementById('parkingMap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
 /* ===== IMAGE 압축 (base64 → Firestore 직접 저장) ===== */
 function getExifOrientation(file) {
   return new Promise(resolve => {
