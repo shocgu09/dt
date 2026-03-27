@@ -16,32 +16,53 @@
       <button id="themeToggle" onclick="toggleTheme()" class="theme-btn">🌙</button>
     </header>
 
-    <div class="filter-bar">
-      <button class="filter-btn active" data-cat="all" onclick="filterCategory('all')">전체</button>
-      <button class="filter-btn" data-cat="X" onclick="filterCategory('X')">𝕏</button>
-      <button class="filter-btn" data-cat="뉴스레터" onclick="filterCategory('뉴스레터')">📰 뉴스레터</button>
-      <button class="filter-btn" data-cat="유튜브" onclick="filterCategory('유튜브')">▶️ 유튜브</button>
-      <input type="text" class="search-input" id="searchInput" placeholder="검색..." oninput="renderLinks()">
+    <!-- 탭 -->
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="feed" onclick="switchTab('feed')">📡 피드</button>
+      <button class="tab-btn" data-tab="links" onclick="switchTab('links')">🔗 링크</button>
+      <button class="tab-btn" data-tab="admin" onclick="switchTab('admin')" id="tabAdmin" style="display:none">⚙️ 관리</button>
     </div>
 
-    <div id="linkList" class="link-list">
-      <div class="loading">로딩 중...</div>
+    <!-- 피드 탭 -->
+    <div class="tab-content active" id="tab-feed">
+      <div id="feedContent">
+        <div class="loading">피드 로딩 중...</div>
+      </div>
     </div>
 
-    <!-- 관리자 전용: 링크 추가 -->
-    <div id="adminPanel" class="admin-panel" style="display:none">
-      <h3>➕ 링크 추가</h3>
-      <div class="add-form">
-        <select id="addCategory">
-          <option value="X">𝕏 X</option>
-          <option value="뉴스레터">📰 뉴스레터</option>
-          <option value="유튜브">▶️ 유튜브</option>
-        </select>
-        <input type="text" id="addName" placeholder="이름">
-        <input type="url" id="addUrl" placeholder="URL">
-        <input type="text" id="addDesc" placeholder="설명 (선택)">
-        <input type="text" id="addIcon" placeholder="아이콘 이모지 (선택)" maxlength="4">
-        <button class="btn-add" onclick="addTrendLink()">추가</button>
+    <!-- 링크 탭 -->
+    <div class="tab-content" id="tab-links">
+      <div class="filter-bar">
+        <button class="filter-btn active" data-cat="all" onclick="filterCategory('all')">전체</button>
+        <button class="filter-btn" data-cat="X" onclick="filterCategory('X')">𝕏</button>
+        <button class="filter-btn" data-cat="뉴스레터" onclick="filterCategory('뉴스레터')">📰</button>
+        <button class="filter-btn" data-cat="유튜브" onclick="filterCategory('유튜브')">▶️</button>
+        <input type="text" class="search-input" id="searchInput" placeholder="검색..." oninput="renderLinks()">
+      </div>
+      <div id="linkList" class="link-list"></div>
+    </div>
+
+    <!-- 관리 탭 (관리자만) -->
+    <div class="tab-content" id="tab-admin">
+      <div class="admin-section">
+        <h3>➕ 링크 추가</h3>
+        <div class="add-form">
+          <select id="addCategory">
+            <option value="X">𝕏 X</option>
+            <option value="뉴스레터">📰 뉴스레터</option>
+            <option value="유튜브">▶️ 유튜브</option>
+          </select>
+          <input type="text" id="addName" placeholder="이름">
+          <input type="url" id="addUrl" placeholder="URL">
+          <input type="text" id="addDesc" placeholder="설명 (선택)">
+          <input type="text" id="addIcon" placeholder="아이콘 이모지 (선택)" maxlength="4">
+          <input type="text" id="addRss" placeholder="RSS URL (뉴스레터만, 선택)">
+          <button class="btn-add" onclick="addTrendLink()">추가</button>
+        </div>
+      </div>
+      <div class="admin-section">
+        <h3>📋 등록된 링크</h3>
+        <div id="adminLinkList" class="link-list"></div>
       </div>
     </div>
   </div>
