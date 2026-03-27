@@ -203,7 +203,7 @@ function updateNavUserName() {
 }
 
 function showApp() {
-  document.getElementById('loginScreen').classList.add('hidden');
+  var ls = document.getElementById('loginScreen'); if (ls) ls.classList.add('hidden');
   const isGuest = state.isGuest;
 
   // 게스트/회원 전용 UI 토글
@@ -278,7 +278,8 @@ function showToast(msg, duration = 3000) {
 }
 
 function showLoginScreen() {
-  document.getElementById('loginScreen').classList.remove('hidden');
+  // 구 로그인 페이지 삭제됨 → authModal로 대체
+  if (typeof guestToLogin === 'function') guestToLogin();
 }
 
 function applyRoleUI() {
@@ -327,29 +328,27 @@ async function logout() {
 }
 
 async function resendVerificationEmail() {
-  const email = document.getElementById('loginEmail').value.trim();
-  const password = document.getElementById('loginPassword').value;
-  const errEl = document.getElementById('loginError');
+  var emailEl = document.getElementById('authLoginEmail') || document.getElementById('loginEmail');
+  var passEl = document.getElementById('authLoginPassword') || document.getElementById('loginPassword');
+  var errEl = document.getElementById('authLoginError') || document.getElementById('loginError');
+  var email = emailEl ? emailEl.value.trim() : '';
+  var password = passEl ? passEl.value : '';
   if (!email || !password) {
-    errEl.style.color = '';
-    errEl.textContent = '이메일과 비밀번호를 입력 후 재전송 버튼을 눌러주세요.';
+    if (errEl) { errEl.style.color = ''; errEl.textContent = '이메일과 비밀번호를 입력 후 재전송 버튼을 눌러주세요.'; }
     return;
   }
   try {
-    const cred = await state.auth.signInWithEmailAndPassword(email, password);
+    var cred = await state.auth.signInWithEmailAndPassword(email, password);
     if (cred.user.emailVerified) {
-      errEl.style.color = '';
-      errEl.textContent = '이미 인증된 계정입니다. 로그인을 진행해 주세요.';
+      if (errEl) { errEl.style.color = ''; errEl.textContent = '이미 인증된 계정입니다. 로그인을 진행해 주세요.'; }
       await state.auth.signOut();
       return;
     }
     await cred.user.sendEmailVerification();
     await state.auth.signOut();
-    errEl.style.color = 'var(--driver)';
-    errEl.textContent = '✅ 인증 메일을 재전송했습니다. 스팸함도 확인해 주세요.';
+    if (errEl) { errEl.style.color = 'var(--driver)'; errEl.textContent = '✅ 인증 메일을 재전송했습니다. 스팸함도 확인해 주세요.'; }
   } catch (e) {
-    errEl.style.color = '';
-    errEl.textContent = authErrMsg(e.code);
+    if (errEl) { errEl.style.color = ''; errEl.textContent = authErrMsg(e.code); }
   }
 }
 
@@ -4617,59 +4616,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // ② 로그인/회원가입 탭 전환
-  document.querySelectorAll('.login-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.login-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      const isLogin = tab.dataset.tab === 'login';
-      document.getElementById('loginForm').classList.toggle('hidden', !isLogin);
-      document.getElementById('signupForm').classList.toggle('hidden', isLogin);
-    });
-  });
-
-  // ③ 로그인 폼
-  document.getElementById('loginForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const errEl = document.getElementById('loginError');
-    errEl.textContent = '';
-    try {
-      var keepLogin = document.getElementById('keepLogin');
-      await login(
-        document.getElementById('loginEmail').value.trim(),
-        document.getElementById('loginPassword').value,
-        keepLogin && keepLogin.checked
-      );
-      // onAuthStateChanged에서 미인증 시 자동 로그아웃되므로 여기서 별도 처리
-      // emailVerified 체크는 onAuthStateChanged에서 수행
-    } catch (err) {
-      errEl.textContent = authErrMsg(err.code || err.message);
-    }
-  });
-
-  // ④ 회원가입 폼
-  document.getElementById('signupForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const errEl = document.getElementById('signupError');
-    errEl.textContent = '';
-    const pw = document.getElementById('signupPassword').value;
-    const pw2 = document.getElementById('signupPasswordConfirm').value;
-    if (pw !== pw2) { errEl.textContent = '비밀번호가 일치하지 않습니다.'; return; }
-    try {
-      await signup(
-        document.getElementById('signupName').value.trim(),
-        document.getElementById('signupEmail').value.trim(),
-        pw
-      );
-      // 가입 성공 → 인증 메일 안내
-      document.getElementById('signupForm').reset();
-      errEl.style.color = 'var(--driver)';
-      errEl.textContent = '✅ 인증 메일을 발송했습니다. 이메일을 확인 후 로그인해 주세요.';
-    } catch (err) {
-      errEl.style.color = '';
-      errEl.textContent = authErrMsg(err.code);
-    }
-  });
+  // ② ~ ④ 구 로그인/회원가입 폼 이벤트 삭제됨 (authModal로 대체)
 
   // ⑤ 로그아웃
   document.getElementById('btnLogout').addEventListener('click', logout);
