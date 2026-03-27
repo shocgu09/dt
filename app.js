@@ -285,6 +285,11 @@ function applyRoleUI() {
 }
 
 async function login(email, password) {
+  var keepLogin = document.getElementById('keepLogin');
+  var persistence = (keepLogin && keepLogin.checked)
+    ? firebase.auth.Auth.Persistence.LOCAL
+    : firebase.auth.Auth.Persistence.SESSION;
+  await state.auth.setPersistence(persistence);
   await state.auth.signInWithEmailAndPassword(email, password);
 }
 
