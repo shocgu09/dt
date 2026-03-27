@@ -52,7 +52,7 @@ export default {
         }));
 
         return new Response(JSON.stringify({ videos }), {
-          headers: { ...jsonHeaders, 'Cache-Control': 'public, max-age=3600' }
+          headers: { ...jsonHeaders, 'Cache-Control': 'public, max-age=300' }
         });
       } catch (e) {
         return new Response(JSON.stringify({ error: e.message }), {
