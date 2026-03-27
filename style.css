@@ -467,7 +467,7 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 .form-group label { font-size: .84rem; font-weight: 600; color: var(--text2); }
 .form-group input, .form-group select, .form-group textarea {
   background: var(--bg3); border: 1px solid var(--border);
-  color: var(--text); padding: 10px 12px; border-radius: 10px;
+  color: var(--text); padding: 10px 12px; border-radius: 0;
   font-size: .9rem; outline: none; transition: var(--transition);
   font-family: inherit;
 }
@@ -500,7 +500,7 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 .time-picker { display: flex; align-items: center; gap: 8px; }
 .time-picker select {
   flex: 1; background: var(--bg3); border: 1px solid var(--border);
-  color: var(--text); padding: 10px 12px; border-radius: 10px;
+  color: var(--text); padding: 10px 12px; border-radius: 0;
   font-size: .9rem; outline: none; transition: var(--transition);
   font-family: inherit; cursor: pointer; appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%239898b0' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
@@ -651,10 +651,10 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
   color: var(--primary-light); margin-bottom: 24px; letter-spacing: -.5px;
 }
 .login-brand span { font-size: 1.8rem; }
-.login-tabs { display: flex; gap: 4px; background: var(--bg3); border-radius: 10px; padding: 4px; margin-bottom: 24px; }
+.login-tabs { display: flex; gap: 4px; background: var(--bg3); border-radius: 0; padding: 4px; margin-bottom: 24px; }
 .login-tab {
   flex: 1; padding: 8px; border: none; background: none; cursor: pointer;
-  color: var(--text2); font-size: .9rem; font-weight: 600; border-radius: 8px; transition: var(--transition);
+  color: var(--text2); font-size: .9rem; font-weight: 600; border-radius: 0; transition: var(--transition);
 }
 .login-tab.active { background: var(--primary); color: #fff; }
 .auth-form .btn { margin-top: 4px; }
@@ -1401,7 +1401,7 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
   content: ''; flex: 1; height: 1px; background: var(--border);
 }
 .btn-guest {
-  display: block; width: 100%; padding: 12px; border-radius: 10px;
+  display: block; width: 100%; padding: 12px; border-radius: 0;
   background: transparent; border: 1px dashed var(--border);
   color: var(--text2); font-size: .92rem; cursor: pointer; transition: all .2s;
 }
