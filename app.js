@@ -3364,17 +3364,50 @@ async function postAnon() {
 }
 
 var _editingPostId = null;
+var _editAnonImageData = null; // null=변경없음, ''=삭제, 'data:...'=새 이미지
+var _editAnonOriginalImage = null;
 
 function openEditAnon(postId) {
   var post = _anonPosts.find(function(p) { return p.id === postId; });
   if (!post || post.createdBy !== state.currentUserId) { alert('수정 권한이 없습니다.'); return; }
   _editingPostId = postId;
+  _editAnonImageData = null;
+  _editAnonOriginalImage = post.image || '';
   document.getElementById('editAnonCategory').value = post.category || '';
   document.getElementById('editAnonTitle').value = post.title || '';
   document.getElementById('editAnonText').value = post.text || '';
   document.getElementById('editAnonAnonymous').checked = post.anonymous !== false;
   document.getElementById('editAnonNoComment').checked = !!post.noComment;
+  document.getElementById('editAnonImageInput').value = '';
+  document.getElementById('editAnonImageName').textContent = '';
+
+  // 기존 사진 미리보기
+  var previewEl = document.getElementById('editAnonImagePreview');
+  if (post.image) {
+    previewEl.innerHTML = '<div style="position:relative;display:inline-block"><img src="' + post.image + '" style="max-width:100%;max-height:200px;border-radius:8px"><button onclick="removeEditAnonImage()" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.7);color:#fff;border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:.8rem">✕</button></div>';
+  } else {
+    previewEl.innerHTML = '';
+  }
   openModal('anonEditModal');
+}
+
+function previewEditAnonImage(input) {
+  if (!input.files || !input.files[0]) return;
+  var file = input.files[0];
+  if (file.size > 5 * 1024 * 1024) { alert('5MB 이하 이미지만 가능합니다.'); input.value = ''; return; }
+  document.getElementById('editAnonImageName').textContent = file.name;
+  compressImage(file, 800, 0.75, function(dataUrl) {
+    _editAnonImageData = dataUrl;
+    var previewEl = document.getElementById('editAnonImagePreview');
+    previewEl.innerHTML = '<div style="position:relative;display:inline-block"><img src="' + dataUrl + '" style="max-width:100%;max-height:200px;border-radius:8px"><button onclick="removeEditAnonImage()" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.7);color:#fff;border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:.8rem">✕</button></div>';
+  });
+}
+
+function removeEditAnonImage() {
+  _editAnonImageData = ''; // 빈 문자열 = 삭제 의도
+  document.getElementById('editAnonImagePreview').innerHTML = '<div style="padding:8px;color:var(--text3);font-size:.82rem">🗑️ 사진이 삭제됩니다</div>';
+  document.getElementById('editAnonImageInput').value = '';
+  document.getElementById('editAnonImageName').textContent = '';
 }
 
 async function submitEditAnon() {
@@ -3392,17 +3425,27 @@ async function submitEditAnon() {
   }
 
   try {
-    await state.db.collection('anon_posts').doc(_editingPostId).update({
+    var updateData = {
       title: title,
       text: text,
       category: document.getElementById('editAnonCategory').value,
       anonymous: isAnon,
       authorName: isAnon ? '' : authorName,
       noComment: document.getElementById('editAnonNoComment').checked
-    });
+    };
+
+    // 사진 처리: null=변경없음, ''=삭제, 'data:...'=새 이미지
+    if (_editAnonImageData === '') {
+      updateData.image = firebase.firestore.FieldValue.delete();
+    } else if (_editAnonImageData && _editAnonImageData.startsWith('data:')) {
+      updateData.image = _editAnonImageData;
+    }
+
+    await state.db.collection('anon_posts').doc(_editingPostId).update(updateData);
     closeModal('anonEditModal');
     closeModal('anonDetailModal');
     _editingPostId = null;
+    _editAnonImageData = null;
   } catch (e) {
     alert('수정 실패: ' + e.message);
   }
