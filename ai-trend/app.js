@@ -312,11 +312,9 @@ async function addTrendLink() {
   var rss = document.getElementById('addRss').value.trim();
   if (!name || !url) { alert('이름과 URL을 입력하세요.'); return; }
 
-  // 뉴스레터: Substack이면 자동 RSS 생성
+  // 뉴스레터: RSS URL 없으면 자동으로 /feed 시도
   if (category === '뉴스레터' && !rss) {
-    if (url.indexOf('substack.com') !== -1) {
-      rss = url.replace(/\/$/, '') + '/feed';
-    }
+    rss = url.replace(/\/$/, '') + '/feed';
   }
 
   try {
