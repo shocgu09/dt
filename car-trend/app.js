@@ -142,8 +142,8 @@ async function loadFeed() {
             html += '<div class="feed-scroll">';
             list.forEach(function(v) {
               var url = isShort ? 'https://www.youtube.com/shorts/' + v.id : 'https://www.youtube.com/watch?v=' + v.id;
-              html += '<a href="' + url + '" target="_blank" class="feed-video-card' + (isShort ? ' is-short' : '') + '">'
-                + '<img class="feed-video-thumb' + (isShort ? ' is-short' : '') + '" src="' + v.thumbnail + '" alt="" loading="lazy">'
+              html += '<a href="' + url + '" target="_blank" class="feed-video-card">'
+                + '<img class="feed-video-thumb" src="' + v.thumbnail + '" alt="" loading="lazy">'
                 + '<div class="feed-video-title">' + escapeHtml(v.title) + '</div>'
                 + '<div class="feed-video-channel">' + escapeHtml(v.channelTitle || '') + ' · ' + timeAgo(v.publishedAt) + '</div>'
                 + '</a>';

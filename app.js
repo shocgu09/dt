@@ -1235,8 +1235,8 @@ function loadYouTubeShorts() {
         html += '<div class="youtube-shorts">';
         list.forEach(function(v) {
           var url = isShort ? 'https://www.youtube.com/shorts/' + v.id : 'https://www.youtube.com/watch?v=' + v.id;
-          html += '<a href="' + url + '" target="_blank" class="youtube-short-card' + (isShort ? ' is-short' : '') + '">'
-            + '<img class="youtube-short-thumb' + (isShort ? ' is-short' : '') + '" src="' + v.thumbnail + '" alt="" loading="lazy">'
+          html += '<a href="' + url + '" target="_blank" class="youtube-short-card">'
+            + '<img class="youtube-short-thumb" src="' + v.thumbnail + '" alt="" loading="lazy">'
             + '<div class="youtube-short-title">' + escapeHtml(v.channelTitle || '') + '</div>'
             + '<div class="youtube-short-title" style="color:var(--text3)">' + escapeHtml(v.title) + '</div>'
             + '</a>';
