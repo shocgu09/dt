@@ -1012,6 +1012,7 @@ async function renderAdmin() {
   if (state.currentUserRole !== 'admin' && state.currentUserRole !== 'superadmin') return;
   renderAdminNotice();
   renderAdminBlacklist();
+  renderAdminYouTube();
   const snap = await state.db.collection('users').orderBy('createdAt', 'asc').get();
   const users = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
   const list = document.getElementById('userList');
@@ -1149,21 +1150,84 @@ var _ytLoaded = false;
 function loadYouTubeShorts() {
   if (_ytLoaded) return;
   _ytLoaded = true;
-  fetch('https://dt-youtube.shocguna.workers.dev/api/videos?max=6')
-    .then(function(r) { return r.json(); })
+  // Firestore에서 채널 목록 조회
+  state.db.collection('youtube_channels').get().then(function(snap) {
+    var channelIds = snap.docs.map(function(d) { return d.id; });
+    if (!channelIds.length) return;
+    return fetch('https://dt-youtube.shocguna.workers.dev/api/videos?max=3&channels=' + channelIds.join(','));
+  }).then(function(r) { return r ? r.json() : null; })
     .then(function(data) {
-      if (!data.videos || !data.videos.length) return;
+      if (!data || !data.videos || !data.videos.length) return;
       var html = '';
       data.videos.forEach(function(v) {
         html += '<a href="https://www.youtube.com/shorts/' + v.id + '" target="_blank" class="youtube-short-card">'
           + '<img class="youtube-short-thumb" src="' + v.thumbnail + '" alt="" loading="lazy">'
-          + '<div class="youtube-short-title">' + escapeHtml(v.title) + '</div>'
+          + '<div class="youtube-short-title">' + escapeHtml(v.channelTitle || '') + '</div>'
+          + '<div class="youtube-short-title" style="color:var(--text3)">' + escapeHtml(v.title) + '</div>'
           + '</a>';
       });
       document.getElementById('youtubeShorts').innerHTML = html;
       document.getElementById('youtubeSection').style.display = '';
     })
     .catch(function() {});
+}
+
+// YouTube 채널 관리 (관리자)
+async function renderAdminYouTube() {
+  var listEl = document.getElementById('ytChannelList');
+  if (!listEl) return;
+  try {
+    var snap = await state.db.collection('youtube_channels').get();
+    if (snap.empty) {
+      listEl.innerHTML = '<div style="text-align:center;padding:12px;color:var(--text3);font-size:.82rem">등록된 채널이 없습니다</div>';
+      return;
+    }
+    var html = '';
+    snap.forEach(function(doc) {
+      var d = doc.data();
+      html += '<div class="user-item">'
+        + '<img src="' + (d.thumbnail || '') + '" style="width:36px;height:36px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'">'
+        + '<div class="user-item-info">'
+        + '<div class="user-item-name">' + escapeHtml(d.title || doc.id) + '</div>'
+        + '<div class="user-item-email">구독자 ' + (d.subscribers || '?') + '명 · @' + escapeHtml(d.handle || '') + '</div>'
+        + '</div>'
+        + '<button class="btn btn-sm" style="background:var(--accent);color:#fff;border:none;font-size:.75rem" onclick="removeYouTubeChannel(\'' + doc.id + '\')">삭제</button>'
+        + '</div>';
+    });
+    listEl.innerHTML = html;
+  } catch(e) { listEl.innerHTML = '<div style="color:var(--accent);font-size:.82rem">로드 실패</div>'; }
+}
+
+async function addYouTubeChannel() {
+  var input = document.getElementById('ytChannelHandle');
+  var handle = input.value.trim().replace('@', '');
+  if (!handle) { alert('채널 핸들을 입력하세요.'); return; }
+  try {
+    var resp = await fetch('https://dt-youtube.shocguna.workers.dev/api/channel?handle=' + encodeURIComponent(handle));
+    var data = await resp.json();
+    if (data.error) { alert('채널을 찾을 수 없습니다: ' + data.error); return; }
+    // Firestore에 저장 (채널 ID를 문서 ID로 사용)
+    await state.db.collection('youtube_channels').doc(data.channelId).set({
+      title: data.title,
+      handle: handle,
+      thumbnail: data.thumbnail || '',
+      subscribers: data.subscribers || '0',
+      addedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    input.value = '';
+    alert(data.title + ' 채널이 추가되었습니다!');
+    renderAdminYouTube();
+    _ytLoaded = false; // 홈 새로고침 시 다시 로드
+  } catch(e) { alert('채널 추가 실패: ' + e.message); }
+}
+
+async function removeYouTubeChannel(channelId) {
+  if (!confirm('이 채널을 삭제하시겠습니까?')) return;
+  try {
+    await state.db.collection('youtube_channels').doc(channelId).delete();
+    renderAdminYouTube();
+    _ytLoaded = false;
+  } catch(e) { alert('삭제 실패: ' + e.message); }
 }
 
 var _weatherLoaded = false;

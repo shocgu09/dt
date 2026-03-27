@@ -166,5 +166,13 @@ service cloud.firestore {
       allow update: if isRealUser() && request.auth.uid == uid;
     }
 
+    // ── youtube_channels 컬렉션 (YouTube 채널 관리) ──────────
+    // - 모든 사용자 읽기 가능 (홈 영상 표시)
+    // - 관리자만 추가/삭제
+    match /youtube_channels/{channelId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
   }
 }

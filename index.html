@@ -401,6 +401,15 @@
           </div>
           <div id="blacklistItems" class="user-list"></div>
         </div>
+        <div class="admin-card" style="grid-column:1/-1">
+          <h3>🎬 YouTube 채널 관리</h3>
+          <p class="admin-desc">홈 화면 추천 영상에 표시할 채널을 관리합니다.</p>
+          <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+            <input type="text" id="ytChannelHandle" placeholder="채널 핸들 (예: @povskidlife)" style="flex:1;min-width:200px" />
+            <button class="btn btn-primary btn-sm" onclick="addYouTubeChannel()">추가</button>
+          </div>
+          <div id="ytChannelList" class="user-list"></div>
+        </div>
       </div>
     </section>
   </main>
