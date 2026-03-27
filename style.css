@@ -134,10 +134,10 @@ main { padding: calc(80px + env(safe-area-inset-top, 0px)) 20px 24px; max-width:
 .home-tool-card {
   display: flex; flex-direction: column; align-items: center; gap: 6px;
   padding: 16px 8px; background: var(--bg2); border: 1px solid var(--border);
-  border-radius: 12px; cursor: pointer; transition: all .15s;
+  border-radius: 0; cursor: pointer; transition: all .15s;
   text-decoration: none; color: var(--text);
 }
-.home-tool-card:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(124,111,255,.15); }
+.home-tool-card:hover { border-color: var(--primary); transform: translate(-2px,-2px); box-shadow: 3px 3px 0 rgba(124,111,255,.2); }
 .home-tool-icon { font-size: 1.8rem; }
 .home-tool-name { font-size: .78rem; font-weight: 600; color: var(--text2); text-align: center; }
 .home-links { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
@@ -201,7 +201,7 @@ main { padding: calc(80px + env(safe-area-inset-top, 0px)) 20px 24px; max-width:
 /* ===== WEATHER CARD ===== */
 .weather-card {
   background: linear-gradient(135deg, rgba(96,165,250,.15), rgba(167,139,250,.15));
-  border: 1px solid rgba(124,111,255,.2); border-radius: 14px;
+  border: 1px solid rgba(124,111,255,.2); border-radius: 0;
   padding: 16px 20px; margin-top: 20px; margin-bottom: 16px;
 }
 .weather-main {
@@ -805,10 +805,10 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 .anon-cat-건의 { background: rgba(251,146,60,.15); color: #fb923c; }
 .anon-cat-가입인사 { background: rgba(236,72,153,.15); color: #ec4899; }
 .anon-card {
-  background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 0;
   padding: 16px; margin-bottom: 10px; cursor: pointer; transition: var(--transition);
 }
-.anon-card:hover { border-color: rgba(124,111,255,.3); transform: translate(-1px, -1px); }
+.anon-card:hover { border-color: rgba(124,111,255,.3); transform: translate(-2px, -2px); box-shadow: 3px 3px 0 rgba(124,111,255,.15); }
 .anon-card-header {
   display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
 }
