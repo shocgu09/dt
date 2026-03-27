@@ -263,6 +263,19 @@ function renderAdminLinks() {
   document.getElementById('adminLinkList').innerHTML = html;
 }
 
+// 카테고리 변경 시 RSS 힌트 표시
+document.getElementById('addCategory')?.addEventListener('change', function() {
+  var hint = document.getElementById('rssHint');
+  var rssInput = document.getElementById('addRss');
+  if (this.value === '뉴스레터') {
+    hint.style.display = '';
+    rssInput.style.display = '';
+  } else {
+    hint.style.display = 'none';
+    rssInput.style.display = 'none';
+  }
+});
+
 async function addTrendLink() {
   var category = document.getElementById('addCategory').value;
   var name = document.getElementById('addName').value.trim();
@@ -271,6 +284,14 @@ async function addTrendLink() {
   var icon = document.getElementById('addIcon').value.trim();
   var rss = document.getElementById('addRss').value.trim();
   if (!name || !url) { alert('이름과 URL을 입력하세요.'); return; }
+
+  // 뉴스레터: Substack이면 자동 RSS 생성
+  if (category === '뉴스레터' && !rss) {
+    if (url.indexOf('substack.com') !== -1) {
+      rss = url.replace(/\/$/, '') + '/feed';
+    }
+  }
+
   try {
     var maxOrder = 0;
     allLinks.filter(function(l) { return l.category === category; }).forEach(function(l) { if (l.order > maxOrder) maxOrder = l.order; });
