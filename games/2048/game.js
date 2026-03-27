@@ -190,6 +190,11 @@ document.addEventListener('keydown', function(e) {
     startY = e.touches[0].clientY;
   }, { passive: true });
 
+  boardEl.addEventListener('touchmove', function(e) {
+    if (startX === null || startY === null) return;
+    e.preventDefault();
+  }, { passive: false });
+
   boardEl.addEventListener('touchend', function(e) {
     if (!startX || !startY) return;
     var dx = e.changedTouches[0].clientX - startX;
