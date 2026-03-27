@@ -151,17 +151,28 @@ async function loadFeed() {
         var recentVideos = vData.videos || [];
 
         if (recentVideos.length) {
-          html += '<div class="feed-scroll">';
-          recentVideos.forEach(function(v) {
-            var ytUrl = v.isShort ? 'https://www.youtube.com/shorts/' + v.id : 'https://www.youtube.com/watch?v=' + v.id;
-            var shortsBadge = v.isShort ? '<span style="position:absolute;top:4px;left:4px;background:rgba(255,0,0,.85);color:#fff;font-size:.6rem;font-weight:700;padding:2px 6px;border-radius:3px">Shorts</span>' : '';
-            html += '<a href="' + ytUrl + '" target="_blank" class="feed-video-card">'
-              + '<div style="position:relative"><img class="feed-video-thumb" src="' + v.thumbnail + '" alt="" loading="lazy">' + shortsBadge + '</div>'
-              + '<div class="feed-video-title">' + escapeHtml(v.title) + '</div>'
-              + '<div class="feed-video-channel">' + escapeHtml(v.channelTitle || '') + ' · ' + timeAgo(v.publishedAt) + '</div>'
-              + '</a>';
-          });
-          html += '</div>';
+          var rvVideos = recentVideos.filter(function(v) { return !v.isShort; });
+          var rvShorts = recentVideos.filter(function(v) { return v.isShort; });
+          function renderFeedVideos(list, isShort) {
+            html += '<div class="feed-scroll">';
+            list.forEach(function(v) {
+              var url = isShort ? 'https://www.youtube.com/shorts/' + v.id : 'https://www.youtube.com/watch?v=' + v.id;
+              html += '<a href="' + url + '" target="_blank" class="feed-video-card">'
+                + '<img class="feed-video-thumb" src="' + v.thumbnail + '" alt="" loading="lazy">'
+                + '<div class="feed-video-title">' + escapeHtml(v.title) + '</div>'
+                + '<div class="feed-video-channel">' + escapeHtml(v.channelTitle || '') + ' · ' + timeAgo(v.publishedAt) + '</div>'
+                + '</a>';
+            });
+            html += '</div>';
+          }
+          if (rvVideos.length) {
+            html += '<div style="font-size:.82rem;font-weight:600;color:var(--text2);margin-bottom:6px">▶️ 동영상</div>';
+            renderFeedVideos(rvVideos, false);
+          }
+          if (rvShorts.length) {
+            html += '<div style="font-size:.82rem;font-weight:600;color:var(--text2);margin:12px 0 6px">🎬 Shorts</div>';
+            renderFeedVideos(rvShorts, true);
+          }
         } else {
           html += '<div class="feed-empty">영상이 없습니다</div>';
         }

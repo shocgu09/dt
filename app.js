@@ -1222,17 +1222,34 @@ function loadYouTubeShorts() {
   }).then(function(r) { return r ? r.json() : null; })
     .then(function(data) {
       if (!data || !data.videos || !data.videos.length) return;
-      data.videos = data.videos.slice(0, 12); // 최대 12개
+      data.videos = data.videos.slice(0, 12);
+      var videos = data.videos.filter(function(v) { return !v.isShort; });
+      var shorts = data.videos.filter(function(v) { return v.isShort; });
       var html = '';
-      data.videos.forEach(function(v) {
-        var ytUrl = v.isShort ? 'https://www.youtube.com/shorts/' + v.id : 'https://www.youtube.com/watch?v=' + v.id;
-        var shortsBadge = v.isShort ? '<span style="position:absolute;top:4px;left:4px;background:rgba(255,0,0,.85);color:#fff;font-size:.6rem;font-weight:700;padding:2px 6px;border-radius:3px">Shorts</span>' : '';
-        html += '<a href="' + ytUrl + '" target="_blank" class="youtube-short-card" style="position:relative">'
-          + '<div style="position:relative"><img class="youtube-short-thumb" src="' + v.thumbnail + '" alt="" loading="lazy">' + shortsBadge + '</div>'
-          + '<div class="youtube-short-title">' + escapeHtml(v.channelTitle || '') + '</div>'
-          + '<div class="youtube-short-title" style="color:var(--text3)">' + escapeHtml(v.title) + '</div>'
-          + '</a>';
-      });
+      if (videos.length) {
+        html += '<div style="font-size:.82rem;font-weight:700;color:var(--text2);margin-bottom:6px">▶️ 동영상</div>';
+        html += '<div class="youtube-shorts">';
+        videos.forEach(function(v) {
+          html += '<a href="https://www.youtube.com/watch?v=' + v.id + '" target="_blank" class="youtube-short-card">'
+            + '<img class="youtube-short-thumb" src="' + v.thumbnail + '" alt="" loading="lazy">'
+            + '<div class="youtube-short-title">' + escapeHtml(v.channelTitle || '') + '</div>'
+            + '<div class="youtube-short-title" style="color:var(--text3)">' + escapeHtml(v.title) + '</div>'
+            + '</a>';
+        });
+        html += '</div>';
+      }
+      if (shorts.length) {
+        html += '<div style="font-size:.82rem;font-weight:700;color:var(--text2);margin:12px 0 6px">🎬 Shorts</div>';
+        html += '<div class="youtube-shorts">';
+        shorts.forEach(function(v) {
+          html += '<a href="https://www.youtube.com/shorts/' + v.id + '" target="_blank" class="youtube-short-card">'
+            + '<img class="youtube-short-thumb" src="' + v.thumbnail + '" alt="" loading="lazy">'
+            + '<div class="youtube-short-title">' + escapeHtml(v.channelTitle || '') + '</div>'
+            + '<div class="youtube-short-title" style="color:var(--text3)">' + escapeHtml(v.title) + '</div>'
+            + '</a>';
+        });
+        html += '</div>';
+      }
       document.getElementById('youtubeShorts').innerHTML = html;
       document.getElementById('youtubeSection').style.display = '';
     })
