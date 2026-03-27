@@ -604,7 +604,7 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 }
 .landing-logo {
   font-size: 1.2rem; font-weight: 800; color: var(--primary-light);
-  letter-spacing: -.5px;
+  letter-spacing: 2px; text-transform: uppercase;
 }
 .landing-main { flex: 1; display: flex; flex-direction: column; justify-content: center; }
 .landing-title {
@@ -648,7 +648,7 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 }
 .login-brand {
   text-align: center; font-size: 1.5rem; font-weight: 800;
-  color: var(--primary-light); margin-bottom: 24px; letter-spacing: -.5px;
+  color: var(--primary-light); margin-bottom: 24px; letter-spacing: 2px; text-transform: uppercase;
 }
 .login-brand span { font-size: 1.8rem; }
 .login-tabs { display: flex; gap: 4px; background: var(--bg3); border-radius: 0; padding: 4px; margin-bottom: 24px; }
