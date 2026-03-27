@@ -100,9 +100,6 @@
           <div class="hero-buttons">
             <button class="btn btn-primary" onclick="goPage('members')">회원 보기</button>
             <button class="btn btn-outline" onclick="goPage('events')">이벤트 보기</button>
-            <button class="btn" style="background:linear-gradient(135deg,#ff6b35,#f7c948);color:#000;font-weight:800;border:none" onclick="openGasStationModal()">⛽ 주변 주유소</button>
-            <button class="btn" style="background:linear-gradient(135deg,#60a5fa,#a78bfa);color:#fff;font-weight:800;border:none" onclick="openParkingModal()">🅿️ 주차장 찾기</button>
-            <a href="games/2048/" class="btn" style="background:linear-gradient(135deg,#f97316,#ef4444);color:#fff;font-weight:800;border:none;text-decoration:none;display:inline-flex;align-items:center;justify-content:center">🎮 2048 자동차</a>
           </div>
         </div>
         <div class="hero-art">🏎️</div>
@@ -159,6 +156,25 @@
         </div>
         <div class="drift-alert" id="driftAlert" style="display:none">
           🏎️💨 공짜 드리프트 데이 예보!
+        </div>
+      </div>
+
+      <!-- 편의 기능 -->
+      <div class="home-links-section">
+        <h3 class="home-links-title">🛠️ 편의 기능</h3>
+        <div class="home-tools">
+          <button class="home-tool-card" onclick="openGasStationModal()">
+            <span class="home-tool-icon">⛽</span>
+            <span class="home-tool-name">주변 주유소</span>
+          </button>
+          <button class="home-tool-card" onclick="openParkingModal()">
+            <span class="home-tool-icon">🅿️</span>
+            <span class="home-tool-name">주차장 찾기</span>
+          </button>
+          <a href="games/2048/" class="home-tool-card">
+            <span class="home-tool-icon">🎮</span>
+            <span class="home-tool-name">2048 자동차</span>
+          </a>
         </div>
       </div>
 

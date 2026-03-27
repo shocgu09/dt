@@ -130,6 +130,16 @@ main { padding: calc(80px + env(safe-area-inset-top, 0px)) 20px 24px; max-width:
 .home-sections { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .home-links-section { margin-top: 24px; }
 .home-links-title { font-size: 1rem; font-weight: 700; margin-bottom: 14px; color: var(--text2); text-transform: uppercase; letter-spacing: .5px; }
+.home-tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.home-tool-card {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 16px 8px; background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 12px; cursor: pointer; transition: all .15s;
+  text-decoration: none; color: var(--text);
+}
+.home-tool-card:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(124,111,255,.15); }
+.home-tool-icon { font-size: 1.8rem; }
+.home-tool-name { font-size: .78rem; font-weight: 600; color: var(--text2); text-align: center; }
 .home-links { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .home-link-card {
   display: flex; align-items: center; gap: 16px;
