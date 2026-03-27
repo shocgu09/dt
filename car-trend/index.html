@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>자동차 트렌드 - DT Club</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="../icon-192.png">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <a href="/" class="back-btn">← 홈</a>
+      <h1>🚗 자동차 트렌드</h1>
+      <button id="themeToggle" onclick="toggleTheme()" class="theme-btn">🌙</button>
+    </header>
+
+    <!-- 탭 -->
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="feed" onclick="switchTab('feed')">📡 피드</button>
+      <button class="tab-btn" data-tab="links" onclick="switchTab('links')">🔗 링크</button>
+      <button class="tab-btn" data-tab="admin" onclick="switchTab('admin')" id="tabAdmin" style="display:none">⚙️ 관리</button>
+    </div>
+
+    <!-- 소개 -->
+    <div class="intro-card">
+      <p>신차 소식, 시승 리뷰, 자동차 뉴스를 한곳에서 확인하세요.</p>
+      <p>드라이브를 더 즐겁게. 🚗</p>
+    </div>
+
+    <!-- 피드 탭 -->
+    <div class="tab-content active" id="tab-feed">
+      <div id="feedContent">
+        <div class="loading">피드 로딩 중...</div>
+      </div>
+    </div>
+
+    <!-- 링크 탭 -->
+    <div class="tab-content" id="tab-links">
+      <div class="filter-bar">
+        <button class="filter-btn active" data-cat="all" onclick="filterCategory('all')">전체</button>
+        <button class="filter-btn" data-cat="뉴스" onclick="filterCategory('뉴스')">📰</button>
+        <button class="filter-btn" data-cat="유튜브" onclick="filterCategory('유튜브')">▶️</button>
+        <input type="text" class="search-input" id="searchInput" placeholder="검색..." oninput="renderLinks()">
+      </div>
+      <div id="linkList" class="link-list"></div>
+    </div>
+
+    <!-- 관리 탭 (관리자만) -->
+    <div class="tab-content" id="tab-admin">
+      <div class="admin-section">
+        <h3>➕ 링크 추가</h3>
+        <div class="add-form">
+          <select id="addCategory">
+            <option value="뉴스">📰 뉴스</option>
+            <option value="유튜브">▶️ 유튜브</option>
+          </select>
+          <input type="text" id="addName" placeholder="이름">
+          <input type="url" id="addUrl" placeholder="URL">
+          <input type="text" id="addDesc" placeholder="설명 (선택)">
+          <input type="text" id="addRss" placeholder="RSS URL (뉴스만, 선택)">
+          <p id="rssHint" style="font-size:.75rem;color:var(--text3);margin:0">💡 뉴스 RSS URL을 입력하세요 (예: https://www.autoherald.co.kr/rss/allArticle.xml)</p>
+          <button class="btn-add" onclick="addTrendLink()">추가</button>
+        </div>
+      </div>
+      <div class="admin-section">
+        <h3>📋 등록된 링크</h3>
+        <div id="adminLinkList" class="link-list"></div>
+      </div>
+    </div>
+
+    <footer style="text-align:center;padding:20px 0;font-size:.72rem;color:var(--text3)">
+      뉴스 출처: 오토헤럴드, 모터그래프 · 영상: YouTube
+    </footer>
+  </div>
+
+  <script src="../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
