@@ -12,22 +12,22 @@ var CATEGORY_ORDER = ['X', '뉴스레터', '유튜브'];
 var THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
 
 var INITIAL_DATA = [
-  { category: 'X', name: '루카스', url: 'https://x.com/lucas_flatwhite', description: 'AI 트렌드 큐레이터', icon: '☕', order: 1 },
-  { category: 'X', name: 'Geek News', url: 'https://x.com/GeekNewsHada', description: '기술 뉴스 큐레이션', icon: '🔍', order: 2 },
-  { category: 'X', name: 'Claude', url: 'https://x.com/claudeai', description: 'Anthropic Claude 공식', icon: '🤖', order: 3 },
-  { category: 'X', name: 'Claude Code Community', url: 'https://x.com/claude_code', description: 'Claude Code 커뮤니티', icon: '💻', order: 4 },
-  { category: 'X', name: 'Google AI', url: 'https://x.com/GoogleAI', description: 'Google AI 공식', icon: '🔵', order: 5 },
-  { category: 'X', name: 'OpenAI', url: 'https://x.com/OpenAI', description: 'OpenAI 공식', icon: '🟢', order: 6 },
-  { category: 'X', name: 'OpenAI Developers', url: 'https://x.com/OpenAIDevs', description: 'OpenAI 개발자 채널', icon: '⚙️', order: 7 },
-  { category: 'X', name: 'Journey', url: 'https://x.com/atmostbeautiful', description: 'AI 인사이트', icon: '🌟', order: 8 },
-  { category: '뉴스레터', name: "Lenny's Newsletter", url: 'https://www.lennysnewsletter.com/', description: '프로덕트 & 성장 뉴스레터', icon: '📝', order: 1, rss: 'https://www.lennysnewsletter.com/feed' },
-  { category: '뉴스레터', name: 'Ali Afridi (Sandhill)', url: 'https://www.sandhill.io/', description: 'AI 스타트업 인사이트', icon: '🏔️', order: 2 },
-  { category: '뉴스레터', name: 'Chamath', url: 'https://chamath.substack.com/', description: '테크 & 투자 뉴스레터', icon: '💰', order: 3, rss: 'https://chamath.substack.com/feed' },
-  { category: '유튜브', name: '빌더조쉬', url: 'https://www.youtube.com/@builderjoshkim', description: 'AI 빌더 콘텐츠', icon: '🔨', order: 1 },
-  { category: '유튜브', name: 'OpenAI', url: 'https://www.youtube.com/@OpenAI', description: 'OpenAI 공식 채널', icon: '🟢', order: 2 },
-  { category: '유튜브', name: 'Anthropic', url: 'https://www.youtube.com/@anthropic-ai', description: 'Anthropic 공식 채널', icon: '🤖', order: 3 },
-  { category: '유튜브', name: 'Species', url: 'https://www.youtube.com/@AISpecies', description: 'AI 리뷰 & 튜토리얼', icon: '🧬', order: 4 },
-  { category: '유튜브', name: 'Mo Bitar', url: 'https://www.youtube.com/@atmoio', description: 'AI 개발 & 인사이트', icon: '🎯', order: 5 },
+  { category: 'X', name: '루카스', url: 'https://x.com/lucas_flatwhite', description: 'AI 트렌드 큐레이터', order: 1 },
+  { category: 'X', name: 'Geek News', url: 'https://x.com/GeekNewsHada', description: '기술 뉴스 큐레이션', order: 2 },
+  { category: 'X', name: 'Claude', url: 'https://x.com/claudeai', description: 'Anthropic Claude 공식', order: 3 },
+  { category: 'X', name: 'Claude Code Community', url: 'https://x.com/claude_code', description: 'Claude Code 커뮤니티', order: 4 },
+  { category: 'X', name: 'Google AI', url: 'https://x.com/GoogleAI', description: 'Google AI 공식', order: 5 },
+  { category: 'X', name: 'OpenAI', url: 'https://x.com/OpenAI', description: 'OpenAI 공식', order: 6 },
+  { category: 'X', name: 'OpenAI Developers', url: 'https://x.com/OpenAIDevs', description: 'OpenAI 개발자 채널', order: 7 },
+  { category: 'X', name: 'Journey', url: 'https://x.com/atmostbeautiful', description: 'AI 인사이트', order: 8 },
+  { category: '뉴스레터', name: "Lenny's Newsletter", url: 'https://www.lennysnewsletter.com/', description: '프로덕트 & 성장 뉴스레터', order: 1, rss: 'https://www.lennysnewsletter.com/feed' },
+  { category: '뉴스레터', name: 'Ali Afridi (Sandhill)', url: 'https://www.sandhill.io/', description: 'AI 스타트업 인사이트', order: 2 },
+  { category: '뉴스레터', name: 'Chamath', url: 'https://chamath.substack.com/', description: '테크 & 투자 뉴스레터', order: 3, rss: 'https://chamath.substack.com/feed' },
+  { category: '유튜브', name: '빌더조쉬', url: 'https://www.youtube.com/@builderjoshkim', description: 'AI 빌더 콘텐츠', order: 1 },
+  { category: '유튜브', name: 'OpenAI', url: 'https://www.youtube.com/@OpenAI', description: 'OpenAI 공식 채널', order: 2 },
+  { category: '유튜브', name: 'Anthropic', url: 'https://www.youtube.com/@anthropic-ai', description: 'Anthropic 공식 채널', order: 3 },
+  { category: '유튜브', name: 'Species', url: 'https://www.youtube.com/@AISpecies', description: 'AI 리뷰 & 튜토리얼', order: 4 },
+  { category: '유튜브', name: 'Mo Bitar', url: 'https://www.youtube.com/@atmoio', description: 'AI 개발 & 인사이트', order: 5 },
 ];
 
 // Firebase 초기화
@@ -160,7 +160,7 @@ async function loadFeed() {
         var resp = await fetch('https://dt-rss.shocguna.workers.dev/api/rss?url=' + encodeURIComponent(nlLinks[i].rss));
         var data = await resp.json();
         (data.items || []).forEach(function(item) {
-          articles.push({ ...item, source: nlLinks[i].name, icon: nlLinks[i].icon || '📰' });
+          articles.push({ ...item, source: nlLinks[i].name });
         });
       } catch(e) {}
     }
@@ -232,7 +232,7 @@ function renderLinks() {
     items.forEach(function(l) {
       var iconHtml = l.thumbnail
         ? '<img class="link-thumb" src="' + l.thumbnail + '" alt="" onerror="this.outerHTML=\'<span class=link-icon>▶️</span>\'">'
-        : '<span class="link-icon">' + (l.category === 'X' ? '𝕏' : l.category === '뉴스레터' ? '📰' : (l.icon || '🔗')) + '</span>';
+        : '<span class="link-icon">' + (l.category === 'X' ? '𝕏' : l.category === '뉴스레터' ? '📰' : '▶️') + '</span>';
       html += '<a href="' + escapeHtml(l.url) + '" target="_blank" class="link-card">'
         + iconHtml
         + '<div class="link-info"><div class="link-name">' + escapeHtml(l.name) + '</div>';
@@ -259,7 +259,7 @@ function renderAdminLinks() {
     html += '<div style="margin-bottom:12px"><div style="font-size:.78rem;color:var(--text3);margin-bottom:6px;font-weight:600">' + (CATEGORY_ICONS[cat] || '') + ' ' + cat + '</div>';
     items.forEach(function(l) {
       html += '<div class="admin-link-item">'
-        + '<span>' + (l.icon || '🔗') + '</span>'
+        + '<span>' + (CATEGORY_ICONS[l.category] || '🔗') + '</span>'
         + '<div class="admin-link-info"><div class="admin-link-name">' + escapeHtml(l.name) + '</div>'
         + '<div class="admin-link-cat">' + escapeHtml(l.url) + '</div></div>'
         + '<button class="link-del" onclick="removeTrendLink(\'' + l.id + '\')">삭제</button>'
