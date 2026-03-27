@@ -690,6 +690,63 @@
   </div>
 
   <!-- Photo Lightbox -->
+  <!-- Auth Modal (로그인/회원가입) -->
+  <div class="modal-overlay" id="authModal" style="z-index:500">
+    <div class="modal" style="max-width:400px">
+      <div class="modal-header">
+        <h3>🔐 로그인</h3>
+        <button class="modal-close" data-modal="authModal">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:20px">
+        <div style="display:flex;gap:4px;background:var(--bg3);padding:4px;margin-bottom:16px">
+          <button class="login-tab active" data-auth-tab="login" onclick="switchAuthTab('login')" style="flex:1;padding:8px;border:none;cursor:pointer;font-weight:600;font-size:.88rem;background:var(--primary);color:#fff">로그인</button>
+          <button class="login-tab" data-auth-tab="signup" onclick="switchAuthTab('signup')" style="flex:1;padding:8px;border:none;cursor:pointer;font-weight:600;font-size:.88rem;background:none;color:var(--text2)">회원가입</button>
+        </div>
+        <!-- 로그인 -->
+        <div id="authLoginPane">
+          <div style="margin-bottom:12px">
+            <label style="font-size:.82rem;color:var(--text2);display:block;margin-bottom:4px">이메일</label>
+            <input type="email" id="authLoginEmail" placeholder="example@email.com" style="width:100%;padding:10px 14px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-size:.92rem" onkeydown="if(event.key==='Enter')authModalLogin()">
+          </div>
+          <div style="margin-bottom:12px">
+            <label style="font-size:.82rem;color:var(--text2);display:block;margin-bottom:4px">비밀번호</label>
+            <input type="password" id="authLoginPassword" placeholder="비밀번호 입력" style="width:100%;padding:10px 14px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-size:.92rem" onkeydown="if(event.key==='Enter')authModalLogin()">
+          </div>
+          <div id="authLoginError" style="color:var(--accent);font-size:.82rem;margin-bottom:8px"></div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:.82rem;color:var(--text2);margin-bottom:12px;cursor:pointer">
+            <input type="checkbox" id="authKeepLogin" checked style="accent-color:var(--primary)"> 로그인 유지
+          </label>
+          <button class="btn btn-primary" style="width:100%;padding:12px;font-size:.92rem" onclick="authModalLogin()">로그인</button>
+          <div style="text-align:center;margin-top:10px">
+            <a href="#" onclick="authModalResend();return false" style="font-size:.78rem;color:var(--primary-light)">인증 메일 재전송</a>
+          </div>
+        </div>
+        <!-- 회원가입 -->
+        <div id="authSignupPane" style="display:none">
+          <div style="margin-bottom:12px">
+            <label style="font-size:.82rem;color:var(--text2);display:block;margin-bottom:4px">닉네임</label>
+            <input type="text" id="authSignupName" placeholder="닉네임 입력" maxlength="12" style="width:100%;padding:10px 14px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-size:.92rem">
+            <p style="font-size:.7rem;color:var(--text3);margin:4px 0 0">⚠️ 비회원에게 공개되므로 실명 사용을 권장하지 않습니다</p>
+          </div>
+          <div style="margin-bottom:12px">
+            <label style="font-size:.82rem;color:var(--text2);display:block;margin-bottom:4px">이메일</label>
+            <input type="email" id="authSignupEmail" placeholder="example@email.com" style="width:100%;padding:10px 14px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-size:.92rem">
+          </div>
+          <div style="margin-bottom:12px">
+            <label style="font-size:.82rem;color:var(--text2);display:block;margin-bottom:4px">비밀번호</label>
+            <input type="password" id="authSignupPassword" placeholder="6자 이상" style="width:100%;padding:10px 14px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-size:.92rem">
+          </div>
+          <div style="margin-bottom:12px">
+            <label style="font-size:.82rem;color:var(--text2);display:block;margin-bottom:4px">비밀번호 확인</label>
+            <input type="password" id="authSignupPasswordConfirm" placeholder="비밀번호 재입력" style="width:100%;padding:10px 14px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-size:.92rem" onkeydown="if(event.key==='Enter')authModalSignup()">
+          </div>
+          <div id="authSignupError" style="color:var(--accent);font-size:.82rem;margin-bottom:8px"></div>
+          <button class="btn btn-primary" style="width:100%;padding:12px;font-size:.92rem" onclick="authModalSignup()">회원가입</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="lightbox" class="lightbox" onclick="closeLightbox()">
     <button class="lightbox-close" onclick="closeLightbox()">✕</button>
     <img id="lightboxImg" src="" alt="" onclick="event.stopPropagation()">

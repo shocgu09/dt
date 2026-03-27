@@ -137,7 +137,7 @@ function initAuth() {
       if (!user.emailVerified) {
         if (state.isSigningUp) return;
         await state.auth.signOut();
-        const errEl = document.getElementById('loginError');
+        var errEl = document.getElementById('authLoginError') || document.getElementById('loginError');
         if (errEl) errEl.textContent = '이메일 인증이 완료되지 않았습니다. 받은 편지함을 확인해 주세요.';
         return;
       }
@@ -186,7 +186,8 @@ function initAuth() {
       state.currentUserId = null;
       state.isGuest = false;
       state.subscribed = false;
-      showLoginScreen();
+      // 자동 게스트 로그인 (로그인 화면 없이 바로 홈)
+      state.auth.signInAnonymously().catch(function() {});
     }
   });
 }
@@ -258,7 +259,8 @@ async function guestLogin() {
 }
 
 function guestToLogin() {
-  state.auth.signOut();
+  openModal('authModal');
+  switchAuthTab('login');
 }
 
 function showToast(msg, duration = 3000) {
@@ -284,9 +286,8 @@ function applyRoleUI() {
   // 렌더링 함수에서 isAdmin 체크하여 처리
 }
 
-async function login(email, password) {
-  var keepLogin = document.getElementById('keepLogin');
-  var persistence = (keepLogin && keepLogin.checked)
+async function login(email, password, keep) {
+  var persistence = keep
     ? firebase.auth.Auth.Persistence.LOCAL
     : firebase.auth.Auth.Persistence.SESSION;
   await state.auth.setPersistence(persistence);
@@ -350,6 +351,69 @@ async function resendVerificationEmail() {
     errEl.style.color = '';
     errEl.textContent = authErrMsg(e.code);
   }
+}
+
+// ===== 인증 모달 =====
+function switchAuthTab(tab) {
+  document.querySelectorAll('[data-auth-tab]').forEach(function(b) { b.classList.toggle('active', b.dataset.authTab === tab); });
+  document.getElementById('authLoginPane').style.display = tab === 'login' ? '' : 'none';
+  document.getElementById('authSignupPane').style.display = tab === 'signup' ? '' : 'none';
+  document.getElementById('authLoginError').textContent = '';
+  document.getElementById('authSignupError').textContent = '';
+}
+
+async function authModalLogin() {
+  var email = document.getElementById('authLoginEmail').value.trim();
+  var password = document.getElementById('authLoginPassword').value;
+  var keep = document.getElementById('authKeepLogin').checked;
+  var errEl = document.getElementById('authLoginError');
+  errEl.textContent = '';
+  if (!email || !password) { errEl.textContent = '이메일과 비밀번호를 입력하세요.'; return; }
+  try {
+    await login(email, password, keep);
+    closeModal('authModal');
+  } catch (e) {
+    errEl.textContent = authErrMsg(e.code);
+  }
+}
+
+async function authModalSignup() {
+  var name = document.getElementById('authSignupName').value.trim();
+  var email = document.getElementById('authSignupEmail').value.trim();
+  var pw = document.getElementById('authSignupPassword').value;
+  var pw2 = document.getElementById('authSignupPasswordConfirm').value;
+  var errEl = document.getElementById('authSignupError');
+  errEl.textContent = '';
+  if (!name || !email || !pw) { errEl.textContent = '모든 항목을 입력하세요.'; return; }
+  if (pw !== pw2) { errEl.textContent = '비밀번호가 일치하지 않습니다.'; return; }
+  if (pw.length < 6) { errEl.textContent = '비밀번호는 6자 이상이어야 합니다.'; return; }
+  try {
+    await signup(name, email, pw);
+    errEl.style.color = 'var(--driver)';
+    errEl.textContent = '✅ 인증 메일을 보냈습니다. 이메일을 확인해 주세요!';
+    document.getElementById('authSignupName').value = '';
+    document.getElementById('authSignupEmail').value = '';
+    document.getElementById('authSignupPassword').value = '';
+    document.getElementById('authSignupPasswordConfirm').value = '';
+  } catch (e) {
+    errEl.style.color = '';
+    errEl.textContent = authErrMsg(e.code);
+  }
+}
+
+async function authModalResend() {
+  var email = document.getElementById('authLoginEmail').value.trim();
+  var password = document.getElementById('authLoginPassword').value;
+  var errEl = document.getElementById('authLoginError');
+  if (!email || !password) { errEl.textContent = '이메일과 비밀번호를 입력 후 재전송 버튼을 눌러주세요.'; return; }
+  try {
+    var cred = await state.auth.signInWithEmailAndPassword(email, password);
+    if (cred.user.emailVerified) { errEl.textContent = '이미 인증된 계정입니다.'; await state.auth.signOut(); return; }
+    await cred.user.sendEmailVerification();
+    await state.auth.signOut();
+    errEl.style.color = 'var(--driver)';
+    errEl.textContent = '✅ 인증 메일을 재전송했습니다.';
+  } catch (e) { errEl.textContent = authErrMsg(e.code); }
 }
 
 async function withdraw() {
@@ -4452,7 +4516,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => closeModal(btn.dataset.modal || btn.closest('.modal-overlay')?.id));
   });
   // 폼 모달은 외부 클릭으로 닫히지 않음 (데이터 손실 방지)
-  const formModals = new Set(['memberModal', 'eventModal', 'galleryFormModal', 'myAccountModal', 'inviteModal', 'noticeEditModal', 'anonEditModal']);
+  const formModals = new Set(['memberModal', 'eventModal', 'galleryFormModal', 'myAccountModal', 'inviteModal', 'noticeEditModal', 'anonEditModal', 'authModal']);
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
     if (formModals.has(overlay.id)) return;
     overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(overlay.id); });
@@ -4557,9 +4621,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const errEl = document.getElementById('loginError');
     errEl.textContent = '';
     try {
+      var keepLogin = document.getElementById('keepLogin');
       await login(
         document.getElementById('loginEmail').value.trim(),
-        document.getElementById('loginPassword').value
+        document.getElementById('loginPassword').value,
+        keepLogin && keepLogin.checked
       );
       // onAuthStateChanged에서 미인증 시 자동 로그아웃되므로 여기서 별도 처리
       // emailVerified 체크는 onAuthStateChanged에서 수행
