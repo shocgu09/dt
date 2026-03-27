@@ -709,6 +709,11 @@ async function maybeSeed() {
 
 /* ===== ROUTING ===== */
 function goPage(name, pushState = true) {
+  if (name === 'anon' && state.isGuest) {
+    alert('로그인 후 이용 가능합니다.');
+    if (typeof guestToLogin === 'function') guestToLogin();
+    return;
+  }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-btn, .bottom-nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + name)?.classList.add('active');
