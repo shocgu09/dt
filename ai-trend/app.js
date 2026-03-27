@@ -83,6 +83,7 @@ async function loadAllData() {
     allLinks = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; });
     renderLinks();
     loadFeed();
+    fillMissingThumbnails();
   } catch(e) {
     document.getElementById('feedContent').innerHTML = '<div class="loading">데이터를 불러올 수 없습니다</div>';
   }
@@ -95,6 +96,25 @@ async function seedInitialData() {
     batch.set(ref, { ...item, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
   });
   await batch.commit();
+}
+
+// 프사 없는 유튜브 링크 자동 업데이트
+async function fillMissingThumbnails() {
+  if (!isAdmin) return; // 관리자만 업데이트 권한
+  var ytLinks = allLinks.filter(function(l) { return l.category === '유튜브' && !l.thumbnail; });
+  for (var i = 0; i < ytLinks.length; i++) {
+    var handleMatch = ytLinks[i].url.match(/@([^\/\?]+)/);
+    if (!handleMatch) continue;
+    try {
+      var resp = await fetch('https://dt-youtube.shocguna.workers.dev/api/channel?handle=' + handleMatch[1]);
+      var data = await resp.json();
+      if (data.thumbnail) {
+        await db.collection('ai_trend_links').doc(ytLinks[i].id).update({ thumbnail: data.thumbnail });
+        ytLinks[i].thumbnail = data.thumbnail;
+      }
+    } catch(e) {}
+  }
+  if (ytLinks.some(function(l) { return l.thumbnail; })) renderLinks();
 }
 
 // ===== 피드 탭 =====
