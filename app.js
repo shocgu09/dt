@@ -2958,7 +2958,7 @@ async function _fetchGasStations() {
     var stations = data.RESULT && data.RESULT.OIL ? data.RESULT.OIL : [];
     if (!stations.length) {
       listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">😢 반경 내 주유소를 찾을 수 없습니다.<br>반경을 늘려보세요.</div>';
-      document.getElementById('gasMap').style.display = 'none';
+      _renderGasMap([]);
       return;
     }
 
@@ -3034,6 +3034,8 @@ function _renderGasMap(stations) {
         });
         _fetchGasStations();
       });
+    } else {
+      _gasMap.setCenter(center);
     }
 
     // 기존 마커 및 인포윈도우 제거
@@ -3084,6 +3086,13 @@ function _renderGasMap(stations) {
       });
     });
 
+    // 결과 있으면 bounds 맞춤, 없으면 center + 적절한 줌
+    if (stations.length > 0) {
+      _gasMap.setBounds(bounds);
+    } else {
+      _gasMap.setCenter(center);
+      _gasMap.setLevel(5);
+    }
     var myLocBtn = document.getElementById('gasMyLocBtn');
     if (myLocBtn) myLocBtn.style.display = 'block';
     setTimeout(function() { _gasMap.relayout(); }, 300);
@@ -3840,7 +3849,7 @@ function _searchNearbyParking() {
   ps.categorySearch('PK6', function(data, status) {
     if (status !== kakao.maps.services.Status.OK || !data.length) {
       listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">😢 주변에 주차장을 찾을 수 없습니다</div>';
-      document.getElementById('parkingMap').style.display = 'none';
+      _renderParkingMap([]);
       return;
     }
     _renderParkingList(data);
@@ -3882,6 +3891,8 @@ function _renderParkingMap(places) {
 
   if (!_parkingMap) {
     _parkingMap = new kakao.maps.Map(mapEl, { center: center, level: 4 });
+  } else {
+    _parkingMap.setCenter(center);
   }
 
   // 기존 마커 제거
@@ -3928,6 +3939,12 @@ function _renderParkingMap(places) {
     });
   });
 
+  if (places.length > 0) {
+    _parkingMap.setBounds(bounds);
+  } else {
+    _parkingMap.setCenter(center);
+    _parkingMap.setLevel(4);
+  }
   setTimeout(function() { _parkingMap.relayout(); }, 300);
 }
 
