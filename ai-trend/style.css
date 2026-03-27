@@ -87,7 +87,7 @@ body {
 }
 .feed-video-channel { font-size: .68rem; color: var(--text3); margin-top: 2px; }
 .feed-video-card.is-short { flex: 0 0 120px; }
-.feed-video-thumb.is-short { width: 120px; height: 160px; }
+.feed-video-thumb.is-short { width: 120px; height: 213px; }
 .feed-article {
   display: flex; align-items: flex-start; gap: 10px; padding: 12px;
   background: var(--bg2); border: 1px solid var(--border); margin-bottom: 8px;
