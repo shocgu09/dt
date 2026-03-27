@@ -301,6 +301,7 @@
         <button class="filter-btn" data-board-filter="공지" onclick="filterBoard('공지')">공지</button>
         <button class="filter-btn" data-board-filter="활동" onclick="filterBoard('활동')">활동</button>
         <button class="filter-btn" data-board-filter="건의" onclick="filterBoard('건의')">건의</button>
+        <button class="filter-btn" data-board-filter="가입인사" onclick="filterBoard('가입인사')">가입인사</button>
         <div style="display:flex;gap:4px;flex:1;min-width:180px">
           <select id="boardSearchType" style="padding:6px 8px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:.78rem">
             <option value="title">제목</option>
@@ -312,10 +313,11 @@
       <div class="anon-write-box member-only">
         <div style="display:flex;gap:8px;margin-bottom:8px">
           <select id="anonCategory" style="padding:8px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:.88rem">
-            <option value="">말머리 선택</option>
+            <option value="">말머리 없음</option>
             <option value="공지">공지</option>
             <option value="활동">활동</option>
             <option value="건의">건의</option>
+            <option value="가입인사">가입인사</option>
           </select>
           <input type="text" id="anonTitleInput" placeholder="제목" maxlength="50" style="flex:1;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:.92rem;font-weight:700">
         </div>
@@ -990,10 +992,11 @@
       <div class="modal-body" style="padding:16px">
         <div style="display:flex;gap:8px;margin-bottom:8px">
           <select id="editAnonCategory" style="padding:8px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:.88rem">
-            <option value="">말머리 선택</option>
+            <option value="">말머리 없음</option>
             <option value="공지">공지</option>
             <option value="활동">활동</option>
             <option value="건의">건의</option>
+            <option value="가입인사">가입인사</option>
           </select>
           <input type="text" id="editAnonTitle" placeholder="제목" maxlength="50" style="flex:1;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:.92rem;font-weight:700">
         </div>
