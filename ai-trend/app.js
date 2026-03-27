@@ -249,18 +249,26 @@ function renderLinks() {
   CATEGORY_ORDER.forEach(function(cat) {
     var items = grouped[cat];
     if (!items || !items.length) return;
+    var catId = cat.replace(/\s/g, '_');
+    var showCount = 3;
     html += '<div class="category-section"><h2>' + (CATEGORY_ICONS[cat] || '') + ' ' + escapeHtml(cat) + '</h2><div class="category-cards">';
-    items.forEach(function(l) {
+    items.forEach(function(l, idx) {
+      var hidden = idx >= showCount ? ' data-link-more-' + catId + ' style="display:none"' : '';
       var iconHtml = l.thumbnail
         ? '<img class="link-thumb" src="' + l.thumbnail + '" alt="" onerror="this.outerHTML=\'<span class=link-icon>▶️</span>\'">'
         : '<span class="link-icon">' + (l.category === 'X' ? '𝕏' : l.category === '뉴스레터' ? '📰' : '▶️') + '</span>';
-      html += '<a href="' + escapeHtml(l.url) + '" target="_blank" class="link-card">'
+      html += '<a href="' + escapeHtml(l.url) + '" target="_blank" class="link-card"' + hidden + '>'
         + iconHtml
         + '<div class="link-info"><div class="link-name">' + escapeHtml(l.name) + '</div>';
       if (l.description) html += '<div class="link-desc">' + escapeHtml(l.description) + '</div>';
       html += '</div><span class="link-arrow">→</span></a>';
     });
-    html += '</div></div>';
+    html += '</div>';
+    if (items.length > showCount) {
+      html += '<button class="feed-more-btn" id="linkMore_' + catId + '" onclick="document.querySelectorAll(\'[data-link-more-' + catId + ']\').forEach(function(e){e.style.display=\'\'});this.style.display=\'none\';document.getElementById(\'linkLess_' + catId + '\').style.display=\'\'">더보기 (' + (items.length - showCount) + '개)</button>';
+      html += '<button class="feed-more-btn" id="linkLess_' + catId + '" style="display:none" onclick="document.querySelectorAll(\'[data-link-more-' + catId + ']\').forEach(function(e){e.style.display=\'none\'});this.style.display=\'none\';document.getElementById(\'linkMore_' + catId + '\').style.display=\'\'">줄이기</button>';
+    }
+    html += '</div>';
   });
   document.getElementById('linkList').innerHTML = html;
 }
