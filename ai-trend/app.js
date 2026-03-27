@@ -199,7 +199,8 @@ async function loadFeed() {
           + '</div></a>';
       });
       if (articles.length > showCount) {
-        html += '<button class="feed-more-btn" onclick="document.querySelectorAll(\'[data-nl-more]\').forEach(function(e){e.style.display=\'\'});this.remove()">더보기 (' + (articles.length - showCount) + '개)</button>';
+        html += '<button class="feed-more-btn" id="nlMoreBtn" onclick="document.querySelectorAll(\'[data-nl-more]\').forEach(function(e){e.style.display=\'\'});this.style.display=\'none\';document.getElementById(\'nlLessBtn\').style.display=\'\'">더보기 (' + (articles.length - showCount) + '개)</button>';
+        html += '<button class="feed-more-btn" id="nlLessBtn" style="display:none" onclick="document.querySelectorAll(\'[data-nl-more]\').forEach(function(e){e.style.display=\'none\'});this.style.display=\'none\';document.getElementById(\'nlMoreBtn\').style.display=\'\'">줄이기</button>';
       }
     } else {
       html += '<div class="feed-empty">뉴스레터가 없습니다</div>';

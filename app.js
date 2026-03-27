@@ -1154,13 +1154,15 @@ function loadYouTubeShorts() {
   state.db.collection('youtube_channels').get().then(function(snap) {
     var channelIds = snap.docs.map(function(d) { return d.id; });
     if (!channelIds.length) return;
-    return fetch('https://dt-youtube.shocguna.workers.dev/api/videos?max=3&channels=' + channelIds.join(','));
+    return fetch('https://dt-youtube.shocguna.workers.dev/api/videos?max=6&channels=' + channelIds.join(','));
   }).then(function(r) { return r ? r.json() : null; })
     .then(function(data) {
       if (!data || !data.videos || !data.videos.length) return;
+      data.videos = data.videos.slice(0, 12); // 최대 12개
       var html = '';
       data.videos.forEach(function(v) {
-        html += '<a href="https://www.youtube.com/shorts/' + v.id + '" target="_blank" class="youtube-short-card">'
+        var ytUrl = v.isShort ? 'https://www.youtube.com/shorts/' + v.id : 'https://www.youtube.com/watch?v=' + v.id;
+        html += '<a href="' + ytUrl + '" target="_blank" class="youtube-short-card">'
           + '<img class="youtube-short-thumb" src="' + v.thumbnail + '" alt="" loading="lazy">'
           + '<div class="youtube-short-title">' + escapeHtml(v.channelTitle || '') + '</div>'
           + '<div class="youtube-short-title" style="color:var(--text3)">' + escapeHtml(v.title) + '</div>'
