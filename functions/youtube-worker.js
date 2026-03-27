@@ -41,10 +41,14 @@ export default {
         // 모든 채널 영상 합치고 날짜순 정렬
         let videos = results.flat().sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
 
-        // 쇼츠 판별: 제목에 #shorts 포함 여부로만 판단
-        videos = videos.map(v => ({
-          ...v,
-          isShort: /\#shorts/i.test(v.title),
+        // 쇼츠 판별: /shorts/ID URL 200 체크 (가장 정확)
+        videos = await Promise.all(videos.map(async (v) => {
+          try {
+            const resp = await fetch('https://www.youtube.com/shorts/' + v.id, { redirect: 'manual' });
+            return { ...v, isShort: resp.status === 200 };
+          } catch(e) {
+            return { ...v, isShort: /\#shorts/i.test(v.title) };
+          }
         }));
 
         return new Response(JSON.stringify({ videos }), {
