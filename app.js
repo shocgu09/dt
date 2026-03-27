@@ -1148,7 +1148,7 @@ function renderHome() {
 
 var _ytLoaded = false;
 function loadYouTubeShorts() {
-  if (_ytLoaded) return;
+  if (_ytLoaded || !state.db) return;
   _ytLoaded = true;
   // Firestore에서 채널 목록 조회
   state.db.collection('youtube_channels').get().then(function(snap) {
