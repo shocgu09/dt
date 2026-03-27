@@ -189,7 +189,7 @@ async function loadFeed() {
     html += '<div class="feed-x-links">';
     xLinks.forEach(function(l) {
       html += '<a href="' + escapeHtml(l.url) + '" target="_blank" class="feed-x-link">'
-        + (l.icon || '🔗') + ' ' + escapeHtml(l.name) + '</a>';
+        + '𝕏 ' + escapeHtml(l.name) + '</a>';
     });
     html += '</div></div>';
   }
@@ -225,8 +225,11 @@ function renderLinks() {
     if (!items || !items.length) return;
     html += '<div class="category-section"><h2>' + (CATEGORY_ICONS[cat] || '') + ' ' + escapeHtml(cat) + '</h2><div class="category-cards">';
     items.forEach(function(l) {
+      var iconHtml = l.thumbnail
+        ? '<img class="link-thumb" src="' + l.thumbnail + '" alt="" onerror="this.outerHTML=\'<span class=link-icon>▶️</span>\'">'
+        : '<span class="link-icon">' + (l.category === 'X' ? '𝕏' : l.category === '뉴스레터' ? '📰' : (l.icon || '🔗')) + '</span>';
       html += '<a href="' + escapeHtml(l.url) + '" target="_blank" class="link-card">'
-        + '<span class="link-icon">' + (l.icon || '🔗') + '</span>'
+        + iconHtml
         + '<div class="link-info"><div class="link-name">' + escapeHtml(l.name) + '</div>';
       if (l.description) html += '<div class="link-desc">' + escapeHtml(l.description) + '</div>';
       html += '</div><span class="link-arrow">→</span></a>';
@@ -297,6 +300,19 @@ async function addTrendLink() {
     allLinks.filter(function(l) { return l.category === category; }).forEach(function(l) { if (l.order > maxOrder) maxOrder = l.order; });
     var data = { category: category, name: name, url: url, description: desc || '', icon: icon || '🔗', order: maxOrder + 1, createdAt: firebase.firestore.FieldValue.serverTimestamp() };
     if (rss) data.rss = rss;
+
+    // 유튜브: 채널 프사 자동 저장
+    if (category === '유튜브') {
+      var handleMatch = url.match(/@([^\/\?]+)/);
+      if (handleMatch) {
+        try {
+          var chResp = await fetch('https://dt-youtube.shocguna.workers.dev/api/channel?handle=' + handleMatch[1]);
+          var chData = await chResp.json();
+          if (chData.thumbnail) data.thumbnail = chData.thumbnail;
+        } catch(e) {}
+      }
+    }
+
     await db.collection('ai_trend_links').add(data);
     ['addName','addUrl','addDesc','addIcon','addRss'].forEach(function(id) { document.getElementById(id).value = ''; });
     await loadAllData();
