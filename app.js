@@ -4304,7 +4304,7 @@ function authErrMsg(code) {
     'auth/too-many-requests': '너무 많은 시도입니다. 잠시 후 다시 시도해주세요.',
     'auth/blacklisted': '가입이 제한된 이메일입니다. 운영진에게 문의하세요.',
   };
-  return map[code] || `오류가 발생했습니다. (${code})`;
+  return map[code] || `오류가 발생했습니다. (${code || '알 수 없는 오류'})`;
 }
 
 /* ===== LOADING OVERLAY ===== */
@@ -4561,7 +4561,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // onAuthStateChanged에서 미인증 시 자동 로그아웃되므로 여기서 별도 처리
       // emailVerified 체크는 onAuthStateChanged에서 수행
     } catch (err) {
-      errEl.textContent = authErrMsg(err.code);
+      errEl.textContent = authErrMsg(err.code || err.message);
     }
   });
 
