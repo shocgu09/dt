@@ -1,5 +1,6 @@
 // YouTube Data API 프록시 Worker
 // 다중 채널 최신 영상을 가져와서 캐싱
+// playlistItems.list (1 unit) 사용 — search.list (100 units) 대비 100배 절약
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -23,14 +24,16 @@ export default {
           return new Response(JSON.stringify({ videos: [] }), { headers: jsonHeaders });
         }
 
-        // 각 채널별 영상 병렬 조회
+        // 각 채널별 영상 병렬 조회 (playlistItems — 1 unit per call)
+        // 채널 ID "UCxxxx" → 업로드 플레이리스트 "UUxxxx"
         const results = await Promise.all(channelIds.map(async (chId) => {
-          const apiUrl = `https://www.googleapis.com/youtube/v3/search?key=${apiKey}&channelId=${chId}&part=snippet&maxResults=${maxPerChannel}&type=video&order=date`;
+          const uploadsId = 'UU' + chId.slice(2);
+          const apiUrl = `https://www.googleapis.com/youtube/v3/playlistItems?key=${apiKey}&playlistId=${uploadsId}&part=snippet&maxResults=${maxPerChannel}`;
           const resp = await fetch(apiUrl, { cf: { cacheTtl: 3600 } });
           const data = await resp.json();
           if (data.error) return [];
           return (data.items || []).map(item => ({
-            id: item.id.videoId,
+            id: item.snippet.resourceId.videoId,
             title: item.snippet.title,
             thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url,
             channelTitle: item.snippet.channelTitle,
