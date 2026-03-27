@@ -354,7 +354,12 @@ async function resendVerificationEmail() {
 
 // ===== 인증 모달 =====
 function switchAuthTab(tab) {
-  document.querySelectorAll('[data-auth-tab]').forEach(function(b) { b.classList.toggle('active', b.dataset.authTab === tab); });
+  document.querySelectorAll('[data-auth-tab]').forEach(function(b) {
+    var isActive = b.dataset.authTab === tab;
+    b.classList.toggle('active', isActive);
+    b.style.background = isActive ? 'var(--primary)' : 'none';
+    b.style.color = isActive ? '#fff' : 'var(--text2)';
+  });
   document.getElementById('authLoginPane').style.display = tab === 'login' ? '' : 'none';
   document.getElementById('authSignupPane').style.display = tab === 'signup' ? '' : 'none';
   document.getElementById('authLoginError').textContent = '';

@@ -599,9 +599,9 @@
         <button class="modal-close" data-modal="authModal">&times;</button>
       </div>
       <div class="modal-body" style="padding:20px">
-        <div style="display:flex;gap:4px;background:var(--bg3);padding:4px;margin-bottom:16px">
-          <button class="login-tab active" data-auth-tab="login" onclick="switchAuthTab('login')" style="flex:1;padding:8px;border:none;cursor:pointer;font-weight:600;font-size:.88rem;background:var(--primary);color:#fff">로그인</button>
-          <button class="login-tab" data-auth-tab="signup" onclick="switchAuthTab('signup')" style="flex:1;padding:8px;border:none;cursor:pointer;font-weight:600;font-size:.88rem;background:none;color:var(--text2)">회원가입</button>
+        <div style="display:flex;gap:4px;background:var(--bg3);padding:4px;border-radius:8px;margin-bottom:16px">
+          <button class="login-tab active" data-auth-tab="login" onclick="switchAuthTab('login')" style="flex:1;padding:8px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:.88rem">로그인</button>
+          <button class="login-tab" data-auth-tab="signup" onclick="switchAuthTab('signup')" style="flex:1;padding:8px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:.88rem">회원가입</button>
         </div>
         <!-- 로그인 -->
         <div id="authLoginPane">
@@ -625,8 +625,8 @@
         <!-- 회원가입 -->
         <div id="authSignupPane" style="display:none">
           <div style="margin-bottom:12px">
-            <label style="font-size:.82rem;color:var(--text2);display:block;margin-bottom:4px">닉네임</label>
-            <input type="text" id="authSignupName" placeholder="닉네임 입력" maxlength="12" style="width:100%;padding:10px 14px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-size:.92rem">
+            <label style="font-size:.82rem;color:var(--text2);display:block;margin-bottom:4px">이름</label>
+            <input type="text" id="authSignupName" placeholder="이름 입력" maxlength="12" style="width:100%;padding:10px 14px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-size:.92rem">
             <p style="font-size:.7rem;color:var(--text3);margin:4px 0 0">⚠️ 비회원에게 공개되므로 실명 사용을 권장하지 않습니다</p>
           </div>
           <div style="margin-bottom:12px">
