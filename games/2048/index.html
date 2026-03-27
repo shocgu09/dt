@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>2048 자동차 - DT Club</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="../../icon-192.png">
+</head>
+<body>
+  <div class="game-container">
+    <header class="game-header">
+      <a href="../../" class="back-btn">← 홈</a>
+      <h1>🚗 2048 자동차</h1>
+      <button id="themeToggle" onclick="toggleTheme()" class="theme-btn">🌙</button>
+    </header>
+
+    <div class="score-bar">
+      <div class="score-box">
+        <div class="score-label">점수</div>
+        <div class="score-value" id="score">0</div>
+      </div>
+      <div class="score-box">
+        <div class="score-label">최고</div>
+        <div class="score-value" id="bestScore">0</div>
+      </div>
+    </div>
+
+    <div class="board-wrap">
+      <div class="board" id="board"></div>
+      <div class="game-overlay" id="gameOverlay" style="display:none">
+        <div class="overlay-content">
+          <h2 id="overlayTitle">게임 오버</h2>
+          <p id="overlayScore"></p>
+          <button class="btn-restart" onclick="restartGame()">🔄 다시하기</button>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn-restart" onclick="restartGame()" style="margin-top:12px">🔄 다시하기</button>
+
+    <div class="ranking-section">
+      <h3>🏆 랭킹 TOP 10</h3>
+      <div id="rankingList" class="ranking-list">
+        <div class="ranking-loading">로그인하면 랭킹에 참여할 수 있습니다</div>
+      </div>
+    </div>
+
+    <div class="guide">
+      <p>📱 스와이프 또는 ⌨️ 화살표 키로 조작</p>
+      <p>같은 탈것끼리 합쳐서 🚀 로켓을 만들어보세요!</p>
+    </div>
+  </div>
+
+  <script src="../../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>

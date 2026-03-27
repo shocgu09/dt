@@ -157,5 +157,14 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ── game_scores 컬렉션 (미니게임 랭킹) ──────────────────
+    // - 모든 사용자 읽기 가능 (랭킹 조회)
+    // - 실제 회원만 자기 점수 생성/수정
+    match /game_scores/{uid} {
+      allow read: if true;
+      allow create: if isRealUser() && request.auth.uid == uid;
+      allow update: if isRealUser() && request.auth.uid == uid;
+    }
+
   }
 }
