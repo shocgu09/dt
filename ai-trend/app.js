@@ -212,6 +212,7 @@ async function loadFeed() {
   var xLinks = allLinks.filter(function(l) { return l.category === 'X'; });
   if (xLinks.length) {
     html += '<div class="feed-section"><div class="feed-section-title">𝕏 X 바로가기</div>';
+    html += '<div style="font-size:.75rem;color:var(--text3);margin-bottom:8px;padding:8px 10px;background:var(--bg3);border:1px solid var(--border)">⚠️ X는 자동 피드를 지원하지 않습니다. 링크를 직접 방문하여 최신 소식을 확인하세요.</div>';
     html += '<div class="feed-x-links">';
     xLinks.forEach(function(l) {
       html += '<a href="' + escapeHtml(l.url) + '" target="_blank" class="feed-x-link">'
