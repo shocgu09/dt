@@ -167,15 +167,20 @@ async function loadFeed() {
     articles.sort(function(a, b) { return new Date(b.pubDate) - new Date(a.pubDate); });
 
     if (articles.length) {
-      articles.forEach(function(a) {
-        html += '<a href="' + escapeHtml(a.link) + '" target="_blank" class="feed-article">'
-          + '<span class="feed-article-icon">' + a.icon + '</span>'
+      var showCount = 3;
+      articles.forEach(function(a, idx) {
+        var hidden = idx >= showCount ? ' style="display:none" data-nl-more' : '';
+        html += '<a href="' + escapeHtml(a.link) + '" target="_blank" class="feed-article"' + hidden + '>'
+          + '<span class="feed-article-icon">📰</span>'
           + '<div class="feed-article-info">'
           + '<div class="feed-article-title">' + escapeHtml(a.title) + '</div>';
         if (a.description) html += '<div class="feed-article-desc">' + escapeHtml(a.description) + '</div>';
         html += '<div class="feed-article-meta">' + escapeHtml(a.source) + ' · ' + timeAgo(a.pubDate) + '</div>'
           + '</div></a>';
       });
+      if (articles.length > showCount) {
+        html += '<button class="feed-more-btn" onclick="document.querySelectorAll(\'[data-nl-more]\').forEach(function(e){e.style.display=\'\'});this.remove()">더보기 (' + (articles.length - showCount) + '개)</button>';
+      }
     } else {
       html += '<div class="feed-empty">뉴스레터가 없습니다</div>';
     }
@@ -284,7 +289,6 @@ async function addTrendLink() {
   var name = document.getElementById('addName').value.trim();
   var url = document.getElementById('addUrl').value.trim();
   var desc = document.getElementById('addDesc').value.trim();
-  var icon = document.getElementById('addIcon').value.trim();
   var rss = document.getElementById('addRss').value.trim();
   if (!name || !url) { alert('이름과 URL을 입력하세요.'); return; }
 
@@ -298,7 +302,7 @@ async function addTrendLink() {
   try {
     var maxOrder = 0;
     allLinks.filter(function(l) { return l.category === category; }).forEach(function(l) { if (l.order > maxOrder) maxOrder = l.order; });
-    var data = { category: category, name: name, url: url, description: desc || '', icon: icon || '🔗', order: maxOrder + 1, createdAt: firebase.firestore.FieldValue.serverTimestamp() };
+    var data = { category: category, name: name, url: url, description: desc || '', order: maxOrder + 1, createdAt: firebase.firestore.FieldValue.serverTimestamp() };
     if (rss) data.rss = rss;
 
     // 유튜브: 채널 프사 자동 저장
@@ -314,7 +318,7 @@ async function addTrendLink() {
     }
 
     await db.collection('ai_trend_links').add(data);
-    ['addName','addUrl','addDesc','addIcon','addRss'].forEach(function(id) { document.getElementById(id).value = ''; });
+    ['addName','addUrl','addDesc','addRss'].forEach(function(id) { document.getElementById(id).value = ''; });
     await loadAllData();
     renderAdminLinks();
   } catch(e) { alert('추가 실패: ' + e.message); }
