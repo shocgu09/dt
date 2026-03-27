@@ -128,9 +128,7 @@ async function loadFeed() {
       if (channelIds.length) {
         var vResp = await fetch('https://dt-youtube.shocguna.workers.dev/api/videos?max=3&channels=' + channelIds.join(','));
         var vData = await vResp.json();
-        var recentVideos = (vData.videos || []).filter(function(v) {
-          return (now - new Date(v.publishedAt).getTime()) < THREE_DAYS;
-        });
+        var recentVideos = vData.videos || [];
 
         if (recentVideos.length) {
           html += '<div class="feed-scroll">';
@@ -143,7 +141,7 @@ async function loadFeed() {
           });
           html += '</div>';
         } else {
-          html += '<div class="feed-empty">최근 3일간 새 영상이 없습니다</div>';
+          html += '<div class="feed-empty">영상이 없습니다</div>';
         }
       }
     } catch(e) {
@@ -162,10 +160,7 @@ async function loadFeed() {
         var resp = await fetch('https://dt-rss.shocguna.workers.dev/api/rss?url=' + encodeURIComponent(nlLinks[i].rss));
         var data = await resp.json();
         (data.items || []).forEach(function(item) {
-          var pubTime = new Date(item.pubDate).getTime();
-          if ((now - pubTime) < THREE_DAYS) {
-            articles.push({ ...item, source: nlLinks[i].name, icon: nlLinks[i].icon || '📰' });
-          }
+          articles.push({ ...item, source: nlLinks[i].name, icon: nlLinks[i].icon || '📰' });
         });
       } catch(e) {}
     }
@@ -182,7 +177,7 @@ async function loadFeed() {
           + '</div></a>';
       });
     } else {
-      html += '<div class="feed-empty">최근 3일간 새 뉴스레터가 없습니다</div>';
+      html += '<div class="feed-empty">뉴스레터가 없습니다</div>';
     }
     html += '</div>';
   }
