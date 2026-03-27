@@ -39,7 +39,31 @@ export default {
         }));
 
         // 모든 채널 영상 합치고 날짜순 정렬
-        const videos = results.flat().sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+        let videos = results.flat().sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+
+        // 영상 duration 조회 → 쇼츠 판별 (60초 이하)
+        if (videos.length) {
+          const ids = videos.map(v => v.id).join(',');
+          try {
+            const detailResp = await fetch(`https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&id=${ids}&part=contentDetails`, { cf: { cacheTtl: 3600 } });
+            const detailData = await detailResp.json();
+            const durationMap = {};
+            (detailData.items || []).forEach(item => {
+              const dur = item.contentDetails.duration; // PT1M30S, PT45S 등
+              const match = dur.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+              if (match) {
+                const secs = (parseInt(match[1] || 0) * 3600) + (parseInt(match[2] || 0) * 60) + parseInt(match[3] || 0);
+                durationMap[item.id] = secs;
+              }
+            });
+            videos = videos.map(v => {
+              const dur = durationMap[v.id] || 0;
+              const titleHasShorts = /\#shorts/i.test(v.title);
+              const isShort = dur <= 60 || titleHasShorts;
+              return { ...v, duration: dur, isShort };
+            });
+          } catch(e) {}
+        }
 
         return new Response(JSON.stringify({ videos }), {
           headers: { ...jsonHeaders, 'Cache-Control': 'public, max-age=3600' }

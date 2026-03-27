@@ -1162,8 +1162,9 @@ function loadYouTubeShorts() {
       var html = '';
       data.videos.forEach(function(v) {
         var ytUrl = v.isShort ? 'https://www.youtube.com/shorts/' + v.id : 'https://www.youtube.com/watch?v=' + v.id;
-        html += '<a href="' + ytUrl + '" target="_blank" class="youtube-short-card">'
-          + '<img class="youtube-short-thumb" src="' + v.thumbnail + '" alt="" loading="lazy">'
+        var shortsBadge = v.isShort ? '<span style="position:absolute;top:4px;left:4px;background:rgba(255,0,0,.85);color:#fff;font-size:.6rem;font-weight:700;padding:2px 6px;border-radius:3px">Shorts</span>' : '';
+        html += '<a href="' + ytUrl + '" target="_blank" class="youtube-short-card" style="position:relative">'
+          + '<div style="position:relative"><img class="youtube-short-thumb" src="' + v.thumbnail + '" alt="" loading="lazy">' + shortsBadge + '</div>'
           + '<div class="youtube-short-title">' + escapeHtml(v.channelTitle || '') + '</div>'
           + '<div class="youtube-short-title" style="color:var(--text3)">' + escapeHtml(v.title) + '</div>'
           + '</a>';

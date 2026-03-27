@@ -153,8 +153,10 @@ async function loadFeed() {
         if (recentVideos.length) {
           html += '<div class="feed-scroll">';
           recentVideos.forEach(function(v) {
-            html += '<a href="https://www.youtube.com/watch?v=' + v.id + '" target="_blank" class="feed-video-card">'
-              + '<img class="feed-video-thumb" src="' + v.thumbnail + '" alt="" loading="lazy">'
+            var ytUrl = v.isShort ? 'https://www.youtube.com/shorts/' + v.id : 'https://www.youtube.com/watch?v=' + v.id;
+            var shortsBadge = v.isShort ? '<span style="position:absolute;top:4px;left:4px;background:rgba(255,0,0,.85);color:#fff;font-size:.6rem;font-weight:700;padding:2px 6px;border-radius:3px">Shorts</span>' : '';
+            html += '<a href="' + ytUrl + '" target="_blank" class="feed-video-card">'
+              + '<div style="position:relative"><img class="feed-video-thumb" src="' + v.thumbnail + '" alt="" loading="lazy">' + shortsBadge + '</div>'
               + '<div class="feed-video-title">' + escapeHtml(v.title) + '</div>'
               + '<div class="feed-video-channel">' + escapeHtml(v.channelTitle || '') + ' · ' + timeAgo(v.publishedAt) + '</div>'
               + '</a>';
