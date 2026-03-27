@@ -1140,6 +1140,30 @@ function renderHome() {
 
   // 날씨 로드
   loadWeather();
+
+  // YouTube 쇼츠 로드
+  loadYouTubeShorts();
+}
+
+var _ytLoaded = false;
+function loadYouTubeShorts() {
+  if (_ytLoaded) return;
+  _ytLoaded = true;
+  fetch('https://dt-youtube.shocguna.workers.dev/api/videos?max=6')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.videos || !data.videos.length) return;
+      var html = '';
+      data.videos.forEach(function(v) {
+        html += '<a href="https://www.youtube.com/shorts/' + v.id + '" target="_blank" class="youtube-short-card">'
+          + '<img class="youtube-short-thumb" src="' + v.thumbnail + '" alt="" loading="lazy">'
+          + '<div class="youtube-short-title">' + escapeHtml(v.title) + '</div>'
+          + '</a>';
+      });
+      document.getElementById('youtubeShorts').innerHTML = html;
+      document.getElementById('youtubeSection').style.display = '';
+    })
+    .catch(function() {});
 }
 
 var _weatherLoaded = false;

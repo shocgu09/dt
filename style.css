@@ -140,6 +140,27 @@ main { padding: calc(80px + env(safe-area-inset-top, 0px)) 20px 24px; max-width:
 .home-tool-card:hover { border-color: var(--primary); transform: translate(-2px,-2px); box-shadow: 3px 3px 0 rgba(124,111,255,.2); }
 .home-tool-icon { font-size: 1.8rem; }
 .home-tool-name { font-size: .78rem; font-weight: 600; color: var(--text2); text-align: center; }
+.youtube-shorts { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px; -webkit-overflow-scrolling: touch; }
+.youtube-shorts::-webkit-scrollbar { height: 4px; }
+.youtube-shorts::-webkit-scrollbar-thumb { background: var(--border); }
+.youtube-short-card {
+  flex: 0 0 140px; text-decoration: none; color: var(--text); transition: transform .15s;
+}
+.youtube-short-card:hover { transform: translateY(-2px); }
+.youtube-short-thumb {
+  width: 140px; height: 248px; object-fit: cover; border: 1px solid var(--border);
+  background: var(--bg3);
+}
+.youtube-short-title {
+  font-size: .72rem; color: var(--text2); margin-top: 6px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; line-height: 1.3;
+}
+.youtube-more {
+  display: block; text-align: center; margin-top: 10px;
+  font-size: .82rem; color: var(--primary); text-decoration: none; font-weight: 600;
+}
+.youtube-more:hover { color: var(--primary-light); }
 .home-links { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .home-link-card {
   display: flex; align-items: center; gap: 16px;
