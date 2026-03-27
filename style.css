@@ -226,7 +226,7 @@ main { padding: calc(80px + env(safe-area-inset-top, 0px)) 20px 24px; max-width:
   background: var(--bg2); border: 1px solid var(--border);
   color: var(--text2); padding: 7px 16px; border-radius: 0;
   cursor: pointer; font-size: .82rem; font-weight: 600; transition: var(--transition);
-  letter-spacing: .3px;
+  letter-spacing: .3px; white-space: nowrap; flex-shrink: 0;
 }
 .filter-btn:hover { border-color: var(--primary); color: var(--text); }
 .filter-btn.active { background: var(--primary); border-color: var(--primary); color: #fff;
@@ -783,6 +783,7 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 }
 .anon-write-footer {
   display: flex; justify-content: space-between; align-items: center; margin-top: 8px;
+  flex-wrap: wrap; gap: 8px;
 }
 .anon-char-count { font-size: .75rem; color: var(--text3); }
 .anon-photo-btn { cursor: pointer; font-size: 1.1rem; }
@@ -1001,7 +1002,9 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 
   /* Filter bar */
   .filter-bar { flex-wrap: wrap; gap: 6px; }
+  .filter-btn { padding: 6px 10px; font-size: .78rem; }
   .filter-bar .search-input { width: 100%; margin-top: 4px; }
+  .anon-write-footer { gap: 6px; }
 
   /* Forms */
   .form-row { grid-template-columns: 1fr; }

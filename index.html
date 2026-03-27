@@ -326,10 +326,10 @@
             <span id="anonImageName" style="font-size:.72rem;color:var(--text3)"></span>
             <span class="anon-char-count"><span id="anonCharCount">0</span>/1000</span>
           </div>
-          <label style="display:flex;align-items:center;gap:4px;font-size:.8rem;color:var(--text2);cursor:pointer"><input type="checkbox" id="anonAnonymous" style="accent-color:var(--primary)"> 익명</label>
-          <label style="display:flex;align-items:center;gap:4px;font-size:.8rem;color:var(--text2);cursor:pointer"><input type="checkbox" id="anonNoComment" style="accent-color:var(--primary)"> 댓글 막기</label>
-          <button class="btn" onclick="refineWithAI()" id="btnAiRefine" style="padding:6px 12px;font-size:.78rem;background:var(--bg3);border:1px solid var(--border);color:var(--text2)">✨ AI 정리</button>
-          <button class="btn btn-primary" onclick="postAnon()">작성하기</button>
+          <label style="display:flex;align-items:center;gap:4px;font-size:.8rem;color:var(--text2);cursor:pointer;white-space:nowrap"><input type="checkbox" id="anonAnonymous" style="accent-color:var(--primary)"> 익명</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:.8rem;color:var(--text2);cursor:pointer;white-space:nowrap"><input type="checkbox" id="anonNoComment" style="accent-color:var(--primary)"> 댓글 막기</label>
+          <button class="btn" onclick="refineWithAI()" id="btnAiRefine" style="padding:6px 12px;font-size:.78rem;background:var(--bg3);border:1px solid var(--border);color:var(--text2);white-space:nowrap">✨ AI 정리</button>
+          <button class="btn btn-primary" style="white-space:nowrap" onclick="postAnon()">작성하기</button>
         </div>
         <div id="anonImagePreview" style="margin-top:8px"></div>
       </div>
