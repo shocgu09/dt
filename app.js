@@ -1227,13 +1227,12 @@ function loadYouTubeShorts() {
   state.db.collection('youtube_channels').get().then(function(snap) {
     var channelIds = snap.docs.map(function(d) { return d.id; });
     if (!channelIds.length) return;
-    return fetch('https://dt-youtube.shocguna.workers.dev/api/videos?max=6&channels=' + channelIds.join(','));
+    return fetch('https://dt-youtube.shocguna.workers.dev/api/videos?max=50&channels=' + channelIds.join(','));
   }).then(function(r) { return r ? r.json() : null; })
     .then(function(data) {
       if (!data || !data.videos || !data.videos.length) return;
-      data.videos = data.videos.slice(0, 12);
-      var videos = data.videos.filter(function(v) { return !v.isShort; });
-      var shorts = data.videos.filter(function(v) { return v.isShort; });
+      var videos = data.videos.filter(function(v) { return !v.isShort; }).slice(0, 15);
+      var shorts = data.videos.filter(function(v) { return v.isShort; }).slice(0, 15);
       var html = '';
       function renderYtSection(title, list, isShort) {
         html += '<div style="font-size:.85rem;font-weight:700;color:var(--text2);margin:' + (html ? '16px' : '0') + ' 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border)">' + title + '</div>';

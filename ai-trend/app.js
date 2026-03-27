@@ -146,13 +146,13 @@ async function loadFeed() {
       }
 
       if (channelIds.length) {
-        var vResp = await fetch('https://dt-youtube.shocguna.workers.dev/api/videos?max=3&channels=' + channelIds.join(','));
+        var vResp = await fetch('https://dt-youtube.shocguna.workers.dev/api/videos?max=50&channels=' + channelIds.join(','));
         var vData = await vResp.json();
         var recentVideos = vData.videos || [];
 
         if (recentVideos.length) {
-          var rvVideos = recentVideos.filter(function(v) { return !v.isShort; });
-          var rvShorts = recentVideos.filter(function(v) { return v.isShort; });
+          var rvVideos = recentVideos.filter(function(v) { return !v.isShort; }).slice(0, 15);
+          var rvShorts = recentVideos.filter(function(v) { return v.isShort; }).slice(0, 15);
           function renderFeedVideos(list, isShort) {
             html += '<div class="feed-scroll">';
             list.forEach(function(v) {
