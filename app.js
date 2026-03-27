@@ -1226,11 +1226,12 @@ function loadYouTubeShorts() {
       var videos = data.videos.filter(function(v) { return !v.isShort; });
       var shorts = data.videos.filter(function(v) { return v.isShort; });
       var html = '';
-      if (videos.length) {
-        html += '<div style="font-size:.82rem;font-weight:700;color:var(--text2);margin-bottom:6px">▶️ 동영상</div>';
+      function renderYtSection(title, list, isShort) {
+        html += '<div style="font-size:.85rem;font-weight:700;color:var(--text2);margin:' + (html ? '16px' : '0') + ' 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border)">' + title + '</div>';
         html += '<div class="youtube-shorts">';
-        videos.forEach(function(v) {
-          html += '<a href="https://www.youtube.com/watch?v=' + v.id + '" target="_blank" class="youtube-short-card">'
+        list.forEach(function(v) {
+          var url = isShort ? 'https://www.youtube.com/shorts/' + v.id : 'https://www.youtube.com/watch?v=' + v.id;
+          html += '<a href="' + url + '" target="_blank" class="youtube-short-card">'
             + '<img class="youtube-short-thumb" src="' + v.thumbnail + '" alt="" loading="lazy">'
             + '<div class="youtube-short-title">' + escapeHtml(v.channelTitle || '') + '</div>'
             + '<div class="youtube-short-title" style="color:var(--text3)">' + escapeHtml(v.title) + '</div>'
@@ -1238,18 +1239,8 @@ function loadYouTubeShorts() {
         });
         html += '</div>';
       }
-      if (shorts.length) {
-        html += '<div style="font-size:.82rem;font-weight:700;color:var(--text2);margin:12px 0 6px">🎬 Shorts</div>';
-        html += '<div class="youtube-shorts">';
-        shorts.forEach(function(v) {
-          html += '<a href="https://www.youtube.com/shorts/' + v.id + '" target="_blank" class="youtube-short-card">'
-            + '<img class="youtube-short-thumb" src="' + v.thumbnail + '" alt="" loading="lazy">'
-            + '<div class="youtube-short-title">' + escapeHtml(v.channelTitle || '') + '</div>'
-            + '<div class="youtube-short-title" style="color:var(--text3)">' + escapeHtml(v.title) + '</div>'
-            + '</a>';
-        });
-        html += '</div>';
-      }
+      if (videos.length) renderYtSection('▶️ 동영상', videos, false);
+      if (shorts.length) renderYtSection('🎬 Shorts', shorts, true);
       document.getElementById('youtubeShorts').innerHTML = html;
       document.getElementById('youtubeSection').style.display = '';
     })
