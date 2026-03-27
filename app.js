@@ -203,7 +203,8 @@ function updateNavUserName() {
 }
 
 function showApp() {
-  document.getElementById('loginScreen').classList.add('hidden');
+  var ls = document.getElementById('loginScreen');
+  if (ls) ls.classList.add('hidden');
   const isGuest = state.isGuest;
 
   // 게스트/회원 전용 UI 토글
@@ -278,7 +279,8 @@ function showToast(msg, duration = 3000) {
 }
 
 function showLoginScreen() {
-  document.getElementById('loginScreen').classList.remove('hidden');
+  // 로그인 페이지 삭제됨: authModal로 대체
+  if (typeof guestToLogin === 'function') guestToLogin();
 }
 
 function applyRoleUI() {

@@ -599,90 +599,7 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 .hidden { display: none !important; }
 
 /* ===== LOGIN SCREEN ===== */
-.login-screen {
-  position: fixed; inset: 0; z-index: 500;
-  background: var(--bg);
-  display: grid;
-  grid-template-columns: 1fr 420px;
-  grid-template-rows: 100vh;
-  overflow-y: auto;
-  padding-top: env(safe-area-inset-top, 0px);
-}
-.login-screen.hidden { display: none !important; }
-
-/* 랜딩 콘텐츠 (왼쪽 전체) */
-.landing-content {
-  display: flex; flex-direction: column; justify-content: space-between;
-  padding: 48px 56px;
-  background: linear-gradient(160deg, rgba(108,99,255,.07) 0%, transparent 55%);
-  border-right: 1px solid var(--border);
-  height: 100%;
-}
-.landing-logo {
-  font-size: 1.2rem; font-weight: 800; color: var(--primary-light);
-  letter-spacing: 2px; text-transform: uppercase;
-}
-.landing-main { flex: 1; display: flex; flex-direction: column; justify-content: center; }
-.landing-title {
-  font-size: 2.4rem; font-weight: 800; line-height: 1.2; margin-bottom: 16px;
-}
-.landing-title span { color: var(--primary-light); }
-.landing-desc {
-  color: var(--text2); font-size: .95rem; line-height: 1.8; margin-bottom: 32px;
-  max-width: 420px;
-}
-.landing-features {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 36px;
-  max-width: 480px;
-}
-.landing-feature {
-  display: flex; align-items: flex-start; gap: 10px;
-  background: rgba(255,255,255,.03); border: 1px solid var(--border);
-  border-radius: 12px; padding: 14px 16px;
-  transition: border-color .2s;
-}
-.landing-feature:hover { border-color: rgba(108,99,255,.4); }
-.landing-feature-icon { font-size: 1.3rem; flex-shrink: 0; }
-.landing-feature strong { display: block; font-size: .88rem; margin-bottom: 4px; }
-.landing-feature p { font-size: .78rem; color: var(--text2); line-height: 1.5; margin: 0; }
-.landing-footer-links {
-  display: flex; gap: 20px; flex-wrap: wrap;
-}
-.landing-footer-links a {
-  font-size: .82rem; color: var(--text3); text-decoration: none;
-  transition: color .2s;
-}
-.landing-footer-links a:hover { color: var(--primary-light); }
-
-/* 오른쪽 로그인 박스 */
-.login-box {
-  display: flex; flex-direction: column; justify-content: center;
-  background: var(--bg2);
-  padding: 48px 40px;
-  height: 100%;
-  border-left: 1px solid var(--border);
-}
-.login-brand {
-  text-align: center; font-size: 1.5rem; font-weight: 800;
-  color: var(--primary-light); margin-bottom: 24px; letter-spacing: 2px; text-transform: uppercase;
-}
-.login-brand span { font-size: 1.8rem; }
-.login-tabs { display: flex; gap: 4px; background: var(--bg3); border-radius: 0; padding: 4px; margin-bottom: 24px; }
-.login-tab {
-  flex: 1; padding: 8px; border: none; background: none; cursor: pointer;
-  color: var(--text2); font-size: .9rem; font-weight: 600; border-radius: 0; transition: var(--transition);
-}
-.login-tab.active { background: var(--primary); color: #fff; }
-.auth-form .btn { margin-top: 4px; }
-.auth-error {
-  color: var(--accent); font-size: .82rem; margin-bottom: 8px;
-  min-height: 20px; line-height: 1.5;
-}
-.resend-verify-btn {
-  background: none; border: none; color: var(--text3); font-size: .8rem;
-  cursor: pointer; text-decoration: underline; padding: 0;
-}
-.resend-verify-btn:hover { color: var(--primary-light); }
+/* 로그인 페이지 CSS 삭제됨: authModal로 대체 */
 
 /* ===== ADMIN PAGE ===== */
 .admin-grid { display: grid; gap: 20px; }
@@ -979,22 +896,6 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 .bottom-nav-btn.active svg { transform: scale(1.1); }
 
 /* ===== RESPONSIVE ===== */
-@media (max-width: 900px) {
-  .login-screen { display: flex; flex-direction: column; }
-  .login-box { order: 1; min-height: auto; padding: 36px 28px 48px; }
-  .landing-content {
-    order: 2; min-height: auto; padding: 32px 28px 28px;
-    border-right: none; border-top: 1px solid var(--border);
-  }
-  .landing-title { font-size: 1.8rem; }
-  .landing-features { max-width: 100%; }
-}
-@media (max-width: 480px) {
-  .landing-features { grid-template-columns: 1fr; }
-  .landing-title { font-size: 1.5rem; }
-  .landing-content { padding: 36px 20px 28px; }
-  .login-box { padding: 28px 20px 40px; }
-}
 
 @media (max-width: 768px) {
   /* Navbar */
@@ -1409,19 +1310,7 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 }
 
 /* ===== GUEST MODE ===== */
-.guest-divider {
-  display: flex; align-items: center; gap: 12px; margin: 18px 0 14px;
-  color: var(--text3); font-size: .82rem;
-}
-.guest-divider::before, .guest-divider::after {
-  content: ''; flex: 1; height: 1px; background: var(--border);
-}
-.btn-guest {
-  display: block; width: 100%; padding: 12px; border-radius: 0;
-  background: transparent; border: 1px dashed var(--border);
-  color: var(--text2); font-size: .92rem; cursor: pointer; transition: all .2s;
-}
-.btn-guest:hover { border-color: var(--primary); color: var(--primary-light); background: rgba(124,58,237,.06); }
+/* guest-divider, btn-guest 삭제됨 */
 
 .guest-cta-box {
   margin-top: 16px; padding: 16px; border-radius: 12px;
