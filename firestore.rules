@@ -174,5 +174,13 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ── ai_trend_links 컬렉션 (AI 트렌드 링크) ──────────────
+    // - 모든 사용자 읽기 가능
+    // - 관리자만 추가/삭제
+    match /ai_trend_links/{linkId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
   }
 }
