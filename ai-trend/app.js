@@ -1,5 +1,23 @@
 /* ===== AI 트렌드 - DT Club ===== */
 
+// YouTube 인페이지 모달 플레이어
+function openYtModal(id, isShort) {
+  var existing = document.getElementById('ytModal');
+  if (existing) existing.remove();
+  var embedUrl = 'https://www.youtube.com/embed/' + id + '?autoplay=1&rel=0';
+  var modal = document.createElement('div');
+  modal.id = 'ytModal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:16px';
+  var sizeStyle = isShort ? 'width:min(360px,92vw);aspect-ratio:9/16' : 'width:min(820px,96vw);aspect-ratio:16/9';
+  modal.innerHTML = '<div style="position:relative;' + sizeStyle + '">'
+    + '<button onclick="document.getElementById(\'ytModal\').remove()" style="position:absolute;top:-40px;right:0;background:none;border:none;color:#fff;font-size:1.6rem;cursor:pointer;line-height:1">✕</button>'
+    + '<iframe src="' + embedUrl + '" style="width:100%;height:100%;border:none;border-radius:12px" allowfullscreen allow="autoplay;encrypted-media;picture-in-picture"></iframe>'
+    + '</div>';
+  modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+  document.addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { modal.remove(); document.removeEventListener('keydown', esc); } });
+  document.body.appendChild(modal);
+}
+
 var db = null;
 var currentUser = null;
 var isAdmin = false;
@@ -156,12 +174,14 @@ async function loadFeed() {
           function renderFeedVideos(list, isShort) {
             html += '<div class="feed-scroll">';
             list.forEach(function(v) {
-              var url = isShort ? 'https://www.youtube.com/shorts/' + v.id : 'https://www.youtube.com/watch?v=' + v.id;
-              html += '<a href="' + url + '" target="_blank" class="feed-video-card' + (isShort ? ' is-short' : '') + '">'
+              html += '<div onclick="openYtModal(\'' + v.id + '\',' + (isShort ? 'true' : 'false') + ')" class="feed-video-card' + (isShort ? ' is-short' : '') + '" style="cursor:pointer">'
+                + '<div style="position:relative">'
                 + '<img class="feed-video-thumb' + (isShort ? ' is-short' : '') + '" src="' + v.thumbnail + '" alt="" loading="lazy">'
+                + '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none"><div style="width:40px;height:40px;background:rgba(0,0,0,.6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.1rem">▶</div></div>'
+                + '</div>'
                 + '<div class="feed-video-title">' + escapeHtml(v.title) + '</div>'
                 + '<div class="feed-video-channel">' + escapeHtml(v.channelTitle || '') + ' · ' + timeAgo(v.publishedAt) + '</div>'
-                + '</a>';
+                + '</div>';
             });
             html += '</div>';
           }
