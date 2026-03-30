@@ -204,6 +204,10 @@
             <span class="home-tool-icon">🚘</span>
             <span class="home-tool-name">자동차 트렌드</span>
           </a>
+          <button class="home-tool-card" onclick="openLogoQuiz()">
+            <span class="home-tool-icon">🏆</span>
+            <span class="home-tool-name">로고 퀴즈</span>
+          </button>
         </div>
       </div>
 
@@ -1228,6 +1232,73 @@
       <div class="modal-footer" style="display:flex;gap:10px;padding:16px 24px">
         <button class="btn btn-outline" onclick="previewNotice()">👁 미리보기</button>
         <button class="btn btn-primary" style="margin-left:auto" onclick="saveNotice()">💾 저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 자동차 로고 퀴즈 모달 -->
+  <div class="modal-overlay" id="logoQuizModal" style="display:none" onclick="if(event.target===this)closeLogoQuiz()">
+    <div class="modal" style="max-width:400px;width:94%">
+      <!-- 난이도 선택 -->
+      <div id="quizScreenDiff">
+        <div class="modal-header">
+          <h3>🏆 자동차 로고 퀴즈</h3>
+          <button class="modal-close" onclick="closeLogoQuiz()">✕</button>
+        </div>
+        <div class="modal-body" style="padding:16px 20px 24px">
+          <p style="color:var(--text3);font-size:.88rem;margin:0 0 18px;text-align:center">로고를 보고 브랜드를 맞춰보세요!<br>10문제 · 시간 제한 있음</p>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <button onclick="startLogoQuiz('beginner')" style="padding:16px;border-radius:12px;border:2px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;text-align:left;font-family:inherit">
+              <div style="font-size:1.05rem;font-weight:700;margin-bottom:4px">🚗 입문</div>
+              <div style="font-size:.82rem;color:var(--text3)">현대·BMW·토요타 등 친숙한 브랜드 · 15초 제한</div>
+            </button>
+            <button onclick="startLogoQuiz('expert')" style="padding:16px;border-radius:12px;border:2px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;text-align:left;font-family:inherit">
+              <div style="font-size:1.05rem;font-weight:700;margin-bottom:4px">🏎️ 마니아</div>
+              <div style="font-size:.82rem;color:var(--text3)">람보르기니·마세라티 등 희귀 브랜드 포함 · 10초 제한</div>
+            </button>
+          </div>
+        </div>
+      </div>
+      <!-- 퀴즈 진행 -->
+      <div id="quizScreenPlay" style="display:none">
+        <div class="modal-header" style="padding-bottom:8px">
+          <div style="display:flex;align-items:center;width:100%;gap:8px;font-size:.85rem">
+            <span id="quizProgress" style="color:var(--text3)">1 / 10</span>
+            <span style="flex:1"></span>
+            <span id="quizScore" style="font-weight:700;color:var(--primary)">0점</span>
+            <button class="modal-close" onclick="closeLogoQuiz()">✕</button>
+          </div>
+        </div>
+        <div class="modal-body" style="padding:4px 20px 22px">
+          <div style="height:5px;background:var(--bg3);border-radius:3px;margin-bottom:6px;overflow:hidden">
+            <div id="quizTimerBar" style="height:100%;width:100%;border-radius:3px;background:var(--primary)"></div>
+          </div>
+          <div style="text-align:right;margin-bottom:14px">
+            <span id="quizTimer" style="font-weight:800;font-size:1.1rem">15</span><span style="font-size:.8rem;color:var(--text3)">초</span>
+          </div>
+          <div style="text-align:center;margin-bottom:18px;min-height:110px;display:flex;align-items:center;justify-content:center;background:var(--bg3);border-radius:14px;padding:16px">
+            <img id="quizLogoImg" src="" alt="로고" style="max-width:160px;max-height:90px;object-fit:contain">
+          </div>
+          <div id="quizChoices" style="display:grid;grid-template-columns:1fr 1fr;gap:8px"></div>
+        </div>
+      </div>
+      <!-- 결과 -->
+      <div id="quizScreenResult" style="display:none;text-align:center">
+        <div class="modal-body" style="padding:30px 20px 22px">
+          <div id="quizResultEmoji" style="font-size:3.2rem;margin-bottom:10px"></div>
+          <h3 id="quizResultTitle" style="margin:0 0 6px;font-size:1.2rem"></h3>
+          <p id="quizResultDesc" style="color:var(--text3);font-size:.87rem;margin:0 0 20px"></p>
+          <div style="background:var(--bg3);border-radius:16px;padding:18px;margin-bottom:18px">
+            <div style="font-size:2.4rem;font-weight:800;color:var(--primary)" id="quizFinalScore"></div>
+            <div style="font-size:.78rem;color:var(--text3)">점</div>
+            <div style="font-size:.83rem;color:var(--text2);margin-top:8px" id="quizAccuracy"></div>
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:8px">
+            <button onclick="shareQuizResult()" style="flex:1;padding:11px;border-radius:10px;background:var(--primary);color:#fff;border:none;font-weight:700;cursor:pointer;font-size:.9rem;font-family:inherit">📤 결과 공유</button>
+            <button onclick="restartLogoQuiz()" style="flex:1;padding:11px;border-radius:10px;background:var(--bg3);color:var(--text);border:1.5px solid var(--border);font-weight:700;cursor:pointer;font-size:.9rem;font-family:inherit">🔄 다시하기</button>
+          </div>
+          <button onclick="closeLogoQuiz()" style="width:100%;padding:9px;border-radius:10px;background:transparent;color:var(--text3);border:none;cursor:pointer;font-size:.85rem;font-family:inherit">닫기</button>
+        </div>
       </div>
     </div>
   </div>

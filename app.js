@@ -4760,6 +4760,157 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ⑧ Firestore 구독 및 seed는 showApp()에서 인증 완료 후 처리
 
+  /* ===== 자동차 로고 퀴즈 ===== */
+  // 입문 브랜드 목록
+  var _quizBeginnerNames = ['현대','기아','제네시스','BMW','벤츠','아우디','폭스바겐','포르쉐','테슬라','볼보','토요타','혼다','렉서스','닛산','포드','쉐보레','지프','마쓰다','스바루','MINI'];
+
+  var _quiz = {
+    difficulty: 'beginner', questions: [], current: 0,
+    score: 0, correctCount: 0, timer: null, timeLeft: 15, maxTime: 15, answered: false,
+  };
+
+  function _getQuizPool(difficulty) {
+    var names = difficulty === 'beginner'
+      ? _quizBeginnerNames
+      : CAR_BRANDS.filter(function(b){ return b.logo; }).map(function(b){ return b.name; });
+    return CAR_BRANDS.filter(function(b){ return b.logo && names.indexOf(b.name) >= 0; });
+  }
+
+  window.openLogoQuiz = function() {
+    clearInterval(_quiz.timer);
+    document.getElementById('quizScreenDiff').style.display = '';
+    document.getElementById('quizScreenPlay').style.display = 'none';
+    document.getElementById('quizScreenResult').style.display = 'none';
+    document.getElementById('logoQuizModal').style.display = 'flex';
+  };
+
+  window.closeLogoQuiz = function() {
+    clearInterval(_quiz.timer);
+    document.getElementById('logoQuizModal').style.display = 'none';
+  };
+
+  window.restartLogoQuiz = function() {
+    document.getElementById('quizScreenResult').style.display = 'none';
+    document.getElementById('quizScreenDiff').style.display = '';
+  };
+
+  window.startLogoQuiz = function(difficulty) {
+    _quiz.difficulty = difficulty;
+    _quiz.score = 0; _quiz.correctCount = 0; _quiz.current = 0;
+    _quiz.maxTime = difficulty === 'beginner' ? 15 : 10;
+    var pool = _getQuizPool(difficulty);
+    _quiz.questions = pool.slice().sort(function(){ return Math.random() - 0.5; }).slice(0, Math.min(10, pool.length));
+    document.getElementById('quizScreenDiff').style.display = 'none';
+    document.getElementById('quizScreenPlay').style.display = '';
+    _showQuizQuestion();
+  };
+
+  function _showQuizQuestion() {
+    var q = _quiz.questions[_quiz.current];
+    var total = _quiz.questions.length;
+    var pool = _getQuizPool(_quiz.difficulty);
+    document.getElementById('quizProgress').textContent = (_quiz.current + 1) + ' / ' + total;
+    document.getElementById('quizScore').textContent = _quiz.score + '점';
+    var img = document.getElementById('quizLogoImg');
+    img.style.opacity = '0';
+    img.src = q.logo;
+    img.onload = function() { img.style.transition = 'opacity .2s'; img.style.opacity = '1'; };
+    var wrong = pool.filter(function(b){ return b.name !== q.name; })
+      .sort(function(){ return Math.random() - 0.5; }).slice(0, 3);
+    var choices = [q].concat(wrong).sort(function(){ return Math.random() - 0.5; });
+    document.getElementById('quizChoices').innerHTML = choices.map(function(c) {
+      return '<button class="quiz-choice-btn" onclick="answerQuiz(\'' + c.name.replace(/'/g,"\\'") + '\')"'
+        + ' style="padding:10px 8px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;font-size:.88rem;font-weight:600;font-family:inherit;text-align:center">'
+        + c.name + '</button>';
+    }).join('');
+    _quiz.answered = false;
+    _startQuizTimer();
+  }
+
+  function _startQuizTimer() {
+    clearInterval(_quiz.timer);
+    _quiz.timeLeft = _quiz.maxTime;
+    _updateTimerUI(true);
+    _quiz.timer = setInterval(function() {
+      _quiz.timeLeft--;
+      _updateTimerUI(false);
+      if (_quiz.timeLeft <= 0) { clearInterval(_quiz.timer); if (!_quiz.answered) window.answerQuiz(null); }
+    }, 1000);
+  }
+
+  function _updateTimerUI(reset) {
+    var pct = (_quiz.timeLeft / _quiz.maxTime) * 100;
+    var color = _quiz.timeLeft <= 3 ? '#ef4444' : _quiz.timeLeft <= Math.ceil(_quiz.maxTime / 2) ? '#f59e0b' : 'var(--primary)';
+    var bar = document.getElementById('quizTimerBar');
+    var timerEl = document.getElementById('quizTimer');
+    if (bar) {
+      bar.style.transition = reset ? 'none' : 'width 1s linear, background .3s';
+      bar.style.width = pct + '%';
+      bar.style.background = color;
+    }
+    if (timerEl) { timerEl.textContent = _quiz.timeLeft; timerEl.style.color = color; }
+  }
+
+  window.answerQuiz = function(name) {
+    if (_quiz.answered) return;
+    _quiz.answered = true;
+    clearInterval(_quiz.timer);
+    var q = _quiz.questions[_quiz.current];
+    var correct = name === q.name;
+    if (correct) {
+      _quiz.correctCount++;
+      _quiz.score += 10 + Math.ceil((_quiz.timeLeft / _quiz.maxTime) * 10);
+    }
+    document.querySelectorAll('.quiz-choice-btn').forEach(function(btn) {
+      btn.disabled = true;
+      if (btn.textContent === q.name) {
+        btn.style.background = '#22c55e'; btn.style.color = '#fff'; btn.style.borderColor = '#22c55e';
+      } else if (name && btn.textContent === name && !correct) {
+        btn.style.background = '#ef4444'; btn.style.color = '#fff'; btn.style.borderColor = '#ef4444';
+      }
+    });
+    setTimeout(function() {
+      _quiz.current++;
+      if (_quiz.current >= _quiz.questions.length) _showQuizResult();
+      else _showQuizQuestion();
+    }, 900);
+  };
+
+  function _showQuizResult() {
+    document.getElementById('quizScreenPlay').style.display = 'none';
+    document.getElementById('quizScreenResult').style.display = '';
+    var total = _quiz.questions.length;
+    var pct = _quiz.correctCount / total;
+    var rows = [
+      [0.9,  '🏆', '자동차 마스터!',    '완벽한 로고 실력이네요!'],
+      [0.7,  '🥇', '자동차 전문가!',    '웬만한 로고는 다 꿰고 있네요!'],
+      [0.5,  '🥈', '준수한 실력!',      '조금만 더 연습하면 완벽!'],
+      [0.3,  '🥉', '아직 갈 길이 멀다', '다시 도전해보세요!'],
+      [-1,   '😅', '자동차 초보',       '로고 공부가 필요해요 😄'],
+    ];
+    var row = rows.find(function(r){ return pct >= r[0]; }) || rows[rows.length - 1];
+    document.getElementById('quizResultEmoji').textContent = row[1];
+    document.getElementById('quizResultTitle').textContent = row[2];
+    document.getElementById('quizResultDesc').textContent = row[3];
+    document.getElementById('quizFinalScore').textContent = _quiz.score;
+    document.getElementById('quizAccuracy').textContent = _quiz.correctCount + ' / ' + total + ' 정답 (' + Math.round(pct * 100) + '%)';
+  }
+
+  window.shareQuizResult = function() {
+    var diff = _quiz.difficulty === 'beginner' ? '입문' : '마니아';
+    var total = _quiz.questions.length;
+    var text = '🚗 DT Club 자동차 로고 퀴즈 [' + diff + ']\n'
+      + '🏆 ' + _quiz.score + '점 · ' + _quiz.correctCount + '/' + total + ' 정답 (' + Math.round((_quiz.correctCount / total) * 100) + '%)\n'
+      + '나도 도전! → https://dt-1js.pages.dev/';
+    if (navigator.share) {
+      navigator.share({ title: 'DT Club 로고 퀴즈', text: text }).catch(function(){});
+    } else {
+      navigator.clipboard.writeText(text)
+        .then(function(){ showToast('클립보드에 복사되었습니다! 📋'); })
+        .catch(function(){ showToast('공유 텍스트가 준비됐어요. 직접 복사해주세요.'); });
+    }
+  };
+
   // PWA 서비스워커 등록
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
