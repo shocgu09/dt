@@ -32,6 +32,12 @@
     <button class="filter-btn" data-cat="기타" onclick="filterCategory('기타')">📍 기타</button>
   </div>
 
+  <!-- 검색 -->
+  <div class="search-bar">
+    <input type="text" id="spotSearchBar" class="search-bar-input" placeholder="🔍 장소명, 주소, 메모 검색" oninput="onSearchInput(this.value)">
+    <button class="search-bar-clear" id="searchClearBtn" onclick="clearSearch()" style="display:none">✕</button>
+  </div>
+
   <!-- 지도 -->
   <div class="map-wrap">
     <div id="map"></div>

@@ -5,6 +5,7 @@ var kakaoMap = null;
 var allSpots = [], allCourses = [];
 var overlays = [], polylines = [];
 var currentCategory = 'all';
+var searchQuery = '';
 var _spotSearchResults = [];
 var _waypointSearchResults = {};
 var _waypoints = [];
@@ -113,13 +114,46 @@ function filterCategory(cat) {
   renderAll();
 }
 
+function matchesSearch(text) {
+  if (!searchQuery) return true;
+  return (text || '').toLowerCase().indexOf(searchQuery) !== -1;
+}
+
+function spotMatchesSearch(s) {
+  return matchesSearch(s.name) || matchesSearch(s.address) || matchesSearch(s.memo);
+}
+
+function courseMatchesSearch(c) {
+  if (matchesSearch(c.name) || matchesSearch(c.description)) return true;
+  return (c.waypoints || []).some(function(wp) {
+    return matchesSearch(wp.name) || matchesSearch(wp.address) || matchesSearch(wp.memo);
+  });
+}
+
 function getFiltered() {
-  if (currentCategory === 'all') return { spots: allSpots, courses: allCourses };
-  if (currentCategory === '코스') return { spots: [], courses: allCourses };
-  return {
-    spots: allSpots.filter(function(s) { return s.category === currentCategory; }),
-    courses: []
-  };
+  var spots, courses;
+  if (currentCategory === 'all') { spots = allSpots; courses = allCourses; }
+  else if (currentCategory === '코스') { spots = []; courses = allCourses; }
+  else { spots = allSpots.filter(function(s) { return s.category === currentCategory; }); courses = []; }
+
+  if (searchQuery) {
+    spots = spots.filter(spotMatchesSearch);
+    courses = courses.filter(courseMatchesSearch);
+  }
+  return { spots: spots, courses: courses };
+}
+
+function onSearchInput(val) {
+  searchQuery = val.trim().toLowerCase();
+  document.getElementById('searchClearBtn').style.display = searchQuery ? '' : 'none';
+  renderAll();
+}
+
+function clearSearch() {
+  searchQuery = '';
+  document.getElementById('spotSearchBar').value = '';
+  document.getElementById('searchClearBtn').style.display = 'none';
+  renderAll();
 }
 
 // ===== 전체 렌더링 =====
