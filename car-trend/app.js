@@ -314,26 +314,25 @@ function renderAdminLinks() {
   document.getElementById('adminLinkList').innerHTML = html;
 }
 
-// 카테고리 변경 시 RSS 힌트 표시
+// 카테고리 변경 시 입력 힌트 토글
 document.getElementById('addCategory')?.addEventListener('change', function() {
-  var hint = document.getElementById('rssHint');
-  var rssInput = document.getElementById('addRss');
-  if (this.value === '뉴스') {
-    hint.style.display = '';
-    rssInput.style.display = '';
-  } else {
-    hint.style.display = 'none';
-    rssInput.style.display = 'none';
-  }
+  var isYt = this.value === '유튜브';
+  var isNews = this.value === '뉴스';
+  document.getElementById('addUrl').placeholder = isYt ? '채널 핸들 (예: TopGear)' : 'URL';
+  document.getElementById('ytHandleHint').style.display = isYt ? '' : 'none';
+  document.getElementById('rssHint').style.display = isNews ? '' : 'none';
+  document.getElementById('addRss').style.display = isNews ? '' : 'none';
 });
 
 async function addTrendLink() {
   var category = document.getElementById('addCategory').value;
   var name = document.getElementById('addName').value.trim();
-  var url = document.getElementById('addUrl').value.trim();
+  var input = document.getElementById('addUrl').value.trim().replace(/^@/, '');
   var desc = document.getElementById('addDesc').value.trim();
   var rss = document.getElementById('addRss').value.trim();
-  if (!name || !url) { alert('이름과 URL을 입력하세요.'); return; }
+  if (!name || !input) { alert('이름과 ' + (category === '유튜브' ? '핸들을' : 'URL을') + ' 입력하세요.'); return; }
+
+  var url = input;
 
   try {
     var maxOrder = 0;
@@ -341,15 +340,20 @@ async function addTrendLink() {
     var data = { category: category, name: name, url: url, description: desc || '', order: maxOrder + 1, createdAt: firebase.firestore.FieldValue.serverTimestamp() };
     if (rss) data.rss = rss;
 
-    // 유튜브: 채널 프사 자동 저장
+    // 유튜브: 핸들로 channelId + thumbnail 즉시 저장
     if (category === '유튜브') {
-      var handleMatch = url.match(/@([^\/\?]+)/);
-      if (handleMatch) {
-        try {
-          var chResp = await fetch('https://dt-youtube.shocguna.workers.dev/api/channel?handle=' + handleMatch[1]);
-          var chData = await chResp.json();
-          if (chData.thumbnail) data.thumbnail = chData.thumbnail;
-        } catch(e) {}
+      var btn = document.querySelector('.btn-add');
+      if (btn) btn.disabled = true;
+      try {
+        var chResp = await fetch('https://dt-youtube.shocguna.workers.dev/api/channel?handle=' + encodeURIComponent(input));
+        var chData = await chResp.json();
+        if (chData.channelId) data.channelId = chData.channelId;
+        if (chData.thumbnail) data.thumbnail = chData.thumbnail;
+        data.url = 'https://www.youtube.com/@' + input;
+      } catch(e) {
+        data.url = 'https://www.youtube.com/@' + input;
+      } finally {
+        if (btn) btn.disabled = false;
       }
     }
 
