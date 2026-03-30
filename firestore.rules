@@ -190,5 +190,30 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ── spots 컬렉션 (DT 스팟 — 장소) ──────────────────────
+    // - 누구나 읽기 가능 (비회원 포함)
+    // - 실제 회원이면 등록 가능
+    // - 수정·삭제는 관리자만
+    match /spots/{spotId} {
+      allow read: if true;
+      allow create: if isRealUser()
+        && request.resource.data.addedBy == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // ── drive_courses 컬렉션 (DT 스팟 — 드라이브 코스) ──────
+    // - 누구나 읽기 가능 (비회원 포함)
+    // - 실제 회원이면 등록 가능
+    // - 수정(경로 캐시 포함)·삭제는 관리자 또는 작성자
+    match /drive_courses/{courseId} {
+      allow read: if true;
+      allow create: if isRealUser()
+        && request.resource.data.addedBy == request.auth.uid;
+      allow update: if isAdmin()
+        || (isRealUser() && resource.data.addedBy == request.auth.uid);
+      allow delete: if isAdmin()
+        || (isRealUser() && resource.data.addedBy == request.auth.uid);
+    }
+
   }
 }
