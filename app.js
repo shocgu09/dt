@@ -157,15 +157,20 @@ function initAuth() {
       if (userDoc.exists) {
         const data = userDoc.data();
         state.currentUserRole = data.role;
-        // 마지막 접속 시간 + 위치 갱신
+        // 마지막 접속 시간 + 위치 갱신 후 리다이렉트
+        const _doRedirect = state._wasGuest;
         fetch('https://ipwho.is/')
           .then(r => r.json())
           .then(d => {
-            const loc = [d.region, d.city].filter(Boolean).join(' ') || d.country || '';
-            state.db.collection('users').doc(user.uid).update({ lastSeen: new Date().toISOString(), lastLocation: loc }).catch(() => {});
+            const parts = [d.region, d.city].filter(Boolean);
+            const loc = parts[0] === parts[1] ? parts[0] : parts.join(' ') || d.country || '';
+            return state.db.collection('users').doc(user.uid).update({ lastSeen: new Date().toISOString(), lastLocation: loc });
           })
           .catch(() => {
-            state.db.collection('users').doc(user.uid).update({ lastSeen: new Date().toISOString() }).catch(() => {});
+            return state.db.collection('users').doc(user.uid).update({ lastSeen: new Date().toISOString() });
+          })
+          .finally(() => {
+            if (_doRedirect) { location.href = '/'; }
           });
       } else {
         if (state.isSigningUp) {
@@ -179,7 +184,7 @@ function initAuth() {
           return;
         }
       }
-      if (state._wasGuest) { location.href = '/'; return; }
+      if (state._wasGuest) return;
       showApp();
       // 실시간 강퇴 감지: 관리자가 users 문서 삭제 시 즉시 로그아웃
       if (state._banListener) state._banListener();
