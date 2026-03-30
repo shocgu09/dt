@@ -126,6 +126,7 @@ function initAuth() {
         state.currentUserId = user.uid;
         state.currentUserRole = 'guest';
         state.isGuest = true;
+        state._wasGuest = true;
         showApp();
         return;
       }
@@ -178,6 +179,7 @@ function initAuth() {
           return;
         }
       }
+      if (state._wasGuest) { location.reload(); return; }
       showApp();
       // 실시간 강퇴 감지: 관리자가 users 문서 삭제 시 즉시 로그아웃
       if (state._banListener) state._banListener();
