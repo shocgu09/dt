@@ -22,6 +22,17 @@
     <button id="themeToggle" onclick="toggleTheme()" class="theme-btn">🌙</button>
   </div>
 
+  <!-- 지역 필터 -->
+  <div class="filter-bar region-bar">
+    <button class="filter-btn active" data-region="all" onclick="filterRegion('all')">🗺️ 전국</button>
+    <button class="filter-btn" data-region="서울" onclick="filterRegion('서울')">서울</button>
+    <button class="filter-btn" data-region="인천" onclick="filterRegion('인천')">인천</button>
+    <button class="filter-btn" data-region="경기도" onclick="filterRegion('경기도')">경기도</button>
+    <button class="filter-btn" data-region="강원도" onclick="filterRegion('강원도')">강원도</button>
+    <button class="filter-btn" data-region="부산" onclick="filterRegion('부산')">부산</button>
+    <button class="filter-btn" data-region="기타" onclick="filterRegion('기타')">기타</button>
+  </div>
+
   <!-- 카테고리 필터 -->
   <div class="filter-bar">
     <button class="filter-btn active" data-cat="all" onclick="filterCategory('all')">전체</button>

@@ -14,6 +14,51 @@ var CATEGORY_EMOJI = { '맛집': '🍽️', '카페': '☕', '명소': '🏛️'
 var COURSE_COLOR = '#7c6fff';
 var ROUTE_WORKER = 'https://dt-route.shocguna.workers.dev';
 
+// 지역 필터
+var currentRegion = 'all';
+
+var REGION_BOUNDS = {
+  '서울':   { minLat: 37.42, maxLat: 37.70, minLng: 126.76, maxLng: 127.18 },
+  '인천':   { minLat: 37.28, maxLat: 37.64, minLng: 126.35, maxLng: 126.80 },
+  '경기도': { minLat: 36.90, maxLat: 38.30, minLng: 126.35, maxLng: 127.85 },
+  '강원도': { minLat: 37.00, maxLat: 38.65, minLng: 127.50, maxLng: 129.40 },
+  '부산':   { minLat: 34.90, maxLat: 35.40, minLng: 128.68, maxLng: 129.35 },
+};
+
+var REGION_CENTERS = {
+  '서울':   { lat: 37.5665, lng: 126.9780, level: 9 },
+  '인천':   { lat: 37.4563, lng: 126.7052, level: 10 },
+  '경기도': { lat: 37.5000, lng: 127.2000, level: 10 },
+  '강원도': { lat: 37.8228, lng: 128.1555, level: 10 },
+  '부산':   { lat: 35.1796, lng: 129.0756, level: 10 },
+};
+
+// 좌표 → 지역 자동 판별 (서울/인천 우선 체크)
+function detectRegion(lat, lng) {
+  var order = ['서울', '인천', '부산', '강원도', '경기도'];
+  for (var i = 0; i < order.length; i++) {
+    var r = order[i];
+    var b = REGION_BOUNDS[r];
+    if (lat >= b.minLat && lat <= b.maxLat && lng >= b.minLng && lng <= b.maxLng) return r;
+  }
+  return '기타';
+}
+
+// 스팟의 지역 반환 (저장된 region 우선, 없으면 좌표로 계산)
+function getSpotRegion(spot) {
+  if (spot.region) return spot.region;
+  if (spot.lat && spot.lng) return detectRegion(spot.lat, spot.lng);
+  return '기타';
+}
+
+// 코스의 지역 반환 (첫 번째 경유지 기준)
+function getCourseRegion(course) {
+  if (course.region) return course.region;
+  var wps = (course.waypoints || []).filter(function(wp) { return wp.lat && wp.lng; });
+  if (wps.length) return detectRegion(wps[0].lat, wps[0].lng);
+  return '기타';
+}
+
 // ===== Firebase 초기화 =====
 try {
   if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
@@ -101,18 +146,48 @@ async function loadData() {
 }
 
 // ===== 필터 =====
+function filterRegion(region) {
+  currentRegion = region;
+  document.querySelectorAll('[data-region]').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.region === region);
+  });
+  // 지역 선택 시 지도 이동
+  if (region !== 'all' && REGION_CENTERS[region]) {
+    var c = REGION_CENTERS[region];
+    kakaoMap.setCenter(new kakao.maps.LatLng(c.lat, c.lng));
+    kakaoMap.setLevel(c.level);
+  }
+  renderAll();
+}
+
 function filterCategory(cat) {
   currentCategory = cat;
-  document.querySelectorAll('.filter-btn').forEach(function(b) {
+  document.querySelectorAll('[data-cat]').forEach(function(b) {
     b.classList.toggle('active', b.dataset.cat === cat);
   });
   renderAll();
 }
 
 function getFiltered() {
-  if (currentCategory === 'all') return { spots: allSpots, courses: allCourses };
-  if (currentCategory === '코스') return { spots: [], courses: allCourses };
-  return { spots: allSpots.filter(function(s) { return s.category === currentCategory; }), courses: [] };
+  var spots, courses;
+
+  // 카테고리 필터
+  if (currentCategory === 'all') {
+    spots = allSpots; courses = allCourses;
+  } else if (currentCategory === '코스') {
+    spots = []; courses = allCourses;
+  } else {
+    spots = allSpots.filter(function(s) { return s.category === currentCategory; });
+    courses = [];
+  }
+
+  // 지역 필터
+  if (currentRegion !== 'all') {
+    spots = spots.filter(function(s) { return getSpotRegion(s) === currentRegion; });
+    courses = courses.filter(function(c) { return getCourseRegion(c) === currentRegion; });
+  }
+
+  return { spots: spots, courses: courses };
 }
 
 // ===== 전체 렌더링 =====
@@ -250,6 +325,7 @@ function renderSpotCard(spot) {
     + '<div class="spot-card-info">'
     + '<div class="spot-card-name">' + escapeHtml(spot.name) + '</div>'
     + '<div class="spot-card-meta"><span style="color:' + color + '">' + emoji + ' ' + escapeHtml(spot.category) + '</span>'
+    + ' <span class="region-badge">' + getSpotRegion(spot) + '</span>'
     + (spot.address ? ' · ' + escapeHtml(spot.address) : '') + '</div>'
     + (spot.memo ? '<div class="spot-card-memo">' + escapeHtml(spot.memo) + '</div>' : '')
     + '</div>'
@@ -267,6 +343,7 @@ function renderCourseCard(course) {
     + '<div class="spot-card-info">'
     + '<div class="spot-card-name">' + escapeHtml(course.name) + '</div>'
     + '<div class="spot-card-meta"><span style="color:' + COURSE_COLOR + '">🛣️ 드라이브 코스</span>'
+    + ' <span class="region-badge">' + getCourseRegion(course) + '</span>'
     + ' · ' + wpCount + '개 경유지'
     + (course.distance ? ' · ' + course.distance + 'km' : '')
     + (course.duration ? ' · 약 ' + course.duration + '분' : '') + '</div>'
@@ -422,6 +499,7 @@ async function saveSpot() {
     await db.collection('spots').add({
       name: name, category: category, address: address,
       lat: lat, lng: lng, memo: memo,
+      region: detectRegion(lat, lng),
       addedBy: currentUser.uid,
       addedByName: currentUser.displayName || (currentUser.email || '').split('@')[0] || '익명',
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -540,9 +618,11 @@ async function saveCourse() {
 
   btn.disabled = true; btn.textContent = '저장 중...';
   try {
+    var firstWp = validWps[0];
     await db.collection('drive_courses').add({
       name: name, description: desc,
       waypoints: _waypoints,
+      region: detectRegion(firstWp.lat, firstWp.lng),
       addedBy: currentUser.uid,
       addedByName: currentUser.displayName || (currentUser.email || '').split('@')[0] || '익명',
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
