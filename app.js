@@ -160,11 +160,11 @@ function initAuth() {
         // 마지막 접속 시간 + 위치 갱신
         const _doRedirect = state._wasGuest;
         const _uid = user.uid;
-        fetch('https://dt-youtube.shocguna.workers.dev/api/location')
+        fetch('https://ipapi.co/json/')
           .then(r => r.json())
           .then(d => {
-            const loc = d.loc || '';
-            return state.db.collection('users').doc(_uid).update({ lastSeen: new Date().toISOString(), ...(loc && { lastLocation: loc }) });
+            const loc = [d.city, d.region].filter(Boolean).join(', ') || d.country_name || '';
+            return state.db.collection('users').doc(_uid).update({ lastSeen: new Date().toISOString(), lastLocation: loc });
           })
           .catch(() => {
             return state.db.collection('users').doc(_uid).update({ lastSeen: new Date().toISOString() });
@@ -1113,7 +1113,7 @@ async function renderAdmin() {
   renderAdminNotice();
   renderAdminBlacklist();
   renderAdminYouTube();
-  const snap = await state.db.collection('users').orderBy('createdAt', 'asc').get({ source: 'server' });
+  const snap = await state.db.collection('users').orderBy('createdAt', 'asc').get();
   const users = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
   const list = document.getElementById('userList');
   if (!users.length) {
