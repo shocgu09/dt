@@ -156,8 +156,16 @@ function initAuth() {
       if (userDoc.exists) {
         const data = userDoc.data();
         state.currentUserRole = data.role;
-        // 마지막 접속 시간 갱신
-        state.db.collection('users').doc(user.uid).update({ lastSeen: new Date().toISOString() }).catch(() => {});
+        // 마지막 접속 시간 + 위치 갱신
+        fetch('https://ipapi.co/json/')
+          .then(r => r.json())
+          .then(d => {
+            const loc = [d.city, d.region].filter(Boolean).join(', ') || d.country_name || '';
+            state.db.collection('users').doc(user.uid).update({ lastSeen: new Date().toISOString(), lastLocation: loc }).catch(() => {});
+          })
+          .catch(() => {
+            state.db.collection('users').doc(user.uid).update({ lastSeen: new Date().toISOString() }).catch(() => {});
+          });
       } else {
         if (state.isSigningUp) {
           // 회원가입 직후 race condition - 역할만 임시 설정
@@ -1119,7 +1127,7 @@ async function renderAdmin() {
           ${u.role === 'superadmin' ? '<span style="color:#f59e0b;font-size:.76rem;font-weight:700;margin-left:4px">슈퍼관리자</span>' : ''}
         </div>
         <div class="user-item-email">${escapeHtml(u.email)}</div>
-        ${isSuperAdmin ? `<div class="user-item-lastseen">마지막 접속: ${formatLastSeen(u.lastSeen)}</div>` : ''}
+        ${isSuperAdmin ? `<div class="user-item-lastseen">마지막 접속: ${formatLastSeen(u.lastSeen)}${u.lastLocation ? ' · 📍 ' + escapeHtml(u.lastLocation) : ''}</div>` : ''}
       </div>
       <div class="user-item-actions">
         ${isSuperAdmin ? `<input class="role-select" style="min-width:80px;text-align:center" value="${escapeHtml(u.title || '')}" placeholder="칭호 입력" onchange="updateUserTitle('${u.uid}', this.value.trim())" onkeydown="if(event.key==='Enter'){this.blur()}">` : ''}
