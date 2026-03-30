@@ -157,22 +157,19 @@ function initAuth() {
       if (userDoc.exists) {
         const data = userDoc.data();
         state.currentUserRole = data.role;
-        // 마지막 접속 시간 + 위치 갱신 후 리다이렉트
+        // 마지막 접속 시간 + 위치 갱신
         const _doRedirect = state._wasGuest;
         const _uid = user.uid;
-        (async () => {
-          let loc = '';
-          try {
-            const r = await fetch('https://dt-youtube.shocguna.workers.dev/api/location');
-            const d = await r.json();
-            const parts = [d.region, d.city].filter(Boolean);
-            loc = parts[0] === parts[1] ? (parts[0] || '') : parts.join(' ');
-          } catch(e) {}
-          const update = { lastSeen: new Date().toISOString() };
-          if (loc) update.lastLocation = loc;
-          await state.db.collection('users').doc(_uid).update(update).catch(() => {});
-          if (_doRedirect) location.href = '/';
-        })();
+        fetch('https://ipapi.co/json/')
+          .then(r => r.json())
+          .then(d => {
+            const loc = [d.city, d.region].filter(Boolean).join(', ') || d.country_name || '';
+            return state.db.collection('users').doc(_uid).update({ lastSeen: new Date().toISOString(), lastLocation: loc });
+          })
+          .catch(() => {
+            return state.db.collection('users').doc(_uid).update({ lastSeen: new Date().toISOString() });
+          })
+          .then(() => { if (_doRedirect) location.href = '/'; });
       } else {
         if (state.isSigningUp) {
           // 회원가입 직후 race condition - 역할만 임시 설정
