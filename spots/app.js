@@ -323,8 +323,8 @@ function renderCourseCard(course) {
 function selectSpot(id) {
   var spot = allSpots.find(function(s) { return s.id === id; });
   if (!spot || !spot.lat) return;
-  kakaoMap.panTo(new kakao.maps.LatLng(spot.lat, spot.lng));
   kakaoMap.setLevel(4);
+  kakaoMap.setCenter(new kakao.maps.LatLng(spot.lat, spot.lng));
   document.querySelectorAll('.spot-card').forEach(function(c) { c.classList.remove('active'); });
   var card = document.getElementById('card-spot-' + id);
   if (card) { card.classList.add('active'); card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
