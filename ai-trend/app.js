@@ -153,15 +153,22 @@ async function loadFeed() {
         return match ? match[1] : null;
       }).filter(Boolean);
 
-      // 핸들 → 채널 ID 조회
-      var channelIds = [];
-      for (var i = 0; i < handles.length; i++) {
+      // 핸들 → 채널 ID 조회 (저장된 ID 재사용, 없으면 병렬 fetch 후 저장)
+      var channelIds = await Promise.all(ytLinks.map(async function(link) {
+        if (link.channelId) return link.channelId;
+        var match = link.url.match(/@([^\/\?]+)/);
+        if (!match) return null;
         try {
-          var resp = await fetch('https://dt-youtube.shocguna.workers.dev/api/channel?handle=' + handles[i]);
+          var resp = await fetch('https://dt-youtube.shocguna.workers.dev/api/channel?handle=' + match[1]);
           var data = await resp.json();
-          if (data.channelId) channelIds.push(data.channelId);
-        } catch(e) {}
-      }
+          if (data.channelId) {
+            db.collection('ai_trend_links').doc(link.id).update({ channelId: data.channelId }).catch(function(){});
+            link.channelId = data.channelId;
+          }
+          return data.channelId || null;
+        } catch(e) { return null; }
+      }));
+      channelIds = channelIds.filter(Boolean);
 
       if (channelIds.length) {
         var vResp = await fetch('https://dt-youtube.shocguna.workers.dev/api/videos?max=50&channels=' + channelIds.join(','));
