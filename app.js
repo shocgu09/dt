@@ -925,25 +925,28 @@ function initNoticeTouchDrag() {
     }, { passive: false });
   });
 
+  let _dragRAF = null;
   list.addEventListener('touchmove', e => {
     if (!dragEl || !clone) return;
-    const touch = e.touches[0];
-    clone.style.top = (touch.clientY - offsetY) + 'px';
-
-    // 현재 손가락 아래 아이템 찾기
-    clone.style.display = 'none';
-    const el = document.elementFromPoint(touch.clientX, touch.clientY);
-    clone.style.display = '';
-    const target = el?.closest('.notice-list-item');
-    if (target && target !== dragEl) {
-      list.querySelectorAll('.notice-list-item').forEach(i => i.classList.remove('drag-over'));
-      target.classList.add('drag-over');
-      const items = [...list.querySelectorAll('.notice-list-item')];
-      const si = items.indexOf(dragEl), ti = items.indexOf(target);
-      if (si < ti) target.after(dragEl);
-      else target.before(dragEl);
-    }
     e.preventDefault();
+    const touch = e.touches[0];
+    if (_dragRAF) cancelAnimationFrame(_dragRAF);
+    _dragRAF = requestAnimationFrame(() => {
+      clone.style.top = (touch.clientY - offsetY) + 'px';
+      // 현재 손가락 아래 아이템 찾기
+      clone.style.display = 'none';
+      const el = document.elementFromPoint(touch.clientX, touch.clientY);
+      clone.style.display = '';
+      const target = el?.closest('.notice-list-item');
+      if (target && target !== dragEl) {
+        list.querySelectorAll('.notice-list-item').forEach(i => i.classList.remove('drag-over'));
+        target.classList.add('drag-over');
+        const items = [...list.querySelectorAll('.notice-list-item')];
+        const si = items.indexOf(dragEl), ti = items.indexOf(target);
+        if (si < ti) target.after(dragEl);
+        else target.before(dragEl);
+      }
+    });
   }, { passive: false });
 
   list.addEventListener('touchend', async () => {
@@ -1537,7 +1540,7 @@ function openMemberDetail(id) {
       <div class="detail-section">
         <h4>내 차</h4>
         <div class="detail-car">
-          <div class="detail-car-img${m.car.image ? '' : ' no-img'}">${m.car.image ? `<img src="${m.car.image}" alt="차량">` : '🚗'}</div>
+          <div class="detail-car-img${m.car.image ? '' : ' no-img'}">${m.car.image ? `<img src="${m.car.image}" alt="차량" loading="lazy">` : '🚗'}</div>
           <div class="detail-car-info">
             <div class="detail-car-name">${escapeHtml(m.car.brand)} ${escapeHtml(m.car.model)}</div>
             <div class="detail-car-sub">${escapeHtml(m.car.year || '')} · ${escapeHtml(m.car.color || '')}</div>
@@ -1764,7 +1767,7 @@ function renderGallery() {
     return `
     <div class="gallery-card" onclick="openGalleryDetail('${g.id}')">
       <div class="gallery-card-img">
-        ${g.photo ? `<img src="${g.photo}" alt="${g.title}">` : '<div class="gallery-no-img">📷</div>'}
+        ${g.photo ? `<img src="${g.photo}" alt="${g.title}" loading="lazy">` : '<div class="gallery-no-img">📷</div>'}
       </div>
       <div class="gallery-card-body">
         <div class="gallery-card-title">${escapeHtml(g.title)}</div>
@@ -2018,7 +2021,7 @@ function renderCars() {
   }
   grid.innerHTML = drivers.map(m => `
     <div class="car-card" onclick="openMemberDetail('${m.id}')">
-      <div class="car-card-img">${m.car.image ? `<img src="${m.car.image}" alt="${escapeHtml(m.car.model)}">` : '🚗'}</div>
+      <div class="car-card-img">${m.car.image ? `<img src="${m.car.image}" alt="${escapeHtml(m.car.model)}" loading="lazy">` : '🚗'}</div>
       <div class="car-card-body">
         <div class="car-name" style="display:flex;align-items:center;gap:6px">${brandLogoHtml(m.car.brand, 20)} ${escapeHtml(m.car.brand)} ${escapeHtml(m.car.model)}</div>
         <div class="car-year-color">${escapeHtml(m.car.year || '')} ${m.car.year && m.car.color ? '·' : ''} ${escapeHtml(m.car.color || '')}</div>
@@ -2787,7 +2790,7 @@ function renderDMMessages(msgs, myUid) {
 
     let content = '';
     if (msg.image) {
-      content = `<div class="dm-bubble dm-bubble-img"><img src="${msg.image}" alt="사진" onclick="openLightbox('${msg.image}')" onerror="this.outerHTML='<div style=\\'padding:12px;color:var(--text3);font-size:.82rem\\'>⚠️ 이미지를 불러올 수 없습니다</div>'"></div>`;
+      content = `<div class="dm-bubble dm-bubble-img"><img src="${msg.image}" alt="사진" loading="lazy" onclick="openLightbox('${msg.image}')" onerror="this.outerHTML='<div style=\\'padding:12px;color:var(--text3);font-size:.82rem\\'>⚠️ 이미지를 불러올 수 없습니다</div>'"></div>`;
       if (msg.text) content += `<div class="dm-bubble">${escapeHtml(msg.text)}</div>`;
     } else if (isSingleEmoji(msg.text)) {
       content = `<div class="dm-emoji-big">${msg.text}</div>`;
@@ -3744,7 +3747,7 @@ function openAnonDetail(postId) {
   html += '<div class="anon-title" style="font-size:1.05rem;margin-bottom:8px">' + detailCatHtml + escapeHtml(post.title || '제목 없음') + '</div>';
   html += '<div class="anon-text" style="margin-bottom:12px">' + escapeHtml(post.text) + '</div>';
   if (post.image) {
-    html += '<div style="margin-bottom:12px"><img src="' + post.image + '" style="max-width:100%;border-radius:8px;cursor:pointer" onclick="openLightbox(\'' + post.image + '\')" onerror="this.outerHTML=\'<div style=padding:12px;color:var(--text3);font-size:.82rem>⚠️ 이미지를 불러올 수 없습니다</div>\'"></div>';
+    html += '<div style="margin-bottom:12px"><img src="' + post.image + '" loading="lazy" style="max-width:100%;border-radius:8px;cursor:pointer" onclick="openLightbox(\'' + post.image + '\')" onerror="this.outerHTML=\'<div style=padding:12px;color:var(--text3);font-size:.82rem>⚠️ 이미지를 불러올 수 없습니다</div>\'"></div>';
   }
   html += '<div style="display:flex;gap:14px;align-items:center;padding-bottom:8px;border-bottom:1px solid var(--border);flex-wrap:wrap">';
   html += '<button class="anon-action-btn' + (liked ? ' liked' : '') + '" onclick="toggleAnonLike(\'' + postId + '\');setTimeout(function(){openAnonDetail(\'' + postId + '\')},500)">' + (liked ? '❤️' : '🤍') + ' ' + (post.likes || 0) + '</button>';
@@ -4465,7 +4468,7 @@ function showLoading(msg = '데이터 불러오는 중...') {
     el.id = 'loadingOverlay';
     el.style.cssText = 'position:fixed;bottom:24px;right:24px;background:rgba(24,24,31,.95);border:1px solid #2e2e3a;border-radius:14px;display:flex;align-items:center;justify-content:center;z-index:999;color:#fff;gap:10px;font-size:.88rem;padding:12px 18px;pointer-events:none;';
     el.innerHTML = `<div style="width:40px;height:40px;border:3px solid rgba(108,99,255,.3);border-top-color:#6c63ff;border-radius:50%;animation:spin .8s linear infinite"></div><span id="loadingMsg">${msg}</span>`;
-    document.head.insertAdjacentHTML('beforeend', '<style>@keyframes spin{to{transform:rotate(360deg)}}</style>');
+    // @keyframes spin is now in style.css
     document.body.appendChild(el);
   } else {
     document.getElementById('loadingMsg').textContent = msg;

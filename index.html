@@ -57,10 +57,10 @@
 <body>
   <!-- NAV -->
   <nav class="navbar">
-    <div class="nav-brand" onclick="state.currentPage==='home'?location.reload():goPage('home')" style="cursor:pointer">
-      <span class="brand-icon">🚗</span>
+    <button class="nav-brand" onclick="state.currentPage==='home'?location.reload():goPage('home')" aria-label="DT Club 홈으로 이동">
+      <span class="brand-icon" aria-hidden="true">🚗</span>
       <span class="brand-text">DT Club</span>
-    </div>
+    </button>
     <div class="nav-links">
       <button class="nav-btn active" data-page="home">홈</button>
       <button class="nav-btn" data-page="members">회원</button>
@@ -72,13 +72,13 @@
     <div class="nav-user" id="navUser">
       <span class="nav-user-name" id="navUserName"></span>
       <span class="admin-badge hidden" id="navAdminBadge">관리자</span>
-      <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="테마 변경">🌙</button>
-      <button class="btn btn-sm btn-outline dm-nav-btn member-only" id="btnDM" onclick="openDMPanel()">💬<span class="dm-unread-badge" id="dmUnreadBadge" style="display:none">0</span></button>
+      <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" aria-label="테마 변경">🌙</button>
+      <button class="btn btn-sm btn-outline dm-nav-btn member-only" id="btnDM" onclick="openDMPanel()" aria-label="메시지">💬<span class="dm-unread-badge" id="dmUnreadBadge" style="display:none" aria-live="polite" aria-label="읽지 않은 메시지">0</span></button>
       <button class="btn btn-sm btn-outline member-only" id="btnMyProfile">내 정보</button>
       <button class="btn btn-sm btn-outline member-only" id="btnLogout">로그아웃</button>
       <button class="btn btn-sm btn-primary guest-only hidden" id="btnGuestToLogin" onclick="guestToLogin()">로그인 / 회원가입</button>
     </div>
-    <button class="hamburger" id="hamburger">&#9776;<span class="dm-unread-badge" id="dmUnreadBadgeHam" style="display:none">0</span></button>
+    <button class="hamburger" id="hamburger" aria-label="메뉴 열기" aria-expanded="false">&#9776;<span class="dm-unread-badge" id="dmUnreadBadgeHam" style="display:none" aria-live="polite">0</span></button>
   </nav>
   <div class="mobile-menu" id="mobileMenu">
     <button class="nav-btn admin-only hidden" data-page="admin">⚙️ 관리자</button>
@@ -124,6 +124,7 @@
           <span class="stat-label">이벤트</span>
         </div>
       </div>
+      <h2 class="sr-only">주요 정보</h2>
       <div class="home-sections">
         <div class="home-section-card">
           <h3>최근 이벤트</h3>
@@ -223,7 +224,7 @@
         <h3 class="home-links-title">🔗 DT 둘러보기</h3>
         <div class="home-links">
           <a href="https://www.campuspick.com/club/view?id=26146" target="_blank" class="home-link-card">
-            <div class="home-link-icon" style="background:linear-gradient(135deg,#6c63ff,#4f46e5)">
+            <div class="home-link-icon link-icon-campus">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>
             </div>
             <div class="home-link-info">
@@ -233,7 +234,7 @@
             <div class="home-link-arrow">→</div>
           </a>
           <a href="https://www.instagram.com/drive__together/" target="_blank" class="home-link-card">
-            <div class="home-link-icon" style="background:linear-gradient(135deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)">
+            <div class="home-link-icon link-icon-instagram">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="white"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg>
             </div>
             <div class="home-link-info">
@@ -243,7 +244,7 @@
             <div class="home-link-arrow">→</div>
           </a>
           <a href="https://discord.gg/JwaR7cFE" target="_blank" class="home-link-card">
-            <div class="home-link-icon" style="background:linear-gradient(135deg,#5865f2,#404eed)">
+            <div class="home-link-icon link-icon-discord">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="white"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
             </div>
             <div class="home-link-info">
@@ -253,7 +254,7 @@
             <div class="home-link-arrow">→</div>
           </a>
           <a href="https://m.blog.naver.com/cheslam" target="_blank" class="home-link-card">
-            <div class="home-link-icon" style="background:linear-gradient(135deg,#03c75a,#02a44e)">
+            <div class="home-link-icon link-icon-naver">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="white"><path d="M16.273 12.845L7.376 0H0v24h7.727V11.155L16.624 24H24V0h-7.727z"/></svg>
             </div>
             <div class="home-link-info">
@@ -291,7 +292,8 @@
         <button class="filter-btn active" data-filter="all">전체</button>
         <button class="filter-btn" data-filter="driver">운전자</button>
         <button class="filter-btn" data-filter="passenger">동승자</button>
-        <input class="search-input" id="memberSearch" type="text" placeholder="이름/닉네임 검색..." />
+        <label for="memberSearch" class="sr-only">회원 검색</label>
+      <input class="search-input" id="memberSearch" type="text" placeholder="이름/닉네임 검색..." aria-label="회원 검색" />
       </div>
       <div class="card-grid" id="membersGrid"></div>
     </section>
@@ -340,11 +342,13 @@
         <button class="filter-btn" data-board-filter="건의" onclick="filterBoard('건의')">건의</button>
         <button class="filter-btn" data-board-filter="가입인사" onclick="filterBoard('가입인사')">가입인사</button>
         <div style="display:flex;gap:4px;flex:1;min-width:180px">
-          <select id="boardSearchType" style="padding:6px 8px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:.78rem">
+          <label for="boardSearchType" class="sr-only">검색 범위</label>
+          <select id="boardSearchType" aria-label="검색 범위" style="padding:6px 8px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:.78rem">
             <option value="title">제목</option>
             <option value="all">제목+내용</option>
           </select>
-          <input class="search-input" id="boardSearch" type="text" placeholder="검색..." oninput="filterBoard()" style="flex:1;margin:0">
+          <label for="boardSearch" class="sr-only">게시판 검색</label>
+          <input class="search-input" id="boardSearch" type="text" placeholder="검색..." aria-label="게시판 검색" oninput="filterBoard()" style="flex:1;margin:0">
         </div>
       </div>
       <div class="anon-write-box member-only">
@@ -436,7 +440,7 @@
     <div class="modal" style="max-width:420px">
       <div class="modal-header">
         <h3>📲 앱으로 설치하기</h3>
-        <button class="modal-close" onclick="closeModal('installGuideModal')">✕</button>
+        <button class="modal-close" onclick="closeModal('installGuideModal')" aria-label="닫기">✕</button>
       </div>
       <div class="modal-body" style="padding:20px">
 
@@ -542,7 +546,7 @@
     <div class="modal modal-gallery-form">
       <div class="modal-header">
         <h3 id="galleryFormTitle">모임 추가</h3>
-        <button class="modal-close" data-modal="galleryFormModal">&times;</button>
+        <button class="modal-close" data-modal="galleryFormModal" aria-label="닫기">&times;</button>
       </div>
       <div class="modal-body">
         <form id="galleryForm">
@@ -583,7 +587,7 @@
           <h3 id="galleryDetailTitle"></h3>
           <div id="galleryDetailMeta" style="font-size:.82rem;color:var(--text3);margin-top:2px"></div>
         </div>
-        <button class="modal-close" data-modal="galleryDetailModal">&times;</button>
+        <button class="modal-close" data-modal="galleryDetailModal" aria-label="닫기">&times;</button>
       </div>
       <div class="modal-body">
         <div id="galleryDetailPhoto" style="margin-bottom:16px"></div>
@@ -606,7 +610,7 @@
     <div class="modal" style="max-width:400px">
       <div class="modal-header">
         <h3>🔐 로그인</h3>
-        <button class="modal-close" data-modal="authModal">&times;</button>
+        <button class="modal-close" data-modal="authModal" aria-label="닫기">&times;</button>
       </div>
       <div class="modal-body" style="padding:20px">
         <div style="display:flex;gap:4px;background:var(--bg3);padding:4px;border-radius:8px;margin-bottom:16px">
@@ -658,9 +662,9 @@
     </div>
   </div>
 
-  <div id="lightbox" class="lightbox" onclick="closeLightbox()">
-    <button class="lightbox-close" onclick="closeLightbox()">✕</button>
-    <img id="lightboxImg" src="" alt="" onclick="event.stopPropagation()">
+  <div id="lightbox" class="lightbox" role="dialog" aria-label="이미지 확대 보기" onclick="closeLightbox()">
+    <button class="lightbox-close" onclick="closeLightbox()" aria-label="닫기">✕</button>
+    <img id="lightboxImg" src="" alt="확대 이미지" onclick="event.stopPropagation()">
   </div>
 
   <!-- Invite/Create Account Modal -->
@@ -668,7 +672,7 @@
     <div class="modal">
       <div class="modal-header">
         <h3>계정 생성</h3>
-        <button class="modal-close" data-modal="inviteModal">&times;</button>
+        <button class="modal-close" data-modal="inviteModal" aria-label="닫기">&times;</button>
       </div>
       <div class="modal-body">
         <form id="inviteForm">
@@ -706,7 +710,7 @@
     <div class="modal">
       <div class="modal-header">
         <h3 id="memberModalTitle">회원 추가</h3>
-        <button class="modal-close" data-modal="memberModal">&times;</button>
+        <button class="modal-close" data-modal="memberModal" aria-label="닫기">&times;</button>
       </div>
       <div class="modal-body">
         <form id="memberForm">
@@ -803,7 +807,7 @@
     <div class="modal modal-wide">
       <div class="modal-header">
         <h3 id="detailModalTitle">회원 정보</h3>
-        <button class="modal-close" data-modal="memberDetailModal">&times;</button>
+        <button class="modal-close" data-modal="memberDetailModal" aria-label="닫기">&times;</button>
       </div>
       <div class="modal-body" id="memberDetailBody"></div>
     </div>
@@ -814,7 +818,7 @@
     <div class="modal">
       <div class="modal-header">
         <h3 id="eventModalTitle">이벤트 만들기</h3>
-        <button class="modal-close" data-modal="eventModal">&times;</button>
+        <button class="modal-close" data-modal="eventModal" aria-label="닫기">&times;</button>
       </div>
       <div class="modal-body">
         <form id="eventForm">
@@ -946,14 +950,14 @@
     </div>
     <div class="dm-panel-list" id="dmPanelList"></div>
   </div>
-  <div class="dm-panel-overlay" id="dmPanelOverlay" onclick="closeDMPanel()"></div>
+  <div class="dm-panel-overlay" id="dmPanelOverlay" onclick="closeDMPanel()" role="button" tabindex="-1" aria-label="DM 패널 닫기"></div>
 
   <!-- DM Chat Modal -->
   <div class="modal-overlay" id="dmChatModal">
     <div class="modal dm-chat-modal">
       <div class="modal-header">
         <h3 id="dmChatTitle">대화</h3>
-        <button class="modal-close" onclick="closeDMChat()">×</button>
+        <button class="modal-close" onclick="closeDMChat()" aria-label="닫기">×</button>
       </div>
       <div class="dm-messages" id="dmMessages"></div>
       <div id="dmPhotoPreview" style="display:none;padding:8px 12px;background:var(--bg3);border-top:1px solid var(--border)">
@@ -965,7 +969,7 @@
         </div>
       </div>
       <div class="dm-input-area">
-        <label class="dm-photo-btn" title="사진 전송">🖼️<input type="file" id="dmImageInput" accept="image/*" style="display:none" onchange="handleDMImage(this)"></label>
+        <label class="dm-photo-btn" title="사진 전송" aria-label="사진 전송">🖼️<input type="file" id="dmImageInput" accept="image/*" style="display:none" onchange="handleDMImage(this)" aria-label="사진 파일 선택"></label>
         <input id="dmInput" placeholder="메시지를 입력하세요…" autocomplete="off">
         <button class="btn btn-sm btn-primary" onclick="sendDMMessage()">전송</button>
       </div>
@@ -977,7 +981,7 @@
     <div class="modal">
       <div class="modal-header">
         <h3>📋 게시글</h3>
-        <button class="modal-close" data-modal="anonDetailModal">&times;</button>
+        <button class="modal-close" data-modal="anonDetailModal" aria-label="닫기">&times;</button>
       </div>
       <div class="modal-body" style="padding:16px">
         <div id="anonDetailContent"></div>
@@ -1001,7 +1005,7 @@
     <div class="modal" style="max-width:500px">
       <div class="modal-header">
         <h3>✏️ 게시글 수정</h3>
-        <button class="modal-close" data-modal="anonEditModal">&times;</button>
+        <button class="modal-close" data-modal="anonEditModal" aria-label="닫기">&times;</button>
       </div>
       <div class="modal-body" style="padding:16px">
         <div style="display:flex;gap:8px;margin-bottom:8px">
@@ -1032,7 +1036,7 @@
     <div class="modal modal-wide">
       <div class="modal-header">
         <h3>🎲 조 나누기</h3>
-        <button class="modal-close" data-modal="teamDivideModal">&times;</button>
+        <button class="modal-close" data-modal="teamDivideModal" aria-label="닫기">&times;</button>
       </div>
       <div class="modal-body" style="padding:16px">
         <div class="team-controls">
@@ -1056,12 +1060,12 @@
     <div class="modal modal-wide">
       <div class="modal-header">
         <h3>🅿️ 주차장 찾기</h3>
-        <button class="modal-close" data-modal="parkingModal">&times;</button>
+        <button class="modal-close" data-modal="parkingModal" aria-label="닫기">&times;</button>
       </div>
       <div class="modal-body" style="padding:0">
         <div class="parking-search-bar">
-          <input type="text" id="parkingDestInput" placeholder="도착지를 검색하세요 (예: 강남역, 홍대입구)" onkeydown="if(event.key==='Enter')searchParkingDest()">
-          <button onclick="searchParkingDest()">🔍</button>
+          <input type="text" id="parkingDestInput" placeholder="도착지를 검색하세요 (예: 강남역, 홍대입구)" aria-label="주차장 도착지 검색" onkeydown="if(event.key==='Enter')searchParkingDest()">
+          <button onclick="searchParkingDest()" aria-label="검색">🔍</button>
         </div>
         <div id="parkingDestResults" class="parking-dest-results" style="display:none"></div>
         <div style="position:relative">
@@ -1081,29 +1085,29 @@
     <div class="modal modal-wide">
       <div class="modal-header">
         <h3>⛽ 주변 주유소 찾기</h3>
-        <button class="modal-close" data-modal="gasStationModal">&times;</button>
+        <button class="modal-close" data-modal="gasStationModal" aria-label="닫기">&times;</button>
       </div>
       <div class="modal-body" style="padding:0">
         <div class="parking-search-bar">
-          <input type="text" id="gasDestInput" placeholder="주소/장소 검색 (예: 강남역, 홍대입구)" onkeydown="if(event.key==='Enter')searchGasDest()">
-          <button onclick="searchGasDest()">🔍</button>
+          <input type="text" id="gasDestInput" placeholder="주소/장소 검색 (예: 강남역, 홍대입구)" aria-label="주유소 주소 검색" onkeydown="if(event.key==='Enter')searchGasDest()">
+          <button onclick="searchGasDest()" aria-label="검색">🔍</button>
         </div>
         <div id="gasDestResults" class="parking-dest-results" style="display:none"></div>
         <div class="gas-filters">
-          <select id="gasFuelType" onchange="_fetchGasStations()">
+          <select id="gasFuelType" aria-label="유종 선택" onchange="_fetchGasStations()">
             <option value="B027">휘발유</option>
             <option value="D047">경유</option>
             <option value="K015">LPG</option>
             <option value="B034">고급휘발유</option>
           </select>
-          <select id="gasRadius" onchange="_fetchGasStations()">
+          <select id="gasRadius" aria-label="검색 반경" onchange="_fetchGasStations()">
             <option value="1000">반경 1km</option>
             <option value="3000" selected>반경 3km</option>
             <option value="5000">반경 5km</option>
             <option value="10000">반경 10km</option>
             <option value="30000">반경 30km</option>
           </select>
-          <select id="gasSort" onchange="_fetchGasStations()">
+          <select id="gasSort" aria-label="정렬 기준" onchange="_fetchGasStations()">
             <option value="1">가격순</option>
             <option value="2">거리순</option>
           </select>
@@ -1111,7 +1115,7 @@
         <div id="gasMyLocation" style="padding:8px 16px;font-size:.78rem;color:var(--text3);border-bottom:1px solid var(--border);display:none">📍 내 위치: <span id="gasMyAddr">확인 중...</span></div>
         <div style="position:relative">
           <div id="gasMap" style="width:100%;height:220px;display:none"></div>
-          <button id="gasMyLocBtn" onclick="gasGoToMyLocation()" style="display:none;position:absolute;bottom:10px;right:10px;z-index:2;width:36px;height:36px;border-radius:50%;border:none;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.3);cursor:pointer;font-size:1.1rem;line-height:1">📍</button>
+          <button id="gasMyLocBtn" onclick="gasGoToMyLocation()" aria-label="내 위치로 이동" style="display:none;position:absolute;bottom:10px;right:10px;z-index:2;width:36px;height:36px;border-radius:50%;border:none;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.3);cursor:pointer;font-size:1.1rem;line-height:1">📍</button>
         </div>
         <div id="gasStationList" style="padding:12px 16px;max-height:38vh;overflow-y:auto;-webkit-overflow-scrolling:touch">
           <div style="text-align:center;padding:40px;color:var(--text3)">
@@ -1127,7 +1131,7 @@
     <div class="modal">
       <div class="modal-header">
         <h3 id="voteModalTitle">참여 투표</h3>
-        <button class="modal-close" data-modal="voteModal">&times;</button>
+        <button class="modal-close" data-modal="voteModal" aria-label="닫기">&times;</button>
       </div>
       <div class="modal-body" id="voteModalBody"></div>
     </div>
@@ -1138,7 +1142,7 @@
     <div class="modal">
       <div class="modal-header">
         <h3>내 계정 정보</h3>
-        <button class="modal-close" data-modal="myAccountModal">&times;</button>
+        <button class="modal-close" data-modal="myAccountModal" aria-label="닫기">&times;</button>
       </div>
       <div class="modal-body">
         <form id="myAccountForm">
@@ -1208,7 +1212,7 @@
     <div class="modal">
       <div class="modal-header">
         <h3 id="noticeEditModalTitle">공지 추가</h3>
-        <button class="modal-close" onclick="closeModal('noticeEditModal')">&times;</button>
+        <button class="modal-close" onclick="closeModal('noticeEditModal')" aria-label="닫기">&times;</button>
       </div>
       <div class="modal-body">
         <input type="hidden" id="noticeEditId" />
@@ -1237,13 +1241,13 @@
   </div>
 
   <!-- 자동차 로고 퀴즈 모달 -->
-  <div class="modal-overlay" id="logoQuizModal" style="display:none" onclick="if(event.target===this)closeLogoQuiz()">
+  <div class="modal-overlay" id="logoQuizModal" role="dialog" aria-label="자동차 로고 퀴즈" style="display:none" onclick="if(event.target===this)closeLogoQuiz()">
     <div class="modal" style="max-width:400px;width:94%">
       <!-- 난이도 선택 -->
       <div id="quizScreenDiff">
         <div class="modal-header">
           <h3>🏆 자동차 로고 퀴즈</h3>
-          <button class="modal-close" onclick="closeLogoQuiz()">✕</button>
+          <button class="modal-close" onclick="closeLogoQuiz()" aria-label="닫기">✕</button>
         </div>
         <div class="modal-body" style="padding:16px 20px 24px">
           <p style="color:var(--text3);font-size:.88rem;margin:0 0 18px;text-align:center">로고를 보고 브랜드를 맞춰보세요!<br>10문제 · 시간 제한 있음</p>
@@ -1266,7 +1270,7 @@
             <span id="quizProgress" style="color:var(--text3)">1 / 10</span>
             <span style="flex:1"></span>
             <span id="quizScore" style="font-weight:700;color:var(--primary)">0점</span>
-            <button class="modal-close" onclick="closeLogoQuiz()">✕</button>
+            <button class="modal-close" onclick="closeLogoQuiz()" aria-label="닫기">✕</button>
           </div>
         </div>
         <div class="modal-body" style="padding:4px 20px 22px">
@@ -1308,7 +1312,7 @@
     <div class="modal modal-crop">
       <div class="modal-header">
         <h3>사진 영역 선택</h3>
-        <button class="modal-close" onclick="cancelCrop()">&times;</button>
+        <button class="modal-close" onclick="cancelCrop()" aria-label="닫기">&times;</button>
       </div>
       <div class="modal-body">
         <p style="font-size:.85rem;color:var(--text3);margin-bottom:12px">드래그로 영역을 조절하세요</p>
