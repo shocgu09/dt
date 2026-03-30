@@ -179,7 +179,7 @@ function initAuth() {
           return;
         }
       }
-      if (state._wasGuest) { location.reload(); return; }
+      if (state._wasGuest) { location.href = '/'; return; }
       showApp();
       // 실시간 강퇴 감지: 관리자가 users 문서 삭제 시 즉시 로그아웃
       if (state._banListener) state._banListener();
