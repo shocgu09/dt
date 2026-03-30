@@ -2896,8 +2896,14 @@ async function initPushNotifications() {
     }
   }
 
-  // SW로부터 OPEN_DM 메시지 수신 → 해당 대화 열기
+  // SW로부터 메시지 수신
   navigator.serviceWorker.addEventListener('message', (event) => {
+    // 새 SW 활성화 → 페이지 자동 새로고침
+    if (event.data?.type === 'SW_UPDATED') {
+      window.location.reload();
+      return;
+    }
+    // OPEN_DM → 해당 대화 열기
     if (event.data?.type === 'OPEN_DM' && event.data.convId) {
       const otherUid = event.data.convId.split('_').find(id => id !== state.currentUserId);
       if (otherUid) openDMChat(otherUid);
@@ -4715,7 +4721,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // PWA 서비스워커 등록
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
+      .then(reg => {
+        // 앱 포그라운드 복귀 시 업데이트 체크 (설치된 PWA 대응)
+        document.addEventListener('visibilitychange', () => {
+          if (!document.hidden) reg.update();
+        });
+        // 60초마다 업데이트 체크
+        setInterval(() => reg.update(), 60000);
+      })
+      .catch(() => {});
   }
 });
 

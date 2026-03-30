@@ -127,6 +127,12 @@ body {
   width: 22px; height: 22px; font-size: .7rem; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
 }
+.spot-edit-btn {
+  position: absolute; top: 8px; right: 34px;
+  background: var(--primary); color: #fff; border: none;
+  width: 22px; height: 22px; font-size: .78rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
 .empty { text-align: center; padding: 40px 20px; color: var(--text3); font-size: .88rem; line-height: 1.8; }
 
 /* 모달 */

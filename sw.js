@@ -1,4 +1,4 @@
-const CACHE = 'dt-club-v5';
+const CACHE = 'dt-club-v7';
 const STATIC = [
   '/',
   '/index.html',
@@ -17,17 +17,28 @@ self.addEventListener('install', e => {
 
 self.addEventListener('activate', e => {
   e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(() => self.clients.claim())
+      .then(() => self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
+      .then(clients => clients.forEach(client => client.postMessage({ type: 'SW_UPDATED' })))
   );
 });
 
 self.addEventListener('fetch', e => {
   // Firebase / 외부 API는 캐시 건너뜀
   if (!e.request.url.startsWith(self.location.origin)) return;
+  // Stale-While-Revalidate: 캐시 즉시 반환 + 백그라운드에서 캐시 최신화
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request))
+    caches.open(CACHE).then(cache =>
+      cache.match(e.request).then(cached => {
+        const networkFetch = fetch(e.request).then(response => {
+          cache.put(e.request, response.clone());
+          return response;
+        }).catch(() => cached);
+        return cached || networkFetch;
+      })
+    )
   );
 });
 

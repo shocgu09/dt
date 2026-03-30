@@ -8,6 +8,8 @@ var currentCategory = 'all';
 var _spotSearchResults = [];
 var _waypointSearchResults = {};
 var _waypoints = [];
+var _editingSpotId = null;
+var _editingCourseId = null;
 
 var CATEGORY_COLOR = { '맛집': '#e74c5a', '카페': '#c0772a', '명소': '#4a90d9', '기타': '#888888' };
 var CATEGORY_EMOJI = { '맛집': '🍽️', '카페': '☕', '명소': '🏛️', '기타': '📍' };
@@ -329,6 +331,7 @@ function renderSpotCard(spot) {
     + (spot.address ? ' · ' + escapeHtml(spot.address) : '') + '</div>'
     + (spot.memo ? '<div class="spot-card-memo">' + escapeHtml(spot.memo) + '</div>' : '')
     + '</div>'
+    + (isAdmin ? '<button class="spot-edit-btn" onclick="event.stopPropagation();openEditSpotModal(\'' + spot.id + '\')">✎</button>' : '')
     + (isAdmin ? '<button class="spot-del-btn" onclick="event.stopPropagation();deleteSpot(\'' + spot.id + '\')">✕</button>' : '')
     + '</div>';
 }
@@ -349,6 +352,7 @@ function renderCourseCard(course) {
     + (course.duration ? ' · 약 ' + course.duration + '분' : '') + '</div>'
     + (course.description ? '<div class="spot-card-memo">' + escapeHtml(course.description) + '</div>' : '')
     + '</div>'
+    + (isAdmin || (currentUser && currentUser.uid === course.addedBy) ? '<button class="spot-edit-btn" onclick="event.stopPropagation();openEditCourseModal(\'' + course.id + '\')">✎</button>' : '')
     + (isAdmin ? '<button class="spot-del-btn" onclick="event.stopPropagation();deleteCourse(\'' + course.id + '\')">✕</button>' : '')
     + '</div>';
 }
@@ -431,17 +435,41 @@ function openCourseDetail(course) {
   document.getElementById('detailModal').style.display = 'flex';
 }
 
-// ===== 장소 추가 =====
+// ===== 장소 추가/수정 =====
 function openAddSpotModal() {
   if (!currentUser || currentUser.isAnonymous) { alert('로그인이 필요합니다.'); return; }
+  _editingSpotId = null;
   ['spotName', 'spotAddress', 'spotMemo', 'spotSearchInput'].forEach(function(id) {
     document.getElementById(id).value = '';
   });
+  document.getElementById('spotCategory').value = '맛집';
   document.getElementById('spotLat').value = '';
   document.getElementById('spotLng').value = '';
   document.getElementById('spotSearchResults').style.display = 'none';
   document.getElementById('spotSaveMsg').style.display = 'none';
+  document.querySelector('#addSpotModal .modal-title').textContent = '📍 장소 추가';
+  document.getElementById('spotSaveBtn').textContent = '저장';
   _spotSearchResults = [];
+  document.getElementById('addSpotModal').style.display = 'flex';
+}
+
+function openEditSpotModal(id) {
+  var spot = allSpots.find(function(s) { return s.id === id; });
+  if (!spot) return;
+  _editingSpotId = id;
+  document.getElementById('spotCategory').value = spot.category || '맛집';
+  document.getElementById('spotName').value = spot.name || '';
+  document.getElementById('spotAddress').value = spot.address || '';
+  document.getElementById('spotLat').value = spot.lat || '';
+  document.getElementById('spotLng').value = spot.lng || '';
+  document.getElementById('spotMemo').value = spot.memo || '';
+  document.getElementById('spotSearchInput').value = '';
+  document.getElementById('spotSearchResults').style.display = 'none';
+  document.getElementById('spotSaveMsg').style.display = 'none';
+  document.querySelector('#addSpotModal .modal-title').textContent = '📍 장소 수정';
+  document.getElementById('spotSaveBtn').textContent = '수정';
+  _spotSearchResults = [];
+  closeModal('detailModal');
   document.getElementById('addSpotModal').style.display = 'flex';
 }
 
@@ -494,36 +522,70 @@ async function saveSpot() {
   if (!name) { msg.textContent = '장소명을 입력하세요.'; msg.style.display = ''; return; }
   if (!lat || !lng) { msg.textContent = '장소를 검색해서 선택해주세요.'; msg.style.display = ''; return; }
 
-  btn.disabled = true; btn.textContent = '저장 중...';
+  btn.disabled = true; btn.textContent = _editingSpotId ? '수정 중...' : '저장 중...';
   try {
-    await db.collection('spots').add({
-      name: name, category: category, address: address,
-      lat: lat, lng: lng, memo: memo,
-      region: detectRegion(lat, lng),
-      addedBy: currentUser.uid,
-      addedByName: currentUser.displayName || (currentUser.email || '').split('@')[0] || '익명',
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
+    if (_editingSpotId) {
+      await db.collection('spots').doc(_editingSpotId).update({
+        name: name, category: category, address: address,
+        lat: lat, lng: lng, memo: memo,
+        region: detectRegion(lat, lng),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    } else {
+      await db.collection('spots').add({
+        name: name, category: category, address: address,
+        lat: lat, lng: lng, memo: memo,
+        region: detectRegion(lat, lng),
+        addedBy: currentUser.uid,
+        addedByName: currentUser.displayName || (currentUser.email || '').split('@')[0] || '익명',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
+    _editingSpotId = null;
     closeModal('addSpotModal');
     await loadData();
   } catch(e) {
     msg.textContent = '저장 실패: ' + e.message;
     msg.style.display = '';
   } finally {
-    btn.disabled = false; btn.textContent = '저장';
+    btn.disabled = false; btn.textContent = _editingSpotId ? '수정' : '저장';
   }
 }
 
-// ===== 코스 추가 =====
+// ===== 코스 추가/수정 =====
 function openAddCourseModal() {
   if (!currentUser || currentUser.isAnonymous) { alert('로그인이 필요합니다.'); return; }
+  _editingCourseId = null;
   document.getElementById('courseName').value = '';
   document.getElementById('courseDesc').value = '';
   document.getElementById('courseSaveMsg').style.display = 'none';
+  document.querySelector('#addCourseModal .modal-title').textContent = '🛣️ 드라이브 코스 추가';
+  document.getElementById('courseSaveBtn').textContent = '저장';
   _waypoints = [];
   _waypointSearchResults = {};
   addWaypointField();
   addWaypointField();
+  document.getElementById('addCourseModal').style.display = 'flex';
+}
+
+function openEditCourseModal(id) {
+  var course = allCourses.find(function(c) { return c.id === id; });
+  if (!course) return;
+  _editingCourseId = id;
+  document.getElementById('courseName').value = course.name || '';
+  document.getElementById('courseDesc').value = course.description || '';
+  document.getElementById('courseSaveMsg').style.display = 'none';
+  document.querySelector('#addCourseModal .modal-title').textContent = '🛣️ 드라이브 코스 수정';
+  document.getElementById('courseSaveBtn').textContent = '수정';
+  _waypoints = (course.waypoints || []).map(function(wp) {
+    return { name: wp.name || '', address: wp.address || '', lat: wp.lat || null, lng: wp.lng || null, memo: wp.memo || '' };
+  });
+  if (_waypoints.length < 2) {
+    while (_waypoints.length < 2) _waypoints.push({ name: '', address: '', lat: null, lng: null, memo: '' });
+  }
+  _waypointSearchResults = {};
+  renderWaypointFields();
+  closeModal('detailModal');
   document.getElementById('addCourseModal').style.display = 'flex';
 }
 
@@ -616,24 +678,37 @@ async function saveCourse() {
   if (!name) { msg.textContent = '코스명을 입력하세요.'; msg.style.display = ''; return; }
   if (validWps.length < 2) { msg.textContent = '경유지를 검색해서 최소 2개 이상 선택해주세요.'; msg.style.display = ''; return; }
 
-  btn.disabled = true; btn.textContent = '저장 중...';
+  btn.disabled = true; btn.textContent = _editingCourseId ? '수정 중...' : '저장 중...';
   try {
     var firstWp = validWps[0];
-    await db.collection('drive_courses').add({
-      name: name, description: desc,
-      waypoints: _waypoints,
-      region: detectRegion(firstWp.lat, firstWp.lng),
-      addedBy: currentUser.uid,
-      addedByName: currentUser.displayName || (currentUser.email || '').split('@')[0] || '익명',
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
+    if (_editingCourseId) {
+      await db.collection('drive_courses').doc(_editingCourseId).update({
+        name: name, description: desc,
+        waypoints: _waypoints,
+        region: detectRegion(firstWp.lat, firstWp.lng),
+        routePath: firebase.firestore.FieldValue.delete(),
+        distance: firebase.firestore.FieldValue.delete(),
+        duration: firebase.firestore.FieldValue.delete(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    } else {
+      await db.collection('drive_courses').add({
+        name: name, description: desc,
+        waypoints: _waypoints,
+        region: detectRegion(firstWp.lat, firstWp.lng),
+        addedBy: currentUser.uid,
+        addedByName: currentUser.displayName || (currentUser.email || '').split('@')[0] || '익명',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
+    _editingCourseId = null;
     closeModal('addCourseModal');
     await loadData();
   } catch(e) {
     msg.textContent = '저장 실패: ' + e.message;
     msg.style.display = '';
   } finally {
-    btn.disabled = false; btn.textContent = '저장';
+    btn.disabled = false; btn.textContent = _editingCourseId ? '수정' : '저장';
   }
 }
 
