@@ -157,14 +157,11 @@ function initAuth() {
       if (userDoc.exists) {
         const data = userDoc.data();
         state.currentUserRole = data.role;
-        // 마지막 접속 시간 + 위치 갱신 (ipwho.is: HTTPS 무료)
-        const _KO_LOC = {'Seoul':'서울','Busan':'부산','Incheon':'인천','Daegu':'대구','Daejeon':'대전','Gwangju':'광주','Ulsan':'울산','Sejong':'세종','Gyeonggi-do':'경기도','Gangwon-do':'강원도','Chungcheongbuk-do':'충청북도','Chungcheongnam-do':'충청남도','Jeollabuk-do':'전라북도','Jeollanam-do':'전라남도','Gyeongsangbuk-do':'경상북도','Gyeongsangnam-do':'경상남도','Jeju-do':'제주도','Suwon':'수원','Seongnam':'성남','Goyang':'고양','Yongin':'용인','Bucheon':'부천','Ansan':'안산','Anyang':'안양','Hwaseong':'화성','Namyangju':'남양주','Uijeongbu':'의정부','Paju':'파주','Siheung':'시흥','Gimpo':'김포','Hanam':'하남','Gwangmyeong':'광명','Icheon':'이천','Yangju':'양주','Osan':'오산','Changwon':'창원','Pohang':'포항','Jeonju':'전주','Cheongju':'청주','Cheonan':'천안','Jinju':'진주','Jeju':'제주','Gimhae':'김해','Yangsan':'양산','Mokpo':'목포','Yeosu':'여수','Iksan':'익산','Gunsan':'군산','Wonju':'원주','Gangneung':'강릉','Gumi':'구미','Andong':'안동','Gyeongju':'경주'};
-        fetch('https://ipwho.is/')
+        // 마지막 접속 시간 + 위치 갱신
+        fetch('https://ip-api.com/json/?lang=ko&fields=city,regionName')
           .then(r => r.json())
           .then(d => {
-            const r = _KO_LOC[d.region] || d.region || '';
-            const c = _KO_LOC[d.city] || d.city || '';
-            const loc = r === c ? r : [r, c].filter(Boolean).join(' ');
+            const loc = [d.regionName, d.city].filter(Boolean).join(' ') || '';
             state.db.collection('users').doc(user.uid).update({ lastSeen: new Date().toISOString(), lastLocation: loc }).catch(() => {});
           })
           .catch(() => {
