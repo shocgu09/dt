@@ -158,10 +158,10 @@ function initAuth() {
         const data = userDoc.data();
         state.currentUserRole = data.role;
         // 마지막 접속 시간 + 위치 갱신
-        fetch('https://ipapi.co/json/')
+        fetch('https://ipwho.is/')
           .then(r => r.json())
           .then(d => {
-            const loc = [d.city, d.region].filter(Boolean).join(', ') || d.country_name || '';
+            const loc = [d.region, d.city].filter(Boolean).join(' ') || d.country || '';
             state.db.collection('users').doc(user.uid).update({ lastSeen: new Date().toISOString(), lastLocation: loc }).catch(() => {});
           })
           .catch(() => {
