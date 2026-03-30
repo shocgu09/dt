@@ -163,8 +163,7 @@ function initAuth() {
         fetch('https://dt-youtube.shocguna.workers.dev/api/location')
           .then(r => r.json())
           .then(d => {
-            const parts = [d.region, d.city].filter(Boolean);
-            const loc = parts[0] === parts[1] ? (parts[0] || '') : parts.join(' ');
+            const loc = d.loc || '';
             return state.db.collection('users').doc(_uid).update({ lastSeen: new Date().toISOString(), ...(loc && { lastLocation: loc }) });
           })
           .catch(() => {

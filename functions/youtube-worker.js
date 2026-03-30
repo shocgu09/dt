@@ -90,14 +90,19 @@ export default {
       }
     }
 
-    // 접속 위치 조회 (Cloudflare 자체 Geolocation)
+    // 접속 위치 조회 (ip-api.com 한글, Worker에서 HTTP 가능)
     if (url.pathname === '/api/location') {
-      const cf = request.cf || {};
-      return new Response(JSON.stringify({
-        city: cf.city || '',
-        region: cf.region || '',
-        country: cf.country || ''
-      }), { headers: { ...jsonHeaders, 'Cache-Control': 'no-store' } });
+      try {
+        const ip = request.headers.get('CF-Connecting-IP') || '';
+        const r = await fetch(`http://ip-api.com/json/${ip}?lang=ko&fields=city,regionName`);
+        const d = await r.json();
+        const region = d.regionName || '';
+        const city = d.city || '';
+        const loc = region === city ? region : [region, city].filter(Boolean).join(' ');
+        return new Response(JSON.stringify({ loc }), { headers: { ...jsonHeaders, 'Cache-Control': 'no-store' } });
+      } catch(e) {
+        return new Response(JSON.stringify({ loc: '' }), { headers: jsonHeaders });
+      }
     }
 
     return new Response(JSON.stringify({ status: 'ok', service: 'dt-youtube' }), { headers: jsonHeaders });
