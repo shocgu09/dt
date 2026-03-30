@@ -1,0 +1,6 @@
+name = "dt-route"
+main = "kakao-route-worker.js"
+compatibility_date = "2024-09-23"
+
+[vars]
+KAKAO_REST_KEY = "36c5c3e4b3a6bcdddd3ab18813ae8cf4"
