@@ -345,7 +345,7 @@ function renderAdminLinks() {
 document.getElementById('addCategory')?.addEventListener('change', function() {
   var isYt = this.value === '유튜브';
   var isNl = this.value === '뉴스레터';
-  document.getElementById('addUrl').placeholder = isYt ? '채널 핸들 (예: builderjoshkim)' : 'URL';
+  document.getElementById('addUrl').placeholder = isYt ? '채널 핸들 (예: @builderjoshkim)' : 'URL';
   document.getElementById('ytHandleHint').style.display = isYt ? '' : 'none';
   document.getElementById('rssHint').style.display = isNl ? '' : 'none';
   document.getElementById('addRss').style.display = isNl ? '' : 'none';

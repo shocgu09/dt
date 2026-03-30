@@ -318,7 +318,7 @@ function renderAdminLinks() {
 document.getElementById('addCategory')?.addEventListener('change', function() {
   var isYt = this.value === '유튜브';
   var isNews = this.value === '뉴스';
-  document.getElementById('addUrl').placeholder = isYt ? '채널 핸들 (예: TopGear)' : 'URL';
+  document.getElementById('addUrl').placeholder = isYt ? '채널 핸들 (예: @TopGear)' : 'URL';
   document.getElementById('ytHandleHint').style.display = isYt ? '' : 'none';
   document.getElementById('rssHint').style.display = isNews ? '' : 'none';
   document.getElementById('addRss').style.display = isNews ? '' : 'none';
