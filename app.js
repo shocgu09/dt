@@ -2825,21 +2825,35 @@ function renderDMMessages(msgs, myUid) {
   });
 }
 
+var _dmPendingPhoto = null;
+
 function handleDMImage(fileInput) {
   const file = fileInput.files[0];
   if (!file) return;
   fileInput.value = '';
-  // 파일 크기 제한 (10MB)
   if (file.size > 10 * 1024 * 1024) { alert('10MB 이하의 이미지만 전송할 수 있습니다.'); return; }
-  // 로딩 표시
-  const sendBtn = document.querySelector('.dm-input-area button[onclick]');
-  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '전송 중…'; }
-  // EXIF 보정 + 압축 사용
   compressImage(file, 600, 0.7).then(function(dataUrl) {
-    sendDMMessage(dataUrl);
+    _dmPendingPhoto = dataUrl;
+    document.getElementById('dmPhotoPreviewImg').src = dataUrl;
+    document.getElementById('dmPhotoPreview').style.display = '';
   }).catch(function(err) {
     alert('이미지 처리 실패: ' + (err.message || err));
-  }).finally(function() {
+  });
+}
+
+function cancelDMPhotoPreview() {
+  _dmPendingPhoto = null;
+  document.getElementById('dmPhotoPreview').style.display = 'none';
+  document.getElementById('dmPhotoPreviewImg').src = '';
+}
+
+function sendDMPhotoPreview() {
+  if (!_dmPendingPhoto) return;
+  const dataUrl = _dmPendingPhoto;
+  cancelDMPhotoPreview();
+  const sendBtn = document.querySelector('.dm-input-area button[onclick]');
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '전송 중…'; }
+  sendDMMessage(dataUrl).finally(function() {
     if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = '전송'; }
   });
 }

@@ -952,6 +952,14 @@
         <button class="modal-close" onclick="closeDMChat()">×</button>
       </div>
       <div class="dm-messages" id="dmMessages"></div>
+      <div id="dmPhotoPreview" style="display:none;padding:8px 12px;background:var(--bg3);border-top:1px solid var(--border)">
+        <img id="dmPhotoPreviewImg" src="" alt="미리보기" style="max-width:100%;max-height:180px;display:block;margin-bottom:8px;border-radius:6px;object-fit:contain">
+        <div style="display:flex;gap:8px">
+          <label style="flex:1;text-align:center;padding:7px;background:var(--bg2);border:1px solid var(--border);cursor:pointer;font-size:.82rem;font-weight:600">다른 사진 고르기<input type="file" id="dmImageInput2" accept="image/*" style="display:none" onchange="handleDMImage(this)"></label>
+          <button onclick="cancelDMPhotoPreview()" style="flex:1;padding:7px;background:var(--bg2);border:1px solid var(--border);color:var(--text);cursor:pointer;font-size:.82rem;font-weight:600">취소</button>
+          <button onclick="sendDMPhotoPreview()" style="flex:1;padding:7px;background:var(--primary);border:none;color:#fff;cursor:pointer;font-size:.82rem;font-weight:700">전송</button>
+        </div>
+      </div>
       <div class="dm-input-area">
         <label class="dm-photo-btn" title="사진 전송">🖼️<input type="file" id="dmImageInput" accept="image/*" style="display:none" onchange="handleDMImage(this)"></label>
         <input id="dmInput" placeholder="메시지를 입력하세요…" autocomplete="off">
