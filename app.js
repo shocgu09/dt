@@ -159,19 +159,29 @@ function initAuth() {
         state.currentUserRole = data.role;
         // 마지막 접속 시간 + 위치 갱신 후 리다이렉트
         const _doRedirect = state._wasGuest;
-        fetch('https://ipwho.is/')
-          .then(r => r.json())
-          .then(d => {
-            const parts = [d.region, d.city].filter(Boolean);
-            const loc = parts[0] === parts[1] ? parts[0] : parts.join(' ') || d.country || '';
-            return state.db.collection('users').doc(user.uid).update({ lastSeen: new Date().toISOString(), lastLocation: loc });
-          })
-          .catch(() => {
-            return state.db.collection('users').doc(user.uid).update({ lastSeen: new Date().toISOString() });
-          })
-          .finally(() => {
-            if (_doRedirect) { location.href = '/'; }
-          });
+        const _uid = user.uid;
+        (async () => {
+          let loc = '';
+          try {
+            const r = await fetch('https://ipwho.is/');
+            const d = await r.json();
+            if (d.success) {
+              const parts = [d.region, d.city].filter(Boolean);
+              loc = parts[0] === parts[1] ? (parts[0] || '') : parts.join(' ');
+            }
+          } catch(e) {}
+          if (!loc) {
+            try {
+              const r = await fetch('https://ipapi.co/json/');
+              const d = await r.json();
+              if (!d.error) loc = [d.city, d.region].filter(Boolean).join(', ') || d.country_name || '';
+            } catch(e) {}
+          }
+          const update = { lastSeen: new Date().toISOString() };
+          if (loc) update.lastLocation = loc;
+          await state.db.collection('users').doc(_uid).update(update).catch(() => {});
+          if (_doRedirect) location.href = '/';
+        })();
       } else {
         if (state.isSigningUp) {
           // 회원가입 직후 race condition - 역할만 임시 설정
