@@ -325,9 +325,10 @@ function selectSpot(id) {
   if (!spot || !spot.lat) return;
   kakaoMap.panTo(new kakao.maps.LatLng(spot.lat, spot.lng));
   kakaoMap.setLevel(4);
+  document.querySelector('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
   document.querySelectorAll('.spot-card').forEach(function(c) { c.classList.remove('active'); });
   var card = document.getElementById('card-spot-' + id);
-  if (card) { card.classList.add('active'); card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+  if (card) { card.classList.add('active'); }
   openSpotDetail(spot);
 }
 
@@ -340,9 +341,10 @@ function selectCourse(id) {
     validWps.forEach(function(wp) { bounds.extend(new kakao.maps.LatLng(wp.lat, wp.lng)); });
     kakaoMap.setBounds(bounds, 80);
   }
+  document.querySelector('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
   document.querySelectorAll('.spot-card').forEach(function(c) { c.classList.remove('active'); });
   var card = document.getElementById('card-course-' + id);
-  if (card) { card.classList.add('active'); card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+  if (card) { card.classList.add('active'); }
   openCourseDetail(course);
 }
 
