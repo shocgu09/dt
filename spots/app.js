@@ -178,7 +178,7 @@ function renderMapOverlays(spots, courses) {
     if (!spot.lat || !spot.lng) return;
     var color = CATEGORY_COLOR[spot.category] || '#888';
     var emoji = CATEGORY_EMOJI[spot.category] || '📍';
-    var content = '<div class="map-marker" style="background:' + color + '" onclick="selectSpot(\'' + spot.id + '\')" title="' + escapeHtml(spot.name) + '">' + emoji + '</div>';
+    var content = '<div class="map-marker" style="background:' + color + '" onclick="openSpotDetailById(\'' + spot.id + '\')" title="' + escapeHtml(spot.name) + '">' + emoji + '</div>';
     var overlay = new kakao.maps.CustomOverlay({
       position: new kakao.maps.LatLng(spot.lat, spot.lng),
       content: content, yAnchor: 1.2
@@ -196,7 +196,7 @@ function renderCourseOverlay(course) {
   if (validWps.length < 2) return;
 
   validWps.forEach(function(wp, i) {
-    var content = '<div class="map-marker course-wp" onclick="selectCourse(\'' + course.id + '\')" title="' + escapeHtml(course.name) + '">' + (i + 1) + '</div>';
+    var content = '<div class="map-marker course-wp" onclick="openCourseDetailById(\'' + course.id + '\')" title="' + escapeHtml(course.name) + '">' + (i + 1) + '</div>';
     var overlay = new kakao.maps.CustomOverlay({
       position: new kakao.maps.LatLng(wp.lat, wp.lng),
       content: content, yAnchor: 1.2
@@ -294,6 +294,7 @@ function renderSpotCard(spot) {
     + (spot.address ? ' · ' + escapeHtml(spot.address) : '') + '</div>'
     + (spot.memo ? '<div class="spot-card-memo">' + escapeHtml(spot.memo) + '</div>' : '')
     + '</div>'
+    + '<button class="spot-detail-btn" onclick="event.stopPropagation();openSpotDetailById(\'' + spot.id + '\')">상세</button>'
     + (isAdmin ? '<button class="spot-edit-btn" onclick="event.stopPropagation();openEditSpotModal(\'' + spot.id + '\')">✎</button>' : '')
     + (isAdmin ? '<button class="spot-del-btn" onclick="event.stopPropagation();deleteSpot(\'' + spot.id + '\')">✕</button>' : '')
     + '</div>';
@@ -314,6 +315,7 @@ function renderCourseCard(course) {
     + (course.duration ? ' · 약 ' + course.duration + '분' : '') + '</div>'
     + (course.description ? '<div class="spot-card-memo">' + escapeHtml(course.description) + '</div>' : '')
     + '</div>'
+    + '<button class="spot-detail-btn" onclick="event.stopPropagation();openCourseDetailById(\'' + course.id + '\')">상세</button>'
     + (isAdmin || (currentUser && currentUser.uid === course.addedBy) ? '<button class="spot-edit-btn" onclick="event.stopPropagation();openEditCourseModal(\'' + course.id + '\')">✎</button>' : '')
     + (isAdmin ? '<button class="spot-del-btn" onclick="event.stopPropagation();deleteCourse(\'' + course.id + '\')">✕</button>' : '')
     + '</div>';
@@ -329,7 +331,11 @@ function selectSpot(id) {
   document.querySelectorAll('.spot-card').forEach(function(c) { c.classList.remove('active'); });
   var card = document.getElementById('card-spot-' + id);
   if (card) { card.classList.add('active'); }
-  openSpotDetail(spot);
+}
+
+function openSpotDetailById(id) {
+  var spot = allSpots.find(function(s) { return s.id === id; });
+  if (spot) openSpotDetail(spot);
 }
 
 function selectCourse(id) {
@@ -345,7 +351,11 @@ function selectCourse(id) {
   document.querySelectorAll('.spot-card').forEach(function(c) { c.classList.remove('active'); });
   var card = document.getElementById('card-course-' + id);
   if (card) { card.classList.add('active'); }
-  openCourseDetail(course);
+}
+
+function openCourseDetailById(id) {
+  var course = allCourses.find(function(c) { return c.id === id; });
+  if (course) openCourseDetail(course);
 }
 
 // ===== 상세 모달 =====
