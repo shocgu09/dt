@@ -1113,7 +1113,7 @@ async function renderAdmin() {
   renderAdminNotice();
   renderAdminBlacklist();
   renderAdminYouTube();
-  const snap = await state.db.collection('users').orderBy('createdAt', 'asc').get();
+  const snap = await state.db.collection('users').orderBy('createdAt', 'asc').get({ source: 'server' });
   const users = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
   const list = document.getElementById('userList');
   if (!users.length) {
