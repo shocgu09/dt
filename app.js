@@ -405,6 +405,20 @@ async function authModalSignup() {
   }
 }
 
+async function authModalForgotPassword() {
+  var email = document.getElementById('authLoginEmail').value.trim();
+  var errEl = document.getElementById('authLoginError');
+  if (!email) { errEl.style.color = ''; errEl.textContent = '이메일을 입력 후 비밀번호 찾기를 눌러주세요.'; return; }
+  try {
+    await state.auth.sendPasswordResetEmail(email);
+    errEl.style.color = 'var(--driver)';
+    errEl.textContent = '✅ 비밀번호 재설정 메일을 보냈습니다. 이메일을 확인해 주세요.';
+  } catch (e) {
+    errEl.style.color = '';
+    errEl.textContent = authErrMsg(e.code);
+  }
+}
+
 async function authModalResend() {
   var email = document.getElementById('authLoginEmail').value.trim();
   var password = document.getElementById('authLoginPassword').value;

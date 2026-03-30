@@ -624,8 +624,9 @@
             <input type="checkbox" id="authKeepLogin" checked style="accent-color:var(--primary)"> 로그인 유지
           </label>
           <button class="btn btn-primary" style="width:100%;padding:12px;font-size:.92rem" onclick="authModalLogin()">로그인</button>
-          <div style="text-align:center;margin-top:10px">
+          <div style="text-align:center;margin-top:10px;display:flex;justify-content:center;gap:16px">
             <a href="#" onclick="authModalResend();return false" style="font-size:.78rem;color:var(--primary-light)">인증 메일 재전송</a>
+            <a href="#" onclick="authModalForgotPassword();return false" style="font-size:.78rem;color:var(--text3)">비밀번호 찾기</a>
           </div>
         </div>
         <!-- 회원가입 -->
