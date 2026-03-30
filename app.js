@@ -160,11 +160,12 @@ function initAuth() {
         // 마지막 접속 시간 + 위치 갱신
         const _doRedirect = state._wasGuest;
         const _uid = user.uid;
-        fetch('https://ipapi.co/json/')
+        fetch('https://dt-youtube.shocguna.workers.dev/api/location')
           .then(r => r.json())
           .then(d => {
-            const loc = [d.city, d.region].filter(Boolean).join(', ') || d.country_name || '';
-            return state.db.collection('users').doc(_uid).update({ lastSeen: new Date().toISOString(), lastLocation: loc });
+            const parts = [d.region, d.city].filter(Boolean);
+            const loc = parts[0] === parts[1] ? (parts[0] || '') : parts.join(' ');
+            return state.db.collection('users').doc(_uid).update({ lastSeen: new Date().toISOString(), ...(loc && { lastLocation: loc }) });
           })
           .catch(() => {
             return state.db.collection('users').doc(_uid).update({ lastSeen: new Date().toISOString() });
