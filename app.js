@@ -163,20 +163,11 @@ function initAuth() {
         (async () => {
           let loc = '';
           try {
-            const r = await fetch('https://ipwho.is/');
+            const r = await fetch('https://dt-youtube.shocguna.workers.dev/api/location');
             const d = await r.json();
-            if (d.success) {
-              const parts = [d.region, d.city].filter(Boolean);
-              loc = parts[0] === parts[1] ? (parts[0] || '') : parts.join(' ');
-            }
+            const parts = [d.region, d.city].filter(Boolean);
+            loc = parts[0] === parts[1] ? (parts[0] || '') : parts.join(' ');
           } catch(e) {}
-          if (!loc) {
-            try {
-              const r = await fetch('https://ipapi.co/json/');
-              const d = await r.json();
-              if (!d.error) loc = [d.city, d.region].filter(Boolean).join(', ') || d.country_name || '';
-            } catch(e) {}
-          }
           const update = { lastSeen: new Date().toISOString() };
           if (loc) update.lastLocation = loc;
           await state.db.collection('users').doc(_uid).update(update).catch(() => {});

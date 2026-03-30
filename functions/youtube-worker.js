@@ -90,6 +90,16 @@ export default {
       }
     }
 
+    // 접속 위치 조회 (Cloudflare 자체 Geolocation)
+    if (url.pathname === '/api/location') {
+      const cf = request.cf || {};
+      return new Response(JSON.stringify({
+        city: cf.city || '',
+        region: cf.region || '',
+        country: cf.country || ''
+      }), { headers: { ...jsonHeaders, 'Cache-Control': 'no-store' } });
+    }
+
     return new Response(JSON.stringify({ status: 'ok', service: 'dt-youtube' }), { headers: jsonHeaders });
   }
 };
