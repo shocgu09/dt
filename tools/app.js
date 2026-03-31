@@ -47,32 +47,6 @@ var DEFAULT_DATA = {
       { year: 12, rate: 0.50 }
     ],
     note: '지방세법 기준. 비영업 승용차 기준이며, 실제 세액은 지자체에 따라 다를 수 있습니다.'
-  },
-  insurance: {
-    base: { small: 450000, mid: 600000, large: 800000, suv: 700000 },
-    age_factor: [
-      { min: 18, max: 25, factor: 1.8, label: '18~25세' },
-      { min: 26, max: 30, factor: 1.3, label: '26~30세' },
-      { min: 31, max: 40, factor: 1.0, label: '31~40세' },
-      { min: 41, max: 50, factor: 0.95, label: '41~50세' },
-      { min: 51, max: 60, factor: 1.0, label: '51~60세' },
-      { min: 61, max: 99, factor: 1.2, label: '61세 이상' }
-    ],
-    gender_factor: { male: 1.05, female: 0.95 },
-    exp_factor: [
-      { val: 0, factor: 1.5, label: '1년 미만' },
-      { val: 1, factor: 1.2, label: '1~3년' },
-      { val: 3, factor: 1.05, label: '3~5년' },
-      { val: 5, factor: 1.0, label: '5~10년' },
-      { val: 10, factor: 0.9, label: '10년 이상' }
-    ],
-    accident_factor: [
-      { val: 0, factor: 0.9, label: '무사고' },
-      { val: 1, factor: 1.1, label: '1회' },
-      { val: 2, factor: 1.3, label: '2회' },
-      { val: 3, factor: 1.6, label: '3회 이상' }
-    ],
-    note: '참고용 추정치입니다. 실제 보험료는 보험사, 차량 모델, 특약 등에 따라 크게 달라질 수 있습니다. 정확한 보험료는 보험사에 문의하세요.'
   }
 };
 
@@ -104,7 +78,7 @@ async function loadToolData() {
     return;
   }
   try {
-    var docs = ['speed_fine', 'car_tax', 'insurance'];
+    var docs = ['speed_fine', 'car_tax'];
     for (var i = 0; i < docs.length; i++) {
       var snap = await db.collection('tool_data').doc(docs[i]).get();
       if (snap.exists) {
@@ -175,14 +149,6 @@ document.querySelectorAll('.radio-group').forEach(function(group) {
     opt.value = y; opt.textContent = y + '년';
     if (y === thisYear - 3) opt.selected = true;
     regSel.appendChild(opt);
-  }
-  // 출생연도
-  var birthSel = document.getElementById('birthYear');
-  for (var y = thisYear - 18; y >= thisYear - 80; y--) {
-    var opt = document.createElement('option');
-    opt.value = y; opt.textContent = y + '년';
-    if (y === thisYear - 30) opt.selected = true;
-    birthSel.appendChild(opt);
   }
 })();
 
@@ -323,80 +289,22 @@ function calcCarTax() {
   );
 }
 
-/* ===== 보험료 계산 ===== */
-function calcInsurance() {
-  var data = toolData.insurance || DEFAULT_DATA.insurance;
-  var birthYear = parseInt(document.getElementById('birthYear').value);
-  var genderActive = document.querySelector('#gender .radio-btn.active');
-  var gender = genderActive ? genderActive.dataset.value : 'male';
-  var carActive = document.querySelector('#insCarType .radio-btn.active');
-  var carType = carActive ? carActive.dataset.value : 'mid';
-  var exp = parseInt(document.getElementById('drivingExp').value);
-  var accident = parseInt(document.getElementById('accident').value);
-  var thisYear = new Date().getFullYear();
-  var age = thisYear - birthYear;
-
-  var base = (data.base || DEFAULT_DATA.insurance.base)[carType] || 600000;
-
-  // 연령 계수
-  var ageFactor = 1.0;
-  var ageFactors = data.age_factor || DEFAULT_DATA.insurance.age_factor;
-  for (var i = 0; i < ageFactors.length; i++) {
-    if (age >= ageFactors[i].min && age <= ageFactors[i].max) {
-      ageFactor = ageFactors[i].factor;
-      break;
-    }
-  }
-
-  // 성별 계수
-  var genderFactor = (data.gender_factor || DEFAULT_DATA.insurance.gender_factor)[gender] || 1.0;
-
-  // 경력 계수
-  var expFactor = 1.0;
-  var expFactors = data.exp_factor || DEFAULT_DATA.insurance.exp_factor;
-  for (var i = expFactors.length - 1; i >= 0; i--) {
-    if (exp >= expFactors[i].val) {
-      expFactor = expFactors[i].factor;
-      break;
-    }
-  }
-
-  // 사고 계수
-  var accFactor = 1.0;
-  var accFactors = data.accident_factor || DEFAULT_DATA.insurance.accident_factor;
-  for (var i = accFactors.length - 1; i >= 0; i--) {
-    if (accident >= accFactors[i].val) {
-      accFactor = accFactors[i].factor;
-      break;
-    }
-  }
-
-  var estimated = Math.round(base * ageFactor * genderFactor * expFactor * accFactor);
-  var low = Math.round(estimated * 0.85);
-  var high = Math.round(estimated * 1.15);
-
-  var carLabel = { small: '소형', mid: '중형', large: '대형', suv: 'SUV' }[carType] || carType;
-
-  showResult('insuranceResult',
-    '<div class="result-card">' +
-    '<div class="result-title">📋 조회 결과</div>' +
-    '<div class="result-row"><span class="result-label">나이</span><span class="result-value">' + age + '세 (×' + ageFactor + ')</span></div>' +
-    '<div class="result-row"><span class="result-label">차종</span><span class="result-value">' + carLabel + '</span></div>' +
-    '<div class="result-row"><span class="result-label">운전경력</span><span class="result-value">×' + expFactor + '</span></div>' +
-    '<div class="result-row"><span class="result-label">사고이력</span><span class="result-value">×' + accFactor + '</span></div>' +
-    '<div class="result-highlight"><span class="big-num">' + formatMoney(low) + ' ~ ' + formatMoney(high) + '원</span><span class="big-label">예상 연간 보험료 범위</span></div>' +
-    '<p class="result-notice">※ ' + (data.note || '') + '</p>' +
-    '</div>'
-  );
-}
-
 /* ===== 관리자 모달 ===== */
 function openAdminModal(docId) {
   editingDocId = docId;
   var data = toolData[docId] || DEFAULT_DATA[docId];
-  document.getElementById('adminModalTitle').textContent = docId + ' 데이터 수정';
+  var titles = { speed_fine: '과속 벌금 데이터', car_tax: '자동차세 데이터' };
+  document.getElementById('adminModalTitle').textContent = titles[docId] || docId;
   document.getElementById('adminModalData').value = JSON.stringify(data, null, 2);
   document.getElementById('adminModal').style.display = 'flex';
+}
+
+function formatAdminJson() {
+  try {
+    var ta = document.getElementById('adminModalData');
+    var parsed = JSON.parse(ta.value);
+    ta.value = JSON.stringify(parsed, null, 2);
+  } catch(e) { alert('JSON 형식 오류: ' + e.message); }
 }
 
 function closeAdminModal() {
@@ -420,7 +328,43 @@ async function saveAdminData() {
 
 /* ===== 유지비 계산기 ===== */
 
-// 유종 전환 시 UI 변경
+var avgFuelPrices = { gasoline: 0, premium: 0, diesel: 0, lpg: 0 };
+
+// 오피넷 전국 평균 유가 로드
+(function() {
+  fetch('https://dt-opinet.shocguna.workers.dev/api/avg')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var oils = data.RESULT && data.RESULT.OIL;
+      if (!oils) return;
+      oils.forEach(function(o) {
+        var price = Math.round(parseFloat(o.PRICE));
+        if (o.PRODCD === 'B027') avgFuelPrices.gasoline = price;
+        else if (o.PRODCD === 'B034') avgFuelPrices.premium = price;
+        else if (o.PRODCD === 'D047') avgFuelPrices.diesel = price;
+        else if (o.PRODCD === 'K015') avgFuelPrices.lpg = price;
+      });
+      // 초기 로드 시 휘발유 단가 자동 입력
+      applyAvgPrice('gasoline');
+    })
+    .catch(function() { console.log('오피넷 평균유가 로드 실패'); });
+})();
+
+function applyAvgPrice(fuelType) {
+  var price = avgFuelPrices[fuelType];
+  var input = document.getElementById('fuelPrice');
+  var hint = document.getElementById('fuelPriceHint');
+  if (price > 0) {
+    input.value = price;
+    input.placeholder = price + '';
+    if (hint) hint.textContent = '오피넷 전국 평균가 자동 적용 (' + formatMoney(price) + '원/L)';
+  } else {
+    var fallback = { gasoline: '휘발유 ~1,650원', premium: '고급휘발유 ~2,100원', diesel: '경유 ~1,500원', lpg: 'LPG ~1,050원' };
+    if (hint) hint.textContent = '전국 평균 참고: ' + (fallback[fuelType] || '');
+  }
+}
+
+// 유종 전환 시 UI 변경 + 평균가 자동 입력
 (function() {
   var fuelGroup = document.getElementById('fuelType');
   if (!fuelGroup) return;
@@ -433,10 +377,7 @@ async function saveAdminData() {
     document.getElementById('elecPriceGroup').style.display = isElec ? '' : 'none';
     document.getElementById('efficiencyLabel').textContent = isElec ? '전비 (km/kWh)' : '연비 (km/L)';
     document.getElementById('fuelEfficiency').placeholder = isElec ? '예: 5.5' : '예: 12';
-
-    var hints = { gasoline: '전국 평균 참고: 휘발유 ~1,650원', diesel: '전국 평균 참고: 경유 ~1,500원', lpg: '전국 평균 참고: LPG ~1,050원' };
-    var hint = document.getElementById('fuelPriceHint');
-    if (hint) hint.textContent = hints[val] || '';
+    if (!isElec) applyAvgPrice(val);
   });
 })();
 
@@ -467,7 +408,7 @@ function calcMaintain() {
       showResult('maintainResult', '<div class="result-card"><p style="color:var(--accent);font-weight:700;text-align:center">유류 단가를 입력해주세요.</p></div>');
       return;
     }
-    var labels = { gasoline: '휘발유', diesel: '경유', lpg: 'LPG' };
+    var labels = { gasoline: '휘발유', premium: '고급휘발유', diesel: '경유', lpg: 'LPG' };
     fuelLabel = (labels[fuelType] || fuelType) + ' (' + formatMoney(unitPrice) + '원/L)';
   }
 

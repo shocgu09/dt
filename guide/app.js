@@ -617,12 +617,200 @@ function closeWarningModal() {
 }
 
 /* ===== 관리자 모달 ===== */
+var adminMode = 'visual';
+
+function setAdminMode(mode) {
+  adminMode = mode;
+  document.querySelectorAll('.admin-mode-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.querySelector('.admin-mode-btn:' + (mode === 'visual' ? 'first-child' : 'last-child')).classList.add('active');
+  var visual = document.getElementById('adminVisualEditor');
+  var json = document.getElementById('adminModalData');
+  if (mode === 'visual') {
+    // JSON → 비주얼로 동기화
+    try { var d = JSON.parse(json.value); buildVisualEditor(editingDocId, d); } catch(e) {}
+    visual.style.display = '';
+    json.style.display = 'none';
+  } else {
+    // 비주얼 → JSON으로 동기화
+    var d = collectVisualData();
+    if (d) json.value = JSON.stringify(d, null, 2);
+    visual.style.display = 'none';
+    json.style.display = '';
+  }
+}
+
 function openAdminModal(docId) {
   editingDocId = docId;
-  var data = guideData[docId] || DEFAULT_DATA[docId];
-  document.getElementById('adminModalTitle').textContent = docId + ' 데이터 수정';
+  adminMode = 'visual';
+  var data = JSON.parse(JSON.stringify(guideData[docId] || DEFAULT_DATA[docId]));
+  var titles = { drive_checklist: '체크리스트 관리', beginner_guide: '초보 가이드 관리', warning_lights: '경고등 관리' };
+  document.getElementById('adminModalTitle').textContent = titles[docId] || docId;
   document.getElementById('adminModalData').value = JSON.stringify(data, null, 2);
+  buildVisualEditor(docId, data);
+  document.getElementById('adminVisualEditor').style.display = '';
+  document.getElementById('adminModalData').style.display = 'none';
+  document.querySelectorAll('.admin-mode-btn').forEach(function(b,i) { b.classList.toggle('active', i===0); });
   document.getElementById('adminModal').style.display = 'flex';
+}
+
+function buildVisualEditor(docId, data) {
+  var el = document.getElementById('adminVisualEditor');
+  if (docId === 'drive_checklist') {
+    el.innerHTML = buildChecklistEditor(data);
+  } else if (docId === 'beginner_guide') {
+    el.innerHTML = buildBeginnerEditor(data);
+  } else if (docId === 'warning_lights') {
+    el.innerHTML = buildWarningEditor(data);
+  }
+}
+
+function buildChecklistEditor(data) {
+  var items = data.items || [];
+  var html = '<div class="ve-section"><div class="ve-label">카테고리</div><input class="ve-input" id="ve-cats" value="' + (data.categories||[]).join(', ') + '" placeholder="쉼표로 구분"></div>';
+  html += '<div class="ve-section"><div class="ve-label">항목 (' + items.length + '개)</div>';
+  html += '<div id="ve-items">';
+  items.forEach(function(it, i) {
+    html += '<div class="ve-item" data-idx="' + i + '">' +
+      '<select class="ve-cat-sel" data-field="category">' + (data.categories||[]).map(function(c) { return '<option' + (c===it.category?' selected':'') + '>' + c + '</option>'; }).join('') + '</select>' +
+      '<input class="ve-input ve-flex" data-field="text" value="' + escHtml(it.text) + '">' +
+      '<button class="ve-del" onclick="veRemoveItem(this)" title="삭제">✕</button>' +
+      '</div>';
+  });
+  html += '</div>';
+  html += '<button class="ve-add" onclick="veAddChecklist()">+ 항목 추가</button></div>';
+  return html;
+}
+
+function buildBeginnerEditor(data) {
+  var items = data.items || [];
+  var html = '<div class="ve-section"><div class="ve-label">카테고리</div><input class="ve-input" id="ve-cats" value="' + (data.categories||[]).join(', ') + '" placeholder="쉼표로 구분"></div>';
+  html += '<div class="ve-section"><div class="ve-label">가이드 항목 (' + items.length + '개)</div>';
+  html += '<div id="ve-items">';
+  items.forEach(function(it, i) {
+    html += '<div class="ve-item ve-item-block" data-idx="' + i + '">' +
+      '<div class="ve-item-row">' +
+      '<input class="ve-input ve-sm" data-field="emoji" value="' + escHtml(it.emoji||'') + '" placeholder="이모지" style="width:50px">' +
+      '<select class="ve-cat-sel" data-field="category">' + (data.categories||[]).map(function(c) { return '<option' + (c===it.category?' selected':'') + '>' + c + '</option>'; }).join('') + '</select>' +
+      '<input class="ve-input ve-flex" data-field="title" value="' + escHtml(it.title) + '" placeholder="제목">' +
+      '<button class="ve-del" onclick="veRemoveItem(this)" title="삭제">✕</button>' +
+      '</div>' +
+      '<textarea class="ve-textarea" data-field="content" placeholder="내용 (줄바꿈으로 구분)">' + (it.content||[]).join('\n') + '</textarea>' +
+      '</div>';
+  });
+  html += '</div>';
+  html += '<button class="ve-add" onclick="veAddBeginner()">+ 가이드 추가</button></div>';
+  return html;
+}
+
+function buildWarningEditor(data) {
+  var items = data.items || [];
+  var html = '<div class="ve-section"><div class="ve-label">경고등 (' + items.length + '개)</div>';
+  html += '<div id="ve-items">';
+  items.forEach(function(it, i) {
+    html += '<div class="ve-item ve-item-block" data-idx="' + i + '">' +
+      '<div class="ve-item-row">' +
+      '<img src="' + it.icon + '" style="width:28px;height:28px;object-fit:contain" onerror="this.style.display=\'none\'">' +
+      '<input class="ve-input ve-flex" data-field="name" value="' + escHtml(it.name) + '" placeholder="경고등 이름">' +
+      '<select class="ve-cat-sel" data-field="severity"><option value="danger"' + (it.severity==='danger'?' selected':'') + '>긴급</option><option value="warning"' + (it.severity==='warning'?' selected':'') + '>주의</option><option value="info"' + (it.severity==='info'?' selected':'') + '>정보</option></select>' +
+      '<label style="font-size:.72rem;color:var(--text3);display:flex;align-items:center;gap:4px"><input type="checkbox" data-field="needsRepair"' + (it.needsRepair?' checked':'') + '> 정비</label>' +
+      '<button class="ve-del" onclick="veRemoveItem(this)" title="삭제">✕</button>' +
+      '</div>' +
+      '<input class="ve-input" data-field="icon" value="' + escHtml(it.icon) + '" placeholder="아이콘 경로" style="font-size:.72rem;color:var(--text3)">' +
+      '<input class="ve-input" data-field="description" value="' + escHtml(it.description) + '" placeholder="설명">' +
+      '<textarea class="ve-textarea ve-sm-ta" data-field="action" placeholder="대처 방법">' + escHtml(it.action||'') + '</textarea>' +
+      '</div>';
+  });
+  html += '</div>';
+  html += '<button class="ve-add" onclick="veAddWarning()">+ 경고등 추가</button></div>';
+  return html;
+}
+
+function veRemoveItem(btn) {
+  if (!confirm('삭제할까요?')) return;
+  btn.closest('.ve-item').remove();
+}
+
+function veAddChecklist() {
+  var container = document.getElementById('ve-items');
+  var cats = (document.getElementById('ve-cats')?.value || '').split(',').map(function(s){return s.trim();}).filter(Boolean);
+  var idx = container.children.length;
+  var html = '<div class="ve-item" data-idx="' + idx + '">' +
+    '<select class="ve-cat-sel" data-field="category">' + cats.map(function(c){return '<option>'+c+'</option>';}).join('') + '</select>' +
+    '<input class="ve-input ve-flex" data-field="text" value="" placeholder="새 항목">' +
+    '<button class="ve-del" onclick="veRemoveItem(this)" title="삭제">✕</button></div>';
+  container.insertAdjacentHTML('beforeend', html);
+}
+
+function veAddBeginner() {
+  var container = document.getElementById('ve-items');
+  var cats = (document.getElementById('ve-cats')?.value || '').split(',').map(function(s){return s.trim();}).filter(Boolean);
+  var idx = container.children.length;
+  var html = '<div class="ve-item ve-item-block" data-idx="' + idx + '">' +
+    '<div class="ve-item-row"><input class="ve-input ve-sm" data-field="emoji" value="📖" style="width:50px">' +
+    '<select class="ve-cat-sel" data-field="category">' + cats.map(function(c){return '<option>'+c+'</option>';}).join('') + '</select>' +
+    '<input class="ve-input ve-flex" data-field="title" value="" placeholder="제목">' +
+    '<button class="ve-del" onclick="veRemoveItem(this)" title="삭제">✕</button></div>' +
+    '<textarea class="ve-textarea" data-field="content" placeholder="내용 (줄바꿈으로 구분)"></textarea></div>';
+  container.insertAdjacentHTML('beforeend', html);
+}
+
+function veAddWarning() {
+  var container = document.getElementById('ve-items');
+  var idx = container.children.length;
+  var html = '<div class="ve-item ve-item-block" data-idx="' + idx + '">' +
+    '<div class="ve-item-row"><input class="ve-input ve-flex" data-field="name" value="" placeholder="경고등 이름">' +
+    '<select class="ve-cat-sel" data-field="severity"><option value="danger">긴급</option><option value="warning" selected>주의</option><option value="info">정보</option></select>' +
+    '<label style="font-size:.72rem;color:var(--text3);display:flex;align-items:center;gap:4px"><input type="checkbox" data-field="needsRepair"> 정비</label>' +
+    '<button class="ve-del" onclick="veRemoveItem(this)" title="삭제">✕</button></div>' +
+    '<input class="ve-input" data-field="icon" value="" placeholder="아이콘 경로 (icons/w__.svg)">' +
+    '<input class="ve-input" data-field="description" value="" placeholder="설명">' +
+    '<textarea class="ve-textarea ve-sm-ta" data-field="action" placeholder="대처 방법"></textarea></div>';
+  container.insertAdjacentHTML('beforeend', html);
+}
+
+function collectVisualData() {
+  if (!editingDocId) return null;
+  var items = [];
+  var container = document.getElementById('ve-items');
+  if (!container) return null;
+
+  var catsInput = document.getElementById('ve-cats');
+  var categories = catsInput ? catsInput.value.split(',').map(function(s){return s.trim();}).filter(Boolean) : [];
+
+  container.querySelectorAll('.ve-item').forEach(function(el, i) {
+    if (editingDocId === 'drive_checklist') {
+      var cat = el.querySelector('[data-field="category"]')?.value || '';
+      var text = el.querySelector('[data-field="text"]')?.value || '';
+      if (text) items.push({ id: 'c' + (i+1), category: cat, text: text });
+    } else if (editingDocId === 'beginner_guide') {
+      var emoji = el.querySelector('[data-field="emoji"]')?.value || '';
+      var cat = el.querySelector('[data-field="category"]')?.value || '';
+      var title = el.querySelector('[data-field="title"]')?.value || '';
+      var content = (el.querySelector('[data-field="content"]')?.value || '').split('\n').filter(Boolean);
+      if (title) items.push({ id: 'b' + (i+1), category: cat, emoji: emoji, title: title, content: content });
+    } else if (editingDocId === 'warning_lights') {
+      var name = el.querySelector('[data-field="name"]')?.value || '';
+      var severity = el.querySelector('[data-field="severity"]')?.value || 'warning';
+      var icon = el.querySelector('[data-field="icon"]')?.value || '';
+      var desc = el.querySelector('[data-field="description"]')?.value || '';
+      var action = el.querySelector('[data-field="action"]')?.value || '';
+      var needsRepair = el.querySelector('[data-field="needsRepair"]')?.checked || false;
+      var colors = { danger: '#ef4444', warning: '#fbbf24', info: '#60a5fa' };
+      if (name) items.push({ id: 'w' + (i+1), icon: icon, name: name, severity: severity, color: colors[severity]||'#fbbf24', description: desc, action: action, needsRepair: needsRepair });
+    }
+  });
+
+  if (editingDocId === 'drive_checklist') return { categories: categories, items: items };
+  if (editingDocId === 'beginner_guide') return { categories: categories, items: items };
+  if (editingDocId === 'warning_lights') {
+    var origData = guideData[editingDocId] || DEFAULT_DATA[editingDocId];
+    return { severity_labels: origData.severity_labels || { danger: '긴급', warning: '주의', info: '정보' }, items: items };
+  }
+  return null;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 function closeAdminModal() {
@@ -633,14 +821,20 @@ function closeAdminModal() {
 async function saveAdminData() {
   if (!editingDocId || !db || !isAdmin) return;
   try {
-    var raw = document.getElementById('adminModalData').value;
-    var parsed = JSON.parse(raw);
+    var parsed;
+    if (adminMode === 'visual') {
+      parsed = collectVisualData();
+      if (!parsed) { alert('데이터 수집 실패'); return; }
+    } else {
+      var raw = document.getElementById('adminModalData').value;
+      parsed = JSON.parse(raw);
+    }
     await db.collection('guide_data').doc(editingDocId).set(parsed);
     guideData[editingDocId] = parsed;
     closeAdminModal();
     renderAll();
     alert('저장 완료!');
   } catch(e) {
-    alert('JSON 형식 오류: ' + e.message);
+    alert('오류: ' + e.message);
   }
 }
