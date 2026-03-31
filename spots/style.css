@@ -1,19 +1,19 @@
 :root {
   --bg: #1a1a2e; --bg2: #22223a; --bg3: #2a2a45;
   --text: #e8e8f0; --text2: #a0a0b8; --text3: #6b6b85;
-  --primary: #7c6fff; --primary-light: #9d8fff;
+  --primary: #d97706; --primary-light: #f59e0b;
   --border: #333355; --accent: #e74c5a;
   --transition: all .15s;
 }
 [data-theme="light"] {
   --bg: #f5f5fa; --bg2: #fff; --bg3: #eee;
   --text: #1a1a2e; --text2: #555; --text3: #999;
-  --primary: #6c63ff; --primary-light: #7c6fff;
+  --primary: #b45309; --primary-light: #d97706;
   --border: #ddd; --accent: #e74c5a;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
-  font-family: 'Inter', 'Apple SD Gothic Neo', sans-serif;
+  font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', sans-serif;
   background: var(--bg); color: var(--text); min-height: 100vh;
 }
 

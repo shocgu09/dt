@@ -1,18 +1,18 @@
 :root {
   --bg: #1a1a2e; --bg2: #22223a; --bg3: #2a2a45;
   --text: #e8e8f0; --text2: #a0a0b8; --text3: #6b6b85;
-  --primary: #7c6fff; --border: #333355;
+  --primary: #d97706; --border: #333355;
   --tile-bg: #2a2a45;
 }
 [data-theme="light"] {
   --bg: #f5f5fa; --bg2: #fff; --bg3: #eee;
   --text: #1a1a2e; --text2: #555; --text3: #999;
-  --primary: #6c63ff; --border: #ddd;
+  --primary: #b45309; --border: #ddd;
   --tile-bg: #e0dff0;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg); color: var(--text);
   min-height: 100vh; display: flex; justify-content: center;
   -webkit-user-select: none; user-select: none;
