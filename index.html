@@ -100,44 +100,13 @@
           <p class="hero-sub">DT 동아리 멤버십 플랫폼</p>
           <p class="hero-desc">드라이브를 사랑하는 사람들의 모임.<br>운전자와 동승자가 함께 달리는 공간입니다.</p>
           <div class="hero-buttons">
-            <button class="btn btn-primary" onclick="goPage('members')">회원 보기</button>
-            <button class="btn btn-outline" onclick="goPage('events')">이벤트 보기</button>
+            <a href="spots/" class="btn btn-primary">📍 DT 스팟</a>
+            <a href="ai-trend/" class="btn btn-outline">🤖 AI 트렌드</a>
+            <a href="car-trend/" class="btn btn-outline">🚘 자동차 트렌드</a>
           </div>
         </div>
         <div class="hero-art">🏎️</div>
       </div>
-      <div class="stats-bar">
-        <div class="stat-card">
-          <span class="stat-num" id="stat-total">0</span>
-          <span class="stat-label">전체 회원</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-num" id="stat-drivers">0</span>
-          <span class="stat-label">운전자</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-num" id="stat-passengers">0</span>
-          <span class="stat-label">동승자</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-num" id="stat-events">0</span>
-          <span class="stat-label">이벤트</span>
-        </div>
-      </div>
-      <h2 class="sr-only">주요 정보</h2>
-      <div class="home-sections">
-        <div class="home-section-card">
-          <h3>최근 이벤트</h3>
-          <div id="home-recent-events" class="home-list"></div>
-          <button class="btn btn-sm btn-outline" onclick="goPage('events')">모두 보기</button>
-        </div>
-        <div class="home-section-card">
-          <h3>📋 게시판</h3>
-          <div id="home-anon-list" class="home-list"></div>
-          <button class="btn btn-sm btn-outline member-only" onclick="goPage('anon')">더 보기</button>
-        </div>
-      </div>
-
       <!-- 날씨 + 드라이브 지수 -->
       <div class="weather-card" id="weatherCard" style="display:none">
         <div class="weather-main">
@@ -217,6 +186,21 @@
       <div class="home-links-section" id="youtubeSection" style="display:none">
         <h3 class="home-links-title">📺 추천 영상</h3>
         <div id="youtubeShorts"></div>
+      </div>
+
+      <!-- 최근 이벤트 및 게시판 -->
+      <h2 class="sr-only">주요 정보</h2>
+      <div class="home-sections">
+        <div class="home-section-card">
+          <h3>최근 이벤트</h3>
+          <div id="home-recent-events" class="home-list"></div>
+          <button class="btn btn-sm btn-outline" onclick="goPage('events')">모두 보기</button>
+        </div>
+        <div class="home-section-card">
+          <h3>📋 게시판</h3>
+          <div id="home-anon-list" class="home-list"></div>
+          <button class="btn btn-sm btn-outline member-only" onclick="goPage('anon')">더 보기</button>
+        </div>
       </div>
 
       <!-- 외부 링크 -->
