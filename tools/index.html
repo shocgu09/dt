@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>운전 계산기 — 과속벌금·자동차세·보험료 | DT Club</title>
+  <meta name="description" content="과속 벌금 계산, 자동차세 계산, 보험료 비교까지. 운전자에게 꼭 필요한 계산기를 한곳에서. DT Club 제공.">
+  <meta name="keywords" content="과속벌금 계산기, 자동차세 계산, 보험료 비교, 벌점 계산, 자동차세 계산기, 과속 범칙금">
+  <link rel="canonical" href="https://dt-1js.pages.dev/tools/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="운전 계산기 — 과속벌금·자동차세·보험료 | DT Club">
+  <meta property="og:description" content="과속 벌금 계산, 자동차세 계산, 보험료 비교까지. 운전자에게 꼭 필요한 계산기를 한곳에서.">
+  <meta property="og:image" content="https://dt-1js.pages.dev/og-image.png">
+  <meta property="og:url" content="https://dt-1js.pages.dev/tools/">
+  <meta property="og:site_name" content="DT Club">
+  <meta property="og:locale" content="ko_KR">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="운전 계산기 — 과속벌금·자동차세·보험료 | DT Club">
+  <meta name="twitter:description" content="과속 벌금 계산, 자동차세 계산, 보험료 비교까지.">
+  <meta name="twitter:image" content="https://dt-1js.pages.dev/og-image.png">
+
+  <meta name="naver-site-verification" content="491f12b03fc8798c6fb79569414942a9867e0a9a">
+  <meta name="google-site-verification" content="_9nEl6JAYWoP4H7cSfpx6uKZmAWCBucyVg9eNT_gD5w">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "운전 계산기",
+    "description": "과속 벌금 계산, 자동차세 계산, 보험료 비교 도구",
+    "url": "https://dt-1js.pages.dev/tools/",
+    "applicationCategory": "UtilityApplication",
+    "operatingSystem": "Web",
+    "offers": { "@type": "Offer", "price": "0" },
+    "author": { "@type": "Organization", "name": "DT Club", "url": "https://dt-1js.pages.dev" }
+  }
+  </script>
+
+  <link rel="icon" href="../icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="header">
+    <a href="/" class="back-btn">← 홈</a>
+    <h1>🧮 운전 계산기</h1>
+    <button id="themeToggle" onclick="toggleTheme()" class="theme-btn">🌙</button>
+  </header>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="speed">🚨 과속벌금</button>
+    <button class="tab-btn" data-tab="tax">💰 자동차세</button>
+    <button class="tab-btn" data-tab="insurance">🛡️ 보험료</button>
+  </div>
+
+  <div class="container">
+    <!-- 과속벌금 계산기 -->
+    <div id="tab-speed" class="tab-content active">
+      <div class="calc-card">
+        <h2>과속 벌금 계산기</h2>
+        <p class="calc-desc">도로유형과 속도를 입력하면 벌금·벌점을 계산합니다.</p>
+
+        <div class="form-group">
+          <label>도로 유형</label>
+          <div class="radio-group" id="roadType">
+            <button class="radio-btn active" data-value="general">일반도로</button>
+            <button class="radio-btn" data-value="highway">고속도로</button>
+            <button class="radio-btn" data-value="school">어린이보호구역</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="speedLimit">제한속도 (km/h)</label>
+          <select id="speedLimit" class="input-field">
+            <option value="30">30 km/h</option>
+            <option value="40">40 km/h</option>
+            <option value="50">50 km/h</option>
+            <option value="60" selected>60 km/h</option>
+            <option value="80">80 km/h</option>
+            <option value="100">100 km/h</option>
+            <option value="110">110 km/h</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="actualSpeed">실제 주행속도 (km/h)</label>
+          <input type="number" id="actualSpeed" class="input-field" placeholder="예: 85" min="0" max="300">
+        </div>
+
+        <button class="btn-calc" onclick="calcSpeedFine()">계산하기</button>
+        <div id="speedResult" class="result-area"></div>
+      </div>
+      <button class="admin-edit-btn" id="adminEditSpeed" style="display:none" onclick="openAdminModal('speed_fine')">⚙️ 데이터 수정</button>
+    </div>
+
+    <!-- 자동차세 계산기 -->
+    <div id="tab-tax" class="tab-content">
+      <div class="calc-card">
+        <h2>자동차세 계산기</h2>
+        <p class="calc-desc">차종과 배기량으로 연간 자동차세를 계산합니다.</p>
+
+        <div class="form-group">
+          <label>차종</label>
+          <div class="radio-group" id="carType">
+            <button class="radio-btn active" data-value="passenger">승용차</button>
+            <button class="radio-btn" data-value="van">승합차</button>
+            <button class="radio-btn" data-value="truck">화물차</button>
+            <button class="radio-btn" data-value="electric">전기차</button>
+          </div>
+        </div>
+
+        <div class="form-group" id="ccGroup">
+          <label for="engineCC">배기량 (cc)</label>
+          <input type="number" id="engineCC" class="input-field" placeholder="예: 1998" min="0" max="10000">
+        </div>
+
+        <div class="form-group">
+          <label for="regYear">최초등록연도</label>
+          <select id="regYear" class="input-field"></select>
+        </div>
+
+        <button class="btn-calc" onclick="calcCarTax()">계산하기</button>
+        <div id="taxResult" class="result-area"></div>
+      </div>
+      <button class="admin-edit-btn" id="adminEditTax" style="display:none" onclick="openAdminModal('car_tax')">⚙️ 데이터 수정</button>
+    </div>
+
+    <!-- 보험료 비교 -->
+    <div id="tab-insurance" class="tab-content">
+      <div class="calc-card">
+        <h2>보험료 간편 비교</h2>
+        <p class="calc-desc">기본 정보로 대략적인 자동차 보험료를 확인합니다.</p>
+        <p class="calc-notice">※ 참고용이며 실제 보험료는 보험사에 문의하세요.</p>
+
+        <div class="form-group">
+          <label for="birthYear">출생연도</label>
+          <select id="birthYear" class="input-field"></select>
+        </div>
+
+        <div class="form-group">
+          <label>성별</label>
+          <div class="radio-group" id="gender">
+            <button class="radio-btn active" data-value="male">남성</button>
+            <button class="radio-btn" data-value="female">여성</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>차종</label>
+          <div class="radio-group" id="insCarType">
+            <button class="radio-btn active" data-value="small">소형</button>
+            <button class="radio-btn" data-value="mid">중형</button>
+            <button class="radio-btn" data-value="large">대형</button>
+            <button class="radio-btn" data-value="suv">SUV</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="drivingExp">운전경력</label>
+          <select id="drivingExp" class="input-field">
+            <option value="0">1년 미만</option>
+            <option value="1">1~3년</option>
+            <option value="3">3~5년</option>
+            <option value="5" selected>5~10년</option>
+            <option value="10">10년 이상</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="accident">최근 3년 사고이력</label>
+          <select id="accident" class="input-field">
+            <option value="0" selected>무사고</option>
+            <option value="1">1회</option>
+            <option value="2">2회</option>
+            <option value="3">3회 이상</option>
+          </select>
+        </div>
+
+        <button class="btn-calc" onclick="calcInsurance()">조회하기</button>
+        <div id="insuranceResult" class="result-area"></div>
+      </div>
+      <button class="admin-edit-btn" id="adminEditInsurance" style="display:none" onclick="openAdminModal('insurance')">⚙️ 데이터 수정</button>
+    </div>
+  </div>
+
+  <!-- 관리자 수정 모달 -->
+  <div class="modal-overlay" id="adminModal" style="display:none" onclick="if(event.target===this)closeAdminModal()">
+    <div class="modal-box">
+      <h3 id="adminModalTitle">데이터 수정</h3>
+      <textarea id="adminModalData" class="admin-textarea"></textarea>
+      <div class="modal-actions">
+        <button class="btn-calc" onclick="saveAdminData()">저장</button>
+        <button class="btn-cancel" onclick="closeAdminModal()">취소</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

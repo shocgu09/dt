@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>드라이브 가이드 — 체크리스트·초보가이드·경고등 | DT Club</title>
+  <meta name="description" content="장거리 드라이브 체크리스트, 초보 운전 팁, 차량 경고등 가이드. 안전한 드라이브를 위한 모든 정보. DT Club 제공.">
+  <meta name="keywords" content="드라이브 체크리스트, 초보 운전 가이드, 차량 경고등, 경고등 의미, 장거리 드라이브 준비">
+  <link rel="canonical" href="https://dt-1js.pages.dev/guide/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="드라이브 가이드 — 체크리스트·초보가이드·경고등 | DT Club">
+  <meta property="og:description" content="장거리 드라이브 체크리스트, 초보 운전 팁, 차량 경고등 가이드. 안전 드라이브 필수 정보!">
+  <meta property="og:image" content="https://dt-1js.pages.dev/og-image.png">
+  <meta property="og:url" content="https://dt-1js.pages.dev/guide/">
+  <meta property="og:site_name" content="DT Club">
+  <meta property="og:locale" content="ko_KR">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="드라이브 가이드 — 체크리스트·초보가이드·경고등 | DT Club">
+  <meta name="twitter:description" content="안전한 드라이브를 위한 모든 정보. DT Club 제공.">
+  <meta name="twitter:image" content="https://dt-1js.pages.dev/og-image.png">
+
+  <meta name="naver-site-verification" content="491f12b03fc8798c6fb79569414942a9867e0a9a">
+  <meta name="google-site-verification" content="_9nEl6JAYWoP4H7cSfpx6uKZmAWCBucyVg9eNT_gD5w">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "드라이브 가이드",
+    "description": "장거리 드라이브 체크리스트, 초보 운전 가이드, 차량 경고등 가이드",
+    "url": "https://dt-1js.pages.dev/guide/",
+    "author": { "@type": "Organization", "name": "DT Club", "url": "https://dt-1js.pages.dev" }
+  }
+  </script>
+
+  <link rel="icon" href="../icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="header">
+    <a href="/" class="back-btn">← 홈</a>
+    <h1>📋 드라이브 가이드</h1>
+    <button id="themeToggle" onclick="toggleTheme()" class="theme-btn">🌙</button>
+  </header>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="checklist">✅ 체크리스트</button>
+    <button class="tab-btn" data-tab="beginner">🔰 초보 가이드</button>
+    <button class="tab-btn" data-tab="warning">🚨 경고등</button>
+  </div>
+
+  <div class="container">
+    <!-- 체크리스트 탭 -->
+    <div id="tab-checklist" class="tab-content active">
+      <div class="progress-bar-wrap">
+        <div class="progress-label">
+          <span>진행률</span>
+          <span id="progressText">0 / 0</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      </div>
+      <div class="filter-bar" id="checklistFilter"></div>
+      <div id="checklistList" class="checklist-list"></div>
+      <div class="checklist-actions">
+        <button class="btn-secondary" onclick="resetChecklist()">🔄 초기화</button>
+      </div>
+      <button class="admin-edit-btn" id="adminEditChecklist" style="display:none" onclick="openAdminModal('drive_checklist')">⚙️ 항목 관리</button>
+    </div>
+
+    <!-- 초보 가이드 탭 -->
+    <div id="tab-beginner" class="tab-content">
+      <div class="search-bar">
+        <input type="text" id="beginnerSearch" class="input-field" placeholder="🔍 검색 (예: 주차, 고속도로)" oninput="filterBeginner()">
+      </div>
+      <div class="filter-bar" id="beginnerFilter"></div>
+      <div id="beginnerList" class="guide-list"></div>
+      <button class="admin-edit-btn" id="adminEditBeginner" style="display:none" onclick="openAdminModal('beginner_guide')">⚙️ 항목 관리</button>
+    </div>
+
+    <!-- 경고등 가이드 탭 -->
+    <div id="tab-warning" class="tab-content">
+      <div class="search-bar">
+        <input type="text" id="warningSearch" class="input-field" placeholder="🔍 경고등 검색 (예: 엔진, 브레이크)" oninput="filterWarning()">
+      </div>
+      <div class="filter-bar" id="warningFilter"></div>
+      <div id="warningList" class="warning-grid"></div>
+      <button class="admin-edit-btn" id="adminEditWarning" style="display:none" onclick="openAdminModal('warning_lights')">⚙️ 항목 관리</button>
+    </div>
+  </div>
+
+  <!-- 경고등 상세 모달 -->
+  <div class="modal-overlay" id="warningModal" style="display:none" onclick="if(event.target===this)closeWarningModal()">
+    <div class="modal-box">
+      <div id="warningModalContent"></div>
+      <button class="btn-close" onclick="closeWarningModal()">닫기</button>
+    </div>
+  </div>
+
+  <!-- 관리자 수정 모달 -->
+  <div class="modal-overlay" id="adminModal" style="display:none" onclick="if(event.target===this)closeAdminModal()">
+    <div class="modal-box">
+      <h3 id="adminModalTitle">데이터 수정</h3>
+      <textarea id="adminModalData" class="admin-textarea"></textarea>
+      <div class="modal-actions">
+        <button class="btn-calc" onclick="saveAdminData()">저장</button>
+        <button class="btn-cancel" onclick="closeAdminModal()">취소</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
