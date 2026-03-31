@@ -205,7 +205,9 @@ function renderCourseOverlay(course) {
     overlays.push(overlay);
   });
 
-  if (course.routePath && course.routePath.length) {
+  // routeVersion이 현재 버전과 다르면 캐시 무효화 후 새로 요청
+  var ROUTE_VERSION = 2;
+  if (course.routePath && course.routePath.length && course.routeVersion === ROUTE_VERSION) {
     drawPolyline(course.routePath);
   } else {
     fetchAndDrawRoute(course);
@@ -267,13 +269,15 @@ async function fetchAndDrawRoute(course) {
       db.collection('drive_courses').doc(course.id).update({
         routePath: allPath,
         distance: totalDistance || null,
-        duration: totalDuration || null
+        duration: totalDuration || null,
+        routeVersion: 2
       }).catch(function() {});
       var idx = allCourses.findIndex(function(c) { return c.id === course.id; });
       if (idx !== -1) {
         allCourses[idx].routePath = allPath;
         allCourses[idx].distance = totalDistance;
         allCourses[idx].duration = totalDuration;
+        allCourses[idx].routeVersion = 2;
       }
     } else {
       drawStraightLine(wps);
