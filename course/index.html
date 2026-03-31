@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>드라이브 코스 가이드 — 지역별·계절별·테마별 추천 | DT Club</title>
+  <meta name="description" content="서울 근교 드라이브, 해안도로, 단풍·벚꽃 드라이브 코스 큐레이션. 지역별·계절별·테마별 전국 드라이브 코스 가이드. DT Club 제공.">
+  <meta name="keywords" content="드라이브 코스 추천, 서울 근교 드라이브, 해안도로 드라이브, 단풍 드라이브, 벚꽃 드라이브, 야경 드라이브, 강원도 드라이브, 부산 드라이브 코스">
+  <link rel="canonical" href="https://dt-1js.pages.dev/course/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="드라이브 코스 가이드 — 전국 드라이브 코스 큐레이션 | DT Club">
+  <meta property="og:description" content="서울 근교 드라이브부터 해안도로, 계절별 추천 코스까지. 전국 드라이브 코스 가이드.">
+  <meta property="og:image" content="https://dt-1js.pages.dev/og-image.png">
+  <meta property="og:url" content="https://dt-1js.pages.dev/course/">
+  <meta property="og:site_name" content="DT Club">
+  <meta property="og:locale" content="ko_KR">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="드라이브 코스 가이드 | DT Club">
+  <meta name="twitter:description" content="전국 드라이브 코스 큐레이션. 지역별·계절별·테마별 추천.">
+  <meta name="twitter:image" content="https://dt-1js.pages.dev/og-image.png">
+
+  <meta name="naver-site-verification" content="491f12b03fc8798c6fb79569414942a9867e0a9a">
+  <meta name="google-site-verification" content="_9nEl6JAYWoP4H7cSfpx6uKZmAWCBucyVg9eNT_gD5w">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    "name": "드라이브 코스 가이드",
+    "description": "전국 드라이브 코스 큐레이션 — 지역별, 계절별, 테마별 추천",
+    "url": "https://dt-1js.pages.dev/course/",
+    "author": { "@type": "Organization", "name": "DT Club", "url": "https://dt-1js.pages.dev" }
+  }
+  </script>
+
+  <link rel="icon" href="../icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="header">
+    <a href="/" class="back-btn">← 홈</a>
+    <h1>🗺️ 드라이브 코스</h1>
+    <button id="themeToggle" onclick="toggleTheme()" class="theme-btn">🌙</button>
+  </header>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="region">🏙️ 지역별</button>
+    <button class="tab-btn" data-tab="season">🌸 계절별</button>
+    <button class="tab-btn" data-tab="theme">✨ 테마별</button>
+  </div>
+
+  <div class="container">
+    <!-- 지역별 -->
+    <div id="tab-region" class="tab-content active">
+      <div class="search-bar">
+        <input type="text" id="regionSearch" class="input-field" placeholder="🔍 지역 검색 (예: 강원, 부산)" oninput="filterCourses('region')">
+      </div>
+      <div class="filter-bar" id="regionFilter"></div>
+      <div id="regionList" class="course-grid"></div>
+      <button class="admin-edit-btn" id="adminEditRegion" style="display:none" onclick="openAdminModal('region')">⚙️ 코스 관리</button>
+    </div>
+
+    <!-- 계절별 -->
+    <div id="tab-season" class="tab-content">
+      <div class="filter-bar" id="seasonFilter"></div>
+      <div id="seasonList" class="course-grid"></div>
+      <button class="admin-edit-btn" id="adminEditSeason" style="display:none" onclick="openAdminModal('season')">⚙️ 코스 관리</button>
+    </div>
+
+    <!-- 테마별 -->
+    <div id="tab-theme" class="tab-content">
+      <div class="filter-bar" id="themeFilter"></div>
+      <div id="themeList" class="course-grid"></div>
+      <button class="admin-edit-btn" id="adminEditTheme" style="display:none" onclick="openAdminModal('theme')">⚙️ 코스 관리</button>
+    </div>
+  </div>
+
+  <!-- 코스 상세 모달 -->
+  <div class="modal-overlay" id="courseModal" style="display:none" onclick="if(event.target===this)closeCourseModal()">
+    <div class="modal-box">
+      <div id="courseModalContent"></div>
+      <button class="btn-close" onclick="closeCourseModal()">닫기</button>
+    </div>
+  </div>
+
+  <!-- 관리자 수정 모달 -->
+  <div class="modal-overlay" id="adminModal" style="display:none" onclick="if(event.target===this)closeAdminModal()">
+    <div class="modal-box modal-box-wide">
+      <div class="admin-modal-header">
+        <h3 id="adminModalTitle">코스 관리</h3>
+        <div class="admin-mode-toggle">
+          <button class="admin-mode-btn active" onclick="setAdminMode('visual')">📝 비주얼</button>
+          <button class="admin-mode-btn" onclick="setAdminMode('json')">{ } JSON</button>
+        </div>
+      </div>
+      <div id="adminVisualEditor" class="admin-visual-editor"></div>
+      <textarea id="adminModalData" class="admin-textarea" style="display:none"></textarea>
+      <div class="modal-actions">
+        <button class="btn-calc" onclick="saveAdminData()">저장</button>
+        <button class="btn-cancel" onclick="closeAdminModal()">취소</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

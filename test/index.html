@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>내 운전 성향 테스트 — 나는 어떤 드라이버? | DT Club</title>
+  <meta name="description" content="나는 어떤 드라이버일까? 10가지 질문으로 알아보는 MBTI 스타일 운전 성향 테스트. 칼날 매, 여유 거북, 눈치 여우 중 나의 유형은? DT Club 제공.">
+  <meta name="keywords" content="운전 성향 테스트, 운전 MBTI, 운전 유형 테스트, 드라이버 성향, 내 운전 스타일">
+  <link rel="canonical" href="https://dt-1js.pages.dev/test/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="내 운전 성향 테스트 — 나는 어떤 드라이버? | DT Club">
+  <meta property="og:description" content="10가지 질문으로 알아보는 운전 성향 테스트. 칼날 매, 여유 거북, 눈치 여우... 나의 운전 유형은?">
+  <meta property="og:image" content="https://dt-1js.pages.dev/og-image.png">
+  <meta property="og:url" content="https://dt-1js.pages.dev/test/">
+  <meta property="og:site_name" content="DT Club">
+  <meta property="og:locale" content="ko_KR">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="내 운전 성향 테스트 | DT Club">
+  <meta name="twitter:description" content="10가지 질문으로 알아보는 운전 성향 테스트. 나의 드라이버 유형은?">
+  <meta name="twitter:image" content="https://dt-1js.pages.dev/og-image.png">
+
+  <meta name="naver-site-verification" content="491f12b03fc8798c6fb79569414942a9867e0a9a">
+  <meta name="google-site-verification" content="_9nEl6JAYWoP4H7cSfpx6uKZmAWCBucyVg9eNT_gD5w">
+
+  <link rel="icon" href="../icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="header">
+    <a href="/" class="back-btn">← 홈</a>
+    <h1>🚗 운전 성향 테스트</h1>
+    <button id="themeToggle" onclick="toggleTheme()" class="theme-btn">🌙</button>
+  </header>
+
+  <div class="test-wrap">
+    <!-- 인트로 -->
+    <div id="screen-intro" class="screen active">
+      <div class="intro-card">
+        <div class="intro-icon">🚗</div>
+        <h2 class="intro-title">나는 어떤 드라이버?</h2>
+        <p class="intro-desc">10가지 질문으로 알아보는<br>나의 운전 성향 테스트</p>
+        <div class="type-preview">
+          <span>🦅 칼날 매</span>
+          <span>🐢 여유 거북</span>
+          <span>🦊 눈치 여우</span>
+          <span>🦁 돌진 사자</span>
+          <span>🏅 정석 독수리</span>
+          <span>⚡ 질주 호랑이</span>
+        </div>
+        <button class="btn-start" onclick="startTest()">테스트 시작하기</button>
+        <p class="intro-time">약 2분 소요</p>
+      </div>
+    </div>
+
+    <!-- 질문 -->
+    <div id="screen-question" class="screen">
+      <div class="progress-wrap">
+        <div class="progress-info">
+          <span id="qNum">1 / 10</span>
+          <span id="qPercent">0%</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      </div>
+      <div class="question-card" id="questionCard">
+        <p class="q-text" id="qText"></p>
+        <div class="options" id="optionList"></div>
+      </div>
+    </div>
+
+    <!-- 결과 -->
+    <div id="screen-result" class="screen">
+      <div class="result-card" id="resultCard">
+        <div class="result-badge" id="resultBadge"></div>
+        <div class="result-emoji" id="resultEmoji"></div>
+        <div class="result-type" id="resultType"></div>
+        <div class="result-title" id="resultTitle"></div>
+        <p class="result-desc" id="resultDesc"></p>
+        <div class="result-traits" id="resultTraits"></div>
+        <div class="result-compat" id="resultCompat"></div>
+        <div class="result-driving" id="resultDriving"></div>
+      </div>
+      <div class="result-actions">
+        <button class="btn-share" onclick="shareResult()">🔗 결과 공유하기</button>
+        <button class="btn-retry" onclick="restartTest()">🔄 다시 테스트하기</button>
+      </div>
+      <div class="other-types" id="otherTypes"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
