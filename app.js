@@ -3422,37 +3422,47 @@ async function _loadTrendPreview(collection, el, basePath) {
       var catLinks = links.filter(function(l) { return l.category === cat; });
       var icon = cat === 'X' ? '𝕏' : cat === '유튜브' ? '▶️' : '📰';
 
-      // 유튜브: 최신 영상 1개 가져오기
+      // 유튜브: 전체 채널에서 최신 영상 1개
       if (cat === '유튜브') {
         try {
-          var ytLink = catLinks.find(function(l) { return l.channelId; }) || catLinks[0];
-          var handle = ytLink.url ? ytLink.url.match(/@([^\/\?]+)/) : null;
-          if (ytLink.channelId || handle) {
-            var chId = ytLink.channelId;
-            if (!chId && handle) {
-              var chResp = await fetch('https://dt-youtube.shocguna.workers.dev/api/channel?handle=' + handle[1]);
+          var channelIds = await Promise.all(catLinks.map(async function(l) {
+            if (l.channelId) return l.channelId;
+            var match = l.url ? l.url.match(/@([^\/\?]+)/) : null;
+            if (!match) return null;
+            try {
+              var chResp = await fetch('https://dt-youtube.shocguna.workers.dev/api/channel?handle=' + match[1]);
               var chData = await chResp.json();
-              chId = chData.channelId;
-            }
-            if (chId) {
-              var vResp = await fetch('https://dt-youtube.shocguna.workers.dev/api/videos?max=1&channels=' + chId);
-              var vData = await vResp.json();
-              var v = (vData.videos || [])[0];
-              if (v) return { cat: cat, icon: icon, title: v.title, sub: (v.channelTitle || '') + ' · ' + _previewTimeAgo(v.publishedAt), url: 'https://youtube.com/watch?v=' + v.id };
-            }
+              return chData.channelId || null;
+            } catch(e) { return null; }
+          }));
+          channelIds = channelIds.filter(Boolean);
+          if (channelIds.length) {
+            var vResp = await fetch('https://dt-youtube.shocguna.workers.dev/api/videos?max=1&channels=' + channelIds.join(','));
+            var vData = await vResp.json();
+            var v = (vData.videos || [])[0];
+            if (v) return { cat: cat, icon: icon, title: v.title, sub: (v.channelTitle || '') + ' · ' + _previewTimeAgo(v.publishedAt), url: 'https://youtube.com/watch?v=' + v.id };
           }
         } catch(e) {}
         return { cat: cat, icon: icon, title: catLinks[0].name, sub: catLinks[0].description || cat, url: catLinks[0].url };
       }
 
-      // RSS 카테고리 (뉴스, 뉴스레터 등): 최신 기사 1개
-      var rssLink = catLinks.find(function(l) { return l.rss; });
-      if (rssLink) {
+      // RSS 카테고리 (뉴스, 뉴스레터 등): 전체 RSS에서 최신 기사 1개
+      var rssLinks = catLinks.filter(function(l) { return l.rss; });
+      if (rssLinks.length) {
         try {
-          var resp = await fetch('https://dt-rss.shocguna.workers.dev/api/rss?url=' + encodeURIComponent(rssLink.rss));
-          var data = await resp.json();
-          var article = (data.items || [])[0];
-          if (article) return { cat: cat, icon: icon, title: article.title, sub: (rssLink.name || '') + ' · ' + _previewTimeAgo(article.pubDate), url: article.link };
+          var allArticles = [];
+          await Promise.all(rssLinks.map(async function(rl) {
+            try {
+              var resp = await fetch('https://dt-rss.shocguna.workers.dev/api/rss?url=' + encodeURIComponent(rl.rss));
+              var data = await resp.json();
+              (data.items || []).forEach(function(item) {
+                allArticles.push({ title: item.title, link: item.link, pubDate: item.pubDate, source: rl.name });
+              });
+            } catch(e) {}
+          }));
+          allArticles.sort(function(a, b) { return new Date(b.pubDate) - new Date(a.pubDate); });
+          var article = allArticles[0];
+          if (article) return { cat: cat, icon: icon, title: article.title, sub: (article.source || '') + ' · ' + _previewTimeAgo(article.pubDate), url: article.link };
         } catch(e) {}
       }
 
