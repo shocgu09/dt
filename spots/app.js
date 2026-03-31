@@ -205,79 +205,39 @@ function renderCourseOverlay(course) {
     overlays.push(overlay);
   });
 
-  // routeVersion이 현재 버전과 다르면 캐시 무효화 후 새로 요청
-  var ROUTE_VERSION = 2;
-  if (course.routePath && course.routePath.length && course.routeVersion === ROUTE_VERSION) {
+  if (course.routePath && course.routePath.length) {
     drawPolyline(course.routePath);
   } else {
     fetchAndDrawRoute(course);
   }
 }
 
-// 단일 구간 경로 요청 (출발 + 경유지 최대 5개 + 도착 = 최대 7개)
-async function fetchRouteSegment(origin, destination, midpoints) {
-  var url = ROUTE_WORKER + '/api/route?origin=' + encodeURIComponent(origin) + '&destination=' + encodeURIComponent(destination);
-  if (midpoints) url += '&waypoints=' + encodeURIComponent(midpoints);
-  var resp = await fetch(url);
-  return await resp.json();
-}
-
 async function fetchAndDrawRoute(course) {
   var wps = (course.waypoints || []).filter(function(wp) { return wp.lat && wp.lng; });
   if (wps.length < 2) return;
   try {
-    var middleCount = wps.length - 2; // 출발·도착 제외한 중간 경유지 수
-    var allPath = [];
-    var totalDistance = 0;
-    var totalDuration = 0;
-    // 카카오 API 제한: 출발+도착 포함 최대 7개 → 중간 경유지 최대 5개
-    var MAX_MID = 5;
+    var origin = wps[0].lng + ',' + wps[0].lat;
+    var destination = wps[wps.length - 1].lng + ',' + wps[wps.length - 1].lat;
+    var middle = wps.slice(1, -1).map(function(wp) { return wp.lng + ',' + wp.lat; }).join('|');
+    var url = ROUTE_WORKER + '/api/route?origin=' + encodeURIComponent(origin) + '&destination=' + encodeURIComponent(destination);
+    if (middle) url += '&waypoints=' + encodeURIComponent(middle);
 
-    if (middleCount <= MAX_MID) {
-      // 한 번에 요청 가능
-      var origin = wps[0].lng + ',' + wps[0].lat;
-      var destination = wps[wps.length - 1].lng + ',' + wps[wps.length - 1].lat;
-      var middle = wps.slice(1, -1).map(function(wp) { return wp.lng + ',' + wp.lat; }).join('|');
-      var data = await fetchRouteSegment(origin, destination, middle);
-      if (data.path && data.path.length) {
-        allPath = data.path;
-        totalDistance = data.distance || 0;
-        totalDuration = data.duration || 0;
-      }
-    } else {
-      // 구간 분할: 각 구간 출발 + 경유지5 + 도착 = 7개씩
-      var segStart = 0;
-      while (segStart < wps.length - 1) {
-        var segEnd = Math.min(segStart + MAX_MID + 1, wps.length - 1);
-        var segOrigin = wps[segStart].lng + ',' + wps[segStart].lat;
-        var segDest = wps[segEnd].lng + ',' + wps[segEnd].lat;
-        var segMiddle = wps.slice(segStart + 1, segEnd).map(function(wp) { return wp.lng + ',' + wp.lat; }).join('|');
-        var segData = await fetchRouteSegment(segOrigin, segDest, segMiddle);
-        if (segData.path && segData.path.length) {
-          allPath = allPath.concat(segData.path);
-          totalDistance += segData.distance || 0;
-          totalDuration += segData.duration || 0;
-        }
-        segStart = segEnd;
-      }
-      totalDistance = Math.round(totalDistance * 10) / 10;
-    }
+    var resp = await fetch(url);
+    var data = await resp.json();
 
-    if (allPath.length) {
-      drawPolyline(allPath);
+    if (data.path && data.path.length) {
+      drawPolyline(data.path);
       // 경로 캐시 저장
       db.collection('drive_courses').doc(course.id).update({
-        routePath: allPath,
-        distance: totalDistance || null,
-        duration: totalDuration || null,
-        routeVersion: 2
+        routePath: data.path,
+        distance: data.distance || null,
+        duration: data.duration || null
       }).catch(function() {});
       var idx = allCourses.findIndex(function(c) { return c.id === course.id; });
       if (idx !== -1) {
-        allCourses[idx].routePath = allPath;
-        allCourses[idx].distance = totalDistance;
-        allCourses[idx].duration = totalDuration;
-        allCourses[idx].routeVersion = 2;
+        allCourses[idx].routePath = data.path;
+        allCourses[idx].distance = data.distance;
+        allCourses[idx].duration = data.duration;
       }
     } else {
       drawStraightLine(wps);
