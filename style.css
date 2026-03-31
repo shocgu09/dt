@@ -149,7 +149,7 @@ main { padding: calc(80px + env(safe-area-inset-top, 0px)) 20px 24px; max-width:
 .hero h1 { font-size: 2.4rem; font-weight: 800; margin-bottom: 4px; }
 .hero-sub { color: var(--primary-light); font-size: 1rem; font-weight: 600; margin-bottom: 12px; }
 .hero-desc { color: var(--text2); margin-bottom: 24px; line-height: 1.8; }
-.hero-buttons { display: flex; flex-wrap: wrap; gap: 10px; }
+.hero-buttons { display: flex; flex-wrap: nowrap; gap: 10px; }
 .hero .btn + .btn { margin-left: 0; }
 .hero-art { font-size: 7rem; opacity: .7; position: relative; z-index: 1; }
 
@@ -183,6 +183,10 @@ main { padding: calc(80px + env(safe-area-inset-top, 0px)) 20px 24px; max-width:
 .home-tool-card:hover { border-color: var(--primary); transform: translate(-2px,-2px); box-shadow: 3px 3px 0 rgba(var(--primary-rgb),.2); }
 .home-tool-icon { font-size: 1.8rem; }
 .home-tool-name { font-size: .78rem; font-weight: 600; color: var(--text2); text-align: center; }
+.home-tools-sm { grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.home-tool-sm { padding: 10px 4px; }
+.home-tool-sm .home-tool-icon { font-size: 1.3rem; }
+.home-tool-sm .home-tool-name { font-size: .68rem; }
 .youtube-shorts { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px; -webkit-overflow-scrolling: touch; }
 .youtube-shorts::-webkit-scrollbar { height: 4px; }
 .youtube-shorts::-webkit-scrollbar-thumb { background: var(--border); }
