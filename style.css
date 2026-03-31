@@ -170,7 +170,7 @@ main { padding: calc(80px + env(safe-area-inset-top, 0px)) 20px 24px; max-width:
 .stat-label { font-size: .82rem; color: var(--text2); }
 
 /* ===== HOME SECTIONS ===== */
-.home-sections { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.home-sections { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 24px; }
 .home-links-section { margin-top: 24px; }
 .home-links-title { font-size: 1rem; font-weight: 700; margin-bottom: 14px; color: var(--text2); text-transform: uppercase; letter-spacing: .5px; }
 .home-tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
