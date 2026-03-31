@@ -160,14 +160,13 @@ function initAuth() {
         // 마지막 접속 시간 + 위치 갱신
         const _doRedirect = state._wasGuest;
         const _uid = user.uid;
-        fetch('https://ipwho.is/')
-          .then(r => r.json())
-          .then(d => {
-            const loc = [d.city, d.region].filter(Boolean).join(', ') || d.country || '';
-            return state.db.collection('users').doc(_uid).update({ lastSeen: new Date().toISOString(), lastLocation: loc });
-          })
-          .catch(() => {
-            return state.db.collection('users').doc(_uid).update({ lastSeen: new Date().toISOString() });
+        fetch('https://ipapi.co/json/').then(r => { if (!r.ok) throw new Error(); return r.json(); })
+          .then(d => [d.city, d.region].filter(Boolean).join(', ') || d.country_name || '')
+          .catch(() => fetch('https://api.ip.sb/geoip').then(r => r.json()).then(d => [d.city, d.region].filter(Boolean).join(', ') || d.country || '').catch(() => ''))
+          .then(loc => {
+            var update = { lastSeen: new Date().toISOString() };
+            if (loc) update.lastLocation = loc;
+            return state.db.collection('users').doc(_uid).update(update);
           })
           .then(() => { if (_doRedirect) location.href = '/'; });
       } else {
