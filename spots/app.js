@@ -212,7 +212,7 @@ function renderCourseOverlay(course) {
   }
 }
 
-// 단일 구간 경로 요청 (출발, 도착, 경유지 최대 5개)
+// 단일 구간 경로 요청 (출발 + 경유지 최대 5개 + 도착 = 최대 7개)
 async function fetchRouteSegment(origin, destination, midpoints) {
   var url = ROUTE_WORKER + '/api/route?origin=' + encodeURIComponent(origin) + '&destination=' + encodeURIComponent(destination);
   if (midpoints) url += '&waypoints=' + encodeURIComponent(midpoints);
@@ -224,13 +224,15 @@ async function fetchAndDrawRoute(course) {
   var wps = (course.waypoints || []).filter(function(wp) { return wp.lat && wp.lng; });
   if (wps.length < 2) return;
   try {
-    var middleCount = wps.length - 2; // 출발·도착 제외한 경유지 수
+    var middleCount = wps.length - 2; // 출발·도착 제외한 중간 경유지 수
     var allPath = [];
     var totalDistance = 0;
     var totalDuration = 0;
+    // 카카오 API 제한: 출발+도착 포함 최대 7개 → 중간 경유지 최대 5개
+    var MAX_MID = 5;
 
-    if (middleCount <= 5) {
-      // 경유지 5개 이하: 한 번에 요청
+    if (middleCount <= MAX_MID) {
+      // 한 번에 요청 가능
       var origin = wps[0].lng + ',' + wps[0].lat;
       var destination = wps[wps.length - 1].lng + ',' + wps[wps.length - 1].lat;
       var middle = wps.slice(1, -1).map(function(wp) { return wp.lng + ',' + wp.lat; }).join('|');
@@ -241,12 +243,10 @@ async function fetchAndDrawRoute(course) {
         totalDuration = data.duration || 0;
       }
     } else {
-      // 경유지 5개 초과: 구간별로 분할 (각 구간 경유지 최대 5개)
-      var MAX_WP = 5;
+      // 구간 분할: 각 구간 출발 + 경유지5 + 도착 = 7개씩
       var segStart = 0;
       while (segStart < wps.length - 1) {
-        // 이 구간: segStart(출발) ~ segEnd(도착), 사이에 최대 5개 경유지
-        var segEnd = Math.min(segStart + MAX_WP + 1, wps.length - 1);
+        var segEnd = Math.min(segStart + MAX_MID + 1, wps.length - 1);
         var segOrigin = wps[segStart].lng + ',' + wps[segStart].lat;
         var segDest = wps[segEnd].lng + ',' + wps[segEnd].lat;
         var segMiddle = wps.slice(segStart + 1, segEnd).map(function(wp) { return wp.lng + ',' + wp.lat; }).join('|');
