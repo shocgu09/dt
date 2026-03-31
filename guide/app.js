@@ -344,7 +344,27 @@ async function loadGuideData() {
     console.log('Firestore 로드 실패, 기본 데이터 사용');
     guideData = JSON.parse(JSON.stringify(DEFAULT_DATA));
   }
+  // 경고등 아이콘이 오래된 형식(이모지/URL)이면 DEFAULT_DATA 아이콘으로 교체
+  syncWarningIcons();
   renderAll();
+}
+
+function syncWarningIcons() {
+  var wl = guideData.warning_lights;
+  var def = DEFAULT_DATA.warning_lights;
+  if (!wl || !wl.items || !def || !def.items) return;
+  var defMap = {};
+  def.items.forEach(function(it) { defMap[it.id] = it.icon; });
+  var needsUpdate = false;
+  wl.items.forEach(function(it) {
+    if (defMap[it.id] && !it.icon.startsWith('icons/')) {
+      it.icon = defMap[it.id];
+      needsUpdate = true;
+    }
+  });
+  if (needsUpdate && db && isAdmin) {
+    db.collection('guide_data').doc('warning_lights').set(wl).catch(function() {});
+  }
 }
 
 function showAdminButtons() {
