@@ -99,9 +99,9 @@
     <section id="page-home" class="page active">
       <div class="hero">
         <div class="hero-content">
-          <h1>드라이브를 더 즐겁게</h1>
-          <p class="hero-sub">자동차를 사랑하는 사람들의 커뮤니티</p>
-          <p class="hero-desc">AI 코스 추천, 드라이브 스팟, 자동차 트렌드까지.<br>가입 없이도 지금 바로 둘러볼 수 있어요.</p>
+          <h1>Drive Together,<br>더 멀리 달리세요</h1>
+          <p class="hero-sub">Korea's Driving Community — DT Club</p>
+          <p class="hero-desc">AI 코스 추천, 드라이브 스팟, 자동차 트렌드를 한곳에서.</p>
           <div class="hero-buttons">
             <a href="spots/" class="btn btn-primary">📍 DT 스팟</a>
             <a href="ai-trend/" class="btn btn-outline">🤖 AI 트렌드</a>
@@ -191,18 +191,37 @@
         <div id="youtubeShorts"></div>
       </div>
 
-      <!-- 최근 이벤트 및 게시판 -->
-      <h2 class="sr-only">주요 정보</h2>
-      <div class="home-sections">
-        <div class="home-section-card">
-          <h3>최근 이벤트</h3>
-          <div id="home-recent-events" class="home-list"></div>
-          <button class="btn btn-sm btn-outline" onclick="goPage('events')">모두 보기</button>
-        </div>
-        <div class="home-section-card">
-          <h3>📋 게시판</h3>
-          <div id="home-anon-list" class="home-list"></div>
-          <button class="btn btn-sm btn-outline" onclick="goPage('anon')">더 보기</button>
+      <!-- 컨텐츠 프리뷰 -->
+      <div class="home-links-section">
+        <h3 class="home-links-title">📡 최근 컨텐츠</h3>
+        <div class="home-preview-grid">
+          <div class="home-preview-card">
+            <div class="home-preview-card-header">
+              <span>📍 DT 스팟</span>
+              <a href="spots/" class="home-preview-more">더보기 →</a>
+            </div>
+            <div id="preview-spots" class="home-preview-list">
+              <div class="home-preview-loading">로딩 중...</div>
+            </div>
+          </div>
+          <div class="home-preview-card">
+            <div class="home-preview-card-header">
+              <span>🤖 AI 트렌드</span>
+              <a href="ai-trend/" class="home-preview-more">더보기 →</a>
+            </div>
+            <div id="preview-ai-trend" class="home-preview-list">
+              <div class="home-preview-loading">로딩 중...</div>
+            </div>
+          </div>
+          <div class="home-preview-card">
+            <div class="home-preview-card-header">
+              <span>🚘 자동차 트렌드</span>
+              <a href="car-trend/" class="home-preview-more">더보기 →</a>
+            </div>
+            <div id="preview-car-trend" class="home-preview-list">
+              <div class="home-preview-loading">로딩 중...</div>
+            </div>
+          </div>
         </div>
       </div>
 

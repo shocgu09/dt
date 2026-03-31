@@ -25,14 +25,16 @@ var allLinks = [];
 var currentCategory = 'all';
 var currentTab = 'feed';
 
-var CATEGORY_ICONS = { '뉴스': '📰', '유튜브': '▶️' };
-var CATEGORY_ORDER = ['뉴스', '유튜브'];
+var CATEGORY_ICONS = { '뉴스레터': '📰', '뉴스': '📰', '유튜브': '▶️' };
+var CATEGORY_ORDER = ['뉴스레터', '뉴스', '유튜브'];
 
 var INITIAL_DATA = [
   { category: '유튜브', name: '모터그래프', url: 'https://www.youtube.com/@motorgraph', description: '신차 리뷰, 시승기', order: 1 },
   { category: '유튜브', name: '오토뷰', url: 'https://www.youtube.com/@AutoviewTV', description: '시승, 비교 리뷰', order: 2 },
   { category: '뉴스', name: '오토헤럴드', url: 'https://www.autoherald.co.kr', description: '국내 자동차 뉴스', order: 1, rss: 'https://www.autoherald.co.kr/rss/allArticle.xml' },
   { category: '뉴스', name: '모터그래프', url: 'https://www.motorgraph.com', description: '자동차 뉴스 + 리뷰', order: 2, rss: 'https://www.motorgraph.com/rss/allArticle.xml' },
+  { category: '뉴스레터', name: 'Car and Driver', url: 'https://www.caranddriver.com', description: '자동차 트렌드 & 리뷰', order: 1, rss: 'https://www.caranddriver.com/rss/all.xml/' },
+  { category: '뉴스레터', name: 'Motor Trend', url: 'https://www.motortrend.com', description: '미국 자동차 매거진', order: 2, rss: 'https://www.motortrend.com/feed/' },
 ];
 
 // Firebase 초기화
@@ -196,7 +198,45 @@ async function loadFeed() {
     html += '</div>';
   }
 
-  // 2. 뉴스 최근 기사
+  // 2. 뉴스레터 최근 글
+  var nlLinks = allLinks.filter(function(l) { return l.category === '뉴스레터' && l.rss; });
+  if (nlLinks.length) {
+    html += '<div class="feed-section"><div class="feed-section-title">📰 최근 뉴스레터</div>';
+    var nlArticles = [];
+    for (var i = 0; i < nlLinks.length; i++) {
+      try {
+        var resp = await fetch('https://dt-rss.shocguna.workers.dev/api/rss?url=' + encodeURIComponent(nlLinks[i].rss));
+        var data = await resp.json();
+        (data.items || []).forEach(function(item) {
+          nlArticles.push({ ...item, source: nlLinks[i].name });
+        });
+      } catch(e) {}
+    }
+    nlArticles.sort(function(a, b) { return new Date(b.pubDate) - new Date(a.pubDate); });
+
+    if (nlArticles.length) {
+      var showCount = 3;
+      nlArticles.forEach(function(a, idx) {
+        var hidden = idx >= showCount ? ' style="display:none" data-nl-more' : '';
+        html += '<a href="' + escapeHtml(a.link) + '" target="_blank" class="feed-article"' + hidden + '>'
+          + '<span class="feed-article-icon">📰</span>'
+          + '<div class="feed-article-info">'
+          + '<div class="feed-article-title">' + escapeHtml(a.title) + '</div>';
+        if (a.description) html += '<div class="feed-article-desc">' + escapeHtml(a.description) + '</div>';
+        html += '<div class="feed-article-meta">' + escapeHtml(a.source) + ' · ' + timeAgo(a.pubDate) + '</div>'
+          + '</div></a>';
+      });
+      if (nlArticles.length > showCount) {
+        html += '<button class="feed-more-btn" id="nlMoreBtn" onclick="document.querySelectorAll(\'[data-nl-more]\').forEach(function(e){e.style.display=\'\'});this.style.display=\'none\';document.getElementById(\'nlLessBtn\').style.display=\'\'">더보기 (' + (nlArticles.length - showCount) + '개)</button>';
+        html += '<button class="feed-more-btn" id="nlLessBtn" style="display:none" onclick="document.querySelectorAll(\'[data-nl-more]\').forEach(function(e){e.style.display=\'none\'});this.style.display=\'none\';document.getElementById(\'nlMoreBtn\').style.display=\'\'">줄이기</button>';
+      }
+    } else {
+      html += '<div class="feed-empty">뉴스레터가 없습니다</div>';
+    }
+    html += '</div>';
+  }
+
+  // 3. 뉴스 최근 기사
   var newsLinks = allLinks.filter(function(l) { return l.category === '뉴스' && l.rss; });
   if (newsLinks.length) {
     html += '<div class="feed-section"><div class="feed-section-title">📰 최근 자동차 뉴스</div>';
@@ -317,10 +357,10 @@ function renderAdminLinks() {
 // 카테고리 변경 시 입력 힌트 토글
 document.getElementById('addCategory')?.addEventListener('change', function() {
   var isYt = this.value === '유튜브';
-  var isNews = this.value === '뉴스';
+  var isRss = this.value === '뉴스' || this.value === '뉴스레터';
   document.getElementById('addUrl').placeholder = isYt ? '채널 핸들 (예: @TopGear)' : 'URL';
-  document.getElementById('rssHint').style.display = isNews ? '' : 'none';
-  document.getElementById('addRss').style.display = isNews ? '' : 'none';
+  document.getElementById('rssHint').style.display = isRss ? '' : 'none';
+  document.getElementById('addRss').style.display = isRss ? '' : 'none';
 });
 
 async function addTrendLink() {

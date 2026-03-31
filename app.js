@@ -1211,7 +1211,6 @@ function renderHome() {
       .onSnapshot(function(snap) {
         _anonPosts = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; });
         if (state.currentPage === 'anon') _renderAnonList();
-        _updateHomeAnonList();
       }, function(err) { console.error('익명 게시판 구독 오류:', err); });
   }
   const { members, events } = state;
@@ -1224,22 +1223,8 @@ function renderHome() {
   if (elPassengers) elPassengers.textContent = members.filter(m => m.role === 'passenger').length;
   if (elEvents) elEvents.textContent = events.length;
 
-  const recentEl = document.getElementById('home-recent-events');
-  const sorted = [...events].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 3);
-  recentEl.innerHTML = sorted.length
-    ? sorted.map(ev => `
-        <div class="home-list-item" onclick="goPage('events')">
-          <span class="item-icon">${ev.type === 'lightning' ? '⚡' : ev.type === 'quiz' ? '🧩' : '🗓'}</span>
-          <div class="item-info">
-            <div class="item-title">${escapeHtml(ev.title)}</div>
-            <div class="item-sub">${ev.type === 'quiz' ? (ev.voteDeadline ? `⏰ 마감 ${ev.voteDeadline.replace('T', ' ')}` : '퀴즈') : `${formatDate(ev.date)} ${ev.time || ''} ${ev.location ? '· ' + ev.location : ''}`}</div>
-          </div>
-        </div>`)
-      .join('')
-    : '<div class="empty-state">이벤트가 없습니다</div>';
-
-  // 홈 익명글 리스트
-  _updateHomeAnonList();
+  // 컨텐츠 프리뷰 로드
+  loadHomePreview();
 
   // 날씨 로드
   loadWeather();
@@ -3411,24 +3396,62 @@ function renderAnon() {
   }
 }
 
-function _updateHomeAnonList() {
-  var homeAnonEl = document.getElementById('home-anon-list');
-  if (!homeAnonEl) return;
-  var recentAnon = (_anonPosts || []).slice(0, 5);
-  homeAnonEl.innerHTML = recentAnon.length
-    ? recentAnon.map(function(p) {
-        var catBadge = p.category ? '<span class="anon-category anon-cat-' + escapeHtml(p.category) + '">' + escapeHtml(p.category) + '</span>' : '';
-        var imgIcon = p.image ? '<span class="anon-has-img">📷</span>' : '';
-        var d = p.createdAt ? (p.createdAt.toDate ? p.createdAt.toDate() : new Date(p.createdAt)) : new Date();
-        var catIcon = p.category === '공지' ? '📢' : p.category === '활동' ? '🚗' : p.category === '건의' ? '💡' : '💬';
-        return '<div class="home-list-item" onclick="goPage(\'anon\');setTimeout(function(){openAnonDetail(\'' + p.id + '\')},300)">'
-          + '<span class="item-icon">' + catIcon + '</span>'
-          + '<div class="item-info">'
-          + '<div class="item-title">' + catBadge + escapeHtml(p.title || '제목 없음') + imgIcon + '</div>'
-          + '<div class="item-sub">❤️ ' + (p.likes || 0) + ' · 💬 ' + (p.commentCount || 0) + ' · ' + _timeAgo(d) + '</div>'
-          + '</div></div>';
-      }).join('')
-    : '<div class="empty-state">아직 게시글이 없습니다</div>';
+async function loadHomePreview() {
+  if (!state.db) return;
+  var spotsEl = document.getElementById('preview-spots');
+  var aiEl = document.getElementById('preview-ai-trend');
+  var carEl = document.getElementById('preview-car-trend');
+
+  try {
+    if (spotsEl) {
+      var spotsSnap = await state.db.collection('spots').orderBy('createdAt', 'desc').limit(3).get();
+      if (spotsSnap.empty) {
+        spotsEl.innerHTML = '<div class="home-preview-empty">등록된 스팟이 없습니다</div>';
+      } else {
+        spotsEl.innerHTML = spotsSnap.docs.map(function(d) {
+          var s = d.data();
+          return '<a href="spots/" class="home-preview-item">'
+            + '<div class="home-preview-item-title">' + escapeHtml(s.name || '스팟') + '</div>'
+            + '<div class="home-preview-item-sub">' + escapeHtml(s.category || '') + (s.address ? ' · ' + s.address : '') + '</div>'
+            + '</a>';
+        }).join('');
+      }
+    }
+  } catch(e) { if (spotsEl) spotsEl.innerHTML = '<div class="home-preview-empty">불러오기 실패</div>'; }
+
+  try {
+    if (aiEl) {
+      var aiSnap = await state.db.collection('ai_trend_links').orderBy('order', 'asc').limit(3).get();
+      if (aiSnap.empty) {
+        aiEl.innerHTML = '<div class="home-preview-empty">등록된 링크가 없습니다</div>';
+      } else {
+        aiEl.innerHTML = aiSnap.docs.map(function(d) {
+          var l = d.data();
+          return '<a href="' + escapeHtml(l.url) + '" target="_blank" class="home-preview-item">'
+            + '<div class="home-preview-item-title">' + escapeHtml(l.name || '') + '</div>'
+            + '<div class="home-preview-item-sub">' + escapeHtml(l.description || l.category || '') + '</div>'
+            + '</a>';
+        }).join('');
+      }
+    }
+  } catch(e) { if (aiEl) aiEl.innerHTML = '<div class="home-preview-empty">불러오기 실패</div>'; }
+
+  try {
+    if (carEl) {
+      var carSnap = await state.db.collection('car_trend_links').orderBy('order', 'asc').limit(3).get();
+      if (carSnap.empty) {
+        carEl.innerHTML = '<div class="home-preview-empty">등록된 링크가 없습니다</div>';
+      } else {
+        carEl.innerHTML = carSnap.docs.map(function(d) {
+          var l = d.data();
+          return '<a href="' + escapeHtml(l.url) + '" target="_blank" class="home-preview-item">'
+            + '<div class="home-preview-item-title">' + escapeHtml(l.name || '') + '</div>'
+            + '<div class="home-preview-item-sub">' + escapeHtml(l.description || l.category || '') + '</div>'
+            + '</a>';
+        }).join('');
+      }
+    }
+  } catch(e) { if (carEl) carEl.innerHTML = '<div class="home-preview-empty">불러오기 실패</div>'; }
 }
 
 function filterBoard(cat) {
