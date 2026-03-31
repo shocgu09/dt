@@ -3827,7 +3827,7 @@ function openAnonDetail(postId) {
   } else {
     if (commentSection) commentSection.style.display = '';
   }
-  if (commentHeader) commentHeader.innerHTML = '💬 댓글 <span id="anonCommentCount">0</span>';
+  if (commentHeader) commentHeader.innerHTML = '💬 댓글 <span id="anonCommentCount">' + (post.commentCount || 0) + '</span>';
 
   // 댓글 실시간 구독
   if (_anonCommentUnsub) _anonCommentUnsub();
@@ -3837,7 +3837,15 @@ function openAnonDetail(postId) {
       var comments = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; });
       document.getElementById('anonCommentCount').textContent = comments.length;
       _renderAnonComments(comments);
-    }, function(err) { console.error('댓글 구독 오류:', err); });
+    }, function(err) {
+      console.error('댓글 구독 오류:', err);
+      // 비회원은 subcollection 읽기가 제한될 수 있음 - 카운트만 표시
+      var countEl = document.getElementById('anonCommentCount');
+      if (countEl) countEl.textContent = post.commentCount || 0;
+      document.getElementById('anonCommentList').innerHTML = (post.commentCount > 0)
+        ? '<div style="text-align:center;padding:16px;color:var(--text3);font-size:.82rem">로그인하면 댓글을 볼 수 있습니다.</div>'
+        : '<div style="text-align:center;padding:16px;color:var(--text3);font-size:.82rem">아직 댓글이 없습니다</div>';
+    });
 }
 
 function _renderAnonComments(comments) {
