@@ -3398,27 +3398,8 @@ function renderAnon() {
 
 async function loadHomePreview() {
   if (!state.db) return;
-  var spotsEl = document.getElementById('preview-spots');
   var aiEl = document.getElementById('preview-ai-trend');
   var carEl = document.getElementById('preview-car-trend');
-
-  // DT 스팟
-  try {
-    if (spotsEl) {
-      var spotsSnap = await state.db.collection('spots').orderBy('createdAt', 'desc').limit(3).get();
-      if (spotsSnap.empty) {
-        spotsEl.innerHTML = '<div class="home-preview-empty">등록된 스팟이 없습니다</div>';
-      } else {
-        spotsEl.innerHTML = spotsSnap.docs.map(function(d) {
-          var s = d.data();
-          return '<a href="spots/" class="home-preview-item">'
-            + '<div class="home-preview-item-title">' + escapeHtml(s.name || '스팟') + '</div>'
-            + '<div class="home-preview-item-sub">' + escapeHtml(s.category || '') + (s.address ? ' · ' + s.address : '') + '</div>'
-            + '</a>';
-        }).join('');
-      }
-    }
-  } catch(e) { if (spotsEl) spotsEl.innerHTML = '<div class="home-preview-empty">불러오기 실패</div>'; }
 
   // 트렌드 프리뷰: 카테고리별 최신 1개씩 (최대 3개 카테고리)
   _loadTrendPreview('ai_trend_links', aiEl, 'ai-trend/');
