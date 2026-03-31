@@ -205,7 +205,8 @@ function renderCourseOverlay(course) {
     overlays.push(overlay);
   });
 
-  if (course.routePath && course.routePath.length) {
+  // 캐시된 경로의 경유지 수가 현재와 일치하면 캐시 사용, 아니면 재요청
+  if (course.routePath && course.routePath.length && course.routeWpCount === validWps.length) {
     drawPolyline(course.routePath);
   } else {
     fetchAndDrawRoute(course);
@@ -216,28 +217,68 @@ async function fetchAndDrawRoute(course) {
   var wps = (course.waypoints || []).filter(function(wp) { return wp.lat && wp.lng; });
   if (wps.length < 2) return;
   try {
-    var origin = wps[0].lng + ',' + wps[0].lat;
-    var destination = wps[wps.length - 1].lng + ',' + wps[wps.length - 1].lat;
-    var middle = wps.slice(1, -1).map(function(wp) { return wp.lng + ',' + wp.lat; }).join('|');
-    var url = ROUTE_WORKER + '/api/route?origin=' + encodeURIComponent(origin) + '&destination=' + encodeURIComponent(destination);
-    if (middle) url += '&waypoints=' + encodeURIComponent(middle);
+    // 카카오 API 제한: 출발 + 경유지 최대 5개 + 도착 = 최대 7개
+    var MAX_MID = 5;
+    var middleCount = wps.length - 2;
+    var allPath = [];
+    var totalDistance = 0;
+    var totalDuration = 0;
+    var success = true;
 
-    var resp = await fetch(url);
-    var data = await resp.json();
+    if (middleCount <= MAX_MID) {
+      // 한 번에 요청
+      var origin = wps[0].lng + ',' + wps[0].lat;
+      var destination = wps[wps.length - 1].lng + ',' + wps[wps.length - 1].lat;
+      var middle = wps.slice(1, -1).map(function(wp) { return wp.lng + ',' + wp.lat; }).join('|');
+      var url = ROUTE_WORKER + '/api/route?origin=' + encodeURIComponent(origin) + '&destination=' + encodeURIComponent(destination);
+      if (middle) url += '&waypoints=' + encodeURIComponent(middle);
+      var resp = await fetch(url);
+      var data = await resp.json();
+      if (data.path && data.path.length) {
+        allPath = data.path;
+        totalDistance = data.distance || 0;
+        totalDuration = data.duration || 0;
+      } else {
+        success = false;
+      }
+    } else {
+      // 구간 분할: 각 구간에서 중간 경유지 최대 5개씩
+      var segStart = 0;
+      while (segStart < wps.length - 1) {
+        var segEnd = Math.min(segStart + MAX_MID + 1, wps.length - 1);
+        var o = wps[segStart].lng + ',' + wps[segStart].lat;
+        var d = wps[segEnd].lng + ',' + wps[segEnd].lat;
+        var m = wps.slice(segStart + 1, segEnd).map(function(wp) { return wp.lng + ',' + wp.lat; }).join('|');
+        var sUrl = ROUTE_WORKER + '/api/route?origin=' + encodeURIComponent(o) + '&destination=' + encodeURIComponent(d);
+        if (m) sUrl += '&waypoints=' + encodeURIComponent(m);
+        var sResp = await fetch(sUrl);
+        var sData = await sResp.json();
+        if (sData.path && sData.path.length) {
+          allPath = allPath.concat(sData.path);
+          totalDistance += sData.distance || 0;
+          totalDuration += sData.duration || 0;
+        } else {
+          success = false;
+        }
+        segStart = segEnd;
+      }
+      totalDistance = Math.round(totalDistance * 10) / 10;
+    }
 
-    if (data.path && data.path.length) {
-      drawPolyline(data.path);
-      // 경로 캐시 저장
+    if (success && allPath.length) {
+      drawPolyline(allPath);
       db.collection('drive_courses').doc(course.id).update({
-        routePath: data.path,
-        distance: data.distance || null,
-        duration: data.duration || null
+        routePath: allPath,
+        distance: totalDistance || null,
+        duration: totalDuration || null,
+        routeWpCount: wps.length
       }).catch(function() {});
       var idx = allCourses.findIndex(function(c) { return c.id === course.id; });
       if (idx !== -1) {
-        allCourses[idx].routePath = data.path;
-        allCourses[idx].distance = data.distance;
-        allCourses[idx].duration = data.duration;
+        allCourses[idx].routePath = allPath;
+        allCourses[idx].distance = totalDistance;
+        allCourses[idx].duration = totalDuration;
+        allCourses[idx].routeWpCount = wps.length;
       }
     } else {
       drawStraightLine(wps);
