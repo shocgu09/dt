@@ -262,3 +262,4 @@ body {
   .map-wrap { height: 45vh; }
   .modal-box { padding: 16px 14px; }
 }
+@keyframes fadeOut { 0%{opacity:1} 70%{opacity:1} 100%{opacity:0} }

@@ -166,3 +166,4 @@ body {
   .filter-btn { padding: 5px 10px; font-size: .78rem; }
   .tab-btn { font-size: .78rem; padding: 6px; }
 }
+@keyframes fadeOut { 0%{opacity:1} 70%{opacity:1} 100%{opacity:0} }

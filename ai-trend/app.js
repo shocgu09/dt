@@ -411,6 +411,21 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+function shareThisPage() {
+  var data = { title: document.title, text: document.querySelector('meta[name="description"]')?.content || '', url: location.href };
+  if (navigator.share) {
+    navigator.share(data).catch(function() {});
+  } else {
+    navigator.clipboard.writeText(location.href).then(function() {
+      var toast = document.createElement('div');
+      toast.textContent = '링크가 복사되었습니다!';
+      toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--primary);color:#fff;padding:10px 20px;font-size:.85rem;font-weight:600;z-index:9999;animation:fadeOut 2s forwards';
+      document.body.appendChild(toast);
+      setTimeout(function() { toast.remove(); }, 2000);
+    });
+  }
+}
+
 function timeAgo(dateStr) {
   var diff = Date.now() - new Date(dateStr).getTime();
   var mins = Math.floor(diff / 60000);
