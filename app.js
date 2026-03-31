@@ -740,11 +740,6 @@ async function maybeSeed() {
 
 /* ===== ROUTING ===== */
 function goPage(name, pushState = true) {
-  if (name === 'anon' && state.isGuest) {
-    alert('로그인 후 이용 가능합니다.');
-    if (typeof guestToLogin === 'function') guestToLogin();
-    return;
-  }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-btn, .bottom-nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + name)?.classList.add('active');
@@ -3493,7 +3488,8 @@ function _renderAnonList() {
     var commentCount = post.commentCount || 0;
 
     html += '<div class="anon-card" onclick="openAnonDetail(\'' + post.id + '\')">';
-    var authorDisplay = (post.anonymous !== false) ? '익명' : escapeHtml(post.authorName || '알 수 없음');
+    var rawAuthor = (post.anonymous !== false) ? '익명' : (post.authorName || '알 수 없음');
+    var authorDisplay = (state.isGuest && rawAuthor !== '익명') ? escapeHtml(maskName(rawAuthor)) : escapeHtml(rawAuthor);
     html += '<div class="anon-card-header">';
     html += '<span class="anon-avatar">' + authorDisplay + '</span>';
     html += '<span class="anon-time">' + timeAgo + '</span>';
@@ -3736,7 +3732,6 @@ async function toggleAnonLike(postId) {
 }
 
 function openAnonDetail(postId) {
-  if (state.isGuest) { alert('회원만 상세 보기가 가능합니다.\n로그인 후 이용해주세요.'); return; }
   _anonDetailId = postId;
   var post = _anonPosts.find(function(p) { return p.id === postId; });
   if (!post) return;
@@ -3745,7 +3740,8 @@ function openAnonDetail(postId) {
   var uid = state.currentUserId;
   var liked = post.likedBy && post.likedBy.indexOf(uid) !== -1;
 
-  var detailAuthor = (post.anonymous !== false) ? '익명' : escapeHtml(post.authorName || '알 수 없음');
+  var rawDetailAuthor = (post.anonymous !== false) ? '익명' : (post.authorName || '알 수 없음');
+  var detailAuthor = (state.isGuest && rawDetailAuthor !== '익명') ? escapeHtml(maskName(rawDetailAuthor)) : escapeHtml(rawDetailAuthor);
   var detailCatHtml = post.category ? '<span class="anon-category anon-cat-' + escapeHtml(post.category) + '">' + escapeHtml(post.category) + '</span>' : '';
   var html = '<div style="margin-bottom:8px;font-size:.82rem;color:var(--text2)">' + detailAuthor + '</div>';
   html += '<div class="anon-title" style="font-size:1.05rem;margin-bottom:8px">' + detailCatHtml + escapeHtml(post.title || '제목 없음') + '</div>';
@@ -3754,7 +3750,11 @@ function openAnonDetail(postId) {
     html += '<div style="margin-bottom:12px"><img src="' + post.image + '" loading="lazy" style="max-width:100%;border-radius:8px;cursor:pointer" onclick="openLightbox(\'' + post.image + '\')" onerror="this.outerHTML=\'<div style=padding:12px;color:var(--text3);font-size:.82rem>⚠️ 이미지를 불러올 수 없습니다</div>\'"></div>';
   }
   html += '<div style="display:flex;gap:14px;align-items:center;padding-bottom:8px;border-bottom:1px solid var(--border);flex-wrap:wrap">';
-  html += '<button class="anon-action-btn' + (liked ? ' liked' : '') + '" onclick="toggleAnonLike(\'' + postId + '\');setTimeout(function(){openAnonDetail(\'' + postId + '\')},500)">' + (liked ? '❤️' : '🤍') + ' ' + (post.likes || 0) + '</button>';
+  if (state.isGuest) {
+    html += '<button class="anon-action-btn" onclick="alert(\'로그인 후 이용 가능합니다.\')">🤍 ' + (post.likes || 0) + '</button>';
+  } else {
+    html += '<button class="anon-action-btn' + (liked ? ' liked' : '') + '" onclick="toggleAnonLike(\'' + postId + '\');setTimeout(function(){openAnonDetail(\'' + postId + '\')},500)">' + (liked ? '❤️' : '🤍') + ' ' + (post.likes || 0) + '</button>';
+  }
   html += '<span class="anon-time">' + _timeAgo(d) + '</span>';
   var isOwner = post.createdBy === uid;
   var isAdmin = state.currentUserRole === 'superadmin' || state.currentUserRole === 'admin';
@@ -3777,6 +3777,9 @@ function openAnonDetail(postId) {
     if (commentHeader) commentHeader.innerHTML = '💬 댓글이 막힌 게시글입니다';
     document.getElementById('anonCommentList').innerHTML = '<div style="text-align:center;padding:16px;color:var(--text3);font-size:.82rem">작성자가 댓글을 막았습니다.</div>';
     return;
+  } else if (state.isGuest) {
+    if (commentSection) commentSection.style.display = 'none';
+    if (commentHeader) commentHeader.innerHTML = '💬 댓글 <span id="anonCommentCount">0</span>';
   } else {
     if (commentSection) commentSection.style.display = '';
     if (commentHeader) commentHeader.innerHTML = '💬 댓글 <span id="anonCommentCount">0</span>';
@@ -3805,7 +3808,8 @@ function _renderAnonComments(comments) {
     var d = c.createdAt ? (c.createdAt.toDate ? c.createdAt.toDate() : new Date(c.createdAt)) : new Date();
     html += '<div class="anon-comment">';
     html += '<div class="anon-comment-header">';
-    var cmtAuthor = (c.anonymous !== false) ? '익명' : escapeHtml(c.authorName || '알 수 없음');
+    var rawCmtAuthor = (c.anonymous !== false) ? '익명' : (c.authorName || '알 수 없음');
+    var cmtAuthor = (state.isGuest && rawCmtAuthor !== '익명') ? escapeHtml(maskName(rawCmtAuthor)) : escapeHtml(rawCmtAuthor);
     html += '<span class="anon-comment-name">' + cmtAuthor + '</span>';
     html += '<span class="anon-comment-time">' + _timeAgo(d);
     if (isAdmin) html += ' <button onclick="deleteAnonComment(\'' + _anonDetailId + '\',\'' + c.id + '\')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:.68rem">🗑️</button>';
@@ -4412,6 +4416,12 @@ function addGalleryPreview(dataUrl) {
   wrap.innerHTML = `<img src="${dataUrl}" class="preview-photo"><button type="button" class="preview-photo-del" onclick="this.parentElement.remove()">✕</button>`;
   wrap.dataset.cropped = dataUrl;
   preview.appendChild(wrap);
+}
+
+function maskName(name) {
+  var s = String(name || '');
+  if (s.length <= 1) return s;
+  return s.charAt(0) + '*'.repeat(s.length - 1);
 }
 
 function escapeHtml(text) {
