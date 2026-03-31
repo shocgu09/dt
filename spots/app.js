@@ -212,7 +212,7 @@ function renderCourseOverlay(course) {
   }
 }
 
-// 단일 구간 경로 요청 (출발, 도착, 경유지 최대 5개)
+// 단일 구간 경로 요청 (출발 + 경유지 최대 3개 + 도착 = 최대 5개)
 async function fetchRouteSegment(origin, destination, midpoints) {
   var url = ROUTE_WORKER + '/api/route?origin=' + encodeURIComponent(origin) + '&destination=' + encodeURIComponent(destination);
   if (midpoints) url += '&waypoints=' + encodeURIComponent(midpoints);
@@ -229,8 +229,8 @@ async function fetchAndDrawRoute(course) {
     var totalDistance = 0;
     var totalDuration = 0;
 
-    if (middleCount <= 5) {
-      // 경유지 5개 이하: 한 번에 요청
+    if (middleCount <= 3) {
+      // 경유지 3개 이하 (총 5개 이하): 한 번에 요청
       var origin = wps[0].lng + ',' + wps[0].lat;
       var destination = wps[wps.length - 1].lng + ',' + wps[wps.length - 1].lat;
       var middle = wps.slice(1, -1).map(function(wp) { return wp.lng + ',' + wp.lat; }).join('|');
@@ -241,12 +241,11 @@ async function fetchAndDrawRoute(course) {
         totalDuration = data.duration || 0;
       }
     } else {
-      // 경유지 5개 초과: 구간별로 분할 (각 구간 경유지 최대 5개)
-      var MAX_WP = 5;
+      // 경유지 4개 이상: 구간별 분할 (각 구간 출발+경유지3개+도착=5개)
+      var MAX_MID = 3;
       var segStart = 0;
       while (segStart < wps.length - 1) {
-        // 이 구간: segStart(출발) ~ segEnd(도착), 사이에 최대 5개 경유지
-        var segEnd = Math.min(segStart + MAX_WP + 1, wps.length - 1);
+        var segEnd = Math.min(segStart + MAX_MID + 1, wps.length - 1);
         var segOrigin = wps[segStart].lng + ',' + wps[segStart].lat;
         var segDest = wps[segEnd].lng + ',' + wps[segEnd].lat;
         var segMiddle = wps.slice(segStart + 1, segEnd).map(function(wp) { return wp.lng + ',' + wp.lat; }).join('|');
