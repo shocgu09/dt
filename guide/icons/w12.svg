@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- DOOR AJAR - Top-down car with open door -->
+  <g stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Car body top-down (rounded rectangle) -->
+    <path d="M22 8c-4 0-6 2-6 6v36c0 4 2 6 6 6h20c4 0 6-2 6-6V14c0-4-2-6-6-6z"/>
+    <!-- Windshield line -->
+    <line x1="18" y1="18" x2="46" y2="18"/>
+    <!-- Rear window line -->
+    <line x1="18" y1="46" x2="46" y2="46"/>
+    <!-- Open door (driver side, swung out) -->
+    <path d="M16 20l-10 4v14l10 4"/>
+    <!-- Door hinge marks -->
+    <circle cx="16" cy="22" r="1" fill="#fbbf24" stroke="none"/>
+    <circle cx="16" cy="36" r="1" fill="#fbbf24" stroke="none"/>
+  </g>
+</svg>

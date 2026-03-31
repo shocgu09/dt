@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- IMMOBILIZER - Car silhouette with key -->
+  <g stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Car side silhouette -->
+    <path d="M8 36h6l4-10h14l6-6h10l4 6h4v10c0 2-1 4-3 4H10c-2 0-3-2-2-4z"/>
+    <!-- Front wheel -->
+    <circle cx="18" cy="40" r="4"/>
+    <!-- Rear wheel -->
+    <circle cx="46" cy="40" r="4"/>
+    <!-- Key shape overlaid -->
+    <circle cx="32" cy="22" r="5"/>
+    <line x1="37" y1="22" x2="50" y2="22"/>
+    <!-- Key teeth -->
+    <line x1="44" y1="22" x2="44" y2="26"/>
+    <line x1="48" y1="22" x2="48" y2="26"/>
+  </g>
+</svg>

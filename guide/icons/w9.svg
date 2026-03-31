@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- TPMS - Tire cross-section with "!" -->
+  <g stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Tire outer shape (cross-section: flat bottom, round top) -->
+    <path d="M12 48h40"/>
+    <path d="M12 48c0-20 8-36 20-36s20 16 20 36"/>
+    <!-- Inner tire wall -->
+    <path d="M18 48c0-16 6-28 14-28s14 12 14 28"/>
+    <!-- Exclamation mark inside -->
+    <line x1="32" y1="24" x2="32" y2="37"/>
+    <circle cx="32" cy="42" r="1.5" fill="#fbbf24" stroke="none"/>
+  </g>
+</svg>

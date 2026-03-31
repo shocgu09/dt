@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- COOLANT TEMP - Thermometer with wavy water lines -->
+  <g stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Thermometer body -->
+    <rect x="28" y="8" width="8" height="30" rx="4"/>
+    <!-- Thermometer bulb -->
+    <circle cx="32" cy="40" r="7"/>
+    <!-- Mercury level -->
+    <line x1="32" y1="20" x2="32" y2="36"/>
+    <!-- Tick marks -->
+    <line x1="36" y1="16" x2="39" y2="16"/>
+    <line x1="36" y1="22" x2="39" y2="22"/>
+    <line x1="36" y1="28" x2="39" y2="28"/>
+    <!-- Wavy water lines below -->
+    <path d="M12 52c3-3 6 0 9-3s6 0 9-3"/>
+    <path d="M34 52c3-3 6 0 9-3s6 0 9-3"/>
+    <path d="M12 57c3-3 6 0 9-3s6 0 9-3"/>
+    <path d="M34 57c3-3 6 0 9-3s6 0 9-3"/>
+  </g>
+</svg>

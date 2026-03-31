@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- SEATBELT - Person with diagonal belt -->
+  <g stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Head -->
+    <circle cx="32" cy="12" r="6"/>
+    <!-- Body -->
+    <line x1="32" y1="18" x2="32" y2="38"/>
+    <!-- Arms -->
+    <line x1="32" y1="24" x2="22" y2="32"/>
+    <line x1="32" y1="24" x2="42" y2="32"/>
+    <!-- Legs -->
+    <line x1="32" y1="38" x2="24" y2="52"/>
+    <line x1="32" y1="38" x2="40" y2="52"/>
+    <!-- Seatbelt diagonal strap -->
+    <line x1="22" y1="18" x2="42" y2="42" stroke-width="3"/>
+    <!-- Belt buckle -->
+    <rect x="36" y="36" width="5" height="4" rx="1" fill="#fbbf24" stroke="none"/>
+  </g>
+</svg>

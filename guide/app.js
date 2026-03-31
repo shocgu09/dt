@@ -157,140 +157,140 @@ var DEFAULT_DATA = {
     severity_labels: { danger: '긴급', warning: '주의', info: '정보' },
     items: [
       {
-        id: 'w1', icon: '🔴', name: '엔진 경고등',
+        id: 'w1', icon: 'icons/w1.svg', name: '엔진 경고등',
         severity: 'danger', color: '#ef4444',
         description: '엔진 또는 배기가스 관련 이상이 감지되었습니다.',
         action: '즉시 안전한 곳에 정차하고 정비소에 연락하세요. 계속 주행하면 엔진 손상이 커질 수 있습니다.',
         needsRepair: true
       },
       {
-        id: 'w2', icon: '🔴', name: '엔진 오일 압력 경고',
+        id: 'w2', icon: 'icons/w2.svg', name: '엔진 오일 압력 경고',
         severity: 'danger', color: '#ef4444',
         description: '엔진 오일 압력이 비정상적으로 낮습니다.',
         action: '즉시 정차하고 엔진을 끄세요. 오일 레벨을 확인하고 부족하면 보충 후 정비소 방문이 필요합니다.',
         needsRepair: true
       },
       {
-        id: 'w3', icon: '🌡️', name: '냉각수 온도 경고',
+        id: 'w3', icon: 'icons/w3.svg', name: '냉각수 온도 경고',
         severity: 'danger', color: '#ef4444',
         description: '엔진 냉각수 온도가 과열 상태입니다.',
         action: '즉시 안전한 곳에 정차, 에어컨 끄고 히터를 최대로 켜서 열을 분산시키세요. 냉각수가 식은 후 레벨을 확인합니다.',
         needsRepair: true
       },
       {
-        id: 'w4', icon: '🔋', name: '배터리 충전 경고',
+        id: 'w4', icon: 'icons/w4.svg', name: '배터리 충전 경고',
         severity: 'danger', color: '#ef4444',
         description: '배터리 충전 시스템(발전기)에 이상이 있습니다.',
         action: '불필요한 전기장치를 끄고 가까운 정비소로 이동하세요. 방치하면 시동이 꺼질 수 있습니다.',
         needsRepair: true
       },
       {
-        id: 'w5', icon: '🛑', name: '브레이크 경고등',
+        id: 'w5', icon: 'icons/w5.svg', name: '브레이크 경고등',
         severity: 'danger', color: '#ef4444',
         description: '브레이크 시스템 이상 또는 브레이크액 부족입니다.',
         action: '주차 브레이크가 해제되었는지 먼저 확인하세요. 해제 상태인데도 켜져 있으면 즉시 정비소로 가세요.',
         needsRepair: true
       },
       {
-        id: 'w6', icon: '🎈', name: '에어백 경고등',
+        id: 'w6', icon: 'icons/w6.svg', name: '에어백 경고등',
         severity: 'danger', color: '#ef4444',
         description: '에어백 시스템에 문제가 감지되었습니다.',
         action: '사고 시 에어백이 정상 작동하지 않을 수 있습니다. 빠른 시일 내 정비소 점검이 필요합니다.',
         needsRepair: true
       },
       {
-        id: 'w7', icon: '🚗', name: 'ABS 경고등',
+        id: 'w7', icon: 'icons/w7.svg', name: 'ABS 경고등',
         severity: 'warning', color: '#fbbf24',
         description: '잠김방지 브레이크 시스템(ABS)에 이상이 있습니다.',
         action: '일반 브레이크는 작동하지만 ABS가 비활성화됩니다. 급제동 시 바퀴 잠김이 발생할 수 있으니 정비소 방문을 권장합니다.',
         needsRepair: true
       },
       {
-        id: 'w8', icon: '🔧', name: 'ESC/VDC 경고등',
+        id: 'w8', icon: 'icons/w8.svg', name: 'ESC/VDC 경고등',
         severity: 'warning', color: '#fbbf24',
         description: '차체 자세 제어장치에 이상이 있습니다.',
         action: '미끄러운 도로에서 차량 제어력이 떨어질 수 있습니다. 가급적 빨리 정비소를 방문하세요.',
         needsRepair: true
       },
       {
-        id: 'w9', icon: '🛞', name: '타이어 공기압 경고 (TPMS)',
+        id: 'w9', icon: 'icons/w9.svg', name: '타이어 공기압 경고 (TPMS)',
         severity: 'warning', color: '#fbbf24',
         description: '하나 이상의 타이어 공기압이 기준 이하입니다.',
         action: '가까운 주유소나 타이어샵에서 공기압을 점검/보충하세요. 펑크 여부도 확인이 필요합니다.',
         needsRepair: false
       },
       {
-        id: 'w10', icon: '⛽', name: '연료 부족 경고',
+        id: 'w10', icon: 'icons/w10.svg', name: '연료 부족 경고',
         severity: 'warning', color: '#fbbf24',
         description: '연료가 거의 소진되었습니다 (보통 잔여 50~80km 주행 가능).',
         action: '가까운 주유소에서 주유하세요. 연료가 완전히 바닥나면 연료펌프 손상 위험이 있습니다.',
         needsRepair: false
       },
       {
-        id: 'w11', icon: '💡', name: '전조등/미등 경고',
+        id: 'w11', icon: 'icons/w11.svg', name: '전조등/미등 경고',
         severity: 'warning', color: '#fbbf24',
         description: '외부 조명 중 하나 이상이 고장났습니다.',
         action: '야간 운전 전 반드시 수리하세요. 전구 교체로 간단히 해결되는 경우가 많습니다.',
         needsRepair: true
       },
       {
-        id: 'w12', icon: '🚪', name: '도어 열림 경고',
+        id: 'w12', icon: 'icons/w12.svg', name: '도어 열림 경고',
         severity: 'warning', color: '#fbbf24',
         description: '문이 완전히 닫히지 않았습니다.',
         action: '모든 문(트렁크 포함)을 다시 확인하고 확실히 닫아주세요.',
         needsRepair: false
       },
       {
-        id: 'w13', icon: '🧊', name: '워셔액 부족 경고',
+        id: 'w13', icon: 'icons/w13.svg', name: '워셔액 부족 경고',
         severity: 'info', color: '#60a5fa',
         description: '앞유리 워셔액이 부족합니다.',
         action: '워셔액을 보충하세요. 마트나 주유소에서 쉽게 구매 가능합니다.',
         needsRepair: false
       },
       {
-        id: 'w14', icon: '🔑', name: '이모빌라이저 경고',
+        id: 'w14', icon: 'icons/w14.svg', name: '이모빌라이저 경고',
         severity: 'warning', color: '#fbbf24',
         description: '스마트키 인식 불량 또는 배터리 부족입니다.',
         action: '스마트키를 시동 버튼에 직접 대고 시동을 걸어보세요. 키 배터리(CR2032 등) 교체가 필요할 수 있습니다.',
         needsRepair: false
       },
       {
-        id: 'w15', icon: '🪟', name: '안전벨트 미착용 경고',
+        id: 'w15', icon: 'icons/w15.svg', name: '안전벨트 미착용 경고',
         severity: 'warning', color: '#fbbf24',
         description: '운전자 또는 동승자가 안전벨트를 착용하지 않았습니다.',
         action: '모든 탑승자가 안전벨트를 착용해주세요. 미착용 시 범칙금 부과 대상입니다.',
         needsRepair: false
       },
       {
-        id: 'w16', icon: '🅿️', name: '주차 브레이크 경고',
+        id: 'w16', icon: 'icons/w16.svg', name: '주차 브레이크 경고',
         severity: 'info', color: '#60a5fa',
         description: '주차 브레이크(사이드 브레이크)가 작동 중입니다.',
         action: '출발 전 주차 브레이크를 완전히 해제하세요. 해제 후에도 경고등이 꺼지지 않으면 브레이크 시스템 점검이 필요합니다.',
         needsRepair: false
       },
       {
-        id: 'w17', icon: '💨', name: 'DPF (매연 필터) 경고',
+        id: 'w17', icon: 'icons/w17.svg', name: 'DPF (매연 필터) 경고',
         severity: 'warning', color: '#fbbf24',
         description: '디젤 차량의 매연 필터가 막혀가고 있습니다.',
         action: '고속도로에서 30분 이상 주행하면 자동 재생됩니다. 반복되면 정비소 방문이 필요합니다.',
         needsRepair: false
       },
       {
-        id: 'w18', icon: '⚡', name: 'EV 배터리 경고',
+        id: 'w18', icon: 'icons/w18.svg', name: 'EV 배터리 경고',
         severity: 'warning', color: '#fbbf24',
         description: '전기차 고전압 배터리 시스템에 이상이 감지되었습니다.',
         action: '안전한 곳에 정차하고 차량을 끈 뒤 서비스센터에 연락하세요. 고전압 부품을 직접 만지지 마세요.',
         needsRepair: true
       },
       {
-        id: 'w19', icon: '🔄', name: '변속기(AT) 경고',
+        id: 'w19', icon: 'icons/w19.svg', name: '변속기(AT) 경고',
         severity: 'danger', color: '#ef4444',
         description: '자동변속기 오일 온도 과열 또는 시스템 이상입니다.',
         action: '즉시 안전한 곳에 정차하고 엔진을 끄세요. 변속기 오일이 식은 후 정비소로 이동합니다.',
         needsRepair: true
       },
       {
-        id: 'w20', icon: '🛡️', name: '조향장치(MDPS) 경고',
+        id: 'w20', icon: 'icons/w20.svg', name: '조향장치(MDPS) 경고',
         severity: 'danger', color: '#ef4444',
         description: '전동 파워스티어링 시스템에 이상이 있습니다.',
         action: '핸들이 무거워질 수 있습니다. 저속으로 가까운 정비소에 방문하세요. 고속 주행은 위험합니다.',
@@ -561,7 +561,7 @@ function renderWarning() {
     var sevClass = 'severity-' + it.severity;
     var sevLabel = (data.severity_labels || {})[it.severity] || it.severity;
     return '<div class="warning-card" onclick="openWarningDetail(\'' + it.id + '\')">' +
-      '<span class="warning-icon">' + it.icon + '</span>' +
+      '<span class="warning-icon"><img src="' + it.icon + '" alt="' + it.name + '" onerror="this.outerHTML=\'⚠️\'"></span>' +
       '<div class="warning-name">' + it.name + '</div>' +
       '<span class="warning-severity ' + sevClass + '">' + sevLabel + '</span>' +
       '</div>';
@@ -583,7 +583,7 @@ function openWarningDetail(id) {
   var sevLabel = (data.severity_labels || {})[item.severity] || item.severity;
 
   document.getElementById('warningModalContent').innerHTML =
-    '<div class="warning-detail-icon">' + item.icon + '</div>' +
+    '<div class="warning-detail-icon"><img src="' + item.icon + '" alt="' + item.name + '" onerror="this.outerHTML=\'⚠️\'"></div>' +
     '<div class="warning-detail-name">' + item.name + '</div>' +
     '<div class="warning-detail-severity"><span class="warning-severity ' + sevClass + '">' + sevLabel + (item.needsRepair ? ' · 정비 필요' : '') + '</span></div>' +
     '<div class="warning-detail-section"><div class="warning-detail-label">설명</div><div class="warning-detail-text">' + item.description + '</div></div>' +

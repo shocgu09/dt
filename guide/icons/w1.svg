@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- CHECK ENGINE - Engine block with lightning bolt -->
+  <g stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Engine block body -->
+    <path d="M14 22h36v20H14z"/>
+    <!-- Cylinder head bumps -->
+    <path d="M20 22v-5h6v5"/>
+    <path d="M32 22v-5h6v5"/>
+    <!-- Exhaust port left -->
+    <path d="M14 28H8"/>
+    <path d="M14 34H8"/>
+    <!-- Intake port right -->
+    <path d="M50 30h6"/>
+    <!-- Crankshaft bottom -->
+    <path d="M22 42v4h20v-4"/>
+    <!-- Lightning bolt inside -->
+    <path d="M34 27l-5 7h6l-5 7" fill="none"/>
+  </g>
+</svg>

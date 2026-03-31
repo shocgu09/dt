@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- BATTERY - Rectangle with + and - terminals -->
+  <g stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Battery body -->
+    <rect x="8" y="22" width="48" height="26" rx="3"/>
+    <!-- Positive terminal -->
+    <rect x="16" y="16" width="8" height="6" rx="1"/>
+    <!-- Negative terminal -->
+    <rect x="40" y="16" width="8" height="6" rx="1"/>
+    <!-- Plus sign -->
+    <line x1="17" y1="35" x2="25" y2="35"/>
+    <line x1="21" y1="31" x2="21" y2="39"/>
+    <!-- Minus sign -->
+    <line x1="39" y1="35" x2="47" y2="35"/>
+  </g>
+</svg>

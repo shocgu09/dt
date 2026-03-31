@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- HEADLIGHT - D-shape with light beams -->
+  <g stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Headlight housing (D-shape) -->
+    <path d="M12 22v20h8c8 0 14-4 14-10s-6-10-14-10z"/>
+    <!-- Light beams (horizontal lines spreading out) -->
+    <line x1="36" y1="26" x2="54" y2="22"/>
+    <line x1="36" y1="30" x2="56" y2="28"/>
+    <line x1="36" y1="34" x2="56" y2="34"/>
+    <line x1="36" y1="38" x2="56" y2="40"/>
+    <line x1="36" y1="42" x2="54" y2="46"/>
+  </g>
+</svg>

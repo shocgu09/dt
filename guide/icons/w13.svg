@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- WASHER FLUID - Windshield with spray -->
+  <g stroke="#60a5fa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Windshield (trapezoid shape) -->
+    <path d="M10 16l6 32h32l6-32z"/>
+    <!-- Wiper -->
+    <path d="M32 44l-12-18"/>
+    <path d="M32 44l12-18"/>
+    <!-- Spray dots from bottom center -->
+    <circle cx="28" cy="52" r="1" fill="#60a5fa" stroke="none"/>
+    <circle cx="32" cy="54" r="1" fill="#60a5fa" stroke="none"/>
+    <circle cx="36" cy="52" r="1" fill="#60a5fa" stroke="none"/>
+    <!-- Spray lines upward -->
+    <path d="M28 52l-4-4" stroke-dasharray="2 2"/>
+    <path d="M32 54v-5" stroke-dasharray="2 2"/>
+    <path d="M36 52l4-4" stroke-dasharray="2 2"/>
+  </g>
+</svg>
