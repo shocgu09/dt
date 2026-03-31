@@ -160,10 +160,10 @@ function initAuth() {
         // 마지막 접속 시간 + 위치 갱신
         const _doRedirect = state._wasGuest;
         const _uid = user.uid;
-        fetch('https://ipapi.co/json/')
+        fetch('http://ip-api.com/json/?fields=city,regionName,country&lang=ko')
           .then(r => r.json())
           .then(d => {
-            const loc = [d.city, d.region].filter(Boolean).join(', ') || d.country_name || '';
+            const loc = [d.city, d.regionName].filter(Boolean).join(', ') || d.country || '';
             return state.db.collection('users').doc(_uid).update({ lastSeen: new Date().toISOString(), lastLocation: loc });
           })
           .catch(() => {
