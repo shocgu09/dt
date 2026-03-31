@@ -194,13 +194,18 @@
 
   <!-- 관리자 수정 모달 -->
   <div class="modal-overlay" id="adminModal" style="display:none" onclick="if(event.target===this)closeAdminModal()">
-    <div class="modal-box" style="max-width:600px">
-      <h3 id="adminModalTitle">데이터 수정</h3>
-      <p style="font-size:.72rem;color:var(--text3);margin-bottom:8px">JSON 형식으로 데이터를 편집합니다. 저장 시 Firestore에 반영됩니다.</p>
-      <textarea id="adminModalData" class="admin-textarea"></textarea>
+    <div class="modal-box modal-box-wide">
+      <div class="admin-modal-header">
+        <h3 id="adminModalTitle">데이터 수정</h3>
+        <div class="admin-mode-toggle">
+          <button class="admin-mode-btn active" onclick="setAdminMode('visual')">📝 비주얼</button>
+          <button class="admin-mode-btn" onclick="setAdminMode('json')">{ } JSON</button>
+        </div>
+      </div>
+      <div id="adminVisualEditor" class="admin-visual-editor"></div>
+      <textarea id="adminModalData" class="admin-textarea" style="display:none"></textarea>
       <div class="modal-actions">
         <button class="btn-calc" onclick="saveAdminData()">저장</button>
-        <button class="btn-cancel" onclick="formatAdminJson()">정렬</button>
         <button class="btn-cancel" onclick="closeAdminModal()">취소</button>
       </div>
     </div>

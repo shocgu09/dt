@@ -290,21 +290,214 @@ function calcCarTax() {
 }
 
 /* ===== 관리자 모달 ===== */
+var adminMode = 'visual';
+
+function setAdminMode(mode) {
+  adminMode = mode;
+  document.querySelectorAll('.admin-mode-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.querySelector('.admin-mode-btn:' + (mode === 'visual' ? 'first-child' : 'last-child')).classList.add('active');
+  var visual = document.getElementById('adminVisualEditor');
+  var json = document.getElementById('adminModalData');
+  if (mode === 'visual') {
+    try { var d = JSON.parse(json.value); buildVisualEditor(editingDocId, d); } catch(e) {}
+    visual.style.display = '';
+    json.style.display = 'none';
+  } else {
+    var d = collectVisualData();
+    if (d) json.value = JSON.stringify(d, null, 2);
+    visual.style.display = 'none';
+    json.style.display = '';
+  }
+}
+
 function openAdminModal(docId) {
   editingDocId = docId;
-  var data = toolData[docId] || DEFAULT_DATA[docId];
+  adminMode = 'visual';
+  var data = JSON.parse(JSON.stringify(toolData[docId] || DEFAULT_DATA[docId]));
   var titles = { speed_fine: '과속 벌금 데이터', car_tax: '자동차세 데이터' };
   document.getElementById('adminModalTitle').textContent = titles[docId] || docId;
   document.getElementById('adminModalData').value = JSON.stringify(data, null, 2);
+  buildVisualEditor(docId, data);
+  document.getElementById('adminVisualEditor').style.display = '';
+  document.getElementById('adminModalData').style.display = 'none';
+  document.querySelectorAll('.admin-mode-btn').forEach(function(b, i) { b.classList.toggle('active', i === 0); });
   document.getElementById('adminModal').style.display = 'flex';
 }
 
-function formatAdminJson() {
-  try {
-    var ta = document.getElementById('adminModalData');
-    var parsed = JSON.parse(ta.value);
-    ta.value = JSON.stringify(parsed, null, 2);
-  } catch(e) { alert('JSON 형식 오류: ' + e.message); }
+function buildVisualEditor(docId, data) {
+  var el = document.getElementById('adminVisualEditor');
+  if (docId === 'speed_fine') {
+    el.innerHTML = buildSpeedFineEditor(data);
+  } else if (docId === 'car_tax') {
+    el.innerHTML = buildCarTaxEditor(data);
+  }
+}
+
+function buildSpeedFineEditor(data) {
+  function buildTable(rows, tableId, label) {
+    var html = '<div class="ve-section"><div class="ve-label">' + label + '</div><div id="' + tableId + '">';
+    (rows || []).forEach(function(row, i) {
+      html += '<div class="ve-item" data-table="' + tableId + '" data-idx="' + i + '">' +
+        '<input class="ve-input ve-sm" data-field="over" value="' + escHtml(String(row.over)) + '" placeholder="초과km" title="초과 기준 (km/h, 마지막 행은 999)">' +
+        '<input class="ve-input ve-flex" data-field="label" value="' + escHtml(row.label) + '" placeholder="구간 설명">' +
+        '<input class="ve-input ve-sm" data-field="fine" value="' + escHtml(String(row.fine)) + '" placeholder="벌금(원)" title="벌금(원)">' +
+        '<input class="ve-input ve-sm" data-field="point" value="' + escHtml(String(row.point)) + '" placeholder="벌점" title="벌점">' +
+        '<button class="ve-del" onclick="veRemoveItem(this)" title="삭제">✕</button>' +
+        '</div>';
+    });
+    html += '</div>';
+    html += '<button class="ve-add" onclick="veAddSpeedRow(\'' + tableId + '\')">+ 구간 추가</button></div>';
+    return html;
+  }
+
+  var html = buildTable(data.general, 've-general', '일반도로 구간');
+  html += buildTable(data.highway, 've-highway', '고속도로 구간');
+  html += '<div class="ve-section"><div class="ve-label">어린이보호구역 가중 배율</div>' +
+    '<input class="ve-input" id="ve-school-mult" value="' + (data.school_multiplier || 2) + '" placeholder="배율 (기본 2배)" type="number" min="1" max="5"></div>';
+  html += '<div class="ve-section"><div class="ve-label">면허 기준 (벌점)</div>' +
+    '<div class="ve-item"><span style="font-size:.78rem;color:var(--text2);min-width:80px">정지 기준</span>' +
+    '<input class="ve-input ve-flex" id="ve-susp" value="' + (data.suspension_point || 40) + '" type="number" placeholder="면허정지 기준 벌점"></div>' +
+    '<div class="ve-item"><span style="font-size:.78rem;color:var(--text2);min-width:80px">취소 기준</span>' +
+    '<input class="ve-input ve-flex" id="ve-revoke" value="' + (data.revoke_point || 121) + '" type="number" placeholder="면허취소 기준 벌점"></div></div>';
+  html += '<div class="ve-section"><div class="ve-label">비고</div>' +
+    '<input class="ve-input" id="ve-note" value="' + escHtml(data.note || '') + '" placeholder="주석"></div>';
+  return html;
+}
+
+function buildCarTaxEditor(data) {
+  var html = '<div class="ve-section"><div class="ve-label">승용차 배기량 구간</div><div id="ve-passenger">';
+  (data.passenger || []).forEach(function(row, i) {
+    html += '<div class="ve-item" data-table="ve-passenger" data-idx="' + i + '">' +
+      '<input class="ve-input ve-sm" data-field="maxCC" value="' + row.maxCC + '" placeholder="최대cc" title="cc 이하 기준 (마지막 행은 99999)">' +
+      '<input class="ve-input ve-flex" data-field="label" value="' + escHtml(row.label) + '" placeholder="구간 설명">' +
+      '<input class="ve-input ve-sm" data-field="rate" value="' + row.rate + '" placeholder="cc당(원)">' +
+      '<button class="ve-del" onclick="veRemoveItem(this)" title="삭제">✕</button>' +
+      '</div>';
+  });
+  html += '</div><button class="ve-add" onclick="veAddCarTaxRow()">+ 구간 추가</button></div>';
+
+  html += '<div class="ve-section"><div class="ve-label">고정 세액</div>' +
+    '<div class="ve-item"><span style="font-size:.78rem;color:var(--text2);min-width:80px">전기차</span>' +
+    '<input class="ve-input ve-flex" id="ve-electric" value="' + (data.electric || 100000) + '" type="number" placeholder="전기차 세액(원)"></div>' +
+    '<div class="ve-item"><span style="font-size:.78rem;color:var(--text2);min-width:80px">승합차</span>' +
+    '<input class="ve-input ve-flex" id="ve-van" value="' + (data.van || 65000) + '" type="number" placeholder="승합차 세액(원)"></div>' +
+    '<div class="ve-item"><span style="font-size:.78rem;color:var(--text2);min-width:80px">화물차</span>' +
+    '<input class="ve-input ve-flex" id="ve-truck" value="' + (data.truck || 28500) + '" type="number" placeholder="화물차 세액(원)"></div></div>';
+
+  html += '<div class="ve-section"><div class="ve-label">교육세율 (승용차)</div>' +
+    '<input class="ve-input" id="ve-edu-rate" value="' + (data.education_tax_rate || 0.3) + '" type="number" step="0.01" placeholder="예: 0.3 = 30%"></div>';
+
+  html += '<div class="ve-section"><div class="ve-label">연차 경감율</div><div id="ve-age-discount">';
+  (data.age_discount || []).forEach(function(row, i) {
+    html += '<div class="ve-item" data-table="ve-age-discount" data-idx="' + i + '">' +
+      '<span style="font-size:.78rem;color:var(--text2);min-width:50px">' + row.year + '년차</span>' +
+      '<input class="ve-input ve-sm" data-field="year" value="' + row.year + '" type="number" placeholder="연차" title="경과 연수">' +
+      '<input class="ve-input ve-flex" data-field="rate" value="' + row.rate + '" type="number" step="0.05" placeholder="경감율 (0.05=5%)">' +
+      '<button class="ve-del" onclick="veRemoveItem(this)" title="삭제">✕</button>' +
+      '</div>';
+  });
+  html += '</div><button class="ve-add" onclick="veAddAgeDiscount()">+ 연차 추가</button></div>';
+
+  html += '<div class="ve-section"><div class="ve-label">비고</div>' +
+    '<input class="ve-input" id="ve-note" value="' + escHtml(data.note || '') + '" placeholder="주석"></div>';
+  return html;
+}
+
+function veRemoveItem(btn) {
+  if (!confirm('삭제할까요?')) return;
+  btn.closest('.ve-item').remove();
+}
+
+function veAddSpeedRow(tableId) {
+  var container = document.getElementById(tableId);
+  var idx = container.children.length;
+  var html = '<div class="ve-item" data-table="' + tableId + '" data-idx="' + idx + '">' +
+    '<input class="ve-input ve-sm" data-field="over" value="" placeholder="초과km">' +
+    '<input class="ve-input ve-flex" data-field="label" value="" placeholder="구간 설명">' +
+    '<input class="ve-input ve-sm" data-field="fine" value="" placeholder="벌금(원)">' +
+    '<input class="ve-input ve-sm" data-field="point" value="" placeholder="벌점">' +
+    '<button class="ve-del" onclick="veRemoveItem(this)" title="삭제">✕</button></div>';
+  container.insertAdjacentHTML('beforeend', html);
+}
+
+function veAddCarTaxRow() {
+  var container = document.getElementById('ve-passenger');
+  var idx = container.children.length;
+  var html = '<div class="ve-item" data-table="ve-passenger" data-idx="' + idx + '">' +
+    '<input class="ve-input ve-sm" data-field="maxCC" value="" placeholder="최대cc">' +
+    '<input class="ve-input ve-flex" data-field="label" value="" placeholder="구간 설명">' +
+    '<input class="ve-input ve-sm" data-field="rate" value="" placeholder="cc당(원)">' +
+    '<button class="ve-del" onclick="veRemoveItem(this)" title="삭제">✕</button></div>';
+  container.insertAdjacentHTML('beforeend', html);
+}
+
+function veAddAgeDiscount() {
+  var container = document.getElementById('ve-age-discount');
+  var idx = container.children.length;
+  var html = '<div class="ve-item" data-table="ve-age-discount" data-idx="' + idx + '">' +
+    '<span style="font-size:.78rem;color:var(--text2);min-width:50px">?년차</span>' +
+    '<input class="ve-input ve-sm" data-field="year" value="" type="number" placeholder="연차">' +
+    '<input class="ve-input ve-flex" data-field="rate" value="" type="number" step="0.05" placeholder="경감율 (0.05=5%)">' +
+    '<button class="ve-del" onclick="veRemoveItem(this)" title="삭제">✕</button></div>';
+  container.insertAdjacentHTML('beforeend', html);
+}
+
+function collectVisualData() {
+  if (!editingDocId) return null;
+
+  function collectSpeedTable(tableId) {
+    var rows = [];
+    document.querySelectorAll('#' + tableId + ' .ve-item').forEach(function(el) {
+      var over = parseFloat(el.querySelector('[data-field="over"]')?.value) || 0;
+      var label = el.querySelector('[data-field="label"]')?.value || '';
+      var fine = parseInt(el.querySelector('[data-field="fine"]')?.value) || 0;
+      var point = parseInt(el.querySelector('[data-field="point"]')?.value) || 0;
+      if (label || fine) rows.push({ over: over, fine: fine, point: point, label: label });
+    });
+    return rows;
+  }
+
+  if (editingDocId === 'speed_fine') {
+    return {
+      general: collectSpeedTable('ve-general'),
+      highway: collectSpeedTable('ve-highway'),
+      school_multiplier: parseFloat(document.getElementById('ve-school-mult')?.value) || 2,
+      suspension_point: parseInt(document.getElementById('ve-susp')?.value) || 40,
+      revoke_point: parseInt(document.getElementById('ve-revoke')?.value) || 121,
+      note: document.getElementById('ve-note')?.value || ''
+    };
+  }
+
+  if (editingDocId === 'car_tax') {
+    var passenger = [];
+    document.querySelectorAll('#ve-passenger .ve-item').forEach(function(el) {
+      var maxCC = parseInt(el.querySelector('[data-field="maxCC"]')?.value) || 0;
+      var label = el.querySelector('[data-field="label"]')?.value || '';
+      var rate = parseInt(el.querySelector('[data-field="rate"]')?.value) || 0;
+      if (label || rate) passenger.push({ maxCC: maxCC, rate: rate, label: label });
+    });
+    var age_discount = [];
+    document.querySelectorAll('#ve-age-discount .ve-item').forEach(function(el) {
+      var year = parseInt(el.querySelector('[data-field="year"]')?.value) || 0;
+      var rate = parseFloat(el.querySelector('[data-field="rate"]')?.value) || 0;
+      if (year) age_discount.push({ year: year, rate: rate });
+    });
+    return {
+      passenger: passenger,
+      electric: parseInt(document.getElementById('ve-electric')?.value) || 100000,
+      van: parseInt(document.getElementById('ve-van')?.value) || 65000,
+      truck: parseInt(document.getElementById('ve-truck')?.value) || 28500,
+      education_tax_rate: parseFloat(document.getElementById('ve-edu-rate')?.value) || 0.3,
+      age_discount: age_discount,
+      note: document.getElementById('ve-note')?.value || ''
+    };
+  }
+
+  return null;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 function closeAdminModal() {
@@ -315,14 +508,20 @@ function closeAdminModal() {
 async function saveAdminData() {
   if (!editingDocId || !db || !isAdmin) return;
   try {
-    var raw = document.getElementById('adminModalData').value;
-    var parsed = JSON.parse(raw);
+    var parsed;
+    if (adminMode === 'visual') {
+      parsed = collectVisualData();
+      if (!parsed) { alert('데이터 수집 실패'); return; }
+    } else {
+      var raw = document.getElementById('adminModalData').value;
+      parsed = JSON.parse(raw);
+    }
     await db.collection('tool_data').doc(editingDocId).set(parsed);
     toolData[editingDocId] = parsed;
     closeAdminModal();
     alert('저장 완료!');
   } catch(e) {
-    alert('JSON 형식 오류: ' + e.message);
+    alert('오류: ' + e.message);
   }
 }
 
