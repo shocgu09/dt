@@ -63,7 +63,7 @@ self.addEventListener('push', event => {
     self.registration.showNotification(title || 'DT Club', {
       body: body || '새 메시지가 도착했습니다',
       icon: '/icon-192.png',
-      badge: '/icon-192.png',
+      badge: '/icon-badge-96.png',
       tag: convId ? `dm-${convId}` : 'dm-general',
       renotify: true,
       data: { convId }
