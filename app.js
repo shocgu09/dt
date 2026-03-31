@@ -1220,10 +1220,14 @@ function renderHome() {
       }, function(err) { console.error('익명 게시판 구독 오류:', err); });
   }
   const { members, events } = state;
-  document.getElementById('stat-total').textContent = members.length;
-  document.getElementById('stat-drivers').textContent = members.filter(m => m.role === 'driver').length;
-  document.getElementById('stat-passengers').textContent = members.filter(m => m.role === 'passenger').length;
-  document.getElementById('stat-events').textContent = events.length;
+  const elTotal = document.getElementById('stat-total');
+  const elDrivers = document.getElementById('stat-drivers');
+  const elPassengers = document.getElementById('stat-passengers');
+  const elEvents = document.getElementById('stat-events');
+  if (elTotal) elTotal.textContent = members.length;
+  if (elDrivers) elDrivers.textContent = members.filter(m => m.role === 'driver').length;
+  if (elPassengers) elPassengers.textContent = members.filter(m => m.role === 'passenger').length;
+  if (elEvents) elEvents.textContent = events.length;
 
   const recentEl = document.getElementById('home-recent-events');
   const sorted = [...events].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 3);
