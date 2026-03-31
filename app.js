@@ -3402,6 +3402,7 @@ async function loadHomePreview() {
   var aiEl = document.getElementById('preview-ai-trend');
   var carEl = document.getElementById('preview-car-trend');
 
+  // DT 스팟
   try {
     if (spotsEl) {
       var spotsSnap = await state.db.collection('spots').orderBy('createdAt', 'desc').limit(3).get();
@@ -3419,39 +3420,84 @@ async function loadHomePreview() {
     }
   } catch(e) { if (spotsEl) spotsEl.innerHTML = '<div class="home-preview-empty">불러오기 실패</div>'; }
 
-  try {
-    if (aiEl) {
-      var aiSnap = await state.db.collection('ai_trend_links').orderBy('order', 'asc').limit(3).get();
-      if (aiSnap.empty) {
-        aiEl.innerHTML = '<div class="home-preview-empty">등록된 링크가 없습니다</div>';
-      } else {
-        aiEl.innerHTML = aiSnap.docs.map(function(d) {
-          var l = d.data();
-          return '<a href="' + escapeHtml(l.url) + '" target="_blank" class="home-preview-item">'
-            + '<div class="home-preview-item-title">' + escapeHtml(l.name || '') + '</div>'
-            + '<div class="home-preview-item-sub">' + escapeHtml(l.description || l.category || '') + '</div>'
-            + '</a>';
-        }).join('');
-      }
-    }
-  } catch(e) { if (aiEl) aiEl.innerHTML = '<div class="home-preview-empty">불러오기 실패</div>'; }
+  // 트렌드 프리뷰: 카테고리별 최신 1개씩 (최대 3개 카테고리)
+  _loadTrendPreview('ai_trend_links', aiEl, 'ai-trend/');
+  _loadTrendPreview('car_trend_links', carEl, 'car-trend/');
+}
 
+async function _loadTrendPreview(collection, el, basePath) {
+  if (!el || !state.db) return;
   try {
-    if (carEl) {
-      var carSnap = await state.db.collection('car_trend_links').orderBy('order', 'asc').limit(3).get();
-      if (carSnap.empty) {
-        carEl.innerHTML = '<div class="home-preview-empty">등록된 링크가 없습니다</div>';
-      } else {
-        carEl.innerHTML = carSnap.docs.map(function(d) {
-          var l = d.data();
-          return '<a href="' + escapeHtml(l.url) + '" target="_blank" class="home-preview-item">'
-            + '<div class="home-preview-item-title">' + escapeHtml(l.name || '') + '</div>'
-            + '<div class="home-preview-item-sub">' + escapeHtml(l.description || l.category || '') + '</div>'
-            + '</a>';
-        }).join('');
+    var snap = await state.db.collection(collection).orderBy('order', 'asc').get();
+    if (snap.empty) { el.innerHTML = '<div class="home-preview-empty">등록된 링크가 없습니다</div>'; return; }
+
+    var links = snap.docs.map(function(d) { return d.data(); });
+    // 카테고리 순서 추출 (등장 순, 최대 3개)
+    var cats = [];
+    links.forEach(function(l) { if (l.category && cats.indexOf(l.category) === -1) cats.push(l.category); });
+    cats = cats.slice(0, 3);
+
+    var items = [];
+    var fetches = cats.map(async function(cat) {
+      var catLinks = links.filter(function(l) { return l.category === cat; });
+      var icon = cat === 'X' ? '𝕏' : cat === '유튜브' ? '▶️' : '📰';
+
+      // 유튜브: 최신 영상 1개 가져오기
+      if (cat === '유튜브') {
+        try {
+          var ytLink = catLinks.find(function(l) { return l.channelId; }) || catLinks[0];
+          var handle = ytLink.url ? ytLink.url.match(/@([^\/\?]+)/) : null;
+          if (ytLink.channelId || handle) {
+            var chId = ytLink.channelId;
+            if (!chId && handle) {
+              var chResp = await fetch('https://dt-youtube.shocguna.workers.dev/api/channel?handle=' + handle[1]);
+              var chData = await chResp.json();
+              chId = chData.channelId;
+            }
+            if (chId) {
+              var vResp = await fetch('https://dt-youtube.shocguna.workers.dev/api/videos?max=1&channels=' + chId);
+              var vData = await vResp.json();
+              var v = (vData.videos || [])[0];
+              if (v) return { cat: cat, icon: icon, title: v.title, sub: (v.channelTitle || '') + ' · ' + _previewTimeAgo(v.publishedAt), url: 'https://youtube.com/watch?v=' + v.id };
+            }
+          }
+        } catch(e) {}
+        return { cat: cat, icon: icon, title: catLinks[0].name, sub: catLinks[0].description || cat, url: catLinks[0].url };
       }
-    }
-  } catch(e) { if (carEl) carEl.innerHTML = '<div class="home-preview-empty">불러오기 실패</div>'; }
+
+      // RSS 카테고리 (뉴스, 뉴스레터 등): 최신 기사 1개
+      var rssLink = catLinks.find(function(l) { return l.rss; });
+      if (rssLink) {
+        try {
+          var resp = await fetch('https://dt-rss.shocguna.workers.dev/api/rss?url=' + encodeURIComponent(rssLink.rss));
+          var data = await resp.json();
+          var article = (data.items || [])[0];
+          if (article) return { cat: cat, icon: icon, title: article.title, sub: (rssLink.name || '') + ' · ' + _previewTimeAgo(article.pubDate), url: article.link };
+        } catch(e) {}
+      }
+
+      // X나 RSS 없는 카테고리: 첫 번째 링크 표시
+      return { cat: cat, icon: icon, title: catLinks[0].name, sub: catLinks[0].description || cat, url: catLinks[0].url };
+    });
+
+    items = await Promise.all(fetches);
+    el.innerHTML = items.map(function(item) {
+      return '<a href="' + escapeHtml(item.url) + '" target="_blank" class="home-preview-item">'
+        + '<div class="home-preview-item-title">' + item.icon + ' ' + escapeHtml(item.title) + '</div>'
+        + '<div class="home-preview-item-sub">' + escapeHtml(item.sub) + '</div>'
+        + '</a>';
+    }).join('');
+  } catch(e) { el.innerHTML = '<div class="home-preview-empty">불러오기 실패</div>'; }
+}
+
+function _previewTimeAgo(dateStr) {
+  var diff = Date.now() - new Date(dateStr).getTime();
+  var mins = Math.floor(diff / 60000);
+  if (mins < 60) return mins + '분 전';
+  var hours = Math.floor(mins / 60);
+  if (hours < 24) return hours + '시간 전';
+  var days = Math.floor(hours / 24);
+  return days + '일 전';
 }
 
 function filterBoard(cat) {
