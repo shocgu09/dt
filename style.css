@@ -172,7 +172,7 @@ main { padding: calc(80px + env(safe-area-inset-top, 0px)) 20px 24px; max-width:
 
 /* ===== HOME SECTIONS ===== */
 .home-preview-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-.home-preview-card { background: var(--bg2); border: 1px solid var(--border); border-top: 3px solid var(--primary); border-radius: 0; padding: 14px; }
+.home-preview-card { background: var(--bg2); border: 1px solid var(--border); border-top: 3px solid var(--primary); border-radius: 0; padding: 14px; min-width: 0; overflow: hidden; }
 .home-preview-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: .82rem; font-weight: 700; color: var(--text2); }
 .home-preview-more { font-size: .75rem; color: var(--primary); text-decoration: none; white-space: nowrap; }
 .home-preview-more:hover { text-decoration: underline; }

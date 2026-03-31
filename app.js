@@ -3838,21 +3838,15 @@ function openAnonDetail(postId) {
   document.getElementById('anonDetailContent').innerHTML = html;
   openModal('anonDetailModal');
 
-  // 댓글 막기 처리
+  // 댓글 입력 표시 처리
   var commentSection = document.querySelector('.anon-comment-input');
   var commentHeader = document.querySelector('#anonDetailModal h4');
-  if (post.noComment) {
+  if (post.noComment || state.isGuest) {
     if (commentSection) commentSection.style.display = 'none';
-    if (commentHeader) commentHeader.innerHTML = '💬 댓글이 막힌 게시글입니다';
-    document.getElementById('anonCommentList').innerHTML = '<div style="text-align:center;padding:16px;color:var(--text3);font-size:.82rem">작성자가 댓글을 막았습니다.</div>';
-    return;
-  } else if (state.isGuest) {
-    if (commentSection) commentSection.style.display = 'none';
-    if (commentHeader) commentHeader.innerHTML = '💬 댓글 <span id="anonCommentCount">0</span>';
   } else {
     if (commentSection) commentSection.style.display = '';
-    if (commentHeader) commentHeader.innerHTML = '💬 댓글 <span id="anonCommentCount">0</span>';
   }
+  if (commentHeader) commentHeader.innerHTML = '💬 댓글 <span id="anonCommentCount">0</span>';
 
   // 댓글 실시간 구독
   if (_anonCommentUnsub) _anonCommentUnsub();
