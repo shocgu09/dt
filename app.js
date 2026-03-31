@@ -3827,6 +3827,11 @@ function openAnonDetail(postId) {
   } else {
     if (commentSection) commentSection.style.display = '';
   }
+  if (post.noComment) {
+    if (commentHeader) commentHeader.innerHTML = '💬 댓글이 막힌 게시글입니다';
+    document.getElementById('anonCommentList').innerHTML = '';
+    return;
+  }
   if (commentHeader) commentHeader.innerHTML = '💬 댓글 <span id="anonCommentCount">' + (post.commentCount || 0) + '</span>';
 
   // 댓글 실시간 구독
