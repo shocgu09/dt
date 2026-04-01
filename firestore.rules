@@ -190,6 +190,14 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ── car_trend_posts 컬렉션 (자동차 브리핑 게시글) ─────────
+    // - 누구나 읽기 가능
+    // - 관리자만 작성/삭제
+    match /car_trend_posts/{postId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // ── car_trend_links 컬렉션 (자동차 트렌드 링크) ──────────
     // - 모든 사용자 읽기 가능
     // - 관리자만 추가/삭제
