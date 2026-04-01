@@ -337,12 +337,14 @@ function buildSpeedFineEditor(data) {
   function buildTable(rows, tableId, label) {
     var html = '<div class="ve-section"><div class="ve-label">' + label + '</div><div id="' + tableId + '">';
     (rows || []).forEach(function(row, i) {
-      html += '<div class="ve-item" data-table="' + tableId + '" data-idx="' + i + '">' +
+      html += '<div class="ve-item ve-item-block" data-table="' + tableId + '" data-idx="' + i + '">' +
+        '<div class="ve-item-row">' +
         '<input class="ve-input ve-sm" data-field="over" value="' + escHtml(String(row.over)) + '" placeholder="초과km" title="초과 기준 (km/h, 마지막 행은 999)">' +
-        '<input class="ve-input ve-flex" data-field="label" value="' + escHtml(row.label) + '" placeholder="구간 설명">' +
-        '<input class="ve-input ve-sm" data-field="fine" value="' + escHtml(String(row.fine)) + '" placeholder="벌금(원)" title="벌금(원)">' +
-        '<input class="ve-input ve-sm" data-field="point" value="' + escHtml(String(row.point)) + '" placeholder="벌점" title="벌점">' +
+        '<input class="ve-input ve-sm" data-field="fine" value="' + escHtml(String(row.fine)) + '" placeholder="벌금(원)">' +
+        '<input class="ve-input ve-sm" data-field="point" value="' + escHtml(String(row.point)) + '" placeholder="벌점">' +
         '<button class="ve-del" onclick="veRemoveItem(this)" title="삭제">✕</button>' +
+        '</div>' +
+        '<input class="ve-input" data-field="label" value="' + escHtml(row.label) + '" placeholder="구간 설명 (예: 20~40km/h)">' +
         '</div>';
     });
     html += '</div>';
@@ -411,12 +413,13 @@ function veRemoveItem(btn) {
 function veAddSpeedRow(tableId) {
   var container = document.getElementById(tableId);
   var idx = container.children.length;
-  var html = '<div class="ve-item" data-table="' + tableId + '" data-idx="' + idx + '">' +
+  var html = '<div class="ve-item ve-item-block" data-table="' + tableId + '" data-idx="' + idx + '">' +
+    '<div class="ve-item-row">' +
     '<input class="ve-input ve-sm" data-field="over" value="" placeholder="초과km">' +
-    '<input class="ve-input ve-flex" data-field="label" value="" placeholder="구간 설명">' +
     '<input class="ve-input ve-sm" data-field="fine" value="" placeholder="벌금(원)">' +
     '<input class="ve-input ve-sm" data-field="point" value="" placeholder="벌점">' +
-    '<button class="ve-del" onclick="veRemoveItem(this)" title="삭제">✕</button></div>';
+    '<button class="ve-del" onclick="veRemoveItem(this)" title="삭제">✕</button></div>' +
+    '<input class="ve-input" data-field="label" value="" placeholder="구간 설명 (예: 20~40km/h)"></div>';
   container.insertAdjacentHTML('beforeend', html);
 }
 
