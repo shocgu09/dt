@@ -94,16 +94,37 @@ async function loadBriefing() {
       el.innerHTML = '<div class="loading">아직 자동차 트렌드 브리핑이 없습니다</div>';
       return;
     }
-    var html = '';
-    docs.forEach(function(doc) {
-      html += '<div class="briefing-card">'
-        + '<div class="briefing-header">'
-        + '<div class="briefing-title">' + escapeHtml(doc.title) + '</div>'
-        + '<div class="briefing-date">' + escapeHtml(doc.date) + '</div>'
-        + '</div>'
-        + '<div class="briefing-body">' + renderMarkdown(doc.body) + '</div>'
-        + '</div>';
-    });
+    var p = docs[0];
+    var bodyHtml = renderMarkdown(p.body || '');
+    var preview = escapeHtml(plainPreview(p.body || '')) + '...';
+
+    var html = '<div class="briefing-card">'
+      + '<div class="briefing-card-header">'
+      + '<span class="briefing-badge">🚗 자동차 브리핑</span>'
+      + '<span class="briefing-date">' + escapeHtml(p.date || '') + '</span>'
+      + '</div>'
+      + '<div class="briefing-title">' + escapeHtml(p.title || '') + '</div>'
+      + '<div class="briefing-preview" id="briefingPreview">' + preview + '</div>'
+      + '<div class="briefing-body" id="briefingBody" style="display:none">' + bodyHtml + '</div>'
+      + '<button class="briefing-toggle-btn" onclick="toggleLatestBriefing(this)">더보기 ▾</button>';
+
+    if (docs.length > 1) {
+      html += '<div class="briefing-older">'
+        + '<button class="briefing-older-btn" onclick="toggleOlderBriefings(this)">이전 브리핑 보기 (' + (docs.length - 1) + '개) ▾</button>'
+        + '<div class="briefing-older-list" style="display:none">';
+      docs.slice(1).forEach(function(q) {
+        var qPreview = escapeHtml(plainPreview(q.body || '')) + '...';
+        html += '<div class="briefing-older-item">'
+          + '<div class="briefing-older-date">' + escapeHtml(q.date || '') + '</div>'
+          + '<div class="briefing-older-title">' + escapeHtml(q.title || '') + '</div>'
+          + '<div class="briefing-older-preview">' + qPreview + '</div>'
+          + '<div class="briefing-older-body" style="display:none">' + renderMarkdown(q.body || '') + '</div>'
+          + '<button class="briefing-toggle-btn" onclick="toggleOlderItem(this)">더보기 ▾</button>'
+          + '</div>';
+      });
+      html += '</div></div>';
+    }
+    html += '</div>';
     el.innerHTML = html;
     briefingLoaded = true;
   } catch(e) {
@@ -121,6 +142,46 @@ function renderMarkdown(text) {
     .replace(/^## (.+)$/gm, '<h3 class="md-h3">$1</h3>')
     .replace(/^# (.+)$/gm, '<h2 class="md-h2">$1</h2>')
     .replace(/\n/g, '<br>');
+}
+
+function plainPreview(text, len) {
+  return (text || '')
+    .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/^#{1,4}\s+/gm, '')
+    .replace(/---/g, '')
+    .replace(/\n/g, ' ')
+    .trim()
+    .substring(0, len || 80);
+}
+
+function toggleLatestBriefing(btn) {
+  var card = btn.parentElement;
+  var preview = card.querySelector('#briefingPreview');
+  var body = card.querySelector('#briefingBody');
+  var open = body.style.display !== 'none';
+  preview.style.display = open ? '' : 'none';
+  body.style.display = open ? 'none' : '';
+  btn.textContent = open ? '더보기 ▾' : '줄이기 ▴';
+}
+
+function toggleOlderItem(btn) {
+  var item = btn.parentElement;
+  var preview = item.querySelector('.briefing-older-preview');
+  var body = item.querySelector('.briefing-older-body');
+  var open = body.style.display !== 'none';
+  preview.style.display = open ? '' : 'none';
+  body.style.display = open ? 'none' : '';
+  btn.textContent = open ? '더보기 ▾' : '줄이기 ▴';
+}
+
+function toggleOlderBriefings(btn) {
+  var list = btn.nextElementSibling;
+  var open = list.style.display !== 'none';
+  list.style.display = open ? 'none' : '';
+  btn.textContent = open
+    ? '이전 브리핑 보기 (' + list.children.length + '개) ▾'
+    : '접기 ▴';
 }
 
 // 데이터 로드
