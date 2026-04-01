@@ -59,6 +59,48 @@ export default {
       }
     }
 
+    // GET /api/links — ai_trend_links 목록 조회 (공개)
+    if (url.pathname === '/api/links' && request.method === 'GET') {
+      const projectId = 'dt-club';
+      const queryUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
+      const queryBody = {
+        structuredQuery: {
+          from: [{ collectionId: 'ai_trend_links' }],
+          orderBy: [{ field: { fieldPath: 'order' }, direction: 'ASCENDING' }],
+        }
+      };
+      try {
+        const resp = await fetch(queryUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(queryBody),
+        });
+        const results = await resp.json();
+        const docs = results
+          .filter(r => r.document)
+          .map(r => {
+            const f = r.document.fields;
+            return {
+              category: f.category?.stringValue || '',
+              name: f.name?.stringValue || '',
+              url: f.url?.stringValue || '',
+              rss: f.rss?.stringValue || '',
+              channelId: f.channelId?.stringValue || '',
+            };
+          });
+        const grouped = {
+          X: docs.filter(d => d.category === 'X').map(d => ({ name: d.name, url: d.url })),
+          뉴스레터: docs.filter(d => d.category === '뉴스레터').map(d => ({ name: d.name, url: d.url, rss: d.rss })),
+          유튜브: docs.filter(d => d.category === '유튜브').map(d => ({ name: d.name, url: d.url, channelId: d.channelId })),
+        };
+        return new Response(JSON.stringify(grouped), {
+          headers: { ...jsonHeaders, 'Cache-Control': 'public, max-age=300' }
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: jsonHeaders });
+      }
+    }
+
     // GET /api/digest — 최근 다이제스트 조회 (공개)
     if (url.pathname === '/api/digest' && request.method === 'GET') {
       const date = url.searchParams.get('date');
