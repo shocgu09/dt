@@ -24,24 +24,32 @@ body { font-family: 'Pretendard Variable', -apple-system, sans-serif; background
 
 /* Top bar */
 .top-bar {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: flex-start; gap: 10px;
   padding: 10px 16px; background: var(--bg2);
   border-bottom: 1px solid var(--border);
   position: sticky; top: 53px; z-index: 90;
 }
-.filter-bar {
-  display: flex; gap: 6px; overflow-x: auto; flex: 1;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
+.filter-switches { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.filter-switch-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.filter-switch-label { font-size: .72rem; font-weight: 800; color: var(--text3); white-space: nowrap; min-width: 40px; }
+
+/* Top filter individual switch */
+.f-switch { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.f-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.f-track {
+  width: 32px; height: 18px; background: var(--bg3);
+  border: 1.5px solid var(--border); position: relative;
+  flex-shrink: 0; transition: background .2s, border-color .2s;
 }
-.filter-bar::-webkit-scrollbar { display: none; }
-.filter-btn {
-  flex-shrink: 0; padding: 5px 12px;
-  background: var(--bg3); border: 1px solid var(--border);
-  color: var(--text2); font-size: .78rem; font-weight: 700;
-  cursor: pointer; font-family: inherit; transition: var(--transition); white-space: nowrap;
+.f-track::after {
+  content: ''; position: absolute;
+  top: 2px; left: 2px; width: 10px; height: 10px;
+  background: var(--text3); transition: transform .2s, background .2s;
 }
-.filter-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.f-switch input:checked + .f-track { background: rgba(217,119,6,.15); border-color: var(--primary); }
+.f-switch input:checked + .f-track::after { transform: translateX(14px); background: var(--primary); }
+.f-text { font-size: .78rem; font-weight: 700; color: var(--text2); transition: color .15s; }
+.f-switch input:checked ~ .f-text { color: var(--primary); }
 
 .btn-write {
   flex-shrink: 0; padding: 7px 14px;

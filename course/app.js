@@ -2,7 +2,6 @@
 
 var db = null, storage = null, currentUser = null, isAdmin = false;
 var allPosts = [];
-var currentFilter = 'all';
 var editingPostId = null;
 var selectedFiles = []; // {file, previewUrl}
 var existingImages = []; // already-uploaded URLs (edit mode)
@@ -36,20 +35,10 @@ try {
   renderPosts([]);
 }
 
-/* ===== 필터 바 렌더링 ===== */
-(function() {
-  var tags = ['전체'].concat(SEASON_TAGS).concat(THEME_TAGS);
-  document.getElementById('courseFilter').innerHTML = tags.map(function(t) {
-    return '<button class="filter-btn' + (t === '전체' ? ' active' : '') + '" onclick="setFilter(this, \'' + t + '\')">' + t + '</button>';
-  }).join('');
-})();
-
-function setFilter(btn, tag) {
-  document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
-  btn.classList.add('active');
-  currentFilter = tag === '전체' ? 'all' : tag;
-  renderFilteredPosts();
-}
+/* ===== 필터 스위치 이벤트 ===== */
+document.querySelectorAll('.f-switch input').forEach(function(cb) {
+  cb.addEventListener('change', renderFilteredPosts);
+});
 
 /* ===== 데이터 로드 ===== */
 async function loadPosts() {
@@ -87,9 +76,11 @@ async function loadMore() {
 
 /* ===== 렌더링 ===== */
 function renderFilteredPosts() {
-  var posts = currentFilter === 'all' ? allPosts : allPosts.filter(function(p) {
-    return (p.seasons && p.seasons.includes(currentFilter)) ||
-           (p.themes && p.themes.includes(currentFilter));
+  var activeTags = Array.from(document.querySelectorAll('.f-switch input:checked')).map(function(c) { return c.dataset.tag; });
+  var posts = activeTags.length === 0 ? allPosts : allPosts.filter(function(p) {
+    return activeTags.some(function(tag) {
+      return (p.seasons && p.seasons.includes(tag)) || (p.themes && p.themes.includes(tag));
+    });
   });
   renderPosts(posts);
 }
@@ -291,7 +282,7 @@ function renderImgPreviews() {
       '<button class="img-preview-del" onclick="removeNewImage(' + i + ')">✕</button>' +
       '</div>';
   });
-  if (total < 5) {
+  if (total > 0 && total < 5) {
     html += '<button class="img-add-btn" onclick="document.getElementById(\'imgInput\').click()">+</button>';
   }
   list.innerHTML = html;

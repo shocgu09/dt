@@ -50,7 +50,23 @@
   </header>
 
   <div class="top-bar">
-    <div class="filter-bar" id="courseFilter"></div>
+    <div class="filter-switches">
+      <div class="filter-switch-group">
+        <span class="filter-switch-label">🌸 계절</span>
+        <label class="f-switch"><input type="checkbox" data-tag="봄"><span class="f-track"></span><span class="f-text">봄</span></label>
+        <label class="f-switch"><input type="checkbox" data-tag="여름"><span class="f-track"></span><span class="f-text">여름</span></label>
+        <label class="f-switch"><input type="checkbox" data-tag="가을"><span class="f-track"></span><span class="f-text">가을</span></label>
+        <label class="f-switch"><input type="checkbox" data-tag="겨울"><span class="f-track"></span><span class="f-text">겨울</span></label>
+      </div>
+      <div class="filter-switch-group">
+        <span class="filter-switch-label">✨ 테마</span>
+        <label class="f-switch"><input type="checkbox" data-tag="야경"><span class="f-track"></span><span class="f-text">야경</span></label>
+        <label class="f-switch"><input type="checkbox" data-tag="해안도로"><span class="f-track"></span><span class="f-text">해안도로</span></label>
+        <label class="f-switch"><input type="checkbox" data-tag="산악"><span class="f-track"></span><span class="f-text">산악</span></label>
+        <label class="f-switch"><input type="checkbox" data-tag="카페로드"><span class="f-track"></span><span class="f-text">카페로드</span></label>
+        <label class="f-switch"><input type="checkbox" data-tag="드라이브"><span class="f-track"></span><span class="f-text">드라이브</span></label>
+      </div>
+    </div>
     <button class="btn-write" id="writeBtn" style="display:none" onclick="openWriteModal()">✏️ 글 작성</button>
   </div>
 
