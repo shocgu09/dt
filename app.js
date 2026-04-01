@@ -1222,6 +1222,11 @@ function renderHome() {
   if (elPassengers) elPassengers.textContent = members.filter(m => m.role === 'passenger').length;
   if (elEvents) elEvents.textContent = events.length;
 
+  // 브리핑 탭 이벤트 바인딩
+  document.querySelectorAll('.home-briefing-tab').forEach(function(btn) {
+    btn.onclick = function() { switchHomeBriefing(btn.dataset.brief); };
+  });
+
   // 컨텐츠 프리뷰 로드
   loadHomePreview();
 
@@ -3396,13 +3401,49 @@ function renderAnon() {
 }
 
 async function loadHomePreview() {
-  if (!state.db) return;
-  var aiEl = document.getElementById('preview-ai-trend');
-  var carEl = document.getElementById('preview-car-trend');
+  _loadHomeBriefing('ai');
+  _loadHomeBriefing('car');
+}
 
-  // 트렌드 프리뷰: 카테고리별 최신 1개씩 (최대 3개 카테고리)
-  _loadTrendPreview('ai_trend_links', aiEl, 'ai-trend/');
-  _loadTrendPreview('car_trend_links', carEl, 'car-trend/');
+function switchHomeBriefing(tab) {
+  document.querySelectorAll('.home-briefing-tab').forEach(function(b) { b.classList.toggle('active', b.dataset.brief === tab); });
+  document.querySelectorAll('.home-briefing-panel').forEach(function(p) { p.classList.toggle('active', p.id === 'home-brief-' + tab); });
+}
+
+// 브리핑 탭 이벤트 — DOM 로드 후 즉시 바인딩
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.home-briefing-tab').forEach(function(btn) {
+    btn.addEventListener('click', function() { switchHomeBriefing(btn.dataset.brief); });
+  });
+});
+
+var _homeBriefingLoaded = {};
+async function _loadHomeBriefing(type) {
+  if (_homeBriefingLoaded[type]) return;
+  var el = document.getElementById('home-briefing-' + type);
+  if (!el) return;
+  var endpoint = type === 'ai'
+    ? 'https://dt-digest.shocguna.workers.dev/api/digest'
+    : 'https://dt-digest.shocguna.workers.dev/api/car-digest';
+  try {
+    var resp = await fetch(endpoint);
+    var data = await resp.json();
+    var docs = data.docs || [];
+    if (!docs.length) {
+      el.innerHTML = '<div class="home-preview-empty">아직 브리핑이 없습니다</div>';
+      return;
+    }
+    var doc = docs[0];
+    var body = (doc.body || '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br>');
+    el.innerHTML = '<div style="font-size:.78rem;color:var(--text3);margin-bottom:8px;font-weight:600">' + escapeHtml(doc.title || '') + '</div>' + body;
+    _homeBriefingLoaded[type] = true;
+  } catch(e) {
+    el.innerHTML = '<div class="home-preview-empty">브리핑을 불러올 수 없습니다</div>';
+  }
 }
 
 async function _loadTrendPreview(collection, el, basePath) {

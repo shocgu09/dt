@@ -93,7 +93,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-  <link rel="stylesheet" href="style.css?v=4" />
+  <link rel="stylesheet" href="style.css?v=5" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css" />
 </head>
 <body>
@@ -149,28 +149,24 @@
         </div>
         <div class="hero-art">🏎️</div>
       </div>
-      <!-- 컨텐츠 프리뷰 -->
+      <!-- AI 브리핑 -->
       <div class="home-links-section">
-        <h3 class="home-links-title">📡 최근 컨텐츠</h3>
-        <div class="home-preview-grid">
-          <div class="home-preview-card">
-            <div class="home-preview-card-header">
-              <span>🤖 AI 트렌드</span>
-              <a href="ai-trend/" class="home-preview-more">더보기 →</a>
-            </div>
-            <div id="preview-ai-trend" class="home-preview-list">
-              <div class="home-preview-loading">로딩 중...</div>
-            </div>
+        <h3 class="home-links-title">🤖 AI 브리핑</h3>
+        <div class="home-briefing-tabs">
+          <button class="home-briefing-tab active" data-brief="ai">🤖 AI 트렌드</button>
+          <button class="home-briefing-tab" data-brief="car">🚘 자동차 트렌드</button>
+        </div>
+        <div class="home-briefing-panel active" id="home-brief-ai">
+          <div id="home-briefing-ai" class="home-briefing-content">
+            <div class="home-preview-loading">브리핑 로딩 중...</div>
           </div>
-          <div class="home-preview-card">
-            <div class="home-preview-card-header">
-              <span>🚘 자동차 트렌드</span>
-              <a href="car-trend/" class="home-preview-more">더보기 →</a>
-            </div>
-            <div id="preview-car-trend" class="home-preview-list">
-              <div class="home-preview-loading">로딩 중...</div>
-            </div>
+          <a href="ai-trend/" class="home-briefing-more">AI 트렌드 더보기 →</a>
+        </div>
+        <div class="home-briefing-panel" id="home-brief-car">
+          <div id="home-briefing-car" class="home-briefing-content">
+            <div class="home-preview-loading">브리핑 로딩 중...</div>
           </div>
+          <a href="car-trend/" class="home-briefing-more">자동차 트렌드 더보기 →</a>
         </div>
       </div>
 
@@ -1228,7 +1224,7 @@
   <script src="firebase-config.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
   <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=4e6bf0a48d4d8a637a18a4ba1d82deaf&libraries=services&autoload=false"></script>
-  <script src="app.js?v=8"></script>
+  <script src="app.js?v=10"></script>
 
   <!-- 공지 팝업 -->
   <div class="modal-overlay" id="noticePopup" style="display:none;z-index:999">
