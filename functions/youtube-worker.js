@@ -44,6 +44,13 @@ export default {
         // 모든 채널 영상 합치고 날짜순 정렬
         let videos = results.flat().sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
 
+        // days 파라미터: 지정 일수 이내 영상만 필터링
+        const days = parseInt(url.searchParams.get('days') || '0');
+        if (days > 0) {
+          const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+          videos = videos.filter(v => new Date(v.publishedAt) >= cutoff);
+        }
+
         // 쇼츠 판별: /shorts/ID URL 200 체크 (가장 정확)
         videos = await Promise.all(videos.map(async (v) => {
           try {
