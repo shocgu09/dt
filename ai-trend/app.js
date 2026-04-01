@@ -86,7 +86,12 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.toggle('active', b.dataset.tab === tab); });
   document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.toggle('active', c.id === 'tab-' + tab); });
   if (tab === 'feed') loadFeed();
-  if (tab === 'admin') renderAdminLinks();
+  if (tab === 'admin') {
+    renderAdminLinks();
+    // 날짜 기본값 오늘
+    var dateEl = document.getElementById('briefingDate');
+    if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().slice(0, 10);
+  }
 }
 
 // 데이터 로드
@@ -135,8 +140,87 @@ async function fillMissingThumbnails() {
   if (ytLinks.some(function(l) { return l.thumbnail; })) renderLinks();
 }
 
+// ===== AI 브리핑 =====
+async function loadBriefing() {
+  var el = document.getElementById('briefingSection');
+  if (!el || !db) return;
+  try {
+    var snap = await db.collection('ai_trend_posts').orderBy('createdAt', 'desc').limit(5).get();
+    if (snap.empty) { el.innerHTML = ''; return; }
+    var posts = snap.docs.map(function(d) { return Object.assign({ id: d.id }, d.data()); });
+    renderBriefing(posts);
+  } catch(e) { el.innerHTML = ''; }
+}
+
+function renderBriefing(posts) {
+  var el = document.getElementById('briefingSection');
+  var p = posts[0];
+  var html = '<div class="briefing-card">'
+    + '<div class="briefing-card-header">'
+    + '<span class="briefing-badge">📋 AI 브리핑</span>'
+    + '<span class="briefing-date">' + escapeHtml(p.date || '') + '</span>'
+    + '</div>'
+    + '<div class="briefing-title">' + escapeHtml(p.title || '') + '</div>'
+    + '<div class="briefing-body">' + escapeHtml(p.body || '').replace(/\n/g, '<br>') + '</div>';
+
+  if (posts.length > 1) {
+    html += '<div class="briefing-older">'
+      + '<button class="briefing-older-btn" onclick="toggleOlderBriefings(this)">이전 브리핑 보기 (' + (posts.length - 1) + '개) ▾</button>'
+      + '<div class="briefing-older-list" style="display:none">';
+    posts.slice(1).forEach(function(q) {
+      html += '<div class="briefing-older-item">'
+        + '<div class="briefing-older-date">' + escapeHtml(q.date || '') + '</div>'
+        + '<div class="briefing-older-title">' + escapeHtml(q.title || '') + '</div>'
+        + '<div class="briefing-older-body">' + escapeHtml(q.body || '').replace(/\n/g, '<br>') + '</div>'
+        + '</div>';
+    });
+    html += '</div></div>';
+  }
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function toggleOlderBriefings(btn) {
+  var list = btn.nextElementSibling;
+  var open = list.style.display !== 'none';
+  list.style.display = open ? 'none' : '';
+  btn.textContent = open
+    ? '이전 브리핑 보기 (' + list.children.length + '개) ▾'
+    : '접기 ▴';
+}
+
+async function submitBriefing() {
+  if (!isAdmin || !db) return;
+  var date = document.getElementById('briefingDate').value;
+  var title = document.getElementById('briefingTitle').value.trim();
+  var body = document.getElementById('briefingBody').value.trim();
+  var status = document.getElementById('briefingStatus');
+  if (!date || !title || !body) { alert('날짜, 제목, 내용을 모두 입력해주세요.'); return; }
+
+  var btn = document.getElementById('briefingSubmitBtn');
+  btn.disabled = true; btn.textContent = '게시 중...';
+  try {
+    await db.collection('ai_trend_posts').add({
+      date: date,
+      title: title,
+      body: body,
+      authorName: 'AI Agent',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    status.innerHTML = '<span style="color:#4ade80">✅ 브리핑이 게시되었습니다!</span>';
+    document.getElementById('briefingTitle').value = '';
+    document.getElementById('briefingBody').value = '';
+    loadBriefing();
+  } catch(e) {
+    status.innerHTML = '<span style="color:#ef4444">❌ 오류: ' + e.message + '</span>';
+  } finally {
+    btn.disabled = false; btn.textContent = '📋 브리핑 게시';
+  }
+}
+
 // ===== 피드 탭 =====
 async function loadFeed() {
+  loadBriefing();
   var el = document.getElementById('feedContent');
   el.innerHTML = '<div class="loading">피드 로딩 중...</div>';
 

@@ -43,6 +43,8 @@
 
     <!-- 피드 탭 -->
     <div class="tab-content active" id="tab-feed">
+      <!-- AI 브리핑 섹션 -->
+      <div id="briefingSection"></div>
       <div id="feedContent">
         <div class="loading">피드 로딩 중...</div>
       </div>
@@ -62,6 +64,17 @@
 
     <!-- 관리 탭 (관리자만) -->
     <div class="tab-content" id="tab-admin">
+      <!-- AI 브리핑 작성 -->
+      <div class="admin-section" id="briefingWriteSection">
+        <h3>📋 AI 브리핑 작성</h3>
+        <div class="briefing-form">
+          <input type="date" id="briefingDate" class="briefing-input">
+          <input type="text" id="briefingTitle" class="briefing-input" placeholder="브리핑 제목 (예: 2026.04.01 AI 트렌드 브리핑)">
+          <textarea id="briefingBody" class="briefing-textarea" placeholder="오늘의 AI 트렌드 브리핑 내용을 입력하세요...&#10;&#10;예시:&#10;🔥 오늘의 주요 소식&#10;① Claude 4 출시 — Anthropic이 ...&#10;② OpenAI 발표 — ..."></textarea>
+          <button id="briefingSubmitBtn" class="btn-briefing-submit" onclick="submitBriefing()">📋 브리핑 게시</button>
+        </div>
+        <div id="briefingStatus" style="margin-top:8px;font-size:.85rem"></div>
+      </div>
       <div class="admin-section">
         <h3>➕ 링크 추가</h3>
         <div class="add-form">
