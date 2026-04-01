@@ -152,6 +152,15 @@ async function loadBriefing() {
   } catch(e) { el.innerHTML = ''; }
 }
 
+function plainPreview(body, len) {
+  return body
+    .replace(/\[([^\]]+)\]\(https?:\/\/[^\)]+\)/g, '$1')  // [텍스트](URL) → 텍스트만
+    .replace(/https?:\/\/\S+/g, '')                          // bare URL 제거
+    .replace(/\n/g, ' ')
+    .trim()
+    .substring(0, len || 80);
+}
+
 function linkifyBody(escaped) {
   // [텍스트](URL) 형식 → 링크 텍스트로 변환 (먼저 처리)
   var result = escaped.replace(/\[([^\]]+)\]\((https?:\/\/[^\s<>"'）\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:var(--primary);text-decoration:underline">$1</a>');
@@ -164,7 +173,7 @@ function renderBriefing(posts) {
   var el = document.getElementById('briefingSection');
   var p = posts[0];
   var bodyEscaped = linkifyBody(escapeHtml(p.body || '').replace(/\n/g, '<br>'));
-  var preview = escapeHtml((p.body || '').substring(0, 80)).replace(/\n/g, ' ') + '...';
+  var preview = escapeHtml(plainPreview(p.body || '')) + '...';
 
   var html = '<div class="briefing-card">'
     + '<div class="briefing-card-header">'
@@ -181,7 +190,7 @@ function renderBriefing(posts) {
       + '<button class="briefing-older-btn" onclick="toggleOlderBriefings(this)">이전 브리핑 보기 (' + (posts.length - 1) + '개) ▾</button>'
       + '<div class="briefing-older-list" style="display:none">';
     posts.slice(1).forEach(function(q) {
-      var qPreview = escapeHtml((q.body || '').substring(0, 80)).replace(/\n/g, ' ') + '...';
+      var qPreview = escapeHtml(plainPreview(q.body || '')) + '...';
       html += '<div class="briefing-older-item">'
         + '<div class="briefing-older-date">' + escapeHtml(q.date || '') + '</div>'
         + '<div class="briefing-older-title">' + escapeHtml(q.title || '') + '</div>'
