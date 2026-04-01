@@ -169,18 +169,43 @@ body { font-family: 'Pretendard Variable', -apple-system, sans-serif; background
 .write-textarea:focus { outline: none; border-bottom-color: var(--primary); }
 .write-textarea::placeholder { color: var(--text3); }
 
-/* Chip tags */
+/* Chip / Switch tags */
 .chip-section { padding: 12px 20px; border-bottom: 1px solid var(--border); }
-.chip-label { font-size: .72rem; font-weight: 800; color: var(--text3); margin-bottom: 8px; text-transform: uppercase; letter-spacing: .5px; }
-.chip-group { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip {
-  padding: 5px 12px; background: var(--bg3);
-  border: 1.5px solid var(--border); color: var(--text2);
-  font-size: .78rem; font-weight: 700; cursor: pointer;
-  font-family: inherit; transition: var(--transition);
+.chip-label { font-size: .72rem; font-weight: 800; color: var(--text3); margin-bottom: 10px; text-transform: uppercase; letter-spacing: .5px; }
+
+/* Switch group */
+.switch-group { display: flex; flex-direction: column; gap: 10px; }
+.switch-item {
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; padding: 2px 0;
 }
-.chip.active { background: var(--primary); border-color: var(--primary); color: #fff; }
-.chip:hover:not(.active) { border-color: var(--primary); color: var(--primary); }
+.switch-item input { position: absolute; opacity: 0; width: 0; height: 0; }
+.switch-text {
+  font-size: .9rem; font-weight: 700; color: var(--text2);
+  transition: color .15s;
+}
+.switch-item input:checked ~ .switch-text { color: var(--primary); }
+.switch-track {
+  order: 1; /* 오른쪽 정렬 */
+  width: 44px; height: 24px; background: var(--bg3);
+  border: 2px solid var(--border); position: relative;
+  flex-shrink: 0; transition: background .2s, border-color .2s;
+}
+.switch-track::after {
+  content: ''; position: absolute;
+  top: 2px; left: 2px;
+  width: 16px; height: 16px;
+  background: var(--text3);
+  transition: transform .2s, background .2s;
+}
+.switch-item input:checked + .switch-track {
+  background: rgba(217,119,6,.15);
+  border-color: var(--primary);
+}
+.switch-item input:checked + .switch-track::after {
+  transform: translateX(20px);
+  background: var(--primary);
+}
 
 /* Optional details */
 .optional-details { border-bottom: 1px solid var(--border); }

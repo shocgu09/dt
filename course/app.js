@@ -216,7 +216,7 @@ function openWriteModal() {
   document.getElementById('wDuration').value = '';
   document.getElementById('wSpots').value = '';
   document.getElementById('imgInput').value = '';
-  document.querySelectorAll('.chip').forEach(function(c) { c.classList.remove('active'); });
+  document.querySelectorAll('.switch-group input[type="checkbox"]').forEach(function(c) { c.checked = false; });
   renderImgPreviews();
   document.getElementById('writeModal').style.display = 'flex';
   setTimeout(function() { document.getElementById('wTitle').focus(); }, 100);
@@ -239,12 +239,12 @@ function openEditModal(postId) {
   document.getElementById('wSpots').value = (p.spots || []).join(', ');
   document.getElementById('imgInput').value = '';
 
-  // 칩 활성화
-  document.querySelectorAll('#wSeasons .chip').forEach(function(c) {
-    c.classList.toggle('active', (p.seasons || []).includes(c.dataset.val));
+  // 스위치 활성화
+  document.querySelectorAll('#wSeasons input[type="checkbox"]').forEach(function(c) {
+    c.checked = (p.seasons || []).includes(c.dataset.val);
   });
-  document.querySelectorAll('#wThemes .chip').forEach(function(c) {
-    c.classList.toggle('active', (p.themes || []).includes(c.dataset.val));
+  document.querySelectorAll('#wThemes input[type="checkbox"]').forEach(function(c) {
+    c.checked = (p.themes || []).includes(c.dataset.val);
   });
 
   renderImgPreviews();
@@ -316,8 +316,8 @@ async function submitPost() {
   if (!title) { alert('제목을 입력해주세요.'); document.getElementById('wTitle').focus(); return; }
   if (!content) { alert('내용을 입력해주세요.'); document.getElementById('wContent').focus(); return; }
 
-  var seasons = Array.from(document.querySelectorAll('#wSeasons .chip.active')).map(function(c) { return c.dataset.val; });
-  var themes = Array.from(document.querySelectorAll('#wThemes .chip.active')).map(function(c) { return c.dataset.val; });
+  var seasons = Array.from(document.querySelectorAll('#wSeasons input:checked')).map(function(c) { return c.dataset.val; });
+  var themes = Array.from(document.querySelectorAll('#wThemes input:checked')).map(function(c) { return c.dataset.val; });
   var distance = parseFloat(document.getElementById('wDistance').value) || null;
   var duration = document.getElementById('wDuration').value.trim() || null;
   var spots = document.getElementById('wSpots').value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
@@ -390,12 +390,7 @@ async function deletePost(postId) {
   }
 }
 
-/* ===== 칩 토글 ===== */
-document.querySelectorAll('.chip').forEach(function(chip) {
-  chip.addEventListener('click', function() {
-    chip.classList.toggle('active');
-  });
-});
+/* 스위치는 checkbox 기본 동작으로 처리 — 별도 JS 불필요 */
 
 /* ===== 테마 ===== */
 function toggleTheme() {
