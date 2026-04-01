@@ -245,8 +245,7 @@ export default {
               value: { stringValue: date },
             }
           } : undefined,
-          orderBy: [{ field: { fieldPath: 'createdAt' }, direction: 'DESCENDING' }],
-          limit: date ? 1 : 10,
+          limit: 20,
         }
       };
       try {
@@ -255,8 +254,8 @@ export default {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(queryBody),
         });
-        const results = await resp.json();
-        const docs = results
+        const carResults = await resp.json();
+        const carDocs = (Array.isArray(carResults) ? carResults : [])
           .filter(r => r.document)
           .map(r => {
             const f = r.document.fields;
@@ -268,8 +267,10 @@ export default {
               authorName: f.authorName?.stringValue || '',
               createdAt: f.createdAt?.timestampValue || '',
             };
-          });
-        return new Response(JSON.stringify({ docs }), {
+          })
+          .sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date))
+          .slice(0, 10);
+        return new Response(JSON.stringify({ docs: carDocs }), {
           headers: { ...jsonHeaders, 'Cache-Control': 'public, max-age=300' }
         });
       } catch (e) {
