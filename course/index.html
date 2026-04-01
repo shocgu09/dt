@@ -4,14 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <title>드라이브 코스 가이드 — 지역별·계절별·테마별 추천 | DT Club</title>
-  <meta name="description" content="서울 근교 드라이브, 해안도로, 단풍·벚꽃 드라이브 코스 큐레이션. 지역별·계절별·테마별 전국 드라이브 코스 가이드. DT Club 제공.">
-  <meta name="keywords" content="드라이브 코스 추천, 서울 근교 드라이브, 해안도로 드라이브, 단풍 드라이브, 벚꽃 드라이브, 야경 드라이브, 강원도 드라이브, 부산 드라이브 코스">
+  <title>드라이브 코스 가이드 — 전국 드라이브 코스 추천 | DT Club</title>
+  <meta name="description" content="서울 근교 드라이브, 해안도로, 단풍·벚꽃 드라이브 코스 큐레이션. 계절별·테마별 전국 드라이브 코스 가이드. DT Club 제공.">
+  <meta name="keywords" content="드라이브 코스 추천, 서울 근교 드라이브, 해안도로 드라이브, 단풍 드라이브, 벚꽃 드라이브, 야경 드라이브">
   <link rel="canonical" href="https://dt-1js.pages.dev/course/">
 
   <meta property="og:type" content="website">
-  <meta property="og:title" content="드라이브 코스 가이드 — 전국 드라이브 코스 큐레이션 | DT Club">
-  <meta property="og:description" content="서울 근교 드라이브부터 해안도로, 계절별 추천 코스까지. 전국 드라이브 코스 가이드.">
+  <meta property="og:title" content="드라이브 코스 가이드 | DT Club">
+  <meta property="og:description" content="전국 드라이브 코스 큐레이션. 계절별·테마별 추천.">
   <meta property="og:image" content="https://dt-1js.pages.dev/og-image.png">
   <meta property="og:url" content="https://dt-1js.pages.dev/course/">
   <meta property="og:site_name" content="DT Club">
@@ -19,7 +19,7 @@
 
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="드라이브 코스 가이드 | DT Club">
-  <meta name="twitter:description" content="전국 드라이브 코스 큐레이션. 지역별·계절별·테마별 추천.">
+  <meta name="twitter:description" content="전국 드라이브 코스 큐레이션.">
   <meta name="twitter:image" content="https://dt-1js.pages.dev/og-image.png">
 
   <meta name="naver-site-verification" content="491f12b03fc8798c6fb79569414942a9867e0a9a">
@@ -30,7 +30,7 @@
     "@context": "https://schema.org",
     "@type": "ItemList",
     "name": "드라이브 코스 가이드",
-    "description": "전국 드라이브 코스 큐레이션 — 지역별, 계절별, 테마별 추천",
+    "description": "전국 드라이브 코스 큐레이션 — 계절별, 테마별 추천",
     "url": "https://dt-1js.pages.dev/course/",
     "author": { "@type": "Organization", "name": "DT Club", "url": "https://dt-1js.pages.dev" }
   }
@@ -49,62 +49,90 @@
     <button id="themeToggle" onclick="toggleTheme()" class="theme-btn">🌙</button>
   </header>
 
-  <div class="tab-bar">
-    <button class="tab-btn active" data-tab="region">🏙️ 지역별</button>
-    <button class="tab-btn" data-tab="season">🌸 계절별</button>
-    <button class="tab-btn" data-tab="theme">✨ 테마별</button>
+  <div class="top-bar">
+    <div class="filter-bar" id="courseFilter"></div>
+    <button class="btn-write" id="writeBtn" style="display:none" onclick="openWriteModal()">✏️ 글 작성</button>
   </div>
 
   <div class="container">
-    <!-- 지역별 -->
-    <div id="tab-region" class="tab-content active">
-      <div class="search-bar">
-        <input type="text" id="regionSearch" class="input-field" placeholder="🔍 지역 검색 (예: 강원, 부산)" oninput="filterCourses('region')">
+    <div id="courseList" class="post-grid"></div>
+    <div id="loadMoreWrap" style="display:none;text-align:center;padding:16px">
+      <button class="btn-more" onclick="loadMore()">더 보기</button>
+    </div>
+  </div>
+
+  <!-- 글 작성/수정 모달 -->
+  <div class="modal-overlay" id="writeModal" style="display:none" onclick="if(event.target===this)closeWriteModal()">
+    <div class="modal-box modal-write">
+      <div class="write-header">
+        <h3 id="writeModalTitle">드라이브 코스 작성</h3>
+        <button class="write-close" onclick="closeWriteModal()">✕</button>
       </div>
-      <div class="filter-bar" id="regionFilter"></div>
-      <div id="regionList" class="course-grid"></div>
-      <button class="admin-edit-btn" id="adminEditRegion" style="display:none" onclick="openAdminModal('region')">⚙️ 코스 관리</button>
-    </div>
 
-    <!-- 계절별 -->
-    <div id="tab-season" class="tab-content">
-      <div class="filter-bar" id="seasonFilter"></div>
-      <div id="seasonList" class="course-grid"></div>
-      <button class="admin-edit-btn" id="adminEditSeason" style="display:none" onclick="openAdminModal('season')">⚙️ 코스 관리</button>
-    </div>
+      <!-- 이미지 업로드 -->
+      <div class="img-section">
+        <div class="img-upload-area" id="imgUploadArea" onclick="document.getElementById('imgInput').click()">
+          <div class="img-upload-placeholder" id="imgPlaceholder">
+            <span class="img-upload-icon">📷</span>
+            <span>사진 추가 (최대 5장)</span>
+          </div>
+        </div>
+        <div class="img-preview-list" id="imgPreviewList"></div>
+        <input type="file" id="imgInput" accept="image/*" multiple style="display:none" onchange="handleImageSelect(this)">
+      </div>
 
-    <!-- 테마별 -->
-    <div id="tab-theme" class="tab-content">
-      <div class="filter-bar" id="themeFilter"></div>
-      <div id="themeList" class="course-grid"></div>
-      <button class="admin-edit-btn" id="adminEditTheme" style="display:none" onclick="openAdminModal('theme')">⚙️ 코스 관리</button>
-    </div>
-  </div>
+      <!-- 제목 -->
+      <input type="text" class="write-input" id="wTitle" placeholder="코스 제목을 입력하세요" maxlength="60">
 
-  <!-- 코스 상세 모달 -->
-  <div class="modal-overlay" id="courseModal" style="display:none" onclick="if(event.target===this)closeCourseModal()">
-    <div class="modal-box">
-      <div id="courseModalContent"></div>
-      <button class="btn-close" onclick="closeCourseModal()">닫기</button>
-    </div>
-  </div>
+      <!-- 내용 -->
+      <textarea class="write-textarea" id="wContent" placeholder="드라이브 코스를 소개해주세요. 출발지, 경유 포인트, 맛집, 꿀팁 등을 자유롭게 적어주세요." rows="6"></textarea>
 
-  <!-- 관리자 수정 모달 -->
-  <div class="modal-overlay" id="adminModal" style="display:none" onclick="if(event.target===this)closeAdminModal()">
-    <div class="modal-box modal-box-wide">
-      <div class="admin-modal-header">
-        <h3 id="adminModalTitle">코스 관리</h3>
-        <div class="admin-mode-toggle">
-          <button class="admin-mode-btn active" onclick="setAdminMode('visual')">📝 비주얼</button>
-          <button class="admin-mode-btn" onclick="setAdminMode('json')">{ } JSON</button>
+      <!-- 계절 태그 -->
+      <div class="chip-section">
+        <div class="chip-label">🌸 계절</div>
+        <div class="chip-group" id="wSeasons">
+          <button class="chip" data-val="봄">봄</button>
+          <button class="chip" data-val="여름">여름</button>
+          <button class="chip" data-val="가을">가을</button>
+          <button class="chip" data-val="겨울">겨울</button>
         </div>
       </div>
-      <div id="adminVisualEditor" class="admin-visual-editor"></div>
-      <textarea id="adminModalData" class="admin-textarea" style="display:none"></textarea>
-      <div class="modal-actions">
-        <button class="btn-calc" onclick="saveAdminData()">저장</button>
-        <button class="btn-cancel" onclick="closeAdminModal()">취소</button>
+
+      <!-- 테마 태그 -->
+      <div class="chip-section">
+        <div class="chip-label">✨ 테마</div>
+        <div class="chip-group" id="wThemes">
+          <button class="chip" data-val="야경">야경</button>
+          <button class="chip" data-val="해안도로">해안도로</button>
+          <button class="chip" data-val="산악">산악</button>
+          <button class="chip" data-val="카페로드">카페로드</button>
+          <button class="chip" data-val="드라이브">드라이브</button>
+        </div>
       </div>
+
+      <!-- 선택 정보 -->
+      <details class="optional-details">
+        <summary>추가 정보 (선택)</summary>
+        <div class="optional-fields">
+          <input type="number" class="write-input-sm" id="wDistance" placeholder="거리 (km)">
+          <input type="text" class="write-input-sm" id="wDuration" placeholder="소요시간 (예: 2시간 30분)">
+          <input type="text" class="write-input" id="wSpots" placeholder="주요 경유지 (쉼표로 구분)">
+        </div>
+      </details>
+
+      <div class="modal-actions">
+        <button class="btn-submit" id="submitBtn" onclick="submitPost()">등록하기</button>
+        <button class="btn-cancel" onclick="closeWriteModal()">취소</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 글 상세 모달 -->
+  <div class="modal-overlay" id="detailModal" style="display:none" onclick="if(event.target===this)closeDetailModal()">
+    <div class="modal-box modal-detail">
+      <div id="detailContent"></div>
+      <div class="detail-actions" id="detailActions"></div>
+      <button class="btn-close" onclick="closeDetailModal()">닫기</button>
     </div>
   </div>
 
@@ -112,6 +140,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

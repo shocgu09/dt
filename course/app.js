@@ -1,18 +1,22 @@
-/* ===== 드라이브 코스 가이드 - DT Club ===== */
+/* ===== 드라이브 코스 - DT Club ===== */
 
-var db = null, currentUser = null, isAdmin = false;
-var courseData = { region: null, season: null, theme: null };
-var editingDocId = null;
-var adminMode = 'visual';
+var db = null, storage = null, currentUser = null, isAdmin = false;
+var allPosts = [];
+var currentFilter = 'all';
+var editingPostId = null;
+var selectedFiles = []; // {file, previewUrl}
+var existingImages = []; // already-uploaded URLs (edit mode)
+var lastDoc = null;
+var PAGE_SIZE = 12;
 
-var REGION_CATS = ['전체', '수도권', '강원', '부산·경남', '전라', '충청', '제주'];
-var SEASON_CATS = ['전체', '봄', '여름', '가을', '겨울'];
-var THEME_CATS  = ['전체', '야경', '해안도로', '산악', '카페로드'];
+var SEASON_TAGS = ['봄', '여름', '가을', '겨울'];
+var THEME_TAGS  = ['야경', '해안도로', '산악', '카페로드', '드라이브'];
 
 /* ===== Firebase 초기화 ===== */
 try {
   if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
   db = firebase.firestore();
+  storage = firebase.storage();
   firebase.auth().onAuthStateChanged(function(user) {
     currentUser = user;
     isAdmin = false;
@@ -20,299 +24,378 @@ try {
       db.collection('users').doc(user.uid).get().then(function(doc) {
         var role = doc.data() && doc.data().role;
         isAdmin = (role === 'admin' || role === 'superadmin');
-        if (isAdmin) document.querySelectorAll('.admin-edit-btn').forEach(function(b) { b.style.display = ''; });
       }).catch(function() {});
+      document.getElementById('writeBtn').style.display = '';
+    } else {
+      document.getElementById('writeBtn').style.display = 'none';
     }
-    loadCourseData();
+    loadPosts();
   });
 } catch(e) {
   console.log('Firebase 미연결');
-  renderAll();
+  renderPosts([]);
+}
+
+/* ===== 필터 바 렌더링 ===== */
+(function() {
+  var tags = ['전체'].concat(SEASON_TAGS).concat(THEME_TAGS);
+  document.getElementById('courseFilter').innerHTML = tags.map(function(t) {
+    return '<button class="filter-btn' + (t === '전체' ? ' active' : '') + '" onclick="setFilter(this, \'' + t + '\')">' + t + '</button>';
+  }).join('');
+})();
+
+function setFilter(btn, tag) {
+  document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  currentFilter = tag === '전체' ? 'all' : tag;
+  renderFilteredPosts();
 }
 
 /* ===== 데이터 로드 ===== */
-async function loadCourseData() {
-  if (!db) { renderAll(); return; }
+async function loadPosts() {
+  if (!db) { renderPosts([]); return; }
   try {
-    var docs = ['region', 'season', 'theme'];
-    for (var i = 0; i < docs.length; i++) {
-      var snap = await db.collection('course_data').doc(docs[i]).get();
-      if (snap.exists) courseData[docs[i]] = snap.data();
-    }
+    var snap = await db.collection('course_posts')
+      .orderBy('createdAt', 'desc')
+      .limit(PAGE_SIZE)
+      .get();
+    allPosts = snap.docs.map(function(d) { return Object.assign({ id: d.id }, d.data()); });
+    lastDoc = snap.docs[snap.docs.length - 1] || null;
+    document.getElementById('loadMoreWrap').style.display = snap.docs.length === PAGE_SIZE ? '' : 'none';
+    renderFilteredPosts();
   } catch(e) {
-    console.log('Firestore 로드 실패');
+    console.log('로드 실패', e);
+    renderPosts([]);
   }
-  renderAll();
+}
+
+async function loadMore() {
+  if (!db || !lastDoc) return;
+  try {
+    var snap = await db.collection('course_posts')
+      .orderBy('createdAt', 'desc')
+      .startAfter(lastDoc)
+      .limit(PAGE_SIZE)
+      .get();
+    var more = snap.docs.map(function(d) { return Object.assign({ id: d.id }, d.data()); });
+    allPosts = allPosts.concat(more);
+    lastDoc = snap.docs[snap.docs.length - 1] || null;
+    if (snap.docs.length < PAGE_SIZE) document.getElementById('loadMoreWrap').style.display = 'none';
+    renderFilteredPosts();
+  } catch(e) {}
 }
 
 /* ===== 렌더링 ===== */
-function renderAll() {
-  renderTab('region', REGION_CATS, 'region');
-  renderTab('season', SEASON_CATS, 'season');
-  renderTab('theme', THEME_CATS, 'theme');
+function renderFilteredPosts() {
+  var posts = currentFilter === 'all' ? allPosts : allPosts.filter(function(p) {
+    return (p.seasons && p.seasons.includes(currentFilter)) ||
+           (p.themes && p.themes.includes(currentFilter));
+  });
+  renderPosts(posts);
 }
 
-function renderTab(tabId, cats, docId) {
-  renderFilter(tabId + 'Filter', cats, docId);
-  renderCourseList(tabId + 'List', docId, 'all');
-}
-
-function renderFilter(filterId, cats, docId) {
-  var el = document.getElementById(filterId);
-  if (!el) return;
-  el.innerHTML = cats.map(function(c) {
-    return '<button class="filter-btn' + (c === '전체' ? ' active' : '') + '" onclick="setFilter(this, \'' + docId + '\')">' + c + '</button>';
-  }).join('');
-}
-
-function setFilter(btn, docId) {
-  var bar = btn.parentElement;
-  bar.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
-  btn.classList.add('active');
-  renderCourseList(docId + 'List', docId, btn.textContent);
-}
-
-function renderCourseList(listId, docId, filter) {
-  var el = document.getElementById(listId);
-  if (!el) return;
-  var data = courseData[docId];
-
-  if (!data || !data.items || data.items.length === 0) {
-    el.innerHTML = '<div class="coming-soon">' +
-      '<div class="coming-soon-icon">🗺️</div>' +
-      '<h3>코스 준비 중</h3>' +
-      '<p>멋진 드라이브 코스를 큐레이션 중입니다.<br>곧 업데이트될 예정입니다.</p>' +
+function renderPosts(posts) {
+  var el = document.getElementById('courseList');
+  if (!posts || posts.length === 0) {
+    el.innerHTML = '<div class="empty-state">' +
+      '<div class="empty-state-icon">🗺️</div>' +
+      '<h3>아직 작성된 코스가 없습니다</h3>' +
+      '<p>첫 번째 드라이브 코스를 소개해보세요!</p>' +
       '</div>';
     return;
   }
-
-  var items = filter === '전체' ? data.items : data.items.filter(function(it) {
-    return it.region === filter || (it.seasons && it.seasons.includes(filter)) || (it.themes && it.themes.includes(filter));
-  });
-
-  if (items.length === 0) {
-    el.innerHTML = '<div class="coming-soon"><div class="coming-soon-icon">🔍</div><h3>해당 코스가 없습니다</h3></div>';
-    return;
-  }
-
-  el.innerHTML = items.map(function(it) {
-    var tags = [];
-    if (it.region) tags.push('<span class="course-tag tag-region">' + it.region + '</span>');
-    (it.seasons || []).forEach(function(s) { tags.push('<span class="course-tag tag-season">' + s + '</span>'); });
-    (it.themes || []).forEach(function(t) { tags.push('<span class="course-tag tag-theme">' + t + '</span>'); });
-    return '<button class="course-card" onclick="openCourseModal(\'' + docId + '\', \'' + it.id + '\')">' +
-      '<div class="course-emoji">' + (it.emoji || '🗺️') + '</div>' +
-      '<div class="course-title">' + escHtml(it.title) + '</div>' +
-      '<div class="course-meta">' + tags.join('') + '</div>' +
-      '<div class="course-info">' +
-        (it.distance ? '<span>📍 ' + it.distance + 'km</span>' : '') +
-        (it.duration ? '<span>⏱️ ' + it.duration + '</span>' : '') +
-      '</div>' +
-      '</button>';
-  }).join('');
+  el.innerHTML = posts.map(function(p) { return buildPostCard(p); }).join('');
 }
 
-function filterCourses(docId) {
-  var search = (document.getElementById(docId + 'Search')?.value || '').trim().toLowerCase();
-  var filter = document.querySelector('#' + docId + 'Filter .filter-btn.active')?.textContent || '전체';
-  var el = document.getElementById(docId + 'List');
-  var data = courseData[docId];
-  if (!data || !data.items) return;
-
-  var items = data.items.filter(function(it) {
-    var matchFilter = filter === '전체' || it.region === filter || (it.seasons && it.seasons.includes(filter)) || (it.themes && it.themes.includes(filter));
-    var matchSearch = !search || it.title.toLowerCase().includes(search) || (it.summary && it.summary.toLowerCase().includes(search));
-    return matchFilter && matchSearch;
-  });
-  // re-render with filtered items (simple approach)
-  renderCourseListItems(el, docId, items);
-}
-
-function renderCourseListItems(el, docId, items) {
-  if (!items || items.length === 0) {
-    el.innerHTML = '<div class="coming-soon"><div class="coming-soon-icon">🔍</div><h3>검색 결과가 없습니다</h3></div>';
-    return;
-  }
-  el.innerHTML = items.map(function(it) {
-    var tags = [];
-    if (it.region) tags.push('<span class="course-tag tag-region">' + it.region + '</span>');
-    (it.seasons || []).forEach(function(s) { tags.push('<span class="course-tag tag-season">' + s + '</span>'); });
-    (it.themes || []).forEach(function(t) { tags.push('<span class="course-tag tag-theme">' + t + '</span>'); });
-    return '<button class="course-card" onclick="openCourseModal(\'' + docId + '\', \'' + it.id + '\')">' +
-      '<div class="course-emoji">' + (it.emoji || '🗺️') + '</div>' +
-      '<div class="course-title">' + escHtml(it.title) + '</div>' +
-      '<div class="course-meta">' + tags.join('') + '</div>' +
-      '<div class="course-info">' +
-        (it.distance ? '<span>📍 ' + it.distance + 'km</span>' : '') +
-        (it.duration ? '<span>⏱️ ' + it.duration + '</span>' : '') +
-      '</div></button>';
-  }).join('');
-}
-
-/* ===== 코스 상세 모달 ===== */
-function openCourseModal(docId, id) {
-  var data = courseData[docId];
-  var it = data && data.items && data.items.find(function(x) { return x.id === id; });
-  if (!it) return;
-
-  var tags = [];
-  if (it.region) tags.push('<span class="course-tag tag-region">' + it.region + '</span>');
-  (it.seasons || []).forEach(function(s) { tags.push('<span class="course-tag tag-season">' + s + '</span>'); });
-  (it.themes || []).forEach(function(t) { tags.push('<span class="course-tag tag-theme">' + t + '</span>'); });
-
-  var spotsHtml = (it.spots || []).map(function(s, i) {
-    return '<li>' + (i === 0 ? '🚩' : i === (it.spots.length - 1) ? '🏁' : '→') + ' ' + escHtml(s) + '</li>';
-  }).join('');
-
-  var tipsHtml = (it.tips || []).map(function(t) { return '<li>' + escHtml(t) + '</li>'; }).join('');
-
-  document.getElementById('courseModalContent').innerHTML =
-    '<div class="detail-header">' +
-      '<div class="detail-emoji">' + (it.emoji || '🗺️') + '</div>' +
-      '<div><div class="detail-title">' + escHtml(it.title) + '</div>' +
-      '<div class="detail-tags">' + tags.join('') + '</div></div>' +
-    '</div>' +
-    (it.distance || it.duration || it.difficulty ? '<div class="detail-stats">' +
-      (it.distance ? '<div class="stat-item"><div class="stat-value">' + it.distance + 'km</div><div class="stat-label">거리</div></div>' : '') +
-      (it.duration ? '<div class="stat-item"><div class="stat-value">' + it.duration + '</div><div class="stat-label">소요</div></div>' : '') +
-      (it.difficulty ? '<div class="stat-item"><div class="stat-value">' + ({easy:'쉬움',medium:'보통',hard:'어려움'}[it.difficulty]||it.difficulty) + '</div><div class="stat-label">난이도</div></div>' : '') +
-    '</div>' : '') +
-    (it.summary ? '<div class="detail-section"><div class="detail-label">코스 소개</div><div class="detail-text">' + escHtml(it.summary) + '</div></div>' : '') +
-    (spotsHtml ? '<div class="detail-section"><div class="detail-label">📍 추천 경유지</div><ul class="detail-spots">' + spotsHtml + '</ul></div>' : '') +
-    (tipsHtml ? '<div class="detail-section"><div class="detail-label">꿀팁</div><ul class="detail-tips">' + tipsHtml + '</ul></div>' : '') +
-    (it.map_url ? '<a href="' + it.map_url + '" target="_blank" rel="noopener" style="display:block;text-align:center;padding:10px;background:var(--bg);border:1px solid var(--border);color:var(--primary);text-decoration:none;font-weight:700;font-size:.88rem;margin-top:8px">🗺️ 네이버 지도로 보기</a>' : '');
-
-  document.getElementById('courseModal').style.display = 'flex';
-}
-
-function closeCourseModal() {
-  document.getElementById('courseModal').style.display = 'none';
-}
-
-/* ===== 탭 전환 ===== */
-document.querySelectorAll('.tab-btn').forEach(function(btn) {
-  btn.addEventListener('click', function() {
-    document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
-    document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
-    btn.classList.add('active');
-    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-  });
-});
-
-/* ===== 관리자 모달 ===== */
-function setAdminMode(mode) {
-  adminMode = mode;
-  document.querySelectorAll('.admin-mode-btn').forEach(function(b) { b.classList.remove('active'); });
-  document.querySelector('.admin-mode-btn:' + (mode === 'visual' ? 'first-child' : 'last-child')).classList.add('active');
-  var visual = document.getElementById('adminVisualEditor');
-  var json = document.getElementById('adminModalData');
-  if (mode === 'visual') {
-    try { buildVisualEditor(editingDocId, JSON.parse(json.value)); } catch(e) {}
-    visual.style.display = ''; json.style.display = 'none';
+function buildPostCard(p) {
+  var thumb = '';
+  if (p.images && p.images.length > 0) {
+    thumb = '<img class="post-thumb" src="' + escHtml(p.images[0]) + '" alt="' + escHtml(p.title) + '" loading="lazy" onerror="this.parentElement.innerHTML=\'<div class=\\"post-thumb-placeholder\\">🗺️</div>\'">';
   } else {
-    var d = collectVisualData(); if (d) json.value = JSON.stringify(d, null, 2);
-    visual.style.display = 'none'; json.style.display = '';
+    thumb = '<div class="post-thumb-placeholder">🗺️</div>';
   }
-}
-
-function openAdminModal(docId) {
-  editingDocId = docId;
-  adminMode = 'visual';
-  var data = JSON.parse(JSON.stringify(courseData[docId] || { items: [] }));
-  var titles = { region: '지역별 코스 관리', season: '계절별 코스 관리', theme: '테마별 코스 관리' };
-  document.getElementById('adminModalTitle').textContent = titles[docId] || docId;
-  document.getElementById('adminModalData').value = JSON.stringify(data, null, 2);
-  buildVisualEditor(docId, data);
-  document.getElementById('adminVisualEditor').style.display = '';
-  document.getElementById('adminModalData').style.display = 'none';
-  document.querySelectorAll('.admin-mode-btn').forEach(function(b, i) { b.classList.toggle('active', i === 0); });
-  document.getElementById('adminModal').style.display = 'flex';
-}
-
-function buildVisualEditor(docId, data) {
-  var el = document.getElementById('adminVisualEditor');
-  var items = (data && data.items) || [];
-  var html = '<div class="ve-section"><div class="ve-label">코스 목록 (' + items.length + '개)</div><div id="ve-items">';
-  items.forEach(function(it, i) {
-    html += buildCourseItemEditor(it, i);
-  });
-  html += '</div><button class="ve-add" onclick="veAddCourse()">+ 코스 추가</button></div>';
-  el.innerHTML = html;
-}
-
-function buildCourseItemEditor(it, i) {
-  return '<div class="ve-item" data-idx="' + i + '">' +
-    '<div class="ve-item-row">' +
-      '<input class="ve-input" style="width:50px" data-field="emoji" value="' + escHtml(it.emoji||'🗺️') + '" placeholder="이모지">' +
-      '<input class="ve-input ve-flex" data-field="title" value="' + escHtml(it.title||'') + '" placeholder="코스 이름">' +
-      '<button class="ve-del" onclick="veRemoveItem(this)" title="삭제">✕</button>' +
+  var tags = [];
+  (p.seasons || []).forEach(function(s) { tags.push('<span class="post-tag tag-season">' + s + '</span>'); });
+  (p.themes || []).forEach(function(t) { tags.push('<span class="post-tag tag-theme">' + t + '</span>'); });
+  var date = p.createdAt ? new Date(p.createdAt.seconds * 1000).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' }) : '';
+  return '<div class="post-card" onclick="openDetailModal(\'' + p.id + '\')">' +
+    thumb +
+    '<div class="post-body">' +
+      '<div class="post-title">' + escHtml(p.title) + '</div>' +
+      (tags.length ? '<div class="post-tags">' + tags.join('') + '</div>' : '') +
+      '<div class="post-meta">' + escHtml(p.authorName || '익명') + ' · ' + date + '</div>' +
     '</div>' +
-    '<div class="ve-item-row">' +
-      '<input class="ve-input" style="flex:1" data-field="region" value="' + escHtml(it.region||'') + '" placeholder="지역">' +
-      '<input class="ve-input" style="width:70px" data-field="distance" value="' + escHtml(String(it.distance||'')) + '" placeholder="km">' +
-      '<input class="ve-input" style="width:90px" data-field="duration" value="' + escHtml(it.duration||'') + '" placeholder="소요시간">' +
-    '</div>' +
-    '<input class="ve-input" data-field="seasons" value="' + escHtml((it.seasons||[]).join(', ')) + '" placeholder="계절 (쉼표 구분: 봄, 여름)" style="margin-top:4px">' +
-    '<input class="ve-input" data-field="themes" value="' + escHtml((it.themes||[]).join(', ')) + '" placeholder="테마 (쉼표 구분: 야경, 해안도로)" style="margin-top:4px">' +
-    '<textarea class="ve-textarea" data-field="summary" placeholder="코스 소개" style="margin-top:4px;min-height:50px">' + escHtml(it.summary||'') + '</textarea>' +
-    '<input class="ve-input" data-field="spots" value="' + escHtml((it.spots||[]).join(', ')) + '" placeholder="경유지 (쉼표 구분)" style="margin-top:4px">' +
-    '<input class="ve-input" data-field="tips" value="' + escHtml((it.tips||[]).join(', ')) + '" placeholder="꿀팁 (쉼표 구분)" style="margin-top:4px">' +
-    '<input class="ve-input" data-field="map_url" value="' + escHtml(it.map_url||'') + '" placeholder="네이버 지도 URL (선택)" style="margin-top:4px">' +
     '</div>';
 }
 
-function veRemoveItem(btn) {
-  if (!confirm('삭제할까요?')) return;
-  btn.closest('.ve-item').remove();
+/* ===== 상세 모달 ===== */
+function openDetailModal(postId) {
+  var p = allPosts.find(function(x) { return x.id === postId; });
+  if (!p) return;
+
+  // 이미지
+  var galleryHtml = '';
+  if (p.images && p.images.length > 0) {
+    galleryHtml = '<div class="detail-gallery">' +
+      p.images.map(function(url) {
+        return '<img class="detail-gallery-img" src="' + escHtml(url) + '" alt="" loading="lazy">';
+      }).join('') +
+      '</div>';
+    if (p.images.length > 1) {
+      galleryHtml += '<div class="detail-gallery-count">← 스크롤하여 ' + p.images.length + '장 보기 →</div>';
+    }
+  } else {
+    galleryHtml = '<div class="detail-gallery-placeholder">🗺️</div>';
+  }
+
+  // 태그
+  var tags = [];
+  (p.seasons || []).forEach(function(s) { tags.push('<span class="post-tag tag-season">' + s + '</span>'); });
+  (p.themes || []).forEach(function(t) { tags.push('<span class="post-tag tag-theme">' + t + '</span>'); });
+
+  // 날짜
+  var date = p.createdAt ? new Date(p.createdAt.seconds * 1000).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
+
+  // 통계
+  var statsHtml = '';
+  if (p.distance || p.duration) {
+    statsHtml = '<div class="detail-stats">' +
+      (p.distance ? '<div class="stat-item"><div class="stat-value">' + p.distance + 'km</div><div class="stat-label">거리</div></div>' : '') +
+      (p.duration ? '<div class="stat-item"><div class="stat-value">' + escHtml(p.duration) + '</div><div class="stat-label">소요시간</div></div>' : '') +
+      '</div>';
+  }
+
+  // 경유지
+  var spotsHtml = '';
+  if (p.spots && p.spots.length > 0) {
+    spotsHtml = '<div class="detail-spots"><div class="detail-spots-label">📍 주요 경유지</div><ul class="detail-spots-list">' +
+      p.spots.map(function(s, i) {
+        var icon = i === 0 ? '🚩' : i === p.spots.length - 1 ? '🏁' : '→';
+        return '<li>' + icon + ' ' + escHtml(s) + '</li>';
+      }).join('') +
+      '</ul></div>';
+  }
+
+  document.getElementById('detailContent').innerHTML =
+    galleryHtml +
+    '<div class="detail-body">' +
+      '<div class="detail-title">' + escHtml(p.title) + '</div>' +
+      (tags.length ? '<div class="detail-tags">' + tags.join('') + '</div>' : '') +
+      '<div class="detail-meta">' + escHtml(p.authorName || '익명') + ' · ' + date + '</div>' +
+      statsHtml +
+      '<div class="detail-content">' + escHtml(p.content || '') + '</div>' +
+      spotsHtml +
+    '</div>';
+
+  // 작성자/관리자 버튼
+  var actionsHtml = '';
+  if (currentUser && (isAdmin || currentUser.uid === p.authorUid)) {
+    actionsHtml =
+      '<button class="btn-edit" onclick="openEditModal(\'' + p.id + '\')">✏️ 수정</button>' +
+      '<button class="btn-delete" onclick="deletePost(\'' + p.id + '\')">🗑️ 삭제</button>';
+  }
+  document.getElementById('detailActions').innerHTML = actionsHtml;
+
+  document.getElementById('detailModal').style.display = 'flex';
 }
 
-function veAddCourse() {
-  var container = document.getElementById('ve-items');
-  var idx = container.children.length;
-  container.insertAdjacentHTML('beforeend', buildCourseItemEditor({ emoji:'🗺️', title:'', region:'', distance:'', duration:'', seasons:[], themes:[], summary:'', spots:[], tips:[], map_url:'' }, idx));
+function closeDetailModal() {
+  document.getElementById('detailModal').style.display = 'none';
 }
 
-function collectVisualData() {
-  var items = [];
-  document.querySelectorAll('#ve-items .ve-item').forEach(function(el, i) {
-    var g = function(f) { return (el.querySelector('[data-field="' + f + '"]')?.value || '').trim(); };
-    var title = g('title');
-    if (!title) return;
-    items.push({
-      id: editingDocId + (i + 1),
-      emoji: g('emoji') || '🗺️',
-      title: title,
-      region: g('region'),
-      distance: parseFloat(g('distance')) || null,
-      duration: g('duration'),
-      seasons: g('seasons').split(',').map(function(s){return s.trim();}).filter(Boolean),
-      themes: g('themes').split(',').map(function(s){return s.trim();}).filter(Boolean),
-      summary: g('summary'),
-      spots: g('spots').split(',').map(function(s){return s.trim();}).filter(Boolean),
-      tips: g('tips').split(',').map(function(s){return s.trim();}).filter(Boolean),
-      map_url: g('map_url') || null
-    });
+/* ===== 글 작성 모달 ===== */
+function openWriteModal() {
+  if (!currentUser || currentUser.isAnonymous) { alert('로그인이 필요합니다.'); return; }
+  editingPostId = null;
+  selectedFiles = [];
+  existingImages = [];
+  document.getElementById('writeModalTitle').textContent = '드라이브 코스 작성';
+  document.getElementById('wTitle').value = '';
+  document.getElementById('wContent').value = '';
+  document.getElementById('wDistance').value = '';
+  document.getElementById('wDuration').value = '';
+  document.getElementById('wSpots').value = '';
+  document.getElementById('imgInput').value = '';
+  document.querySelectorAll('.chip').forEach(function(c) { c.classList.remove('active'); });
+  renderImgPreviews();
+  document.getElementById('writeModal').style.display = 'flex';
+  setTimeout(function() { document.getElementById('wTitle').focus(); }, 100);
+}
+
+function openEditModal(postId) {
+  var p = allPosts.find(function(x) { return x.id === postId; });
+  if (!p) return;
+  closeDetailModal();
+
+  editingPostId = postId;
+  selectedFiles = [];
+  existingImages = (p.images || []).slice();
+
+  document.getElementById('writeModalTitle').textContent = '코스 수정';
+  document.getElementById('wTitle').value = p.title || '';
+  document.getElementById('wContent').value = p.content || '';
+  document.getElementById('wDistance').value = p.distance || '';
+  document.getElementById('wDuration').value = p.duration || '';
+  document.getElementById('wSpots').value = (p.spots || []).join(', ');
+  document.getElementById('imgInput').value = '';
+
+  // 칩 활성화
+  document.querySelectorAll('#wSeasons .chip').forEach(function(c) {
+    c.classList.toggle('active', (p.seasons || []).includes(c.dataset.val));
   });
-  return { items: items };
+  document.querySelectorAll('#wThemes .chip').forEach(function(c) {
+    c.classList.toggle('active', (p.themes || []).includes(c.dataset.val));
+  });
+
+  renderImgPreviews();
+  document.getElementById('writeModal').style.display = 'flex';
 }
 
-function closeAdminModal() {
-  document.getElementById('adminModal').style.display = 'none';
-  editingDocId = null;
+function closeWriteModal() {
+  document.getElementById('writeModal').style.display = 'none';
+  selectedFiles.forEach(function(f) { URL.revokeObjectURL(f.previewUrl); });
+  selectedFiles = [];
+  existingImages = [];
 }
 
-async function saveAdminData() {
-  if (!editingDocId || !db || !isAdmin) return;
+/* ===== 이미지 처리 ===== */
+function handleImageSelect(input) {
+  var files = Array.from(input.files);
+  var remaining = 5 - existingImages.length - selectedFiles.length;
+  if (remaining <= 0) { alert('최대 5장까지 첨부할 수 있습니다.'); return; }
+  files = files.slice(0, remaining);
+  files.forEach(function(file) {
+    if (file.size > 10 * 1024 * 1024) { alert(file.name + ' 파일이 너무 큽니다 (최대 10MB).'); return; }
+    selectedFiles.push({ file: file, previewUrl: URL.createObjectURL(file) });
+  });
+  input.value = '';
+  renderImgPreviews();
+}
+
+function renderImgPreviews() {
+  var total = existingImages.length + selectedFiles.length;
+  var list = document.getElementById('imgPreviewList');
+  var placeholder = document.getElementById('imgPlaceholder');
+  placeholder.style.display = total > 0 ? 'none' : '';
+
+  var html = '';
+  existingImages.forEach(function(url, i) {
+    html += '<div class="img-preview-wrap">' +
+      '<img class="img-preview" src="' + escHtml(url) + '">' +
+      '<button class="img-preview-del" onclick="removeExistingImage(' + i + ')">✕</button>' +
+      '</div>';
+  });
+  selectedFiles.forEach(function(f, i) {
+    html += '<div class="img-preview-wrap">' +
+      '<img class="img-preview" src="' + f.previewUrl + '">' +
+      '<button class="img-preview-del" onclick="removeNewImage(' + i + ')">✕</button>' +
+      '</div>';
+  });
+  if (total < 5) {
+    html += '<button class="img-add-btn" onclick="document.getElementById(\'imgInput\').click()">+</button>';
+  }
+  list.innerHTML = html;
+}
+
+function removeExistingImage(i) {
+  existingImages.splice(i, 1);
+  renderImgPreviews();
+}
+
+function removeNewImage(i) {
+  URL.revokeObjectURL(selectedFiles[i].previewUrl);
+  selectedFiles.splice(i, 1);
+  renderImgPreviews();
+}
+
+/* ===== 글 제출 ===== */
+async function submitPost() {
+  if (!currentUser || !db) return;
+  var title = document.getElementById('wTitle').value.trim();
+  var content = document.getElementById('wContent').value.trim();
+  if (!title) { alert('제목을 입력해주세요.'); document.getElementById('wTitle').focus(); return; }
+  if (!content) { alert('내용을 입력해주세요.'); document.getElementById('wContent').focus(); return; }
+
+  var seasons = Array.from(document.querySelectorAll('#wSeasons .chip.active')).map(function(c) { return c.dataset.val; });
+  var themes = Array.from(document.querySelectorAll('#wThemes .chip.active')).map(function(c) { return c.dataset.val; });
+  var distance = parseFloat(document.getElementById('wDistance').value) || null;
+  var duration = document.getElementById('wDuration').value.trim() || null;
+  var spots = document.getElementById('wSpots').value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = '업로드 중...';
+
   try {
-    var parsed = adminMode === 'visual' ? collectVisualData() : JSON.parse(document.getElementById('adminModalData').value);
-    if (!parsed) { alert('데이터 수집 실패'); return; }
-    await db.collection('course_data').doc(editingDocId).set(parsed);
-    courseData[editingDocId] = parsed;
-    closeAdminModal();
-    renderAll();
-    alert('저장 완료!');
-  } catch(e) { alert('오류: ' + e.message); }
+    // 새 이미지 업로드
+    var newUrls = [];
+    for (var i = 0; i < selectedFiles.length; i++) {
+      btn.textContent = '사진 업로드 중 (' + (i + 1) + '/' + selectedFiles.length + ')...';
+      var f = selectedFiles[i].file;
+      var path = 'course_images/' + currentUser.uid + '/' + Date.now() + '_' + i + '_' + f.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      var ref = storage.ref(path);
+      var snap = await ref.put(f);
+      var url = await snap.ref.getDownloadURL();
+      newUrls.push(url);
+    }
+
+    var images = existingImages.concat(newUrls);
+    var postData = {
+      title: title,
+      content: content,
+      images: images,
+      seasons: seasons,
+      themes: themes,
+      spots: spots,
+      distance: distance,
+      duration: duration,
+      authorUid: currentUser.uid,
+      authorName: currentUser.displayName || currentUser.email || '익명',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+
+    if (editingPostId) {
+      await db.collection('course_posts').doc(editingPostId).update(postData);
+      // 로컬 업데이트
+      var idx = allPosts.findIndex(function(p) { return p.id === editingPostId; });
+      if (idx >= 0) allPosts[idx] = Object.assign(allPosts[idx], postData);
+    } else {
+      postData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+      postData.likeCount = 0;
+      var ref2 = await db.collection('course_posts').add(postData);
+      // 로컬에 임시 추가
+      allPosts.unshift(Object.assign({ id: ref2.id }, postData, { createdAt: { seconds: Date.now() / 1000 } }));
+    }
+
+    closeWriteModal();
+    renderFilteredPosts();
+  } catch(e) {
+    alert('오류가 발생했습니다: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '등록하기';
+  }
 }
+
+/* ===== 삭제 ===== */
+async function deletePost(postId) {
+  if (!confirm('정말 삭제할까요?')) return;
+  try {
+    await db.collection('course_posts').doc(postId).delete();
+    allPosts = allPosts.filter(function(p) { return p.id !== postId; });
+    closeDetailModal();
+    renderFilteredPosts();
+  } catch(e) {
+    alert('삭제 실패: ' + e.message);
+  }
+}
+
+/* ===== 칩 토글 ===== */
+document.querySelectorAll('.chip').forEach(function(chip) {
+  chip.addEventListener('click', function() {
+    chip.classList.toggle('active');
+  });
+});
 
 /* ===== 테마 ===== */
 function toggleTheme() {
