@@ -155,29 +155,57 @@ async function loadBriefing() {
 function renderBriefing(posts) {
   var el = document.getElementById('briefingSection');
   var p = posts[0];
+  var bodyEscaped = escapeHtml(p.body || '').replace(/\n/g, '<br>');
+  var preview = escapeHtml((p.body || '').substring(0, 80)).replace(/\n/g, ' ') + '...';
+
   var html = '<div class="briefing-card">'
     + '<div class="briefing-card-header">'
     + '<span class="briefing-badge">📋 AI 브리핑</span>'
     + '<span class="briefing-date">' + escapeHtml(p.date || '') + '</span>'
     + '</div>'
     + '<div class="briefing-title">' + escapeHtml(p.title || '') + '</div>'
-    + '<div class="briefing-body">' + escapeHtml(p.body || '').replace(/\n/g, '<br>') + '</div>';
+    + '<div class="briefing-preview" id="briefingPreview">' + preview + '</div>'
+    + '<div class="briefing-body" id="briefingBody" style="display:none">' + bodyEscaped + '</div>'
+    + '<button class="briefing-toggle-btn" onclick="toggleLatestBriefing(this)">더보기 ▾</button>';
 
   if (posts.length > 1) {
     html += '<div class="briefing-older">'
       + '<button class="briefing-older-btn" onclick="toggleOlderBriefings(this)">이전 브리핑 보기 (' + (posts.length - 1) + '개) ▾</button>'
       + '<div class="briefing-older-list" style="display:none">';
     posts.slice(1).forEach(function(q) {
+      var qPreview = escapeHtml((q.body || '').substring(0, 80)).replace(/\n/g, ' ') + '...';
       html += '<div class="briefing-older-item">'
         + '<div class="briefing-older-date">' + escapeHtml(q.date || '') + '</div>'
         + '<div class="briefing-older-title">' + escapeHtml(q.title || '') + '</div>'
-        + '<div class="briefing-older-body">' + escapeHtml(q.body || '').replace(/\n/g, '<br>') + '</div>'
+        + '<div class="briefing-older-preview">' + qPreview + '</div>'
+        + '<div class="briefing-older-body" style="display:none">' + escapeHtml(q.body || '').replace(/\n/g, '<br>') + '</div>'
+        + '<button class="briefing-toggle-btn" onclick="toggleOlderItem(this)">더보기 ▾</button>'
         + '</div>';
     });
     html += '</div></div>';
   }
   html += '</div>';
   el.innerHTML = html;
+}
+
+function toggleLatestBriefing(btn) {
+  var card = btn.parentElement;
+  var preview = card.querySelector('#briefingPreview');
+  var body = card.querySelector('#briefingBody');
+  var open = body.style.display !== 'none';
+  preview.style.display = open ? '' : 'none';
+  body.style.display = open ? 'none' : '';
+  btn.textContent = open ? '더보기 ▾' : '줄이기 ▴';
+}
+
+function toggleOlderItem(btn) {
+  var item = btn.parentElement;
+  var preview = item.querySelector('.briefing-older-preview');
+  var body = item.querySelector('.briefing-older-body');
+  var open = body.style.display !== 'none';
+  preview.style.display = open ? '' : 'none';
+  body.style.display = open ? 'none' : '';
+  btn.textContent = open ? '더보기 ▾' : '줄이기 ▴';
 }
 
 function toggleOlderBriefings(btn) {

@@ -38,7 +38,8 @@ body {
   font-size: .88rem; color: var(--text2); line-height: 1.6;
 }
 .intro-card p { margin: 0 0 6px; }
-.intro-card p:last-child { margin: 0; color: var(--primary-light); font-weight: 600; font-size: .9rem; }
+.intro-card p:last-child { margin: 0; }
+.intro-schedule { color: var(--primary-light); font-weight: 600; font-size: .85rem; margin-top: 8px !important; }
 .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; background: var(--bg2); padding: 4px; border: 1px solid var(--border); }
 .tab-btn {
   flex: 1; padding: 8px; background: none; border: none; color: var(--text2);
@@ -174,8 +175,18 @@ body {
   padding: 12px; background: var(--bg3);
   border: 1px solid var(--border);
 }
+.briefing-preview {
+  font-size: .85rem; color: var(--text3); line-height: 1.6;
+  margin-bottom: 8px; word-break: break-word;
+}
+.briefing-toggle-btn {
+  background: none; border: none; color: var(--primary);
+  font-size: .8rem; font-weight: 700; cursor: pointer; padding: 0;
+  font-family: inherit; margin-top: 2px;
+}
 .briefing-older-date { font-size: .72rem; color: var(--text3); margin-bottom: 4px; }
 .briefing-older-title { font-size: .88rem; font-weight: 800; margin-bottom: 6px; }
+.briefing-older-preview { font-size: .8rem; color: var(--text3); line-height: 1.6; margin-bottom: 4px; }
 .briefing-older-body { font-size: .82rem; color: var(--text2); line-height: 1.7; white-space: pre-wrap; }
 
 /* 브리핑 작성 폼 */
