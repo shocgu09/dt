@@ -152,10 +152,14 @@ async function loadBriefing() {
   } catch(e) { el.innerHTML = ''; }
 }
 
+function linkifyBody(escaped) {
+  return escaped.replace(/(https?:\/\/[^\s<>"'，）\)]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:var(--primary);text-decoration:underline;word-break:break-all">$1</a>');
+}
+
 function renderBriefing(posts) {
   var el = document.getElementById('briefingSection');
   var p = posts[0];
-  var bodyEscaped = escapeHtml(p.body || '').replace(/\n/g, '<br>');
+  var bodyEscaped = linkifyBody(escapeHtml(p.body || '').replace(/\n/g, '<br>'));
   var preview = escapeHtml((p.body || '').substring(0, 80)).replace(/\n/g, ' ') + '...';
 
   var html = '<div class="briefing-card">'
@@ -178,7 +182,7 @@ function renderBriefing(posts) {
         + '<div class="briefing-older-date">' + escapeHtml(q.date || '') + '</div>'
         + '<div class="briefing-older-title">' + escapeHtml(q.title || '') + '</div>'
         + '<div class="briefing-older-preview">' + qPreview + '</div>'
-        + '<div class="briefing-older-body" style="display:none">' + escapeHtml(q.body || '').replace(/\n/g, '<br>') + '</div>'
+        + '<div class="briefing-older-body" style="display:none">' + linkifyBody(escapeHtml(q.body || '').replace(/\n/g, '<br>')) + '</div>'
         + '<button class="briefing-toggle-btn" onclick="toggleOlderItem(this)">더보기 ▾</button>'
         + '</div>';
     });
