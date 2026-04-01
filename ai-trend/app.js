@@ -23,7 +23,7 @@ var currentUser = null;
 var isAdmin = false;
 var allLinks = [];
 var currentCategory = 'all';
-var currentTab = 'feed';
+var currentTab = 'briefing';
 
 var CATEGORY_ICONS = { 'X': '𝕏', '뉴스레터': '📰', '유튜브': '▶️' };
 var CATEGORY_ORDER = ['X', '뉴스레터', '유튜브'];
@@ -85,6 +85,7 @@ function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.toggle('active', b.dataset.tab === tab); });
   document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.toggle('active', c.id === 'tab-' + tab); });
+  if (tab === 'briefing') loadBriefing();
   if (tab === 'feed') loadFeed();
   if (tab === 'admin') {
     renderAdminLinks();
@@ -105,7 +106,7 @@ async function loadAllData() {
     }
     allLinks = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; });
     renderLinks();
-    loadFeed();
+    loadBriefing();
     fillMissingThumbnails();
   } catch(e) {
     document.getElementById('feedContent').innerHTML = '<div class="loading">데이터를 불러올 수 없습니다</div>';
@@ -265,7 +266,6 @@ async function submitBriefing() {
 
 // ===== 피드 탭 =====
 async function loadFeed() {
-  loadBriefing();
   var el = document.getElementById('feedContent');
   el.innerHTML = '<div class="loading">피드 로딩 중...</div>';
 

@@ -23,7 +23,7 @@ var currentUser = null;
 var isAdmin = false;
 var allLinks = [];
 var currentCategory = 'all';
-var currentTab = 'feed';
+var currentTab = 'briefing';
 
 var CATEGORY_ICONS = { 'X': '𝕏', '뉴스': '📰', '유튜브': '▶️' };
 var CATEGORY_ORDER = ['X', '뉴스', '유튜브'];
@@ -134,7 +134,7 @@ async function loadAllData() {
     }
     allLinks = snap.docs.map(function(d) { return { id: d.id, ...d.data() }; });
     renderLinks();
-    loadFeed();
+    loadBriefing();
     fillMissingThumbnails();
   } catch(e) {
     document.getElementById('feedContent').innerHTML = '<div class="loading">데이터를 불러올 수 없습니다</div>';
