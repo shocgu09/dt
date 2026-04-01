@@ -153,7 +153,11 @@ async function loadBriefing() {
 }
 
 function linkifyBody(escaped) {
-  return escaped.replace(/(https?:\/\/[^\s<>"'，）\)]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:var(--primary);text-decoration:underline;word-break:break-all">$1</a>');
+  // [텍스트](URL) 형식 → 링크 텍스트로 변환 (먼저 처리)
+  var result = escaped.replace(/\[([^\]]+)\]\((https?:\/\/[^\s<>"'）\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:var(--primary);text-decoration:underline">$1</a>');
+  // 나머지 bare URL → URL 그대로 링크
+  result = result.replace(/(?<!\bhref=["'])(?<!\])\b(https?:\/\/[^\s<>"'，）\)]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:var(--primary);text-decoration:underline;word-break:break-all">$1</a>');
+  return result;
 }
 
 function renderBriefing(posts) {
