@@ -90,6 +90,41 @@ export default {
       }
     }
 
+    // 영상 인기 댓글 조회
+    if (url.pathname === '/api/comments') {
+      try {
+        const videoId = url.searchParams.get('videoId') || '';
+        const max = parseInt(url.searchParams.get('max') || '20');
+        if (!videoId) {
+          return new Response(JSON.stringify({ error: 'videoId를 입력하세요' }), { status: 400, headers: jsonHeaders });
+        }
+        const apiUrl = `https://www.googleapis.com/youtube/v3/commentThreads?key=${apiKey}&videoId=${videoId}&part=snippet&order=relevance&maxResults=${Math.min(max, 100)}&textFormat=plainText`;
+        const resp = await fetch(apiUrl);
+        const data = await resp.json();
+
+        if (data.error) {
+          // 댓글 비활성화된 영상 등
+          return new Response(JSON.stringify({ videoId, comments: [], disabled: true }), { headers: jsonHeaders });
+        }
+
+        const comments = (data.items || []).map(item => {
+          const s = item.snippet.topLevelComment.snippet;
+          return {
+            author: s.authorDisplayName,
+            text: s.textDisplay,
+            likes: s.likeCount,
+            publishedAt: s.publishedAt,
+          };
+        });
+
+        return new Response(JSON.stringify({ videoId, comments }), {
+          headers: { ...jsonHeaders, 'Cache-Control': 'public, max-age=300' }
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: jsonHeaders });
+      }
+    }
+
     return new Response(JSON.stringify({ status: 'ok', service: 'dt-youtube' }), { headers: jsonHeaders });
   }
 };
