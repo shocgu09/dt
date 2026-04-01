@@ -76,7 +76,51 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.toggle('active', b.dataset.tab === tab); });
   document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.toggle('active', c.id === 'tab-' + tab); });
   if (tab === 'feed') loadFeed();
+  if (tab === 'briefing') loadBriefing();
   if (tab === 'admin') renderAdminLinks();
+}
+
+// ===== 브리핑 탭 =====
+var briefingLoaded = false;
+async function loadBriefing() {
+  var el = document.getElementById('briefingContent');
+  if (briefingLoaded) return;
+  el.innerHTML = '<div class="loading">브리핑 로딩 중...</div>';
+  try {
+    var resp = await fetch('https://dt-digest.shocguna.workers.dev/api/car-digest');
+    var data = await resp.json();
+    var docs = data.docs || [];
+    if (!docs.length) {
+      el.innerHTML = '<div class="loading">아직 자동차 트렌드 브리핑이 없습니다</div>';
+      return;
+    }
+    var html = '';
+    docs.forEach(function(doc) {
+      html += '<div class="briefing-card">'
+        + '<div class="briefing-header">'
+        + '<div class="briefing-title">' + escapeHtml(doc.title) + '</div>'
+        + '<div class="briefing-date">' + escapeHtml(doc.date) + '</div>'
+        + '</div>'
+        + '<div class="briefing-body">' + renderMarkdown(doc.body) + '</div>'
+        + '</div>';
+    });
+    el.innerHTML = html;
+    briefingLoaded = true;
+  } catch(e) {
+    el.innerHTML = '<div class="loading">브리핑을 불러올 수 없습니다</div>';
+  }
+}
+
+function renderMarkdown(text) {
+  if (!text) return '';
+  return text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '<a href="$2" target="_blank" class="md-link">$1</a>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/^### (.+)$/gm, '<h4 class="md-h4">$1</h4>')
+    .replace(/^## (.+)$/gm, '<h3 class="md-h3">$1</h3>')
+    .replace(/^# (.+)$/gm, '<h2 class="md-h2">$1</h2>')
+    .replace(/\n/g, '<br>');
 }
 
 // 데이터 로드

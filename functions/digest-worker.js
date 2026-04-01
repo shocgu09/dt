@@ -148,6 +148,135 @@ export default {
       }
     }
 
+    // POST /api/car-digest — 자동차 다이제스트 저장
+    if (url.pathname === '/api/car-digest' && request.method === 'POST') {
+      const secret = request.headers.get('X-Digest-Secret');
+      if (!secret || secret !== env.DIGEST_SECRET) {
+        return new Response(JSON.stringify({ error: '인증 실패' }), { status: 401, headers: jsonHeaders });
+      }
+      try {
+        const body = await request.json();
+        const { date, title, body: content } = body;
+        if (!date || !title || !content) {
+          return new Response(JSON.stringify({ error: 'date, title, body 필수' }), { status: 400, headers: jsonHeaders });
+        }
+        const accessToken = await getServiceAccountToken(env.FIREBASE_CLIENT_EMAIL, env.FIREBASE_PRIVATE_KEY);
+        const projectId = 'dt-club';
+        const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/car_trend_posts`;
+        const docData = {
+          fields: {
+            date: { stringValue: date },
+            title: { stringValue: title },
+            body: { stringValue: content },
+            authorName: { stringValue: 'AI Agent' },
+            createdAt: { timestampValue: new Date().toISOString() },
+          }
+        };
+        const fsResp = await fetch(firestoreUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
+          body: JSON.stringify(docData),
+        });
+        if (!fsResp.ok) {
+          const err = await fsResp.text();
+          return new Response(JSON.stringify({ error: 'Firestore 저장 실패', detail: err }), { status: 500, headers: jsonHeaders });
+        }
+        const result = await fsResp.json();
+        return new Response(JSON.stringify({ success: true, docId: result.name?.split('/').pop() }), { headers: jsonHeaders });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: jsonHeaders });
+      }
+    }
+
+    // GET /api/car-links — car_trend_links 목록 조회 (공개)
+    if (url.pathname === '/api/car-links' && request.method === 'GET') {
+      const projectId = 'dt-club';
+      const queryUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
+      const queryBody = {
+        structuredQuery: {
+          from: [{ collectionId: 'car_trend_links' }],
+          orderBy: [{ field: { fieldPath: 'order' }, direction: 'ASCENDING' }],
+        }
+      };
+      try {
+        const resp = await fetch(queryUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(queryBody),
+        });
+        const results = await resp.json();
+        const docs = results
+          .filter(r => r.document)
+          .map(r => {
+            const f = r.document.fields;
+            return {
+              category: f.category?.stringValue || '',
+              name: f.name?.stringValue || '',
+              url: f.url?.stringValue || '',
+              rss: f.rss?.stringValue || '',
+              channelId: f.channelId?.stringValue || '',
+            };
+          });
+        const grouped = {
+          X: docs.filter(d => d.category === 'X').map(d => ({ name: d.name, url: d.url })),
+          뉴스: docs.filter(d => d.category === '뉴스').map(d => ({ name: d.name, url: d.url, rss: d.rss })),
+          유튜브: docs.filter(d => d.category === '유튜브').map(d => ({ name: d.name, url: d.url, channelId: d.channelId })),
+        };
+        return new Response(JSON.stringify(grouped), {
+          headers: { ...jsonHeaders, 'Cache-Control': 'public, max-age=300' }
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: jsonHeaders });
+      }
+    }
+
+    // GET /api/car-digest — 최근 자동차 다이제스트 조회 (공개)
+    if (url.pathname === '/api/car-digest' && request.method === 'GET') {
+      const date = url.searchParams.get('date');
+      const projectId = 'dt-club';
+      const queryUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
+      const queryBody = {
+        structuredQuery: {
+          from: [{ collectionId: 'car_trend_posts' }],
+          where: date ? {
+            fieldFilter: {
+              field: { fieldPath: 'date' },
+              op: 'EQUAL',
+              value: { stringValue: date },
+            }
+          } : undefined,
+          orderBy: [{ field: { fieldPath: 'createdAt' }, direction: 'DESCENDING' }],
+          limit: date ? 1 : 10,
+        }
+      };
+      try {
+        const resp = await fetch(queryUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(queryBody),
+        });
+        const results = await resp.json();
+        const docs = results
+          .filter(r => r.document)
+          .map(r => {
+            const f = r.document.fields;
+            return {
+              id: r.document.name.split('/').pop(),
+              date: f.date?.stringValue || '',
+              title: f.title?.stringValue || '',
+              body: f.body?.stringValue || '',
+              authorName: f.authorName?.stringValue || '',
+              createdAt: f.createdAt?.timestampValue || '',
+            };
+          });
+        return new Response(JSON.stringify({ docs }), {
+          headers: { ...jsonHeaders, 'Cache-Control': 'public, max-age=300' }
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: jsonHeaders });
+      }
+    }
+
     return new Response(JSON.stringify({ status: 'ok', service: 'dt-digest' }), { headers: jsonHeaders });
   }
 };
