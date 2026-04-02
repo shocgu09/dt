@@ -217,6 +217,13 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    // ── tool_data 컬렉션 (운전 계산기 데이터) ─────────────────
+    // - 누구나 읽기 가능 (비회원용 컨텐츠)
+    // - 관리자만 수정 가능
+    match /tool_data/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
 
     // ── guide_data 컬렉션 (드라이브 가이드 데이터) ──────────────
     // - 누구나 읽기 가능 (비회원용 컨텐츠)
