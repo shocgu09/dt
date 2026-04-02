@@ -213,12 +213,29 @@ document.addEventListener('keydown', function(e) {
   }, { passive: true });
 })();
 
-// 페이지 진입 시 Firestore에서 내 최고점수 불러오기
+// 페이지 진입 시 로컬 최고점수 ↔ Firestore 양방향 동기화
 function loadMyBest() {
   if (!db || !currentUser) return;
-  db.collection('game_scores').doc(currentUser.uid).get().then(function(doc) {
-    if (doc.exists && doc.data().score > bestScore) {
-      bestScore = doc.data().score;
+  var uid = currentUser.uid;
+  var docRef = db.collection('game_scores').doc(uid);
+  docRef.get().then(function(doc) {
+    var dbScore = doc.exists ? (doc.data().score || 0) : 0;
+    var name = currentUser.displayName || currentUser.email?.split('@')[0] || '익명';
+
+    if (bestScore > dbScore) {
+      // 로컬이 더 높으면 Firestore에 저장
+      var data = { score: bestScore, name: name, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+      if (doc.exists) {
+        docRef.update(data);
+      } else {
+        data.uid = uid;
+        data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+        docRef.set(data);
+      }
+      loadRanking();
+    } else if (dbScore > bestScore) {
+      // Firestore가 더 높으면 로컬 갱신
+      bestScore = dbScore;
       localStorage.setItem('dt2048best', bestScore);
       document.getElementById('bestScore').textContent = bestScore;
     }
