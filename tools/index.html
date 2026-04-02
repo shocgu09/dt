@@ -48,90 +48,17 @@
 <body>
   <header class="header">
     <a href="/" class="back-btn">← 홈</a>
-    <h1>🧮 운전 계산기</h1>
+    <h1>🔧 유지비 계산</h1>
     <button id="themeToggle" onclick="toggleTheme()" class="theme-btn">🌙</button>
   </header>
 
   <div class="tab-bar">
-    <button class="tab-btn active" data-tab="speed">🚨 과속벌금</button>
-    <button class="tab-btn" data-tab="tax">💰 자동차세</button>
-    <button class="tab-btn" data-tab="maintain">🔧 유지비</button>
+    <button class="tab-btn active" data-tab="maintain">🔧 유지비</button>
   </div>
 
   <div class="container">
-    <!-- 과속벌금 계산기 -->
-    <div id="tab-speed" class="tab-content active">
-      <div class="calc-card">
-        <h2>과속 벌금 계산기</h2>
-        <p class="calc-desc">도로유형과 속도를 입력하면 벌금·벌점을 계산합니다.</p>
-
-        <div class="form-group">
-          <label>도로 유형</label>
-          <div class="radio-group" id="roadType">
-            <button class="radio-btn active" data-value="general">일반도로</button>
-            <button class="radio-btn" data-value="highway">고속도로</button>
-            <button class="radio-btn" data-value="school">어린이보호구역</button>
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label for="speedLimit">제한속도 (km/h)</label>
-          <select id="speedLimit" class="input-field">
-            <option value="30">30 km/h</option>
-            <option value="40">40 km/h</option>
-            <option value="50">50 km/h</option>
-            <option value="60" selected>60 km/h</option>
-            <option value="80">80 km/h</option>
-            <option value="100">100 km/h</option>
-            <option value="110">110 km/h</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label for="actualSpeed">실제 주행속도 (km/h)</label>
-          <input type="number" id="actualSpeed" class="input-field" placeholder="예: 85" min="0" max="300">
-        </div>
-
-        <button class="btn-calc" onclick="calcSpeedFine()">계산하기</button>
-        <div id="speedResult" class="result-area"></div>
-      </div>
-      <button class="admin-edit-btn" id="adminEditSpeed" style="display:none" onclick="openAdminModal('speed_fine')">⚙️ 데이터 수정</button>
-    </div>
-
-    <!-- 자동차세 계산기 -->
-    <div id="tab-tax" class="tab-content">
-      <div class="calc-card">
-        <h2>자동차세 계산기</h2>
-        <p class="calc-desc">차종과 배기량으로 연간 자동차세를 계산합니다.</p>
-
-        <div class="form-group">
-          <label>차종</label>
-          <div class="radio-group" id="carType">
-            <button class="radio-btn active" data-value="passenger">승용차</button>
-            <button class="radio-btn" data-value="van">승합차</button>
-            <button class="radio-btn" data-value="truck">화물차</button>
-            <button class="radio-btn" data-value="electric">전기차</button>
-          </div>
-        </div>
-
-        <div class="form-group" id="ccGroup">
-          <label for="engineCC">배기량 (cc)</label>
-          <input type="number" id="engineCC" class="input-field" placeholder="예: 1998" min="0" max="10000">
-        </div>
-
-        <div class="form-group">
-          <label for="regYear">최초등록연도</label>
-          <select id="regYear" class="input-field"></select>
-        </div>
-
-        <button class="btn-calc" onclick="calcCarTax()">계산하기</button>
-        <div id="taxResult" class="result-area"></div>
-      </div>
-      <button class="admin-edit-btn" id="adminEditTax" style="display:none" onclick="openAdminModal('car_tax')">⚙️ 데이터 수정</button>
-    </div>
-
     <!-- 유지비 계산기 -->
-    <div id="tab-maintain" class="tab-content">
+    <div id="tab-maintain" class="tab-content active">
       <div class="calc-card">
         <h2>차량 유지비 계산기</h2>
         <p class="calc-desc">유종, 연비, 주행거리를 입력하면 월/연간 유지비를 계산합니다.</p>
@@ -191,29 +118,7 @@
     </div>
   </div>
 
-  <!-- 관리자 수정 모달 -->
-  <div class="modal-overlay" id="adminModal" style="display:none" onclick="if(event.target===this)closeAdminModal()">
-    <div class="modal-box modal-box-wide">
-      <div class="admin-modal-header">
-        <h3 id="adminModalTitle">데이터 수정</h3>
-        <div class="admin-mode-toggle">
-          <button class="admin-mode-btn active" onclick="setAdminMode('visual')">📝 비주얼</button>
-          <button class="admin-mode-btn" onclick="setAdminMode('json')">{ } JSON</button>
-        </div>
-      </div>
-      <div id="adminVisualEditor" class="admin-visual-editor"></div>
-      <textarea id="adminModalData" class="admin-textarea" style="display:none"></textarea>
-      <div class="modal-actions">
-        <button class="btn-calc" onclick="saveAdminData()">저장</button>
-        <button class="btn-cancel" onclick="closeAdminModal()">취소</button>
-      </div>
-    </div>
-  </div>
 
-  <script src="../firebase-config.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
