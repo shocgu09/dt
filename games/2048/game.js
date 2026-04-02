@@ -20,6 +20,7 @@ try {
   db = firebase.firestore();
   firebase.auth().onAuthStateChanged(function(user) {
     currentUser = user;
+    if (user) loadMyBest();
     loadRanking();
   });
 } catch(e) { console.log('Firebase 미연결'); }
@@ -211,6 +212,18 @@ document.addEventListener('keydown', function(e) {
     startX = startY = null;
   }, { passive: true });
 })();
+
+// 페이지 진입 시 Firestore에서 내 최고점수 불러오기
+function loadMyBest() {
+  if (!db || !currentUser) return;
+  db.collection('game_scores').doc(currentUser.uid).get().then(function(doc) {
+    if (doc.exists && doc.data().score > bestScore) {
+      bestScore = doc.data().score;
+      localStorage.setItem('dt2048best', bestScore);
+      document.getElementById('bestScore').textContent = bestScore;
+    }
+  }).catch(function() {});
+}
 
 // Firebase 랭킹
 function saveScore() {
