@@ -5058,7 +5058,7 @@ var _chatbotTunnelUrl = '';
 var _chatbotHistory = [];
 var _chatbotOnline = false;
 
-var CHATBOT_SYSTEM_PROMPT = '당신은 DT Club의 공식 AI 어시스턴트입니다.\n\n## DT Club 소개\n- DT Club(Drive Together)은 드라이브를 사랑하는 사람들의 모임입니다.\n- 운전자와 동승자가 함께 달리는 드라이브 동아리입니다.\n- 정기모임, 번개, 갤러리, 드라이브 코스 공유 등의 활동을 합니다.\n- 웹사이트: dt-1js.pages.dev\n\n## 제공 서비스\n- AI 드라이브 코스 추천 (aidrivecourse.pages.dev)\n- CarFit - AI 퍼스널 카 추천 (personalcar.pages.dev)\n- AI 트렌드 뉴스, 자동차 트렌드 뉴스\n- DT 스팟 (드라이브 명소 지도)\n\n## 답변 규칙\n- 반드시 한국어로만 답변하세요. 절대 중국어, 영어, 일본어를 섞지 마세요.\n- 친근하고 간결하게 답변하세요.\n- 답변은 3~5문장 이내로 짧게 해주세요.\n- 드라이브 코스 추천, 자동차 정보, DT Club 안내 등을 도와주세요.\n- 모르는 것은 솔직하게 모른다고 하세요.';
+var CHATBOT_SYSTEM_PROMPT = '[CRITICAL INSTRUCTION] You MUST respond ONLY in Korean (한국어). Never use Chinese, Japanese, or English. Every single character of your response must be in Korean. If you catch yourself writing in another language, stop and rewrite in Korean.\n\n당신은 DT Club의 공식 AI 어시스턴트입니다.\n\n## DT Club 소개\n- DT Club(Drive Together)은 드라이브를 사랑하는 사람들의 모임입니다.\n- 운전자와 동승자가 함께 달리는 드라이브 동아리입니다.\n- 정기모임, 번개, 갤러리, 드라이브 코스 공유 등의 활동을 합니다.\n- 웹사이트: dt-1js.pages.dev\n\n## 제공 서비스\n- AI 드라이브 코스 추천 (aidrivecourse.pages.dev)\n- CarFit - AI 퍼스널 카 추천 (personalcar.pages.dev)\n- AI 트렌드 뉴스, 자동차 트렌드 뉴스\n- DT 스팟 (드라이브 명소 지도)\n\n## 답변 규칙\n- 반드시 한국어로만 답변하세요. 중국어(中文), 영어(English), 일본어는 한 글자도 사용하지 마세요.\n- 이모지는 사용하지 마세요.\n- 친근하고 간결하게 답변하세요.\n- 답변은 3~5문장 이내로 짧게 해주세요.\n- 드라이브 코스 추천, 자동차 정보, DT Club 안내 등을 도와주세요.\n- 모르는 것은 솔직하게 모른다고 하세요.';
 
 async function initChatbot() {
   // 비로그인 또는 익명 사용자는 챗봇 숨김
@@ -5155,6 +5155,8 @@ async function sendChatbot() {
     var recentHistory = _chatbotHistory.slice(-10);
     messages = messages.concat(recentHistory);
 
+    var chatController = new AbortController();
+    var chatTimer = setTimeout(function() { chatController.abort(); }, 30000);
     var resp = await fetch(_chatbotTunnelUrl + '/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -5164,10 +5166,16 @@ async function sendChatbot() {
         stream: false,
         options: { num_predict: 512, temperature: 0.7 }
       }),
-      signal: AbortSignal.timeout(30000)
+      signal: chatController.signal
     });
+    clearTimeout(chatTimer);
     var data = await resp.json();
     var reply = (data.message && data.message.content) || '응답을 생성할 수 없습니다.';
+    // 중국어/일본어 문자가 포함되면 필터링
+    if (/[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]/.test(reply)) {
+      reply = reply.replace(/[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]+/g, '').replace(/\s{2,}/g, ' ').trim();
+      if (!reply || reply.length < 5) reply = '죄송합니다, 다시 질문해 주시겠어요?';
+    }
     _chatbotHistory.push({ role: 'assistant', content: reply });
     typingEl.remove();
     _appendChatMsg('bot', reply);
