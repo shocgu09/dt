@@ -1475,7 +1475,7 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 .chatbot-offline { color: var(--accent); font-size: .78rem; text-align: center; padding: 8px; }
 
 @media (max-width: 600px) {
-  .chatbot-panel { width: calc(100vw - 24px); right: 12px; bottom: 72px; max-height: 60vh; }
-  #chatbotFab { bottom: 72px; right: 12px; width: 48px; height: 48px; }
+  .chatbot-panel { width: calc(100vw - 24px); right: 12px; bottom: 100px; max-height: 55vh; }
+  #chatbotFab { bottom: 100px; right: 12px; width: 48px; height: 48px; }
 }
 
