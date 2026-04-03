@@ -166,6 +166,14 @@ service cloud.firestore {
       allow update: if isRealUser() && request.auth.uid == uid;
     }
 
+    // ── config 컬렉션 (사이트 설정) ────────────────────────────
+    // - 모든 사용자 읽기 가능 (챗봇 터널 URL 등)
+    // - 관리자만 수정
+    match /config/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // ── youtube_channels 컬렉션 (YouTube 채널 관리) ──────────
     // - 모든 사용자 읽기 가능 (홈 영상 표시)
     // - 관리자만 추가/삭제
