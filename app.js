@@ -128,6 +128,7 @@ function initAuth() {
         state.isGuest = true;
         state._wasGuest = true;
         showApp();
+        initChatbot();
         return;
       }
 
@@ -183,6 +184,7 @@ function initAuth() {
       }
       if (state._wasGuest) return;
       showApp();
+      initChatbot(); _loadChatbotAdminConfig();
       // 실시간 강퇴 감지: 관리자가 users 문서 삭제 시 즉시 로그아웃
       if (state._banListener) state._banListener();
       state._banListener = state.db.collection('users').doc(user.uid).onSnapshot(snap => {
@@ -5234,10 +5236,5 @@ async function _loadChatbotAdminConfig() {
   } catch(e) {}
 }
 
-// Firebase 인증 후 챗봇 초기화
-if (typeof firebase !== 'undefined') {
-  firebase.auth().onAuthStateChanged(function() { initChatbot(); _loadChatbotAdminConfig(); });
-} else {
-  document.addEventListener('DOMContentLoaded', function() { initChatbot(); });
-}
+// 챗봇 초기화는 initAuth의 onAuthStateChanged에서 호출됨 (state.db 준비 후)
 
