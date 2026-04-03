@@ -5161,7 +5161,8 @@ async function sendChatbot() {
       body: JSON.stringify({
         model: CHATBOT_MODEL,
         messages: recentHistory,
-        stream: false
+        stream: false,
+        _user: firebase.auth().currentUser ? (firebase.auth().currentUser.displayName || firebase.auth().currentUser.email || 'unknown') : 'guest'
       }),
       signal: chatController.signal
     });
