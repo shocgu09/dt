@@ -44,6 +44,11 @@ ws.auth.onAuthStateChanged(async function(user) {
 
   // Show quick stats on load
   wsShowQuickStats();
+
+  // Mobile: hide result panel initially
+  if (window.innerWidth <= 900) {
+    document.getElementById('wsResultPanel').classList.add('ws-hidden');
+  }
 });
 
 // --- Auth ---
@@ -192,6 +197,7 @@ async function wsSend() {
     // Execute action → result panel
     if (parsed.action) {
       await wsExecuteAction(parsed.action);
+      wsAutoSwitchToResult();
     }
   } catch(e) {
     typingEl.remove();
@@ -416,6 +422,27 @@ function wsShowTyping() {
 function wsClearResult() {
   document.getElementById('wsResultTitle').textContent = '결과 패널';
   document.getElementById('wsResultBody').innerHTML = '<div class="ws-result-empty"><div class="ws-result-empty-icon">&#x1f4ca;</div><p>AI에게 데이터를 요청하면<br>여기에 시각화됩니다</p></div>';
+}
+
+// --- Mobile Tab ---
+function wsTab(tab) {
+  var chatPanel = document.getElementById('wsChatPanel');
+  var resultPanel = document.getElementById('wsResultPanel');
+  var tabs = document.querySelectorAll('#wsTabs button');
+  tabs.forEach(function(t, i) { t.className = (i === 0 && tab === 'chat') || (i === 1 && tab === 'result') ? 'active' : ''; });
+  if (tab === 'chat') {
+    chatPanel.classList.remove('ws-hidden');
+    resultPanel.classList.add('ws-hidden');
+  } else {
+    chatPanel.classList.add('ws-hidden');
+    resultPanel.classList.remove('ws-hidden');
+  }
+}
+
+function wsAutoSwitchToResult() {
+  if (window.innerWidth <= 900) {
+    wsTab('result');
+  }
 }
 
 function escHtml(str) {

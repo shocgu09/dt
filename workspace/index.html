@@ -37,10 +37,16 @@
       </div>
     </header>
 
+    <!-- Tab Bar (mobile only) -->
+    <div class="ws-tabs" id="wsTabs">
+      <button class="active" onclick="wsTab('chat')">채팅</button>
+      <button onclick="wsTab('result')">결과</button>
+    </div>
+
     <!-- Body: Chat + Result -->
     <div class="ws-body">
       <!-- Chat Panel -->
-      <div class="ws-chat">
+      <div class="ws-chat" id="wsChatPanel">
         <div class="ws-messages" id="wsMessages">
           <div class="ws-msg ws-bot">
             <div class="ws-bubble">DT Club AI 워크스페이스에 오신 것을 환영합니다. 데이터 조회, 회원 관리, 통계 분석 등을 자연어로 요청해 보세요.<br><span class="ws-hint">서비스 개선을 위해 대화 내용이 기록될 수 있습니다.</span></div>
@@ -61,7 +67,7 @@
       </div>
 
       <!-- Result Panel -->
-      <div class="ws-result">
+      <div class="ws-result" id="wsResultPanel">
         <div class="ws-result-header">
           <span class="ws-result-title" id="wsResultTitle">결과 패널</span>
           <button onclick="wsClearResult()" class="ws-result-clear">초기화</button>
