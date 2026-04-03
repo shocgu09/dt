@@ -28,7 +28,6 @@ body {
   overflow: hidden;
   line-height: 1.6;
   letter-spacing: -.1px;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 ::-webkit-scrollbar { width: 5px; }
@@ -300,7 +299,7 @@ body {
 @media (max-width: 900px) {
   .ws-header { padding: 0 14px; height: 46px; }
   .ws-logo { font-size: .75rem; letter-spacing: 1px; }
-  .ws-user { display: none; }
+  .ws-header .ws-user { display: none; }
   .ws-back-btn { font-size: .7rem; padding: 3px 8px; }
   .ws-logout-btn { font-size: .7rem; padding: 3px 8px; }
 
@@ -309,14 +308,15 @@ body {
   .ws-body {
     display: flex; flex-direction: column;
     flex: 1; min-height: 0; overflow: hidden;
+    position: relative;
   }
   .ws-chat {
     border-right: none;
-    flex: 1; min-height: 0;
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
     display: flex; flex-direction: column; overflow: hidden;
   }
   .ws-result {
-    flex: 1; min-height: 0;
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
     display: flex; flex-direction: column; overflow: hidden;
   }
   .ws-chat.ws-hidden, .ws-result.ws-hidden { display: none !important; }
