@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DT Club AI Workspace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="workspace.css">
+</head>
+<body>
+  <!-- Auth Gate -->
+  <div id="authGate" class="auth-gate">
+    <div class="auth-box">
+      <h1>DT Club AI Workspace</h1>
+      <p>관리자 로그인이 필요합니다</p>
+      <input type="email" id="authEmail" placeholder="이메일" autocomplete="email">
+      <input type="password" id="authPw" placeholder="비밀번호" autocomplete="current-password">
+      <button id="authLoginBtn" onclick="wsLogin()">로그인</button>
+      <div id="authError" class="auth-error"></div>
+    </div>
+  </div>
+
+  <!-- Main Workspace -->
+  <div id="workspace" class="workspace" style="display:none">
+    <!-- Header -->
+    <header class="ws-header">
+      <div class="ws-header-left">
+        <span class="ws-logo">DT Club AI Workspace</span>
+        <span class="ws-status" id="wsStatus">연결 중...</span>
+      </div>
+      <div class="ws-header-right">
+        <span id="wsUser" class="ws-user"></span>
+        <a href="https://dt-1js.pages.dev/" class="ws-back-btn">DT Club</a>
+        <button onclick="wsLogout()" class="ws-logout-btn">로그아웃</button>
+      </div>
+    </header>
+
+    <!-- Body: Chat + Result -->
+    <div class="ws-body">
+      <!-- Chat Panel -->
+      <div class="ws-chat">
+        <div class="ws-messages" id="wsMessages">
+          <div class="ws-msg ws-bot">
+            <div class="ws-bubble">DT Club AI 워크스페이스에 오신 것을 환영합니다. 데이터 조회, 회원 관리, 통계 분석 등을 자연어로 요청해 보세요.<br><span class="ws-hint">서비스 개선을 위해 대화 내용이 기록될 수 있습니다.</span></div>
+          </div>
+        </div>
+        <div class="ws-presets" id="wsPresets">
+          <button onclick="wsSendPreset('회원 통계 보여줘')">회원 통계</button>
+          <button onclick="wsSendPreset('예정된 이벤트 알려줘')">이벤트 조회</button>
+          <button onclick="wsSendPreset('현재 공지 보여줘')">공지 조회</button>
+          <button onclick="wsSendPreset('회원 목록 보여줘')">회원 목록</button>
+        </div>
+        <div class="ws-input-area">
+          <input type="text" id="wsInput" placeholder="무엇을 도와드릴까요?" autocomplete="off" onkeydown="if(event.key==='Enter'&&!event.isComposing)wsSend()">
+          <button onclick="wsSend()" id="wsSendBtn" class="ws-send-btn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Result Panel -->
+      <div class="ws-result">
+        <div class="ws-result-header">
+          <span class="ws-result-title" id="wsResultTitle">결과 패널</span>
+          <button onclick="wsClearResult()" class="ws-result-clear">초기화</button>
+        </div>
+        <div class="ws-result-body" id="wsResultBody">
+          <div class="ws-result-empty">
+            <div class="ws-result-empty-icon">&#x1f4ca;</div>
+            <p>AI에게 데이터를 요청하면<br>여기에 시각화됩니다</p>
+            <div class="ws-quick-stats" id="wsQuickStats"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+  <script src="../firebase-config.js"></script>
+  <script src="workspace.js"></script>
+</body>
+</html>

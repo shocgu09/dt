@@ -2,4 +2,5 @@
 /robots.txt     /robots.txt     200
 /ads.txt        /ads.txt        200
 /manifest.json  /manifest.json  200
+/workspace/*    /workspace/:splat  200
 /*  /index.html  200
