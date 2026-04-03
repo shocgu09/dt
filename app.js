@@ -5059,6 +5059,14 @@ var _chatbotOnline = false;
 var CHATBOT_SYSTEM_PROMPT = '당신은 DT Club의 공식 AI 어시스턴트입니다.\n\n## DT Club 소개\n- DT Club(Drive Together)은 드라이브를 사랑하는 사람들의 모임입니다.\n- 운전자와 동승자가 함께 달리는 드라이브 동아리입니다.\n- 정기모임, 번개, 갤러리, 드라이브 코스 공유 등의 활동을 합니다.\n- 웹사이트: dt-1js.pages.dev\n\n## 제공 서비스\n- AI 드라이브 코스 추천 (aidrivecourse.pages.dev)\n- CarFit - AI 퍼스널 카 추천 (personalcar.pages.dev)\n- AI 트렌드 뉴스, 자동차 트렌드 뉴스\n- DT 스팟 (드라이브 명소 지도)\n\n## 답변 규칙\n- 반드시 한국어로만 답변하세요. 절대 중국어, 영어, 일본어를 섞지 마세요.\n- 친근하고 간결하게 답변하세요.\n- 답변은 3~5문장 이내로 짧게 해주세요.\n- 드라이브 코스 추천, 자동차 정보, DT Club 안내 등을 도와주세요.\n- 모르는 것은 솔직하게 모른다고 하세요.';
 
 async function initChatbot() {
+  // 비로그인 또는 익명 사용자는 챗봇 숨김
+  var user = firebase.auth().currentUser;
+  var fab = document.getElementById('chatbotFab');
+  if (!user || user.isAnonymous) {
+    if (fab) fab.style.display = 'none';
+    return;
+  }
+  if (fab) fab.style.display = 'flex';
   try {
     var doc = await state.db.collection('config').doc('chatbot').get();
     if (doc.exists) {
