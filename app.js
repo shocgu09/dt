@@ -5156,6 +5156,27 @@ async function _executeChatbotAction(action) {
       return '"' + action.name + '" 회원을 찾을 수 없습니다.';
     }
 
+    case 'query_spots': {
+      try {
+        var snap = await state.db.collection('spots').orderBy('createdAt','desc').get();
+        var spots = snap.docs.map(function(d) { return d.data(); });
+        if (action.category) {
+          spots = spots.filter(function(s) { return s.category === action.category; });
+        }
+        if (action.search) {
+          var q = action.search.toLowerCase();
+          spots = spots.filter(function(s) {
+            return (s.name||'').toLowerCase().includes(q) || (s.address||'').toLowerCase().includes(q) || (s.memo||'').toLowerCase().includes(q);
+          });
+        }
+        if (!spots.length) return (action.category || '해당') + ' 카테고리에 등록된 스팟이 없습니다.';
+        var list = spots.slice(0,8).map(function(s) {
+          return '- ' + s.name + (s.address ? ' (' + s.address + ')' : '') + (s.memo ? ' - ' + s.memo : '');
+        }).join('\n');
+        return 'DT 스팟 ' + spots.length + '개' + (action.category ? ' [' + action.category + ']' : '') + ':\n' + list + (spots.length > 8 ? '\n...외 ' + (spots.length - 8) + '개 더 (dt-1js.pages.dev/spots/ 에서 확인)' : '');
+      } catch(e) { return '스팟 데이터를 불러올 수 없습니다.'; }
+    }
+
     default:
       return null;
   }

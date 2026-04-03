@@ -399,6 +399,59 @@ async function wsExecuteAction(action) {
       resultBody.innerHTML = html;
       break;
     }
+
+    case 'query_spots': {
+      resultTitle.textContent = 'DT 스팟' + (action.category ? ' - ' + action.category : '');
+      try {
+        var snap = await ws.db.collection('spots').orderBy('createdAt','desc').get();
+        var spots = snap.docs.map(function(d) { return d.data(); });
+        if (action.category) {
+          spots = spots.filter(function(s) { return s.category === action.category; });
+        }
+        if (action.search) {
+          var q = action.search.toLowerCase();
+          spots = spots.filter(function(s) {
+            return (s.name||'').toLowerCase().includes(q) || (s.address||'').toLowerCase().includes(q) || (s.memo||'').toLowerCase().includes(q);
+          });
+        }
+        var catEmojis = { '맛집':'🍽️', '카페':'☕', '명소':'🏛️', '코스':'🛣️', '기타':'📍' };
+        var catCounts = {};
+        snap.docs.forEach(function(d) { var c = d.data().category || '기타'; catCounts[c] = (catCounts[c]||0)+1; });
+
+        var html = '<div class="ws-card"><div class="ws-card-title">스팟 현황</div><div class="ws-stat-grid">' +
+          '<div class="ws-stat-item"><div class="ws-stat-num">' + snap.size + '</div><div class="ws-stat-label">전체</div></div>';
+        Object.keys(catCounts).forEach(function(c) {
+          html += '<div class="ws-stat-item"><div class="ws-stat-num" style="font-size:1.2rem">' + (catEmojis[c]||'📍') + ' ' + catCounts[c] + '</div><div class="ws-stat-label">' + c + '</div></div>';
+        });
+        html += '</div></div>';
+
+        html += '<div class="ws-card"><div class="ws-card-title">' + (action.category ? action.category : '전체') + ' 스팟 (' + spots.length + '개)</div>';
+        if (!spots.length) {
+          html += '<p style="color:var(--text3);font-size:.85rem;padding:12px">등록된 스팟이 없습니다.</p>';
+        } else {
+          spots.slice(0, 20).forEach(function(s) {
+            var emoji = catEmojis[s.category] || '📍';
+            html += '<div class="ws-event-item">' +
+              '<div class="ws-event-title">' + emoji + ' ' + escHtml(s.name) + '</div>' +
+              '<div class="ws-event-meta">' +
+              '<span>' + escHtml(s.category || '기타') + '</span>' +
+              (s.address ? '<span>' + escHtml(s.address) + '</span>' : '') +
+              '</div>' +
+              (s.memo ? '<div style="font-size:.78rem;color:var(--text2);margin-top:4px">' + escHtml(s.memo) + '</div>' : '') +
+              '</div>';
+          });
+          if (spots.length > 20) {
+            html += '<p style="font-size:.78rem;color:var(--text3);padding:8px 14px">...외 ' + (spots.length - 20) + '개 더</p>';
+          }
+        }
+        html += '<a href="https://dt-1js.pages.dev/spots/" target="_blank" style="display:inline-block;margin:12px 14px;padding:8px 20px;background:var(--primary);color:#fff;text-decoration:none;font-weight:700;font-size:.82rem;border:2px solid var(--primary-dark);box-shadow:3px 3px 0 rgba(var(--primary-rgb),.3)">DT 스팟 열기</a>';
+        html += '</div>';
+        resultBody.innerHTML = html;
+      } catch(e) {
+        resultBody.innerHTML = '<div class="ws-card"><p style="color:var(--accent)">스팟 데이터를 불러올 수 없습니다.</p></div>';
+      }
+      break;
+    }
   }
 }
 
