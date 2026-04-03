@@ -134,7 +134,10 @@ function wsShowQuickStats() {
 }
 
 // --- Chat ---
+var _wsSending = false;
+
 function wsSendPreset(text) {
+  if (_wsSending) return;
   document.getElementById('wsInput').value = text;
   wsSend();
 }
@@ -142,7 +145,7 @@ function wsSendPreset(text) {
 async function wsSend() {
   var input = document.getElementById('wsInput');
   var text = input.value.trim();
-  if (!text) return;
+  if (!text || _wsSending) return;
   input.value = '';
 
   if (!ws.online) {
@@ -153,6 +156,7 @@ async function wsSend() {
   wsAppendMsg('user', text);
   ws.history.push({ role: 'user', content: text });
 
+  _wsSending = true;
   var sendBtn = document.getElementById('wsSendBtn');
   sendBtn.disabled = true;
   input.disabled = true;
@@ -205,6 +209,7 @@ async function wsSend() {
       wsAppendMsg('bot', 'AI 서버와 연결할 수 없습니다.');
     }
   }
+  _wsSending = false;
   sendBtn.disabled = false;
   input.disabled = false;
   input.focus();

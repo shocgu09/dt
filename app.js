@@ -5230,7 +5230,10 @@ function toggleChatbot() {
   }
 }
 
+var _chatbotSending = false;
+
 function sendPreset(text) {
+  if (_chatbotSending) return;
   document.getElementById('chatbotInput').value = text;
   sendChatbot();
 }
@@ -5238,7 +5241,7 @@ function sendPreset(text) {
 async function sendChatbot() {
   var input = document.getElementById('chatbotInput');
   var text = input.value.trim();
-  if (!text) return;
+  if (!text || _chatbotSending) return;
   input.value = '';
 
   if (!_chatbotOnline) {
@@ -5249,6 +5252,7 @@ async function sendChatbot() {
   _appendChatMsg('user', text);
   _chatbotHistory.push({ role: 'user', content: text });
 
+  _chatbotSending = true;
   var sendBtn = document.getElementById('chatbotSendBtn');
   sendBtn.disabled = true;
   input.disabled = true;
@@ -5302,6 +5306,7 @@ async function sendChatbot() {
       _setChatbotOffline();
     }
   }
+  _chatbotSending = false;
   sendBtn.disabled = false;
   input.disabled = false;
   input.focus();
