@@ -195,10 +195,15 @@ async function wsSend() {
 
     ws.history.push({ role: 'assistant', content: reply });
     typingEl.remove();
-    wsAppendMsg('bot', reply);
+    if (reply && reply.trim()) {
+      wsAppendMsg('bot', reply);
+    }
 
     // Execute action → result panel
     if (parsed.action) {
+      if (!reply || !reply.trim()) {
+        wsAppendMsg('bot', '조회 결과를 결과 패널에 표시합니다.');
+      }
       await wsExecuteAction(parsed.action);
       wsAutoSwitchToResult();
     }

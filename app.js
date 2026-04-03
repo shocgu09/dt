@@ -5310,13 +5310,17 @@ async function sendChatbot() {
     }
     _chatbotHistory.push({ role: 'assistant', content: reply });
     typingEl.remove();
-    _appendChatMsg('bot', reply);
+    if (reply && reply.trim()) {
+      _appendChatMsg('bot', reply);
+    }
     // 액션 실행
     if (parsed.action) {
       var actionResult = await _executeChatbotAction(parsed.action);
       if (actionResult) {
         _appendChatMsg('bot', actionResult);
         _chatbotHistory.push({ role: 'assistant', content: actionResult });
+      } else if (!reply || !reply.trim()) {
+        _appendChatMsg('bot', '요청을 처리했습니다.');
       }
     }
   } catch(e) {
