@@ -5058,6 +5058,109 @@ var _chatbotTunnelUrl = '';
 var _chatbotHistory = [];
 var _chatbotOnline = false;
 
+// --- 액션 파서 ---
+function _parseChatbotAction(rawReply) {
+  var match = rawReply.match(/\[ACTION\]([\s\S]*?)\[\/ACTION\]/);
+  var action = null;
+  var text = rawReply;
+  if (match) {
+    text = rawReply.replace(match[0], '').trim();
+    try { action = JSON.parse(match[1].trim()); } catch(e) { action = null; }
+  }
+  return { text: text, action: action };
+}
+
+// --- 액션 실행기 ---
+async function _executeChatbotAction(action) {
+  if (!action || !action.type) return null;
+
+  switch (action.type) {
+    case 'navigate': {
+      var validPages = ['home','members','cars','events','anon'];
+      if (validPages.includes(action.target)) {
+        toggleChatbot();
+        setTimeout(function() { goPage(action.target); }, 300);
+      }
+      return null;
+    }
+
+    case 'query_members': {
+      var members = state.members || [];
+      if (action.search) {
+        var q = action.search.toLowerCase();
+        var found = members.filter(function(m) {
+          return m.name.toLowerCase().includes(q) || (m.nickname || '').toLowerCase().includes(q);
+        });
+        if (!found.length) return '"' + action.search + '"(으)로 검색된 회원이 없습니다.';
+        return '검색 결과 ' + found.length + '명: ' + found.map(function(m){ return m.name; }).join(', ');
+      }
+      var drivers = members.filter(function(m){ return m.role === 'driver'; }).length;
+      var passengers = members.length - drivers;
+      return '현재 등록된 회원은 총 ' + members.length + '명입니다. (드라이버 ' + drivers + '명, 패신저 ' + passengers + '명)';
+    }
+
+    case 'query_events': {
+      var events = state.events || [];
+      var now = new Date();
+      now.setHours(0,0,0,0);
+      var upcoming = events.filter(function(e) { return new Date(e.date) >= now; })
+        .sort(function(a,b) { return new Date(a.date) - new Date(b.date); });
+      if (action.filter === 'next') {
+        if (!upcoming.length) return '예정된 이벤트가 없습니다.';
+        var next = upcoming[0];
+        return '다음 이벤트: ' + next.title + ' (' + next.date + ')' + (next.location ? ' / 장소: ' + next.location : '') + (next.time ? ' / 시간: ' + next.time : '');
+      }
+      if (!upcoming.length) return '예정된 이벤트가 없습니다.';
+      var list = upcoming.slice(0, 5).map(function(e) { return '- ' + e.title + ' (' + e.date + ')'; }).join('\n');
+      return '예정된 이벤트 ' + upcoming.length + '개:\n' + list;
+    }
+
+    case 'query_notices': {
+      try {
+        var snap = await state.db.collection('notices').orderBy('createdAt','desc').limit(5).get();
+        if (snap.empty) return '현재 등록된 공지가 없습니다.';
+        var notices = snap.docs.map(function(d) { return d.data(); });
+        var nlist = notices.map(function(n) { return '- ' + n.title; }).join('\n');
+        return '최근 공지 ' + notices.length + '개:\n' + nlist;
+      } catch(e) { return '공지를 불러올 수 없습니다.'; }
+    }
+
+    case 'create_notice': {
+      if (state.currentUserRole !== 'admin' && state.currentUserRole !== 'superadmin') {
+        return '공지 생성은 관리자만 가능합니다.';
+      }
+      if (!action.title) return '공지 제목이 필요합니다.';
+      try {
+        var expDate = new Date();
+        expDate.setDate(expDate.getDate() + 7);
+        await state.db.collection('notices').add({
+          title: action.title,
+          subtitle: '',
+          content: action.content || '',
+          expiresAt: expDate.toISOString().slice(0,16),
+          createdAt: new Date().toISOString().slice(0,16),
+          updatedAt: new Date().toISOString().slice(0,16),
+        });
+        return '공지 "' + action.title + '" 등록 완료! (7일 후 자동 만료)';
+      } catch(e) { return '공지 생성에 실패했습니다.'; }
+    }
+
+    case 'search_member': {
+      if (!action.name) return null;
+      var sq = action.name.toLowerCase();
+      var fm = (state.members || []).find(function(m) { return m.name.toLowerCase().includes(sq); });
+      if (fm) {
+        openMemberDetail(fm.id);
+        return null;
+      }
+      return '"' + action.name + '" 회원을 찾을 수 없습니다.';
+    }
+
+    default:
+      return null;
+  }
+}
+
 var CHATBOT_MODEL = 'dt-assistant';
 
 async function initChatbot() {
@@ -5172,7 +5275,10 @@ async function sendChatbot() {
     });
     clearTimeout(chatTimer);
     var data = await resp.json();
-    var reply = (data.message && data.message.content) || '응답을 생성할 수 없습니다.';
+    var rawReply = (data.message && data.message.content) || '응답을 생성할 수 없습니다.';
+    // 액션 파싱 (CJK 필터 전에 처리)
+    var parsed = _parseChatbotAction(rawReply);
+    var reply = parsed.text;
     // 중국어/일본어 문자가 포함되면 필터링
     if (/[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]/.test(reply)) {
       reply = reply.replace(/[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]+/g, '').replace(/\s{2,}/g, ' ').trim();
@@ -5181,6 +5287,14 @@ async function sendChatbot() {
     _chatbotHistory.push({ role: 'assistant', content: reply });
     typingEl.remove();
     _appendChatMsg('bot', reply);
+    // 액션 실행
+    if (parsed.action) {
+      var actionResult = await _executeChatbotAction(parsed.action);
+      if (actionResult) {
+        _appendChatMsg('bot', actionResult);
+        _chatbotHistory.push({ role: 'assistant', content: actionResult });
+      }
+    }
   } catch(e) {
     typingEl.remove();
     if (e.name === 'TimeoutError') {
