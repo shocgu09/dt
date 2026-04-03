@@ -5231,8 +5231,6 @@ function toggleChatbot() {
 }
 
 function sendPreset(text) {
-  var presets = document.getElementById('chatbotPresets');
-  if (presets) presets.remove();
   document.getElementById('chatbotInput').value = text;
   sendChatbot();
 }

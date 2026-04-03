@@ -135,8 +135,6 @@ function wsShowQuickStats() {
 
 // --- Chat ---
 function wsSendPreset(text) {
-  var presets = document.getElementById('wsPresets');
-  if (presets) presets.style.display = 'none';
   document.getElementById('wsInput').value = text;
   wsSend();
 }
