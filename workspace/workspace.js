@@ -160,6 +160,7 @@ async function wsSend() {
   var sendBtn = document.getElementById('wsSendBtn');
   sendBtn.disabled = true;
   input.disabled = true;
+  document.querySelectorAll('#wsPresets button').forEach(function(b) { b.disabled = true; b.style.opacity = '.4'; });
 
   var typingEl = wsShowTyping();
 
@@ -213,6 +214,7 @@ async function wsSend() {
   sendBtn.disabled = false;
   input.disabled = false;
   input.focus();
+  document.querySelectorAll('#wsPresets button').forEach(function(b) { b.disabled = false; b.style.opacity = '1'; });
 }
 
 // --- Action Parser ---
@@ -237,9 +239,10 @@ async function wsExecuteAction(action) {
     case 'navigate': {
       resultTitle.textContent = '페이지 이동';
       var pageNames = { home:'홈', members:'회원', cars:'차량', events:'이벤트', anon:'게시판' };
+      var targetPath = action.target === 'home' ? '' : action.target;
       resultBody.innerHTML = '<div class="ws-card"><div class="ws-card-title">페이지 이동</div>' +
         '<p style="font-size:.9rem;color:var(--text2)">DT Club "' + (pageNames[action.target] || action.target) + '" 페이지로 이동합니다.</p>' +
-        '<a href="https://dt-1js.pages.dev/#/' + action.target + '" target="_blank" style="display:inline-block;margin-top:12px;padding:8px 20px;background:var(--primary);color:#fff;text-decoration:none;font-weight:700;font-size:.85rem">열기</a></div>';
+        '<a href="https://dt-1js.pages.dev/' + targetPath + '" target="_blank" style="display:inline-block;margin-top:12px;padding:10px 24px;background:var(--primary);color:#fff;text-decoration:none;font-weight:700;font-size:.85rem;border:2px solid var(--primary-dark);box-shadow:3px 3px 0 rgba(var(--primary-rgb),.3)">' + (pageNames[action.target] || action.target) + ' 페이지 열기</a></div>';
       break;
     }
 

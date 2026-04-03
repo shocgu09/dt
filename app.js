@@ -5256,6 +5256,7 @@ async function sendChatbot() {
   var sendBtn = document.getElementById('chatbotSendBtn');
   sendBtn.disabled = true;
   input.disabled = true;
+  document.querySelectorAll('#chatbotPresets button').forEach(function(b) { b.disabled = true; b.style.opacity = '.4'; });
 
   var typingEl = _showTyping();
 
@@ -5310,6 +5311,7 @@ async function sendChatbot() {
   sendBtn.disabled = false;
   input.disabled = false;
   input.focus();
+  document.querySelectorAll('#chatbotPresets button').forEach(function(b) { b.disabled = false; b.style.opacity = '1'; });
 }
 
 function _appendChatMsg(role, text) {

@@ -306,11 +306,11 @@ body {
   .ws-tabs { display: flex; }
 
   .ws-body {
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr;
+    display: flex; flex-direction: column;
   }
-  .ws-chat { border-right: none; }
-  .ws-chat.ws-hidden, .ws-result.ws-hidden { display: none; }
+  .ws-chat { border-right: none; flex: 1; min-height: 0; }
+  .ws-result { flex: 1; min-height: 0; }
+  .ws-chat.ws-hidden, .ws-result.ws-hidden { display: none !important; }
 
   .ws-messages { padding: 14px; }
   .ws-presets { padding: 6px 14px; }
