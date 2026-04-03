@@ -297,7 +297,7 @@ body {
 
 /* ===== MOBILE ===== */
 @media (max-width: 900px) {
-  .ws-header { padding: 0 14px; height: 46px; }
+  .ws-header { padding: 0 14px; padding-top: env(safe-area-inset-top, 0px); height: calc(46px + env(safe-area-inset-top, 0px)); }
   .ws-logo { font-size: .75rem; letter-spacing: 1px; }
   .ws-header .ws-user { display: none; }
   .ws-back-btn { font-size: .7rem; padding: 3px 8px; }
@@ -328,7 +328,7 @@ body {
   .ws-presets { padding: 6px 14px; flex-shrink: 0; }
   .ws-input-area {
     padding: 10px 14px;
-    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 10px);
     flex-shrink: 0;
   }
   .ws-bubble { max-width: 92%; font-size: .84rem; }
