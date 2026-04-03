@@ -28,6 +28,7 @@ body {
   overflow: hidden;
   line-height: 1.6;
   letter-spacing: -.1px;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 ::-webkit-scrollbar { width: 5px; }
@@ -65,7 +66,7 @@ body {
 .auth-error { color: var(--accent); font-size: .8rem; margin-top: 10px; font-weight: 600; }
 
 /* ===== Workspace Layout ===== */
-.workspace { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+.workspace { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
 
 /* ===== Header ===== */
 .ws-header {
@@ -111,14 +112,14 @@ body {
 /* ===== Body ===== */
 .ws-body {
   display: grid; grid-template-columns: minmax(340px, 480px) 1fr;
-  flex: 1; min-height: 0;
+  flex: 1; min-height: 0; overflow: hidden;
 }
 
 /* ===== Chat ===== */
 .ws-chat {
   display: flex; flex-direction: column;
   border-right: 2px solid var(--border); background: var(--bg2);
-  min-height: 0;
+  min-height: 0; overflow: hidden;
 }
 .ws-messages {
   flex: 1; overflow-y: auto; padding: 16px;
@@ -303,20 +304,35 @@ body {
   .ws-back-btn { font-size: .7rem; padding: 3px 8px; }
   .ws-logout-btn { font-size: .7rem; padding: 3px 8px; }
 
-  .ws-tabs { display: flex; }
+  .ws-tabs { display: flex; flex-shrink: 0; }
 
   .ws-body {
     display: flex; flex-direction: column;
+    flex: 1; min-height: 0; overflow: hidden;
   }
-  .ws-chat { border-right: none; flex: 1; min-height: 0; }
-  .ws-result { flex: 1; min-height: 0; }
+  .ws-chat {
+    border-right: none;
+    flex: 1; min-height: 0;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .ws-result {
+    flex: 1; min-height: 0;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
   .ws-chat.ws-hidden, .ws-result.ws-hidden { display: none !important; }
 
-  .ws-messages { padding: 14px; }
-  .ws-presets { padding: 6px 14px; }
-  .ws-input-area { padding: 10px 14px; }
+  .ws-messages {
+    padding: 14px;
+    flex: 1; min-height: 0; overflow-y: auto;
+  }
+  .ws-presets { padding: 6px 14px; flex-shrink: 0; }
+  .ws-input-area {
+    padding: 10px 14px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    flex-shrink: 0;
+  }
   .ws-bubble { max-width: 92%; font-size: .84rem; }
-  .ws-result-body { padding: 14px; }
+  .ws-result-body { padding: 14px; flex: 1; min-height: 0; overflow-y: auto; }
   .ws-stat-grid { grid-template-columns: repeat(2, 1fr); }
   .ws-card { padding: 16px; }
 }
