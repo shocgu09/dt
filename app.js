@@ -5077,28 +5077,32 @@ async function initChatbot() {
   } catch(e) {}
   if (_chatbotTunnelUrl) {
     checkChatbotHealth();
-    setInterval(checkChatbotHealth, 60000);
+    setInterval(checkChatbotHealth, 30000);
   } else {
     _setChatbotOffline();
   }
 }
+
+var _chatbotFailCount = 0;
 
 async function checkChatbotHealth() {
   var dot = document.getElementById('chatbotOnline');
   var statusEl = document.getElementById('chatbotHealthStatus');
   try {
     var controller = new AbortController();
-    var timer = setTimeout(function() { controller.abort(); }, 5000);
+    var timer = setTimeout(function() { controller.abort(); }, 10000);
     var resp = await fetch(_chatbotTunnelUrl + '/api/tags', { signal: controller.signal, mode: 'cors' });
     clearTimeout(timer);
     if (resp.ok) {
       _chatbotOnline = true;
+      _chatbotFailCount = 0;
       if (dot) dot.style.background = '#4ade80';
       if (statusEl) { statusEl.textContent = '온라인'; statusEl.style.color = '#4ade80'; }
       return;
     }
   } catch(e) { console.log('chatbot health check failed:', e); }
-  _setChatbotOffline();
+  _chatbotFailCount++;
+  if (_chatbotFailCount >= 2) _setChatbotOffline();
 }
 
 function _setChatbotOffline() {
