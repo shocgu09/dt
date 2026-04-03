@@ -474,9 +474,53 @@
           </div>
           <div id="ytChannelList" class="user-list"></div>
         </div>
+        <div class="admin-card" style="grid-column:1/-1">
+          <h3>🤖 AI 챗봇 설정</h3>
+          <p class="admin-desc">로컬 LLM 터널 URL을 설정합니다. Cloudflare Tunnel로 생성된 URL을 입력하세요.</p>
+          <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+            <input type="text" id="chatbotTunnelUrl" placeholder="https://xxxx.trycloudflare.com" style="flex:1;min-width:280px" />
+            <button class="btn btn-primary btn-sm" onclick="saveChatbotConfig()">저장</button>
+            <span id="chatbotConfigStatus" style="font-size:.82rem;color:var(--text3)"></span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span style="font-size:.82rem;color:var(--text3)">상태:</span>
+            <span id="chatbotHealthStatus" style="font-size:.82rem">확인 중...</span>
+          </div>
+        </div>
       </div>
     </section>
   </main>
+
+  <!-- AI 챗봇 위젯 -->
+  <div id="chatbotFab" onclick="toggleChatbot()" title="AI 어시스턴트">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+  </div>
+  <div id="chatbotPanel" class="chatbot-panel chatbot-hidden">
+    <div class="chatbot-header">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:1.1rem">🤖</span>
+        <span style="font-weight:700;font-size:.95rem">DT AI 어시스턴트</span>
+        <span id="chatbotOnline" style="width:8px;height:8px;border-radius:50%;background:#4ade80;display:inline-block"></span>
+      </div>
+      <button onclick="toggleChatbot()" style="background:none;border:none;color:var(--text);cursor:pointer;font-size:1.2rem;padding:4px">✕</button>
+    </div>
+    <div class="chatbot-messages" id="chatbotMessages">
+      <div class="chatbot-msg chatbot-bot">
+        <div class="chatbot-bubble">안녕하세요! DT Club AI 어시스턴트입니다. 드라이브 코스, 차량 정보 등 궁금한 점을 물어보세요!</div>
+      </div>
+      <div class="chatbot-presets" id="chatbotPresets">
+        <button class="chatbot-preset-btn" onclick="sendPreset('주말에 갈만한 드라이브 코스 추천해줘')">🚗 드라이브 코스 추천</button>
+        <button class="chatbot-preset-btn" onclick="sendPreset('야경 드라이브 추천해줘')">🌃 야경 드라이브</button>
+        <button class="chatbot-preset-btn" onclick="sendPreset('DT Club이 뭐야?')">❓ DT Club 소개</button>
+      </div>
+    </div>
+    <div class="chatbot-input-area">
+      <input type="text" id="chatbotInput" placeholder="메시지를 입력하세요..." onkeydown="if(event.key==='Enter')sendChatbot()" />
+      <button onclick="sendChatbot()" class="chatbot-send-btn" id="chatbotSendBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </div>
 
   <!-- 앱 설치 안내 모달 -->
   <div class="modal-overlay" id="installGuideModal">

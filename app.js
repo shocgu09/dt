@@ -5050,3 +5050,184 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// ===== AI CHATBOT =====
+var _chatbotOpen = false;
+var _chatbotTunnelUrl = '';
+var _chatbotHistory = [];
+var _chatbotOnline = false;
+
+var CHATBOT_SYSTEM_PROMPT = '너는 DT Club의 AI 어시스턴트야. DT Club은 드라이브를 사랑하는 사람들의 모임이야. 주로 드라이브 코스 추천, 자동차 정보, 모임 안내 등을 도와줘. 친근하고 간결하게 답변해. 한국어로 대답해. 답변은 3~5문장 이내로 짧게 해줘.';
+
+async function initChatbot() {
+  try {
+    var doc = await state.db.collection('config').doc('chatbot').get();
+    if (doc.exists) {
+      _chatbotTunnelUrl = (doc.data().tunnelUrl || '').replace(/\/+$/, '');
+    }
+  } catch(e) {}
+  if (_chatbotTunnelUrl) {
+    checkChatbotHealth();
+    setInterval(checkChatbotHealth, 60000);
+  } else {
+    _setChatbotOffline();
+  }
+}
+
+async function checkChatbotHealth() {
+  var dot = document.getElementById('chatbotOnline');
+  var statusEl = document.getElementById('chatbotHealthStatus');
+  try {
+    var resp = await fetch(_chatbotTunnelUrl + '/', { signal: AbortSignal.timeout(5000) });
+    var text = await resp.text();
+    if (text.includes('Ollama')) {
+      _chatbotOnline = true;
+      if (dot) dot.style.background = '#4ade80';
+      if (statusEl) { statusEl.textContent = '온라인'; statusEl.style.color = '#4ade80'; }
+      return;
+    }
+  } catch(e) {}
+  _setChatbotOffline();
+}
+
+function _setChatbotOffline() {
+  _chatbotOnline = false;
+  var dot = document.getElementById('chatbotOnline');
+  var statusEl = document.getElementById('chatbotHealthStatus');
+  if (dot) dot.style.background = 'var(--accent)';
+  if (statusEl) { statusEl.textContent = '오프라인'; statusEl.style.color = 'var(--accent)'; }
+}
+
+function toggleChatbot() {
+  _chatbotOpen = !_chatbotOpen;
+  var panel = document.getElementById('chatbotPanel');
+  var fab = document.getElementById('chatbotFab');
+  if (_chatbotOpen) {
+    panel.classList.remove('chatbot-hidden');
+    fab.style.display = 'none';
+    document.getElementById('chatbotInput').focus();
+  } else {
+    panel.classList.add('chatbot-hidden');
+    fab.style.display = 'flex';
+  }
+}
+
+function sendPreset(text) {
+  var presets = document.getElementById('chatbotPresets');
+  if (presets) presets.remove();
+  document.getElementById('chatbotInput').value = text;
+  sendChatbot();
+}
+
+async function sendChatbot() {
+  var input = document.getElementById('chatbotInput');
+  var text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+
+  if (!_chatbotOnline) {
+    _appendChatMsg('bot', '현재 AI 서버가 오프라인입니다. 관리자의 PC가 켜져 있을 때 이용 가능합니다.');
+    return;
+  }
+
+  _appendChatMsg('user', text);
+  _chatbotHistory.push({ role: 'user', content: text });
+
+  var sendBtn = document.getElementById('chatbotSendBtn');
+  sendBtn.disabled = true;
+  input.disabled = true;
+
+  var typingEl = _showTyping();
+
+  try {
+    var messages = [{ role: 'system', content: CHATBOT_SYSTEM_PROMPT }];
+    var recentHistory = _chatbotHistory.slice(-10);
+    messages = messages.concat(recentHistory);
+
+    var resp = await fetch(_chatbotTunnelUrl + '/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'qwen2.5:14b',
+        messages: messages,
+        stream: false,
+        options: { num_predict: 512, temperature: 0.7 }
+      }),
+      signal: AbortSignal.timeout(30000)
+    });
+    var data = await resp.json();
+    var reply = (data.message && data.message.content) || '응답을 생성할 수 없습니다.';
+    _chatbotHistory.push({ role: 'assistant', content: reply });
+    typingEl.remove();
+    _appendChatMsg('bot', reply);
+  } catch(e) {
+    typingEl.remove();
+    if (e.name === 'TimeoutError') {
+      _appendChatMsg('bot', '응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.');
+    } else {
+      _appendChatMsg('bot', 'AI 서버와 연결할 수 없습니다. 관리자 PC가 꺼져 있을 수 있습니다.');
+      _setChatbotOffline();
+    }
+  }
+  sendBtn.disabled = false;
+  input.disabled = false;
+  input.focus();
+}
+
+function _appendChatMsg(role, text) {
+  var container = document.getElementById('chatbotMessages');
+  var div = document.createElement('div');
+  div.className = 'chatbot-msg chatbot-' + (role === 'user' ? 'user' : 'bot');
+  var bubble = document.createElement('div');
+  bubble.className = 'chatbot-bubble';
+  bubble.textContent = text;
+  div.appendChild(bubble);
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function _showTyping() {
+  var container = document.getElementById('chatbotMessages');
+  var div = document.createElement('div');
+  div.className = 'chatbot-msg chatbot-bot';
+  div.innerHTML = '<div class="chatbot-typing"><span></span><span></span><span></span></div>';
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  return div;
+}
+
+async function saveChatbotConfig() {
+  var url = document.getElementById('chatbotTunnelUrl').value.trim().replace(/\/+$/, '');
+  var statusEl = document.getElementById('chatbotConfigStatus');
+  if (!url) { statusEl.textContent = 'URL을 입력하세요'; return; }
+  try {
+    await state.db.collection('config').doc('chatbot').set({ tunnelUrl: url }, { merge: true });
+    _chatbotTunnelUrl = url;
+    statusEl.textContent = '저장됨!';
+    statusEl.style.color = '#4ade80';
+    checkChatbotHealth();
+    setTimeout(function() { statusEl.textContent = ''; }, 2000);
+  } catch(e) {
+    statusEl.textContent = '저장 실패';
+    statusEl.style.color = 'var(--accent)';
+  }
+}
+
+// 관리자 패널 렌더 시 터널 URL 로드
+var _origRenderAdmin = typeof renderAdminYouTube === 'function' ? renderAdminYouTube : null;
+async function _loadChatbotAdminConfig() {
+  try {
+    var doc = await state.db.collection('config').doc('chatbot').get();
+    if (doc.exists && doc.data().tunnelUrl) {
+      var input = document.getElementById('chatbotTunnelUrl');
+      if (input) input.value = doc.data().tunnelUrl;
+    }
+  } catch(e) {}
+}
+
+// Firebase 인증 후 챗봇 초기화
+if (typeof firebase !== 'undefined') {
+  firebase.auth().onAuthStateChanged(function() { initChatbot(); _loadChatbotAdminConfig(); });
+} else {
+  document.addEventListener('DOMContentLoaded', function() { initChatbot(); });
+}
+
