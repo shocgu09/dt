@@ -5077,15 +5077,17 @@ async function checkChatbotHealth() {
   var dot = document.getElementById('chatbotOnline');
   var statusEl = document.getElementById('chatbotHealthStatus');
   try {
-    var resp = await fetch(_chatbotTunnelUrl + '/', { signal: AbortSignal.timeout(5000) });
-    var text = await resp.text();
-    if (text.includes('Ollama')) {
+    var controller = new AbortController();
+    var timer = setTimeout(function() { controller.abort(); }, 5000);
+    var resp = await fetch(_chatbotTunnelUrl + '/api/tags', { signal: controller.signal, mode: 'cors' });
+    clearTimeout(timer);
+    if (resp.ok) {
       _chatbotOnline = true;
       if (dot) dot.style.background = '#4ade80';
       if (statusEl) { statusEl.textContent = '온라인'; statusEl.style.color = '#4ade80'; }
       return;
     }
-  } catch(e) {}
+  } catch(e) { console.log('chatbot health check failed:', e); }
   _setChatbotOffline();
 }
 
