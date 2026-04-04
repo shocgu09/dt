@@ -413,8 +413,9 @@ async function wsExecuteAction(action) {
         if (action.category) {
           spots = spots.filter(function(s) { return s.category === action.category; });
         }
-        if (action.search) {
-          var q = action.search.toLowerCase();
+        var searchTerm = action.search || action.location || action.region || null;
+        if (searchTerm) {
+          var q = searchTerm.toLowerCase();
           spots = spots.filter(function(s) {
             return (s.name||'').toLowerCase().includes(q) || (s.address||'').toLowerCase().includes(q) || (s.memo||'').toLowerCase().includes(q);
           });

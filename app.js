@@ -5077,9 +5077,18 @@ async function _executeChatbotAction(action) {
   switch (action.type) {
     case 'navigate': {
       var validPages = ['home','members','cars','events','anon'];
+      var externalLinks = {
+        'carfit': 'https://personalcar.pages.dev',
+        'personalcar': 'https://personalcar.pages.dev',
+        'aidrivecourse': 'https://aidrivecourse.pages.dev',
+        'drivecourse': 'https://aidrivecourse.pages.dev',
+        'spots': 'https://dt-1js.pages.dev/spots/'
+      };
       if (validPages.includes(action.target)) {
         toggleChatbot();
         setTimeout(function() { goPage(action.target); }, 300);
+      } else if (externalLinks[action.target]) {
+        window.open(externalLinks[action.target], '_blank');
       }
       return null;
     }
@@ -5126,23 +5135,7 @@ async function _executeChatbotAction(action) {
     }
 
     case 'create_notice': {
-      if (state.currentUserRole !== 'admin' && state.currentUserRole !== 'superadmin') {
-        return '공지 생성은 관리자만 가능합니다.';
-      }
-      if (!action.title) return '공지 제목이 필요합니다.';
-      try {
-        var expDate = new Date();
-        expDate.setDate(expDate.getDate() + 7);
-        await state.db.collection('notices').add({
-          title: action.title,
-          subtitle: '',
-          content: action.content || '',
-          expiresAt: expDate.toISOString().slice(0,16),
-          createdAt: new Date().toISOString().slice(0,16),
-          updatedAt: new Date().toISOString().slice(0,16),
-        });
-        return '공지 "' + action.title + '" 등록 완료! (7일 후 자동 만료)';
-      } catch(e) { return '공지 생성에 실패했습니다.'; }
+      return '공지 생성은 워크스페이스에서만 가능합니다.';
     }
 
     case 'search_member': {
@@ -5163,8 +5156,9 @@ async function _executeChatbotAction(action) {
         if (action.category) {
           spots = spots.filter(function(s) { return s.category === action.category; });
         }
-        if (action.search) {
-          var q = action.search.toLowerCase();
+        var searchTerm = action.search || action.location || action.region || null;
+        if (searchTerm) {
+          var q = searchTerm.toLowerCase();
           spots = spots.filter(function(s) {
             return (s.name||'').toLowerCase().includes(q) || (s.address||'').toLowerCase().includes(q) || (s.memo||'').toLowerCase().includes(q);
           });
