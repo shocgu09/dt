@@ -373,6 +373,12 @@ main { padding: calc(80px + env(safe-area-inset-top, 0px)) 20px 24px; max-width:
 }
 .gender-badge.male { background: rgba(var(--passenger-rgb),.12); color: var(--passenger); border: 1px solid rgba(var(--passenger-rgb),.25); }
 .gender-badge.female { background: rgba(244,114,182,.12); color: var(--pink); border: 1px solid rgba(244,114,182,.25); }
+.position-badge {
+  display: inline-flex; align-items: center;
+  padding: 2px 8px; border-radius: 10px; font-size: .7rem; font-weight: 700;
+  background: rgba(var(--primary-rgb),.15); color: var(--primary); border: 1px solid rgba(var(--primary-rgb),.3);
+  vertical-align: middle; margin-left: 4px;
+}
 .member-card-body { padding: 16px 20px; flex: 1; }
 .member-bio { font-size: .85rem; color: var(--text2); line-height: 1.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .member-car-tag {

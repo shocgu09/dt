@@ -1478,7 +1478,7 @@ function renderMembers() {
       <div class="member-card-top">
         <div class="member-avatar">${avatarEl(m)}</div>
         <div class="member-info">
-          <div class="member-name">${escapeHtml(displayName(m.name))}${titleBadge(userTitle(m.createdBy))}${!g && m.createdBy === state.currentUserId ? ' <span style="color:var(--primary-light);font-size:.75rem;font-weight:600">나</span>' : ''}</div>
+          <div class="member-name">${escapeHtml(displayName(m.name))}${m.position ? ' <span class="position-badge">' + escapeHtml(m.position) + '</span>' : ''}${titleBadge(userTitle(m.createdBy))}${!g && m.createdBy === state.currentUserId ? ' <span style="color:var(--primary-light);font-size:.75rem;font-weight:600">나</span>' : ''}</div>
           <div class="member-nick">${escapeHtml(m.nickname || '-')}</div>
           <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px">
             <span class="role-badge ${m.role}">${m.role === 'driver' ? '🚗 운전자' : '💺 동승자'}</span>
@@ -1513,7 +1513,7 @@ function openMemberDetail(id) {
     <div class="detail-hero">
       <div class="detail-avatar">${avatarEl(m)}</div>
       <div class="detail-info-main">
-        <h2>${escapeHtml(displayName(m.name))}${titleBadge(userTitle(m.createdBy))}</h2>
+        <h2>${escapeHtml(displayName(m.name))}${m.position ? ' <span class="position-badge">' + escapeHtml(m.position) + '</span>' : ''}${titleBadge(userTitle(m.createdBy))}</h2>
         <div class="nick">${m.nickname ? `"${escapeHtml(m.nickname)}"` : ''}</div>
         <div class="detail-meta">
           <span class="role-badge ${m.role}">${m.role === 'driver' ? '🚗 운전자' : '💺 동승자'}</span>
@@ -1604,6 +1604,9 @@ function openAddMember() {
   document.getElementById('memberImage')._croppedData = null; document.getElementById('memberImage')._deleted = false;
   document.getElementById('carImage')._croppedData = null; document.getElementById('carImage')._deleted = false;
   document.getElementById('btnWithdrawInModal').style.display = 'none';
+  document.getElementById('memberPosition').value = '';
+  var posGroup = document.getElementById('positionGroup');
+  if (posGroup) posGroup.style.display = (state.currentUserRole === 'admin' || state.currentUserRole === 'superadmin') ? '' : 'none';
   // 회원가입 시 입력한 이름 자동 채우기 (수정 불가)
   const myUser = state.users.find(u => u.uid === state.currentUserId);
   const nameEl = document.getElementById('memberName');
@@ -1629,6 +1632,9 @@ function openEditMember(id) {
   document.getElementById('memberGender').value = m.gender || 'male';
   document.getElementById('memberPhone').value = m.phone || '';
   document.getElementById('memberBio').value = m.bio || '';
+  document.getElementById('memberPosition').value = m.position || '';
+  var posGroup = document.getElementById('positionGroup');
+  if (posGroup) posGroup.style.display = (state.currentUserRole === 'admin' || state.currentUserRole === 'superadmin') ? '' : 'none';
   toggleCarSection(m.role);
   if (m.car) {
     const knownBrand = CAR_BRANDS.find(b => b.name === m.car.brand);
@@ -1668,6 +1674,7 @@ async function saveMember(e) {
     let memberImg = memberEl._deleted ? null : (memberEl._croppedData || existing?.image || null);
     let carImg = carEl._deleted ? null : (carEl._croppedData || existing?.car?.image || null);
 
+    const posVal = (state.currentUserRole === 'admin' || state.currentUserRole === 'superadmin') ? document.getElementById('memberPosition').value.trim() : (existing?.position || '');
     const data = {
       name: document.getElementById('memberName').value.trim(),
       nickname: document.getElementById('memberNickname').value.trim(),
@@ -1675,6 +1682,7 @@ async function saveMember(e) {
       gender: document.getElementById('memberGender').value,
       phone: document.getElementById('memberPhone').value.trim(),
       bio: document.getElementById('memberBio').value.trim(),
+      position: posVal,
       joinDate: existing?.joinDate || new Date().toISOString().slice(0, 10),
       createdBy: existing?.createdBy || state.currentUserId,
       image: memberImg,
@@ -5098,10 +5106,10 @@ async function _executeChatbotAction(action) {
       if (action.search) {
         var q = action.search.toLowerCase();
         var found = members.filter(function(m) {
-          return m.name.toLowerCase().includes(q) || (m.nickname || '').toLowerCase().includes(q);
+          return m.name.toLowerCase().includes(q) || (m.nickname || '').toLowerCase().includes(q) || (m.position || '').toLowerCase().includes(q);
         });
         if (!found.length) return '"' + action.search + '"(으)로 검색된 회원이 없습니다.';
-        return '검색 결과 ' + found.length + '명: ' + found.map(function(m){ return m.name; }).join(', ');
+        return '검색 결과 ' + found.length + '명: ' + found.map(function(m){ return m.name + (m.position ? '(' + m.position + ')' : ''); }).join(', ');
       }
       var drivers = members.filter(function(m){ return m.role === 'driver'; }).length;
       var passengers = members.length - drivers;
@@ -5141,7 +5149,9 @@ async function _executeChatbotAction(action) {
     case 'search_member': {
       if (!action.name) return null;
       var sq = action.name.toLowerCase();
-      var fm = (state.members || []).find(function(m) { return m.name.toLowerCase().includes(sq); });
+      var fm = (state.members || []).find(function(m) {
+        return m.name.toLowerCase().includes(sq) || (m.nickname || '').toLowerCase().includes(sq) || (m.position || '').toLowerCase().includes(sq);
+      });
       if (fm) {
         openMemberDetail(fm.id);
         return null;
