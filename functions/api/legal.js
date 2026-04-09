@@ -88,26 +88,47 @@ export async function onRequestPost(context) {
             if (c.type === 'output_text') answerText = c.text;
           }
         }
-        // MCP 도구 호출 결과에서 법령/판례 수집
-        if (item.type === 'mcp_call') {
-          try {
-            const result = JSON.parse(item.output || '{}');
-            // get_law_text 결과
-            if (item.name === 'get_law_text' && result.articles) {
-              for (const a of result.articles) {
+        // MCP 도구 호출 결과에서 법령/판례 수집 (텍스트 파싱)
+        if (item.type === 'mcp_call' && item.output) {
+          const out = item.output;
+
+          if (item.name === 'get_law_text') {
+            // 텍스트에서 법령명 추출
+            const lawNameMatch = out.match(/법령명:\s*(.+)/);
+            const lawName = lawNameMatch ? lawNameMatch[1].trim() : '';
+            // 조문 블록 파싱: "제N조 제목\n내용..."
+            const articleBlocks = out.split(/(?=^제\d+조)/m).filter(b => b.startsWith('제'));
+            for (const block of articleBlocks) {
+              const headerMatch = block.match(/^(제\d+조(?:의\d+)?)\s*(.*)/);
+              if (headerMatch) {
                 laws.push({
-                  name: result.lawName || '',
-                  article: `제${a.number}조`,
-                  title: a.title || '',
-                  text: a.content || ''
+                  name: lawName,
+                  article: headerMatch[1],
+                  title: headerMatch[2].split('\n')[0].trim(),
+                  text: block.trim()
                 });
               }
             }
-            // search_precedents 결과
-            if (item.name === 'search_precedents' && Array.isArray(result)) {
-              precedents.push(...result);
+          }
+
+          if (item.name === 'search_precedents' || item.name === 'find_similar_precedents') {
+            // 판례 텍스트 파싱
+            const caseBlocks = out.split(/(?=^\d+\.\s)/m).filter(b => b.trim());
+            for (const block of caseBlocks) {
+              const caseMatch = block.match(/사건번호[:\s]*(.+)/);
+              const courtMatch = block.match(/법원[:\s]*(.+)/);
+              const dateMatch = block.match(/선고일[:\s]*(.+)/);
+              const summaryMatch = block.match(/판시사항[:\s]*([\s\S]*?)(?=\n\n|\n\d+\.|$)/);
+              if (caseMatch || courtMatch) {
+                precedents.push({
+                  caseNumber: caseMatch ? caseMatch[1].trim() : '',
+                  court: courtMatch ? courtMatch[1].trim() : '법원',
+                  date: dateMatch ? dateMatch[1].trim() : '',
+                  summary: summaryMatch ? summaryMatch[1].trim() : block.trim().substring(0, 300)
+                });
+              }
             }
-          } catch {}
+          }
         }
       }
     }
