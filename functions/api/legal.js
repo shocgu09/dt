@@ -85,10 +85,15 @@ export async function onRequestPost(context) {
     const encoder = new TextEncoder();
 
     // 백그라운드에서 Anthropic SSE → 클라이언트 SSE 변환
+    // 핵심: 도구 호출 사이의 중간 텍스트는 무시하고, 최종 텍스트만 전달
     context.waitUntil((async () => {
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let hasPendingTool = false;  // 도구 호출이 아직 진행 중인지
+      let lastTextBlockIdx = -1;   // 마지막 텍스트 블록 인덱스
+      let currentBlockIdx = -1;
+      let currentBlockType = '';
 
       try {
         while (true) {
@@ -107,31 +112,40 @@ export async function onRequestPost(context) {
             let event;
             try { event = JSON.parse(data); } catch { continue; }
 
-            // text delta → 클라이언트로 전달
-            if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
-              await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'text', text: event.delta.text })}\n\n`));
+            // 블록 시작 추적
+            if (event.type === 'content_block_start') {
+              currentBlockIdx = event.index;
+              currentBlockType = event.content_block?.type || '';
+
+              if (currentBlockType === 'mcp_tool_use') {
+                hasPendingTool = true;
+                const toolName = event.content_block.name || '';
+                await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'status', text: `🔍 ${toolName} 호출 중...` })}\n\n`));
+              }
+              else if (currentBlockType === 'mcp_tool_result') {
+                // 도구 결과 수신 완료
+              }
+              else if (currentBlockType === 'text') {
+                lastTextBlockIdx = currentBlockIdx;
+              }
             }
-            // MCP 도구 호출 시작 → 상태 알림
-            else if (event.type === 'content_block_start' && event.content_block?.type === 'mcp_tool_use') {
-              const toolName = event.content_block.name || '';
-              await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'status', text: `🔍 ${toolName} 도구 호출 중...` })}\n\n`));
+            // 도구 결과 블록이 끝나면 pending 해제
+            else if (event.type === 'content_block_stop') {
+              if (currentBlockType === 'mcp_tool_result') {
+                hasPendingTool = false;
+              }
+            }
+            // text delta → 도구 호출 진행 중이면 무시, 최종 답변만 전달
+            else if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+              if (!hasPendingTool) {
+                await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'text', text: event.delta.text })}\n\n`));
+              }
+              // 도구 호출 중간 텍스트는 버림 (조회하겠습니다 등)
             }
             // 스트림 종료
             else if (event.type === 'message_stop') {
               await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'done' })}\n\n`));
             }
-          }
-        }
-        // 버퍼에 남은 데이터 처리
-        if (buffer.startsWith('data: ')) {
-          const data = buffer.slice(6).trim();
-          if (data && data !== '[DONE]') {
-            try {
-              const event = JSON.parse(data);
-              if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
-                await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'text', text: event.delta.text })}\n\n`));
-              }
-            } catch {}
           }
         }
         await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'done' })}\n\n`));
