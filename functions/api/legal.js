@@ -1,6 +1,7 @@
 // DT 법률 도우미 — Anthropic Claude API + MCP 커넥터 (네이티브)
 // Claude가 MCP 서버에 직접 연결하여 도구 호출 (데스크톱과 동일)
 // Cloudflare Pages Function
+// 참고: https://docs.anthropic.com/en/docs/agents-and-tools/tool-use
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -23,7 +24,7 @@ export async function onRequestPost(context) {
   let question, history;
   try { ({ question, history } = await context.request.json()); }
   catch { return json({ error: '요청 형식이 올바르지 않습니다.' }, 400); }
-  if (!question || question.length > 1000) return json({ error: '질문이 비어있거나 너무 깁니다' }, 400);
+  if (!question || question.length > 2000) return json({ error: '질문이 비어있거나 너무 깁니다' }, 400);
 
   try {
     // 대화 메시지 구성
@@ -36,9 +37,10 @@ export async function onRequestPost(context) {
         });
       }
     }
-    messages.push({ role: 'user', content: question });
+    messages.push({ role: 'user', content: [{ type: 'text', text: question }] });
 
     // Anthropic Messages API + MCP 커넥터 (네이티브)
+    // 모델: claude-sonnet-4-6 (최신)
     const resp = await fetch('https://api.anthropic.com/v1/messages?beta=mcp-client-2025-11-20', {
       method: 'POST',
       headers: {
@@ -48,8 +50,9 @@ export async function onRequestPost(context) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 8192,
+        model: 'claude-sonnet-4-6',
+        max_tokens: 20000,
+        temperature: 1,
         system: SYSTEM_PROMPT,
         messages,
         mcp_servers: [{
