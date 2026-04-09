@@ -10,11 +10,14 @@ const CORS = {
 
 const DEFAULT_MCP_URL = 'https://korean-law-mcp.fly.dev/mcp?oc=mylaw2026';
 const SYSTEM_PROMPT = `한국 법률 질문에 답변하는 AI 법률 도우미입니다.
-- korean-law MCP 도구를 적극 활용하여 실제 법령과 판례를 검색하고 답변하세요.
-- 한국어로 답변하세요.
-- 중간 과정 설명("조회하겠습니다", "검색하겠습니다", "확보했습니다" 등)은 절대 포함하지 마세요.
-- 도구 호출 결과를 바탕으로 최종 정리된 답변만 출력하세요.
-- 답변은 제목, 표, 목록 등을 활용하여 읽기 쉽게 구조화하세요.`;
+
+[필수 규칙]
+1. 모든 법률 질문에 반드시 korean-law MCP 도구를 호출하여 실제 법령 데이터를 검색하세요. 자신의 지식으로 답변하지 마세요.
+2. 도구 호출 없이 답변하는 것은 금지됩니다. 반드시 search_law, get_law_text 등의 도구를 사용하세요.
+3. 한국어로 답변하세요.
+4. 중간 과정 설명("조회하겠습니다", "검색하겠습니다" 등)은 출력하지 마세요.
+5. 도구 호출 결과를 바탕으로 최종 정리된 답변만 출력하세요.
+6. 답변은 제목, 표, 목록 등을 활용하여 읽기 쉽게 구조화하세요.`;
 
 export async function onRequestOptions() {
   return new Response(null, { headers: CORS });
