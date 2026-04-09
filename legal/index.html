@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>DT 법률 도우미 — 교통·운전 AI 법률 상담</title>
-<meta name="description" content="교통사고, 음주운전, 면허, 과태료 등 운전자를 위한 AI 법률 상담. 실제 법령과 판례를 근거로 답변합니다.">
+<title>DT 법률 도우미 — AI 법률 상담</title>
+<meta name="description" content="한국 법률 AI 상담. 실제 법령과 판례를 근거로 답변합니다.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230a0a0e'/><text x='50' y='70' font-size='56' text-anchor='middle'>⚖️</text></svg>" type="image/svg+xml">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -23,7 +23,7 @@
     <div class="auth-box">
       <div style="font-size:2.4rem;margin-bottom:8px">⚖️</div>
       <h1>DT 법률 도우미</h1>
-      <p>교통·운전 전문 AI 법률 상담</p>
+      <p>AI 법률 상담 — 실제 법령·판례 기반</p>
       <input type="email" id="authEmail" placeholder="이메일" autocomplete="email">
       <input type="password" id="authPw" placeholder="비밀번호" autocomplete="current-password">
       <button id="authLoginBtn" onclick="legalLogin()">로그인</button>
@@ -57,21 +57,21 @@
       <div class="legal-chat" id="legalChatPanel">
         <div class="legal-messages" id="legalMessages">
           <div class="legal-msg legal-bot">
-            <div class="legal-bubble">안녕하세요! <strong>DT 법률 도우미</strong>입니다.<br>교통·운전 관련 법률 질문에 <strong>실제 법령과 판례</strong>를 근거로 답변해드립니다.<br><br>아래 자주 묻는 질문을 선택하거나, 직접 질문을 입력해보세요.<br><span class="legal-hint">⚠️ 본 상담은 참고용이며 법적 효력이 없습니다.</span></div>
+            <div class="legal-bubble">안녕하세요! <strong>DT 법률 도우미</strong>입니다.<br><strong>실제 법령과 판례</strong>를 근거로 모든 분야의 법률 질문에 답변해드립니다.<br><br>"도로교통법 제74조 알려줘"처럼 특정 조문을 물어보거나, 자유롭게 질문하세요.<br><span class="legal-hint">⚠️ 본 상담은 참고용이며 법적 효력이 없습니다.</span></div>
           </div>
         </div>
         <div class="legal-presets" id="legalPresets">
-          <button onclick="legalPreset('음주운전 혈중알코올농도별 처벌 기준과 면허 정지/취소 기준을 알려주세요')">🍺 음주운전</button>
-          <button onclick="legalPreset('신호위반 시 범칙금과 벌점은 얼마인가요')">🚦 신호위반</button>
-          <button onclick="legalPreset('운전면허 정지와 취소 기준, 벌점 누적 기준을 알려주세요')">📋 면허정지/취소</button>
-          <button onclick="legalPreset('교통사고 과실 비율 판정 기준과 12대 중과실에 대해 알려주세요')">💥 교통사고</button>
-          <button onclick="legalPreset('교통 과태료 이의신청 및 불복 절차를 알려주세요')">💰 과태료 불복</button>
-          <button onclick="legalPreset('중고차 매매 하자 발견 시 환불 방법과 관련 법률')">📄 중고차 분쟁</button>
-          <button onclick="legalPreset('자동차 보험 사고 처리 시 보험사 분쟁 해결 방법')">🛡️ 보험 분쟁</button>
-          <button onclick="legalPreset('불법주정차 과태료 기준과 견인 관련 법률')">🅿️ 주차 법규</button>
+          <button onclick="legalPreset('도로교통법 제44조 알려주세요')">📖 법령 조회</button>
+          <button onclick="legalPreset('음주운전 처벌 기준과 면허 정지/취소 기준을 알려주세요')">🍺 음주운전</button>
+          <button onclick="legalPreset('근로기준법 퇴직금 관련 조항을 알려주세요')">💼 근로기준법</button>
+          <button onclick="legalPreset('임대차보호법 보증금 반환 관련 법률')">🏠 임대차</button>
+          <button onclick="legalPreset('교통사고 과실 비율 판정 기준과 12대 중과실')">💥 교통사고</button>
+          <button onclick="legalPreset('개인정보보호법 위반 시 처벌 기준')">🔒 개인정보</button>
+          <button onclick="legalPreset('민법 제750조 불법행위 손해배상 알려주세요')">⚖️ 손해배상</button>
+          <button onclick="legalPreset('형법 사기죄 구성요건과 처벌')">🔨 형법</button>
         </div>
         <div class="legal-input-area">
-          <input type="text" id="legalInput" placeholder="교통·운전 법률 질문을 입력하세요..." autocomplete="off" onkeydown="if(event.key==='Enter'&&!event.isComposing)legalSend()">
+          <input type="text" id="legalInput" placeholder="법률 질문을 입력하세요... (예: 민법 제750조 알려줘)" autocomplete="off" onkeydown="if(event.key==='Enter'&&!event.isComposing)legalSend()">
           <button onclick="legalSend()" id="legalSendBtn" class="legal-send-btn">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </button>
