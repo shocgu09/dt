@@ -10,9 +10,9 @@ export async function onRequestOptions() {
 }
 
 export async function onRequestPost(context) {
-  const { OPENAI_API_KEY } = context.env;
+  const OPENAI_KEY = context.env.OPENAI_API_KEY_REFINE || context.env.OPENAI_API_KEY;
 
-  if (!OPENAI_API_KEY) {
+  if (!OPENAI_KEY) {
     return json({ error: 'OPENAI_API_KEY가 설정되지 않았습니다.' }, 500);
   }
 
@@ -32,7 +32,7 @@ export async function onRequestPost(context) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`
+        'Authorization': `Bearer ${OPENAI_KEY}`
       },
       body: JSON.stringify({
         model: 'gpt-4.1',
