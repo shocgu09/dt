@@ -255,6 +255,32 @@ service cloud.firestore {
         || (isRealUser() && resource.data.authorUid == request.auth.uid);
     }
 
+    // ── car_costs 컬렉션 (차량 유지비) ────────────────────────
+    // - 본인 데이터만 읽기/쓰기 가능
+    match /car_costs/{costId} {
+      allow create: if isRealUser()
+        && request.resource.data.userId == request.auth.uid;
+      allow read: if isAuth()
+        && resource.data.userId == request.auth.uid;
+      allow update: if isAuth()
+        && resource.data.userId == request.auth.uid;
+      allow delete: if isAuth()
+        && resource.data.userId == request.auth.uid;
+    }
+
+    // ── legal_chats 컬렉션 (법률 상담 이력) ────────────────
+    // - 본인 상담 이력만 읽기/쓰기 가능
+    match /legal_chats/{chatId} {
+      allow create: if isRealUser()
+        && request.resource.data.userId == request.auth.uid;
+      allow read: if isAuth()
+        && resource.data.userId == request.auth.uid;
+      allow update: if isAuth()
+        && resource.data.userId == request.auth.uid;
+      allow delete: if isAuth()
+        && resource.data.userId == request.auth.uid;
+    }
+
     // ── drive_courses 컬렉션 (DT 스팟 — 드라이브 코스) ──────
     // - 누구나 읽기 가능 (비회원 포함)
     // - 실제 회원이면 등록 가능
