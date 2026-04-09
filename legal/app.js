@@ -28,10 +28,6 @@ legal.auth.onAuthStateChanged(async function (user) {
   document.getElementById('legalApp').style.display = 'flex';
   document.getElementById('legalUser').textContent =
     user.isAnonymous ? '게스트' : (user.displayName || user.email);
-
-  if (window.innerWidth <= 900) {
-    document.getElementById('legalSourcePanel').classList.add('legal-hidden');
-  }
 });
 
 // --- Auth ---
@@ -107,9 +103,7 @@ async function legalSend() {
       appendMsg('bot', '죄송합니다. 오류가 발생했습니다: ' + data.error);
     } else {
       renderAnswer(data);
-      renderSourcePanel(data);
       legal.history.push({ role: 'assistant', content: data.answer || '' });
-      autoSwitchToSource();
     }
   } catch (e) {
     typingEl.remove();
@@ -127,94 +121,13 @@ async function legalSend() {
   setPresetsDisabled(false);
 }
 
-// --- 답변 렌더링 (채팅 버블) — AI 텍스트 그대로 마크다운 렌더링 ---
+// --- 답변 렌더링 — AI 텍스트 그대로 마크다운 렌더링 ---
 function renderAnswer(data) {
   var html = '';
-
   if (data.answer) {
     html += '<div class="legal-answer">' + renderMarkdown(data.answer) + '</div>';
   }
-
-  // 근거 법령 칩 (소스 패널 연동)
-  if (data.laws && data.laws.length) {
-    html += '<div class="legal-section"><div class="legal-section-title">📖 근거 법령</div>';
-    data.laws.forEach(function (l) {
-      html += '<div class="legal-law-chip">' + escHtml(l.name) + ' ' + escHtml(l.article) + '</div>';
-    });
-    html += '<div class="legal-see-source">👉 우측 패널에서 원문 확인</div></div>';
-  }
-
   appendBubble('bot', html);
-}
-
-// --- 소스 패널 렌더링 (법령 원문 + 판례) ---
-function renderSourcePanel(data) {
-  var body = document.getElementById('legalSourceBody');
-  var title = document.getElementById('legalSourceTitle');
-  title.textContent = '📖 법령 · 판례';
-  var html = '';
-
-  // 근거 법령 (접기/펼치기)
-  if (data.laws && data.laws.length) {
-    html += '<div class="legal-card"><div class="legal-card-title">📖 근거 법령</div>';
-    data.laws.forEach(function (l, i) {
-      var hasText = l.text && l.text.trim();
-      html += '<div class="legal-law-item">';
-      html += '<button class="legal-law-toggle" onclick="toggleLaw(this)">';
-      html += '<span>▶ ' + escHtml(l.name) + ' ' + escHtml(l.article);
-      if (l.title) html += ' (' + escHtml(l.title) + ')';
-      html += '</span></button>';
-      if (hasText) {
-        html += '<div class="legal-law-text" style="display:none"><pre>' + escHtml(l.text) + '</pre></div>';
-      } else {
-        html += '<div class="legal-law-text" style="display:none"><p class="legal-no-data">조문 원문을 불러오지 못했습니다.</p></div>';
-      }
-      html += '</div>';
-    });
-    html += '</div>';
-  }
-
-  // 판례
-  if (data.precedents && data.precedents.length) {
-    html += '<div class="legal-card"><div class="legal-card-title">⚖️ 관련 판례</div>';
-    data.precedents.forEach(function (p) {
-      html += '<div class="legal-prec-item">';
-      html += '<div class="legal-prec-court">' + escHtml(p.court || '법원') + '</div>';
-      html += '<div class="legal-prec-case">' + escHtml(p.caseNumber || '') + '</div>';
-      if (p.date) html += '<div class="legal-prec-date">' + escHtml(p.date) + '</div>';
-      if (p.summary) {
-        var summaryText = p.summary.length > 300 ? p.summary.slice(0, 300) + '...' : p.summary;
-        html += '<div class="legal-prec-summary">' + escHtml(summaryText) + '</div>';
-      }
-      html += '</div>';
-    });
-    html += '</div>';
-  }
-
-  if (!html) {
-    html = '<div class="legal-card"><p style="color:var(--text3);font-size:.85rem;padding:12px">관련 법령 및 판례를 찾지 못했습니다.</p></div>';
-  }
-
-  body.innerHTML = html;
-}
-
-// --- 법령 원문 접기/펼치기 ---
-function toggleLaw(btn) {
-  var textDiv = btn.parentElement.querySelector('.legal-law-text');
-  if (!textDiv) return;
-  var visible = textDiv.style.display !== 'none';
-  textDiv.style.display = visible ? 'none' : 'block';
-  var span = btn.querySelector('span');
-  if (span) {
-    span.textContent = span.textContent.replace(/^[▶▼]/, visible ? '▶' : '▼');
-  }
-}
-
-// --- 소스 패널 초기화 ---
-function legalClearSource() {
-  document.getElementById('legalSourceTitle').textContent = '📖 법령 · 판례';
-  document.getElementById('legalSourceBody').innerHTML =
-    '<div class="legal-source-empty"><div class="legal-source-empty-icon">⚖️</div><p>질문하시면 관련 법령과 판례가<br>여기에 표시됩니다</p></div>';
 }
 
 // --- UI 헬퍼 ---
@@ -249,12 +162,6 @@ function setPresetsDisabled(disabled) {
     b.disabled = disabled;
     b.style.opacity = disabled ? '.4' : '1';
   });
-}
-
-function formatText(text) {
-  return escHtml(text)
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\n/g, '<br>');
 }
 
 // 마크다운 렌더러 — AI 원문을 그대로 HTML로 변환
@@ -328,7 +235,7 @@ function renderMarkdown(text) {
   return html;
 }
 
-// 인라인 마크다운: **bold**, *italic*, `code`, [link](url)
+// 인라인 마크다운: **bold**, *italic*, `code`
 function inlineFormat(text) {
   return escHtml(text)
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
@@ -340,26 +247,4 @@ function escHtml(str) {
   var div = document.createElement('div');
   div.textContent = str || '';
   return div.innerHTML;
-}
-
-// --- Mobile Tab ---
-function legalTab(tab) {
-  var chatPanel = document.getElementById('legalChatPanel');
-  var sourcePanel = document.getElementById('legalSourcePanel');
-  var tabs = document.querySelectorAll('#legalTabs button');
-  tabs[0].className = tab === 'chat' ? 'active' : '';
-  tabs[1].className = tab === 'source' ? 'active' : '';
-  if (tab === 'chat') {
-    chatPanel.classList.remove('legal-hidden');
-    sourcePanel.classList.add('legal-hidden');
-  } else {
-    chatPanel.classList.add('legal-hidden');
-    sourcePanel.classList.remove('legal-hidden');
-  }
-}
-
-function autoSwitchToSource() {
-  if (window.innerWidth <= 900) {
-    legalTab('source');
-  }
 }

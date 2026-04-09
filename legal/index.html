@@ -46,14 +46,7 @@
       </div>
     </header>
 
-    <!-- Mobile Tabs -->
-    <div class="legal-tabs" id="legalTabs">
-      <button class="active" onclick="legalTab('chat')">💬 상담</button>
-      <button onclick="legalTab('source')">📖 법령·판례</button>
-    </div>
-
     <div class="legal-body">
-      <!-- Chat Panel -->
       <div class="legal-chat" id="legalChatPanel">
         <div class="legal-messages" id="legalMessages">
           <div class="legal-msg legal-bot">
@@ -75,21 +68,6 @@
           <button onclick="legalSend()" id="legalSendBtn" class="legal-send-btn">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </button>
-        </div>
-
-      </div>
-
-      <!-- Source Panel -->
-      <div class="legal-source" id="legalSourcePanel">
-        <div class="legal-source-header">
-          <span class="legal-source-title" id="legalSourceTitle">📖 법령 · 판례</span>
-          <button onclick="legalClearSource()" class="legal-source-clear">초기화</button>
-        </div>
-        <div class="legal-source-body" id="legalSourceBody">
-          <div class="legal-source-empty">
-            <div class="legal-source-empty-icon">⚖️</div>
-            <p>질문하시면 관련 법령과 판례가<br>여기에 표시됩니다</p>
-          </div>
         </div>
       </div>
     </div>
