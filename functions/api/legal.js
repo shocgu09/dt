@@ -27,10 +27,10 @@ export async function onRequestPost(context) {
   if (!question || question.length > 2000) return json({ error: '질문이 비어있거나 너무 깁니다' }, 400);
 
   try {
-    // 대화 메시지 구성
+    // 대화 메시지 구성 (히스토리 3개로 제한 — 토큰 절약)
     const messages = [];
     if (history && history.length) {
-      for (const h of history.slice(-6)) {
+      for (const h of history.slice(-3)) {
         messages.push({
           role: h.role === 'assistant' ? 'assistant' : 'user',
           content: h.content
@@ -39,38 +39,50 @@ export async function onRequestPost(context) {
     }
     messages.push({ role: 'user', content: [{ type: 'text', text: question }] });
 
-    // Anthropic Messages API + MCP 커넥터 (네이티브)
-    // 모델: claude-sonnet-4-6 (최신)
-    const resp = await fetch('https://api.anthropic.com/v1/messages?beta=mcp-client-2025-11-20', {
-      method: 'POST',
-      headers: {
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'mcp-client-2025-11-20',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 20000,
-        temperature: 1,
-        system: SYSTEM_PROMPT,
-        messages,
-        mcp_servers: [{
-          type: 'url',
-          url: mcpUrl,
-          name: 'korean-law'
-        }],
-        tools: [{
-          type: 'mcp_toolset',
-          mcp_server_name: 'korean-law'
-        }]
-      })
-    });
+    const body = {
+      model: 'claude-sonnet-4-6',
+      max_tokens: 16000,
+      temperature: 1,
+      system: SYSTEM_PROMPT,
+      messages,
+      mcp_servers: [{
+        type: 'url',
+        url: mcpUrl,
+        name: 'korean-law'
+      }],
+      tools: [{
+        type: 'mcp_toolset',
+        mcp_server_name: 'korean-law'
+      }]
+    };
 
-    const rawText = await resp.text();
+    // Anthropic Messages API + MCP 커넥터 (네이티브)
+    // Overloaded 시 1회 자동 재시도
     let data;
-    try { data = JSON.parse(rawText); }
-    catch { return json({ error: 'API 응답 파싱 실패: ' + rawText.substring(0, 200) }, 500); }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const resp = await fetch('https://api.anthropic.com/v1/messages?beta=mcp-client-2025-11-20', {
+        method: 'POST',
+        headers: {
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'mcp-client-2025-11-20',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      });
+
+      const rawText = await resp.text();
+      try { data = JSON.parse(rawText); }
+      catch { return json({ error: 'API 응답 파싱 실패: ' + rawText.substring(0, 200) }, 500); }
+
+      // Overloaded → 3초 대기 후 재시도
+      if (data.error && data.error.type === 'overloaded_error' && attempt === 0) {
+        await new Promise(r => setTimeout(r, 3000));
+        continue;
+      }
+      break;
+    }
+
     if (data.error) return json({ error: data.error.message || 'Claude API 오류' }, 500);
 
     // 최종 텍스트 추출
