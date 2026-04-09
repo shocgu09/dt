@@ -12,28 +12,8 @@ const CORS = {
 // 기본값은 공용 서버, LAW_MCP_URL 환경변수로 오버라이드 가능
 const DEFAULT_MCP_URL = 'https://korean-law-mcp.fly.dev/mcp?oc=mylaw2026';
 
-const SYSTEM_PROMPT = `당신은 DT Club의 AI 법률 도우미입니다. 한국의 모든 법률 분야 질문에 답변합니다.
-
-MCP 도구를 적극적으로 사용하여 실제 법령과 판례를 검색하고, 그 결과를 근거로 답변하세요.
-
-작업 방식:
-1. search_law로 법령을 찾고 MST를 획득합니다
-2. get_law_text로 관련 조문 원문을 가져옵니다
-3. 필요하면 search_precedents로 판례도 검색합니다
-4. 수집한 데이터를 바탕으로 정확하고 쉽게 답변합니다
-
-답변 원칙:
-- 반드시 도구로 조회한 실제 법령/판례를 근거로 답변합니다
-- 조문 번호와 항/호를 명시하여 인용합니다
-- 법률 용어는 일반인이 이해할 수 있게 풀어서 설명합니다
-- 도구로 찾지 못한 내용은 "정확한 확인이 필요합니다"로 안내합니다
-
-최종 답변은 반드시 아래 JSON 형식으로 작성하세요:
-{
-  "answer": "메인 답변 (**굵게** 활용, 조문 인용 포함)",
-  "summary": ["핵심 요약 1", "핵심 요약 2", "핵심 요약 3"],
-  "tips": ["실용적 팁 1", "실용적 팁 2"]
-}`;
+// 최소 시스템 프롬프트 — MCP 도구 사용 안내만
+const SYSTEM_PROMPT = '한국 법률 질문에 답변합니다. MCP 도구(korean-law)를 사용하여 법령과 판례를 검색하세요. 한국어로 답변하세요.';
 
 export async function onRequestOptions() {
   return new Response(null, { headers: CORS });
@@ -124,15 +104,9 @@ export async function onRequestPost(context) {
       }
     }
 
-    // JSON 파싱
-    let parsed;
-    try { parsed = JSON.parse(answerText); }
-    catch { parsed = { answer: answerText, summary: [], tips: [] }; }
-
+    // AI 텍스트 그대로 반환 (JSON 파싱 없음)
     return json({
-      answer: parsed.answer || '',
-      summary: parsed.summary || [],
-      tips: parsed.tips || [],
+      answer: answerText,
       laws,
       precedents
     });

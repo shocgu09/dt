@@ -127,34 +127,15 @@ async function legalSend() {
   setPresetsDisabled(false);
 }
 
-// --- 답변 렌더링 (채팅 버블) ---
+// --- 답변 렌더링 (채팅 버블) — AI 텍스트 그대로 마크다운 렌더링 ---
 function renderAnswer(data) {
   var html = '';
 
-  // 메인 답변
   if (data.answer) {
-    html += '<div class="legal-answer">' + formatText(data.answer) + '</div>';
+    html += '<div class="legal-answer">' + renderMarkdown(data.answer) + '</div>';
   }
 
-  // 핵심 요약
-  if (data.summary && data.summary.length) {
-    html += '<div class="legal-section"><div class="legal-section-title">📋 핵심 요약</div><ul class="legal-summary-list">';
-    data.summary.forEach(function (s) {
-      html += '<li>' + escHtml(s) + '</li>';
-    });
-    html += '</ul></div>';
-  }
-
-  // 실용 팁
-  if (data.tips && data.tips.length) {
-    html += '<div class="legal-section legal-tips"><div class="legal-section-title">💡 실용 팁</div><ul>';
-    data.tips.forEach(function (t) {
-      html += '<li>' + escHtml(t) + '</li>';
-    });
-    html += '</ul></div>';
-  }
-
-  // 근거 법령 미리보기 (간략)
+  // 근거 법령 칩 (소스 패널 연동)
   if (data.laws && data.laws.length) {
     html += '<div class="legal-section"><div class="legal-section-title">📖 근거 법령</div>';
     data.laws.forEach(function (l) {
@@ -271,10 +252,88 @@ function setPresetsDisabled(disabled) {
 }
 
 function formatText(text) {
-  // 간단한 마크다운: **bold**, 줄바꿈
   return escHtml(text)
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\n/g, '<br>');
+}
+
+// 마크다운 렌더러 — AI 원문을 그대로 HTML로 변환
+function renderMarkdown(text) {
+  if (!text) return '';
+  var lines = text.split('\n');
+  var html = '';
+  var inList = false;
+  var inCode = false;
+  var codeBlock = '';
+
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+
+    // 코드 블록
+    if (line.trim().startsWith('```')) {
+      if (inCode) {
+        html += '<pre><code>' + escHtml(codeBlock) + '</code></pre>';
+        codeBlock = '';
+        inCode = false;
+      } else {
+        if (inList) { html += '</ul>'; inList = false; }
+        inCode = true;
+      }
+      continue;
+    }
+    if (inCode) { codeBlock += (codeBlock ? '\n' : '') + line; continue; }
+
+    // 빈 줄
+    if (!line.trim()) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += '<br>';
+      continue;
+    }
+
+    // 제목
+    if (/^### (.+)/.test(line)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += '<h4>' + inlineFormat(line.replace(/^### /, '')) + '</h4>';
+      continue;
+    }
+    if (/^## (.+)/.test(line)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += '<h3>' + inlineFormat(line.replace(/^## /, '')) + '</h3>';
+      continue;
+    }
+    if (/^# (.+)/.test(line)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += '<h2>' + inlineFormat(line.replace(/^# /, '')) + '</h2>';
+      continue;
+    }
+
+    // 리스트
+    if (/^[\-\*] (.+)/.test(line)) {
+      if (!inList) { html += '<ul>'; inList = true; }
+      html += '<li>' + inlineFormat(line.replace(/^[\-\*] /, '')) + '</li>';
+      continue;
+    }
+    if (/^\d+\. (.+)/.test(line)) {
+      if (!inList) { html += '<ul>'; inList = true; }
+      html += '<li>' + inlineFormat(line.replace(/^\d+\. /, '')) + '</li>';
+      continue;
+    }
+
+    // 일반 텍스트
+    if (inList) { html += '</ul>'; inList = false; }
+    html += '<p>' + inlineFormat(line) + '</p>';
+  }
+  if (inList) html += '</ul>';
+  if (inCode) html += '<pre><code>' + escHtml(codeBlock) + '</code></pre>';
+  return html;
+}
+
+// 인라인 마크다운: **bold**, *italic*, `code`, [link](url)
+function inlineFormat(text) {
+  return escHtml(text)
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/`(.*?)`/g, '<code>$1</code>');
 }
 
 function escHtml(str) {

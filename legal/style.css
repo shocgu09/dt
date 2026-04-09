@@ -192,7 +192,19 @@ body {
 /* disclaimer */
 
 /* ===== Answer components (inside chat bubble) ===== */
-.legal-answer { margin-bottom: 10px; }
+.legal-answer { margin-bottom: 10px; line-height: 1.7; }
+.legal-answer h2 { font-size: .95rem; font-weight: 800; color: var(--primary-light); margin: 12px 0 6px; }
+.legal-answer h3 { font-size: .88rem; font-weight: 700; color: var(--primary-light); margin: 10px 0 5px; }
+.legal-answer h4 { font-size: .84rem; font-weight: 700; color: var(--text); margin: 8px 0 4px; }
+.legal-answer p { margin: 4px 0; font-size: .84rem; }
+.legal-answer ul { padding-left: 18px; margin: 4px 0; }
+.legal-answer li { font-size: .84rem; margin-bottom: 3px; }
+.legal-answer strong { color: var(--primary-light); }
+.legal-answer em { color: var(--text2); font-style: italic; }
+.legal-answer code { background: rgba(255,255,255,.06); padding: 1px 5px; font-size: .78rem; border: 1px solid var(--border); }
+.legal-answer pre { background: var(--bg); padding: 10px 12px; margin: 6px 0; overflow-x: auto; border: 1px solid var(--border); }
+.legal-answer pre code { background: none; border: none; padding: 0; }
+.legal-answer br { display: block; content: ''; margin-top: 4px; }
 .legal-section {
   margin-top: 10px; padding: 10px 12px;
   background: rgba(255,255,255,.03); border-left: 3px solid var(--primary);
@@ -201,12 +213,6 @@ body {
   font-size: .76rem; font-weight: 800; color: var(--primary-light);
   margin-bottom: 6px; letter-spacing: .3px;
 }
-.legal-summary-list { padding-left: 16px; }
-.legal-summary-list li { font-size: .82rem; margin-bottom: 3px; }
-.legal-tips { border-left-color: var(--success); }
-.legal-tips .legal-section-title { color: var(--success); }
-.legal-tips ul { padding-left: 16px; }
-.legal-tips li { font-size: .82rem; margin-bottom: 3px; color: var(--text2); }
 
 .legal-law-chip {
   display: inline-block; padding: 3px 10px; margin: 3px 4px 3px 0;
