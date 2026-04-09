@@ -8,7 +8,7 @@ const CORS = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-const MCP_SERVER_URL = 'https://korean-law-mcp.fly.dev/mcp?oc=mylaw2026';
+const MCP_SERVER_URL = 'https://korean-law-mcp.fly.dev/mcp';
 
 const SYSTEM_PROMPT = `당신은 DT Club의 AI 법률 도우미입니다. 한국의 모든 법률 분야 질문에 답변합니다.
 
@@ -71,6 +71,9 @@ export async function onRequestPost(context) {
           type: 'mcp',
           server_label: 'korean-law',
           server_url: MCP_SERVER_URL,
+          headers: {
+            'apikey': 'mylaw2026'
+          },
           require_approval: 'never'
         }],
         text: { format: { type: 'text' } },
