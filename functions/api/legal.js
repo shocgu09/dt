@@ -8,7 +8,9 @@ const CORS = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-const MCP_SERVER_URL = 'https://korean-law-mcp.fly.dev/mcp';
+// MCP 서버 URL — Firestore config에서 동적으로 가져옴 (터널 URL 변경 대응)
+// 기본값은 공용 서버, LAW_MCP_URL 환경변수로 오버라이드 가능
+const DEFAULT_MCP_URL = 'https://korean-law-mcp.fly.dev/mcp?oc=mylaw2026';
 
 const SYSTEM_PROMPT = `당신은 DT Club의 AI 법률 도우미입니다. 한국의 모든 법률 분야 질문에 답변합니다.
 
@@ -38,8 +40,9 @@ export async function onRequestOptions() {
 }
 
 export async function onRequestPost(context) {
-  const { OPENAI_API_KEY } = context.env;
+  const { OPENAI_API_KEY, LAW_MCP_URL } = context.env;
   if (!OPENAI_API_KEY) return json({ error: 'OPENAI_API_KEY가 설정되지 않았습니다.' }, 500);
+  const mcpUrl = LAW_MCP_URL || DEFAULT_MCP_URL;
 
   let question, history;
   try { ({ question, history } = await context.request.json()); }
@@ -70,10 +73,7 @@ export async function onRequestPost(context) {
         tools: [{
           type: 'mcp',
           server_label: 'korean-law',
-          server_url: MCP_SERVER_URL,
-          headers: {
-            'apikey': 'mylaw2026'
-          },
+          server_url: mcpUrl,
           require_approval: 'never'
         }],
         text: { format: { type: 'text' } },

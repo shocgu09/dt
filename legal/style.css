@@ -298,6 +298,16 @@ body {
   border-left: 2px solid var(--border); padding-left: 10px; margin-top: 6px;
 }
 
+/* ===== Footer ===== */
+.legal-footer {
+  padding: 10px 20px; background: var(--bg); border-top: 1px solid var(--border);
+  text-align: center; flex-shrink: 0;
+}
+.legal-footer p { font-size: .68rem; color: var(--text3); line-height: 1.5; }
+.legal-footer a { color: var(--text3); text-decoration: underline; }
+.legal-footer a:hover { color: var(--primary-light); }
+.legal-credits { margin-top: 4px; font-size: .62rem; }
+
 /* ===== MOBILE ===== */
 @media (max-width: 900px) {
   .legal-header { padding: 0 14px; padding-top: env(safe-area-inset-top, 0px); height: calc(46px + env(safe-area-inset-top, 0px)); }
