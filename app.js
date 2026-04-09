@@ -768,6 +768,7 @@ function renderPage(name) {
   else if (name === 'gallery') renderGallery();
   else if (name === 'admin') renderAdmin();
   else if (name === 'anon') renderAnon();
+  else if (name === 'cost') renderCost();
 }
 
 /* ===== NOTICE POPUP ===== */
@@ -5395,4 +5396,268 @@ async function _loadChatbotAdminConfig() {
 }
 
 // 챗봇 초기화는 initAuth의 onAuthStateChanged에서 호출됨 (state.db 준비 후)
+
+/* ===== CAR COST TRACKER ===== */
+const COST_CATEGORIES = {
+  fuel: { label: '주유', icon: '⛽', color: 'var(--driver)' },
+  maintenance: { label: '정비', icon: '🔧', color: 'var(--warning)' },
+  wash: { label: '세차', icon: '🧽', color: 'var(--passenger)' },
+  insurance: { label: '보험', icon: '🛡️', color: 'var(--accent)' },
+  parking: { label: '주차', icon: '🅿️', color: 'var(--pink)' },
+  other: { label: '기타', icon: '📦', color: 'var(--text3)' },
+};
+
+const costState = {
+  records: [],
+  filter: 'all',
+  currentMonth: new Date(),
+  tab: 'list',
+  _unsub: null,
+};
+
+function renderCost() {
+  if (!state.currentUser || state.isGuest) {
+    document.getElementById('costSummary').innerHTML = '<p style="text-align:center;color:var(--text3);padding:40px 0">로그인 후 이용할 수 있습니다.</p>';
+    document.getElementById('costListView').innerHTML = '';
+    document.getElementById('costStatsView').innerHTML = '';
+    return;
+  }
+  subscribeCostRecords();
+}
+
+function subscribeCostRecords() {
+  if (costState._unsub) costState._unsub();
+  const y = costState.currentMonth.getFullYear();
+  const m = costState.currentMonth.getMonth();
+  const start = new Date(y, m, 1);
+  const end = new Date(y, m + 1, 0, 23, 59, 59);
+
+  costState._unsub = state.db.collection('car_costs')
+    .where('userId', '==', state.currentUserId)
+    .where('date', '>=', firebase.firestore.Timestamp.fromDate(start))
+    .where('date', '<=', firebase.firestore.Timestamp.fromDate(end))
+    .orderBy('date', 'desc')
+    .onSnapshot(snap => {
+      costState.records = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderCostContent();
+    }, err => {
+      console.error('Cost records error:', err);
+      costState.records = [];
+      renderCostContent();
+    });
+}
+
+function renderCostContent() {
+  renderCostSummary();
+  if (costState.tab === 'list') renderCostList();
+  else renderCostStats();
+}
+
+function renderCostSummary() {
+  const y = costState.currentMonth.getFullYear();
+  const m = costState.currentMonth.getMonth();
+  const monthLabel = `${y}년 ${m + 1}월`;
+  const records = getFilteredCostRecords();
+  const total = records.reduce((s, r) => s + (r.amount || 0), 0);
+  const catTotals = {};
+  records.forEach(r => { catTotals[r.category] = (catTotals[r.category] || 0) + (r.amount || 0); });
+
+  let barsHtml = '';
+  if (total > 0) {
+    barsHtml = Object.entries(catTotals).sort((a, b) => b[1] - a[1]).map(([cat, amt]) => {
+      const info = COST_CATEGORIES[cat] || COST_CATEGORIES.other;
+      const pct = Math.round(amt / total * 100);
+      return `<div class="cost-bar-row"><span class="cost-bar-label">${info.icon} ${info.label}</span><div class="cost-bar-track"><div class="cost-bar-fill" style="width:${pct}%;background:${info.color}"></div></div><span class="cost-bar-value">${pct}%</span></div>`;
+    }).join('');
+  }
+
+  document.getElementById('costSummary').innerHTML = `
+    <div class="cost-month-nav"><button class="btn btn-sm btn-outline" onclick="changeCostMonth(-1)">◀</button><span class="cost-month-label">${monthLabel}</span><button class="btn btn-sm btn-outline" onclick="changeCostMonth(1)">▶</button></div>
+    <div class="cost-total-card"><span class="cost-total-label">이번 달 총 지출</span><span class="cost-total-amount">₩${total.toLocaleString()}</span></div>
+    ${barsHtml ? `<div class="cost-bars">${barsHtml}</div>` : ''}`;
+}
+
+function changeCostMonth(delta) {
+  const d = costState.currentMonth;
+  costState.currentMonth = new Date(d.getFullYear(), d.getMonth() + delta, 1);
+  subscribeCostRecords();
+}
+
+function filterCost(cat) {
+  costState.filter = cat;
+  document.querySelectorAll('[data-cost-filter]').forEach(b => b.classList.toggle('active', b.dataset.costFilter === cat));
+  renderCostContent();
+}
+
+function getFilteredCostRecords() {
+  if (costState.filter === 'all') return costState.records;
+  return costState.records.filter(r => r.category === costState.filter);
+}
+
+function switchCostTab(tab) {
+  costState.tab = tab;
+  document.querySelectorAll('.cost-tab').forEach(b => b.classList.toggle('active', false));
+  document.querySelector(`.cost-tab[onclick*="${tab}"]`)?.classList.add('active');
+  document.getElementById('costListView').style.display = tab === 'list' ? '' : 'none';
+  document.getElementById('costStatsView').style.display = tab === 'stats' ? '' : 'none';
+  if (tab === 'list') renderCostList(); else renderCostStats();
+}
+
+function renderCostList() {
+  const records = getFilteredCostRecords();
+  if (!records.length) {
+    document.getElementById('costListView').innerHTML = '<p style="text-align:center;color:var(--text3);padding:40px 0">이번 달 기록이 없습니다.</p>';
+    return;
+  }
+  const html = records.map(r => {
+    const info = COST_CATEGORIES[r.category] || COST_CATEGORIES.other;
+    const d = r.date?.toDate ? r.date.toDate() : new Date(r.date);
+    const dayNames = ['일','월','화','수','목','금','토'];
+    const dateStr = `${d.getMonth()+1}/${d.getDate()} (${dayNames[d.getDay()]})`;
+    let detail = r.place || r.station || '';
+    if (r.category === 'fuel' && r.liters) {
+      detail += detail ? ' · ' : '';
+      detail += `${r.liters}L`;
+      if (r.pricePerLiter) detail += ` · ${Math.round(r.pricePerLiter).toLocaleString()}원/L`;
+      if (r.mileage) detail += ` · ${r.mileage.toLocaleString()}km`;
+    }
+    if (r.memo) detail += (detail ? ' · ' : '') + r.memo;
+    return `<div class="cost-record-card"><div class="cost-record-left"><span class="cost-record-icon" style="background:${info.color}">${info.icon}</span><div><div class="cost-record-cat">${info.label}</div><div class="cost-record-date">${dateStr}</div>${detail ? `<div class="cost-record-detail">${detail}</div>` : ''}</div></div><div class="cost-record-right"><span class="cost-record-amount">₩${(r.amount||0).toLocaleString()}</span><div class="cost-record-actions"><button class="btn-icon" onclick="editCostRecord('${r.id}')" title="수정">✏️</button><button class="btn-icon" onclick="deleteCostRecord('${r.id}')" title="삭제">🗑️</button></div></div></div>`;
+  }).join('');
+  document.getElementById('costListView').innerHTML = html;
+}
+
+async function renderCostStats() {
+  const container = document.getElementById('costStatsView');
+  container.innerHTML = '<p style="text-align:center;color:var(--text3);padding:20px">통계 로딩 중...</p>';
+  const year = costState.currentMonth.getFullYear();
+  const monthlyData = new Array(12).fill(0);
+  const catData = {};
+  try {
+    const start = new Date(year, 0, 1);
+    const end = new Date(year, 11, 31, 23, 59, 59);
+    const snap = await state.db.collection('car_costs').where('userId','==',state.currentUserId).where('date','>=',firebase.firestore.Timestamp.fromDate(start)).where('date','<=',firebase.firestore.Timestamp.fromDate(end)).orderBy('date').get();
+    const yearRecords = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    let totalFuelLiters = 0, fuelRecordsWithMileage = [];
+    yearRecords.forEach(r => {
+      const d = r.date?.toDate ? r.date.toDate() : new Date(r.date);
+      monthlyData[d.getMonth()] += (r.amount || 0);
+      const cat = r.category || 'other';
+      catData[cat] = (catData[cat] || 0) + (r.amount || 0);
+      if (cat === 'fuel') { if (r.liters) totalFuelLiters += r.liters; if (r.mileage) fuelRecordsWithMileage.push({ mileage: r.mileage, date: d }); }
+    });
+    const yearTotal = monthlyData.reduce((s,v) => s+v, 0);
+    const activeMonths = monthlyData.filter(v => v>0).length || 1;
+    const monthAvg = Math.round(yearTotal / activeMonths);
+    let fuelEfficiency = null;
+    fuelRecordsWithMileage.sort((a,b) => a.date - b.date);
+    if (fuelRecordsWithMileage.length >= 2 && totalFuelLiters > 0) {
+      const totalDist = fuelRecordsWithMileage[fuelRecordsWithMileage.length-1].mileage - fuelRecordsWithMileage[0].mileage;
+      if (totalDist > 0) fuelEfficiency = (totalDist / totalFuelLiters).toFixed(1);
+    }
+    const barChartId = 'costBarChart_' + Date.now();
+    const donutChartId = 'costDonutChart_' + Date.now();
+    container.innerHTML = `<div class="cost-stats-summary"><div class="cost-stat-card"><span class="cost-stat-label">📈 ${year}년 총 지출</span><span class="cost-stat-value">₩${yearTotal.toLocaleString()}</span></div><div class="cost-stat-card"><span class="cost-stat-label">📊 월 평균</span><span class="cost-stat-value">₩${monthAvg.toLocaleString()}</span></div>${fuelEfficiency ? `<div class="cost-stat-card"><span class="cost-stat-label">⛽ 평균 연비</span><span class="cost-stat-value">${fuelEfficiency} km/L</span></div>` : ''}</div><div class="cost-chart-section"><h4>월별 지출 추이</h4><canvas id="${barChartId}" width="600" height="260" style="width:100%;max-height:260px"></canvas></div><div class="cost-chart-section"><h4>카테고리별 비율</h4><canvas id="${donutChartId}" width="300" height="300" style="width:100%;max-width:300px;max-height:300px;margin:0 auto;display:block"></canvas></div>`;
+    drawCostBarChart(barChartId, monthlyData, year);
+    drawCostDonutChart(donutChartId, catData);
+  } catch(err) { container.innerHTML = '<p style="text-align:center;color:var(--accent);padding:20px">통계를 불러오지 못했습니다.</p>'; }
+}
+
+function drawCostBarChart(canvasId, data, year) {
+  const canvas = document.getElementById(canvasId); if (!canvas) return;
+  const ctx = canvas.getContext('2d'); const dpr = window.devicePixelRatio||1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = w*dpr; canvas.height = h*dpr; ctx.scale(dpr, dpr);
+  const max = Math.max(...data, 1);
+  const padLeft=60, padRight=16, padTop=16, padBottom=36;
+  const chartW=w-padLeft-padRight, chartH=h-padTop-padBottom;
+  const barW = Math.min(chartW/12*0.6, 32), gap = chartW/12;
+  const style = getComputedStyle(document.documentElement);
+  const textColor = style.getPropertyValue('--text3').trim()||'#6a6a84';
+  const primaryColor = style.getPropertyValue('--primary').trim()||'#d97706';
+  const borderColor = style.getPropertyValue('--border').trim()||'#3a3a4a';
+  ctx.font = '11px Pretendard Variable, sans-serif'; ctx.fillStyle = textColor; ctx.textAlign = 'right';
+  for (let i=0;i<=4;i++) { const y=padTop+chartH-(chartH/4*i); ctx.beginPath(); ctx.strokeStyle=borderColor; ctx.lineWidth=0.5; ctx.moveTo(padLeft,y); ctx.lineTo(w-padRight,y); ctx.stroke(); const val=Math.round(max/4*i); ctx.fillText(val>=10000?Math.round(val/10000)+'만':val.toLocaleString(), padLeft-8, y+4); }
+  const currentMonth = costState.currentMonth.getMonth();
+  ctx.textAlign = 'center';
+  data.forEach((v,i) => { const x=padLeft+gap*i+(gap-barW)/2; const barH=max>0?(v/max)*chartH:0; const y=padTop+chartH-barH; ctx.fillStyle=i===currentMonth?primaryColor:borderColor; ctx.fillRect(x,y,barW,barH); ctx.fillStyle=i===currentMonth?primaryColor:textColor; ctx.fillText((i+1)+'월', padLeft+gap*i+gap/2, h-padBottom+18); });
+}
+
+function drawCostDonutChart(canvasId, catData) {
+  const canvas = document.getElementById(canvasId); if (!canvas) return;
+  const ctx = canvas.getContext('2d'); const dpr = window.devicePixelRatio||1;
+  const size = Math.min(canvas.clientWidth, canvas.clientHeight);
+  canvas.width = size*dpr; canvas.height = size*dpr; ctx.scale(dpr, dpr);
+  const entries = Object.entries(catData).sort((a,b) => b[1]-a[1]);
+  const total = entries.reduce((s,[,v]) => s+v, 0);
+  if (total === 0) { ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--text3').trim(); ctx.font='13px Pretendard Variable, sans-serif'; ctx.textAlign='center'; ctx.fillText('데이터 없음', size/2, size/2); return; }
+  const cx=size/2, cy=size/2, outerR=size/2-10, innerR=outerR*0.55;
+  const catColors = { fuel:'#4ade80', maintenance:'#fbbf24', wash:'#60a5fa', insurance:'#ff6b6b', parking:'#f472b6', other:'#6a6a84' };
+  let startAngle = -Math.PI/2;
+  entries.forEach(([cat, amt]) => {
+    const sliceAngle = (amt/total)*Math.PI*2;
+    ctx.beginPath(); ctx.arc(cx,cy,outerR,startAngle,startAngle+sliceAngle); ctx.arc(cx,cy,innerR,startAngle+sliceAngle,startAngle,true); ctx.closePath(); ctx.fillStyle=catColors[cat]||'#6a6a84'; ctx.fill();
+    if (amt/total > 0.05) { const info=COST_CATEGORIES[cat]||COST_CATEGORIES.other; const midAngle=startAngle+sliceAngle/2; const labelR=(outerR+innerR)/2; ctx.fillStyle='#fff'; ctx.font='bold 11px Pretendard Variable, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(`${info.icon} ${Math.round(amt/total*100)}%`, cx+Math.cos(midAngle)*labelR, cy+Math.sin(midAngle)*labelR); }
+    startAngle += sliceAngle;
+  });
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text').trim();
+  ctx.font = 'bold 14px Pretendard Variable, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('₩'+total.toLocaleString(), cx, cy-6);
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text3').trim();
+  ctx.font = '11px Pretendard Variable, sans-serif'; ctx.fillText('총 지출', cx, cy+12);
+}
+
+function openCostModal(record) {
+  const modal = document.getElementById('costFormModal'); modal.classList.add('active');
+  document.getElementById('costForm').reset(); document.getElementById('costId').value = '';
+  document.getElementById('costFormTitle').textContent = '비용 기록';
+  selectCostCategory('fuel');
+  document.getElementById('costDate').value = new Date().toISOString().slice(0,10);
+  if (record) {
+    document.getElementById('costId').value = record.id;
+    document.getElementById('costFormTitle').textContent = '비용 수정';
+    selectCostCategory(record.category || 'fuel');
+    const d = record.date?.toDate ? record.date.toDate() : new Date(record.date);
+    document.getElementById('costDate').value = d.toISOString().slice(0,10);
+    document.getElementById('costAmount').value = record.amount || '';
+    document.getElementById('costLiters').value = record.liters || '';
+    document.getElementById('costPricePerLiter').value = record.pricePerLiter ? Math.round(record.pricePerLiter) : '';
+    document.getElementById('costMileage').value = record.mileage || '';
+    document.getElementById('costStation').value = record.station || '';
+    document.getElementById('costPlace').value = record.place || '';
+    document.getElementById('costMemo').value = record.memo || '';
+  }
+  document.getElementById('costAmount').oninput = calcPricePerLiter;
+  document.getElementById('costLiters').oninput = calcPricePerLiter;
+}
+
+function closeCostModal() { document.getElementById('costFormModal').classList.remove('active'); }
+
+function selectCostCategory(cat) {
+  document.querySelectorAll('.cost-cat-btn').forEach(b => b.classList.toggle('selected', b.dataset.cat === cat));
+  document.getElementById('costFuelFields').style.display = cat === 'fuel' ? '' : 'none';
+  document.getElementById('costForm').dataset.category = cat;
+}
+
+function calcPricePerLiter() {
+  const amount = parseFloat(document.getElementById('costAmount').value) || 0;
+  const liters = parseFloat(document.getElementById('costLiters').value) || 0;
+  document.getElementById('costPricePerLiter').value = liters > 0 ? Math.round(amount / liters) : '';
+}
+
+async function saveCostRecord(e) {
+  e.preventDefault(); if (!state.currentUserId) return;
+  const id = document.getElementById('costId').value;
+  const category = document.getElementById('costForm').dataset.category || 'fuel';
+  const dateVal = document.getElementById('costDate').value;
+  const amount = parseInt(document.getElementById('costAmount').value) || 0;
+  if (!dateVal || !amount) return alert('날짜와 금액을 입력해주세요.');
+  const data = { userId: state.currentUserId, category, amount, date: firebase.firestore.Timestamp.fromDate(new Date(dateVal+'T00:00:00')), place: document.getElementById('costPlace').value.trim()||null, memo: document.getElementById('costMemo').value.trim()||null, liters:null, pricePerLiter:null, mileage:null, station:null };
+  if (category === 'fuel') { data.liters = parseFloat(document.getElementById('costLiters').value)||null; data.pricePerLiter = data.liters&&amount?Math.round(amount/data.liters):null; data.mileage = parseInt(document.getElementById('costMileage').value)||null; data.station = document.getElementById('costStation').value.trim()||null; }
+  try { if (id) { await state.db.collection('car_costs').doc(id).update(data); } else { data.createdAt = firebase.firestore.FieldValue.serverTimestamp(); await state.db.collection('car_costs').add(data); } closeCostModal(); } catch(err) { alert('저장에 실패했습니다.'); }
+}
+
+function editCostRecord(id) { const record = costState.records.find(r => r.id === id); if (record) openCostModal(record); }
+async function deleteCostRecord(id) { if (!confirm('이 기록을 삭제하시겠습니까?')) return; try { await state.db.collection('car_costs').doc(id).delete(); } catch(err) { alert('삭제에 실패했습니다.'); } }
+document.getElementById('btnAddCost')?.addEventListener('click', () => openCostModal());
 
