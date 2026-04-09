@@ -48,7 +48,7 @@ export async function onRequestPost(context) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-4.1',
+        model: 'o4-mini',
         input,
         tools: [{
           type: 'mcp',
@@ -57,9 +57,7 @@ export async function onRequestPost(context) {
           require_approval: 'never'
         }],
         text: { format: { type: 'text' } },
-        temperature: 0.3,
-        max_output_tokens: 4096,
-        top_p: 1,
+        max_output_tokens: 16384,
         store: true
       })
     });
