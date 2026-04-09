@@ -44,7 +44,7 @@ export async function onRequestPost(context) {
 
   try {
     // Anthropic Messages API — 스트리밍 모드
-    const resp = await fetch('https://api.anthropic.com/v1/messages?beta=mcp-client-2025-11-20', {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'x-api-key': ANTHROPIC_API_KEY,
@@ -66,7 +66,8 @@ export async function onRequestPost(context) {
         }],
         tools: [{
           type: 'mcp_toolset',
-          mcp_server_name: 'korean-law'
+          mcp_server_name: 'korean-law',
+          cache_control: { type: 'ephemeral' }
         }]
       })
     });
