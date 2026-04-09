@@ -1,5 +1,5 @@
 // ===== DT 법률 도우미 =====
-const LEGAL_WORKER_URL = 'https://dt-legal.shocguna.workers.dev';
+// API는 같은 도메인의 Pages Functions로 호출 (/api/legal)
 
 const legal = {
   db: null,
@@ -89,7 +89,7 @@ async function legalSend() {
     var controller = new AbortController();
     var timer = setTimeout(function () { controller.abort(); }, 90000);
 
-    var resp = await fetch(LEGAL_WORKER_URL + '/api/legal', {
+    var resp = await fetch('/api/legal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
