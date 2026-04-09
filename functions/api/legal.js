@@ -57,7 +57,10 @@ export async function onRequestPost(context) {
           require_approval: 'never'
         }],
         text: { format: { type: 'text' } },
-        max_output_tokens: 16384,
+        reasoning: {},
+        temperature: 1,
+        max_output_tokens: 10000,
+        top_p: 1,
         store: true
       })
     });
