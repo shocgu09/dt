@@ -79,10 +79,11 @@ async function legalSend() {
   input.disabled = true;
   setPresetsDisabled(true);
 
-  // 봇 버블 미리 생성 (스트리밍으로 채워나감)
-  var botBubble = createEmptyBotBubble();
+  // 상태 말풍선 (MCP 도구 호출 표시용) — 별도 버블
+  var statusBubble = null;
+  // 답변 말풍선 — 텍스트 스트리밍용
+  var answerBubble = null;
   var fullText = '';
-  var statusEl = null;
 
   try {
     var controller = new AbortController();
@@ -103,10 +104,11 @@ async function legalSend() {
     var contentType = resp.headers.get('content-type') || '';
     if (contentType.includes('application/json')) {
       var data = await resp.json();
+      var errBubble = createBotBubble();
       if (data.error) {
-        botBubble.innerHTML = escHtml('죄송합니다. 오류가 발생했습니다: ' + data.error);
+        errBubble.innerHTML = escHtml('죄송합니다. 오류가 발생했습니다: ' + data.error);
       } else {
-        botBubble.innerHTML = '<div class="legal-answer">' + renderMarkdown(data.answer || '') + '</div>';
+        errBubble.innerHTML = '<div class="legal-answer">' + renderMarkdown(data.answer || '') + '</div>';
         fullText = data.answer || '';
       }
       finishSend(fullText);
@@ -136,35 +138,47 @@ async function legalSend() {
         try { event = JSON.parse(jsonStr); } catch (e) { continue; }
 
         if (event.type === 'text') {
-          // 상태 메시지 제거 후 텍스트 추가
-          if (statusEl) { statusEl.remove(); statusEl = null; }
+          // 텍스트 시작 → 상태 말풍선 숨기고, 답변 말풍선 생성
+          if (statusBubble) {
+            statusBubble.parentElement.remove();
+            statusBubble = null;
+          }
+          if (!answerBubble) {
+            answerBubble = createBotBubble();
+          }
           fullText += event.text;
-          botBubble.innerHTML = '<div class="legal-answer">' + renderMarkdown(fullText) + '</div>';
+          answerBubble.innerHTML = '<div class="legal-answer">' + renderMarkdown(fullText) + '</div>';
           scrollToBottom();
         }
         else if (event.type === 'status') {
-          // MCP 도구 호출 상태 표시
-          if (!statusEl) {
-            statusEl = document.createElement('div');
-            statusEl.className = 'legal-status';
-            botBubble.appendChild(statusEl);
+          // MCP 도구 호출 → 별도 상태 말풍선
+          if (statusBubble) {
+            // 기존 상태 말풍선 업데이트
+            statusBubble.textContent = event.text;
+          } else {
+            statusBubble = createBotBubble();
+            statusBubble.className = 'legal-bubble legal-status-bubble';
+            statusBubble.textContent = event.text;
           }
-          statusEl.textContent = event.text;
           scrollToBottom();
         }
         else if (event.type === 'error') {
-          botBubble.innerHTML = escHtml('죄송합니다. 오류가 발생했습니다: ' + event.text);
+          if (statusBubble) { statusBubble.parentElement.remove(); statusBubble = null; }
+          var errBbl = answerBubble || createBotBubble();
+          errBbl.innerHTML = escHtml('죄송합니다. 오류가 발생했습니다: ' + event.text);
         }
         else if (event.type === 'done') {
-          if (statusEl) { statusEl.remove(); statusEl = null; }
+          if (statusBubble) { statusBubble.parentElement.remove(); statusBubble = null; }
         }
       }
     }
   } catch (e) {
+    if (statusBubble) { statusBubble.parentElement.remove(); statusBubble = null; }
+    var errTarget = answerBubble || createBotBubble();
     if (e.name === 'AbortError') {
-      botBubble.innerHTML = escHtml('응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.');
+      errTarget.innerHTML = escHtml('응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.');
     } else if (!fullText) {
-      botBubble.innerHTML = escHtml('서버와 연결할 수 없습니다. 잠시 후 다시 시도해주세요.');
+      errTarget.innerHTML = escHtml('서버와 연결할 수 없습니다. 잠시 후 다시 시도해주세요.');
     }
   }
 
@@ -201,13 +215,12 @@ function appendBubble(role, html) {
   scrollToBottom();
 }
 
-function createEmptyBotBubble() {
+function createBotBubble() {
   var container = document.getElementById('legalMessages');
   var div = document.createElement('div');
   div.className = 'legal-msg legal-bot';
   var bubble = document.createElement('div');
   bubble.className = 'legal-bubble';
-  bubble.innerHTML = '<div class="legal-typing"><span></span><span></span><span></span></div>';
   div.appendChild(bubble);
   container.appendChild(div);
   scrollToBottom();

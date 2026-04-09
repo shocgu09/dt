@@ -189,13 +189,15 @@ body {
 .legal-answer pre code { background: none; border: none; padding: 0; }
 .legal-answer br { display: block; content: ''; margin-top: 4px; }
 
-/* MCP 도구 호출 상태 */
-.legal-status {
-  font-size: .74rem; color: var(--primary-light); padding: 6px 0 2px;
-  font-weight: 600; opacity: .8;
+/* MCP 도구 호출 상태 말풍선 */
+.legal-status-bubble {
+  font-size: .78rem !important; color: var(--primary-light) !important;
+  background: transparent !important; border: 1px dashed var(--primary) !important;
+  box-shadow: none !important; padding: 8px 14px !important;
+  font-weight: 600;
   animation: legalPulse 1.5s infinite;
 }
-@keyframes legalPulse { 0%,100% { opacity: .8; } 50% { opacity: .4; } }
+@keyframes legalPulse { 0%,100% { opacity: .9; } 50% { opacity: .4; } }
 
 /* ===== Footer ===== */
 .legal-footer {
