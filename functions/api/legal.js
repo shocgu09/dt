@@ -12,18 +12,8 @@ const CORS = {
 // 기본값은 공용 서버, LAW_MCP_URL 환경변수로 오버라이드 가능
 const DEFAULT_MCP_URL = 'https://korean-law-mcp.fly.dev/mcp?oc=mylaw2026';
 
-// 최소 시스템 프롬프트 — MCP 도구 사용 가이드
-const SYSTEM_PROMPT = `한국 법률 질문에 답변합니다. MCP 도구(korean-law)를 적극 사용하세요. 한국어로 답변하세요.
-
-도구 사용 가이드:
-- 법령 검색: search_law → get_law_text (MST 필요)
-- 별표/별지/서식: get_annexes (법령 MST로 별표 목록 조회)
-- 판례 검색: search_precedents → get_precedent_text
-- 조문 비교: compare_articles, compare_old_new
-- 하위법령: get_delegated_laws
-- 용어: search_legal_terms
-
-반드시 도구를 호출하여 실제 데이터를 확인한 후 답변하세요. 추측하지 마세요.`;
+// 최소 시스템 프롬프트 — 데스크톱 MCP 연동과 동일하게 최소화
+const SYSTEM_PROMPT = '한국 법률 질문에 답변합니다. MCP 도구를 사용하세요. 한국어로 답변하세요.';
 
 export async function onRequestOptions() {
   return new Response(null, { headers: CORS });
