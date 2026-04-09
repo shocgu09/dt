@@ -71,17 +71,9 @@ export async function onRequestPost(context) {
     let answerText = '';
     const laws = [];
     const precedents = [];
-    const _debug = [];
 
     if (aiData.output) {
       for (const item of aiData.output) {
-        // 디버그: mcp_call의 output 내용도 확인
-        const debugItem = { type: item.type, name: item.name, role: item.role, keys: Object.keys(item) };
-        if (item.type === 'mcp_call' && item.output) {
-          try { debugItem.outputPreview = item.output.substring(0, 500); } catch {}
-        }
-        _debug.push(debugItem);
-
         // AI 최종 답변
         if (item.type === 'message' && item.role === 'assistant') {
           for (const c of (item.content || [])) {
@@ -98,9 +90,11 @@ export async function onRequestPost(context) {
             const lawName = lawNameMatch ? lawNameMatch[1].trim() : '';
             // 조문 블록 파싱: "제N조 제목\n내용..."
             const articleBlocks = out.split(/(?=^제\d+조)/m).filter(b => b.startsWith('제'));
+            const seen = new Set();
             for (const block of articleBlocks) {
               const headerMatch = block.match(/^(제\d+조(?:의\d+)?)\s*(.*)/);
-              if (headerMatch) {
+              if (headerMatch && !seen.has(headerMatch[1]) && block.length > 30) {
+                seen.add(headerMatch[1]);
                 laws.push({
                   name: lawName,
                   article: headerMatch[1],
@@ -133,12 +127,10 @@ export async function onRequestPost(context) {
       }
     }
 
-    // 디버그 포함 반환
     return json({
       answer: answerText,
       laws,
-      precedents,
-      _debug
+      precedents
     });
 
   } catch (e) {
