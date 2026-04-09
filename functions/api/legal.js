@@ -48,8 +48,8 @@ export async function onRequestPost(context) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 16000,
+        model: 'claude-haiku-3.5-20241022',
+        max_tokens: 8192,
         temperature: 1,
         stream: true,
         system: SYSTEM_PROMPT,
