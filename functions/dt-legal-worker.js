@@ -73,25 +73,39 @@ async function handleLegalQuery(request, env) {
     // Step 3: 컨텍스트 구성
     const context = buildContext(topLaws, lawDetails, precResult);
 
-    // Step 4: OpenAI로 종합 답변 생성
-    const messages = [
-      { role: 'system', content: SYSTEM_PROMPT },
-      ...(history || []).slice(-6),
-      { role: 'user', content: `[법령 컨텍스트]\n${context}\n\n[질문]\n${question}` }
+    // Step 4: OpenAI Responses API로 종합 답변 생성
+    const input = [
+      {
+        role: 'system',
+        content: [{ type: 'input_text', text: SYSTEM_PROMPT }]
+      },
+      ...(history || []).slice(-6).map(h => ({
+        role: h.role === 'assistant' ? 'assistant' : 'user',
+        content: [{
+          type: h.role === 'assistant' ? 'output_text' : 'input_text',
+          text: h.content
+        }]
+      })),
+      {
+        role: 'user',
+        content: [{ type: 'input_text', text: `[법령 컨텍스트]\n${context}\n\n[질문]\n${question}` }]
+      }
     ];
 
-    const aiResp = await fetch('https://api.openai.com/v1/chat/completions', {
+    const aiResp = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-4.1-mini',
+        model: 'gpt-4.1',
+        input,
+        text: { format: { type: 'text' } },
         temperature: 0.3,
-        max_tokens: 2048,
-        response_format: { type: 'json_object' },
-        messages
+        max_output_tokens: 2048,
+        top_p: 1,
+        store: true
       })
     });
 
@@ -100,11 +114,20 @@ async function handleLegalQuery(request, env) {
       return jsonResponse({ error: aiData.error.message || 'AI 오류' }, 500);
     }
 
+    // Responses API: output[0].content[0].text
+    let rawText = '';
+    if (aiData.output && aiData.output.length > 0) {
+      const msg = aiData.output.find(o => o.role === 'assistant');
+      if (msg && msg.content && msg.content.length > 0) {
+        rawText = msg.content[0].text || '';
+      }
+    }
+
     let parsed;
     try {
-      parsed = JSON.parse(aiData.choices[0].message.content);
+      parsed = JSON.parse(rawText);
     } catch {
-      parsed = { answer: aiData.choices[0].message.content, summary: [], tips: [] };
+      parsed = { answer: rawText, summary: [], tips: [] };
     }
 
     // 법령/판례 소스 첨부
