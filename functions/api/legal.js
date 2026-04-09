@@ -75,8 +75,12 @@ export async function onRequestPost(context) {
 
     if (aiData.output) {
       for (const item of aiData.output) {
-        // 디버그: 모든 아이템 타입 기록
-        _debug.push({ type: item.type, name: item.name, role: item.role, hasOutput: !!item.output, keys: Object.keys(item) });
+        // 디버그: mcp_call의 output 내용도 확인
+        const debugItem = { type: item.type, name: item.name, role: item.role, keys: Object.keys(item) };
+        if (item.type === 'mcp_call' && item.output) {
+          try { debugItem.outputPreview = item.output.substring(0, 500); } catch {}
+        }
+        _debug.push(debugItem);
 
         // AI 최종 답변
         if (item.type === 'message' && item.role === 'assistant') {
@@ -85,7 +89,7 @@ export async function onRequestPost(context) {
           }
         }
         // MCP 도구 호출 결과에서 법령/판례 수집
-        if (item.type === 'mcp_tool_call') {
+        if (item.type === 'mcp_call') {
           try {
             const result = JSON.parse(item.output || '{}');
             // get_law_text 결과
