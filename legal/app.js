@@ -137,8 +137,16 @@ async function legalSend() {
         var event;
         try { event = JSON.parse(jsonStr); } catch (e) { continue; }
 
-        if (event.type === 'text') {
-          // 텍스트 시작 → 상태 말풍선 숨기고, 답변 말풍선 생성
+        if (event.type === 'clear') {
+          // 새 도구 호출 전 → 이전 중간 텍스트 삭제
+          if (answerBubble) {
+            answerBubble.parentElement.remove();
+            answerBubble = null;
+          }
+          fullText = '';
+        }
+        else if (event.type === 'text') {
+          // 텍스트 → 상태 말풍선 숨기고, 답변 말풍선에 추가
           if (statusBubble) {
             statusBubble.parentElement.remove();
             statusBubble = null;
@@ -153,7 +161,6 @@ async function legalSend() {
         else if (event.type === 'status') {
           // MCP 도구 호출 → 별도 상태 말풍선
           if (statusBubble) {
-            // 기존 상태 말풍선 업데이트
             statusBubble.textContent = event.text;
           } else {
             statusBubble = createBotBubble();

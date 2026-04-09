@@ -85,15 +85,14 @@ export async function onRequestPost(context) {
     const encoder = new TextEncoder();
 
     // 백그라운드에서 Anthropic SSE → 클라이언트 SSE 변환
-    // 핵심: 도구 호출 사이의 중간 텍스트는 무시하고, 최종 텍스트만 전달
+    // 전략: 텍스트는 항상 전달하되, 새 도구 호출이 오면 clear로 이전 텍스트 리셋
+    // → 중간 텍스트("조회하겠습니다")는 잠깐 보였다가 자동 삭제됨
+    // → 최종 답변만 남음
     context.waitUntil((async () => {
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-      let hasPendingTool = false;  // 도구 호출이 아직 진행 중인지
-      let lastTextBlockIdx = -1;   // 마지막 텍스트 블록 인덱스
-      let currentBlockIdx = -1;
-      let currentBlockType = '';
+      let blockTypes = {};
 
       try {
         while (true) {
@@ -112,35 +111,22 @@ export async function onRequestPost(context) {
             let event;
             try { event = JSON.parse(data); } catch { continue; }
 
-            // 블록 시작 추적
             if (event.type === 'content_block_start') {
-              currentBlockIdx = event.index;
-              currentBlockType = event.content_block?.type || '';
+              const btype = event.content_block?.type || '';
+              blockTypes[event.index] = btype;
 
-              if (currentBlockType === 'mcp_tool_use') {
-                hasPendingTool = true;
+              if (btype === 'mcp_tool_use') {
                 const toolName = event.content_block.name || '';
+                // 이전 텍스트 초기화 + 상태 표시
+                await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'clear' })}\n\n`));
                 await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'status', text: `🔍 ${toolName} 호출 중...` })}\n\n`));
               }
-              else if (currentBlockType === 'mcp_tool_result') {
-                // 도구 결과 수신 완료
-              }
-              else if (currentBlockType === 'text') {
-                lastTextBlockIdx = currentBlockIdx;
-              }
             }
-            // 도구 결과 블록이 끝나면 pending 해제
-            else if (event.type === 'content_block_stop') {
-              if (currentBlockType === 'mcp_tool_result') {
-                hasPendingTool = false;
-              }
-            }
-            // text delta → 도구 호출 진행 중이면 무시, 최종 답변만 전달
+            // text delta → 항상 전달
             else if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
-              if (!hasPendingTool) {
+              if (blockTypes[event.index] === 'text') {
                 await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'text', text: event.delta.text })}\n\n`));
               }
-              // 도구 호출 중간 텍스트는 버림 (조회하겠습니다 등)
             }
             // 스트림 종료
             else if (event.type === 'message_stop') {
