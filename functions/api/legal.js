@@ -71,9 +71,13 @@ export async function onRequestPost(context) {
     let answerText = '';
     const laws = [];
     const precedents = [];
+    const _debug = [];
 
     if (aiData.output) {
       for (const item of aiData.output) {
+        // 디버그: 모든 아이템 타입 기록
+        _debug.push({ type: item.type, name: item.name, role: item.role, hasOutput: !!item.output, keys: Object.keys(item) });
+
         // AI 최종 답변
         if (item.type === 'message' && item.role === 'assistant') {
           for (const c of (item.content || [])) {
@@ -104,11 +108,12 @@ export async function onRequestPost(context) {
       }
     }
 
-    // AI 텍스트 그대로 반환 (JSON 파싱 없음)
+    // 디버그 포함 반환
     return json({
       answer: answerText,
       laws,
-      precedents
+      precedents,
+      _debug
     });
 
   } catch (e) {
