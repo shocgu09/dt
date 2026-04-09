@@ -1,6 +1,5 @@
-// DT 법률 도우미 — Anthropic Claude API + MCP 커넥터 (네이티브)
-// Claude가 MCP 서버에 직접 연결하여 도구 호출 (데스크톱과 동일)
-// Cloudflare Pages Function
+// DT 법률 도우미 — Anthropic Claude API + MCP 커넥터 (스트리밍)
+// Cloudflare Pages Function — SSE 스트리밍으로 실시간 응답
 // 참고: https://docs.anthropic.com/en/docs/agents-and-tools/tool-use
 
 const CORS = {
@@ -26,72 +25,126 @@ export async function onRequestPost(context) {
   catch { return json({ error: '요청 형식이 올바르지 않습니다.' }, 400); }
   if (!question || question.length > 2000) return json({ error: '질문이 비어있거나 너무 깁니다' }, 400);
 
-  try {
-    // 대화 메시지 구성 (히스토리 3개로 제한 — 토큰 절약)
-    const messages = [];
-    if (history && history.length) {
-      for (const h of history.slice(-3)) {
-        messages.push({
-          role: h.role === 'assistant' ? 'assistant' : 'user',
-          content: h.content
-        });
-      }
-    }
-    messages.push({ role: 'user', content: [{ type: 'text', text: question }] });
-
-    const body = {
-      model: 'claude-sonnet-4-6',
-      max_tokens: 16000,
-      temperature: 1,
-      system: SYSTEM_PROMPT,
-      messages,
-      mcp_servers: [{
-        type: 'url',
-        url: mcpUrl,
-        name: 'korean-law'
-      }],
-      tools: [{
-        type: 'mcp_toolset',
-        mcp_server_name: 'korean-law'
-      }]
-    };
-
-    // Anthropic Messages API + MCP 커넥터 (네이티브)
-    // Overloaded 시 1회 자동 재시도
-    let data;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const resp = await fetch('https://api.anthropic.com/v1/messages?beta=mcp-client-2025-11-20', {
-        method: 'POST',
-        headers: {
-          'x-api-key': ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-          'anthropic-beta': 'mcp-client-2025-11-20',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body)
+  // 대화 메시지 구성 (히스토리 3개로 제한 — 토큰 절약)
+  const messages = [];
+  if (history && history.length) {
+    for (const h of history.slice(-3)) {
+      messages.push({
+        role: h.role === 'assistant' ? 'assistant' : 'user',
+        content: h.content
       });
+    }
+  }
+  messages.push({ role: 'user', content: [{ type: 'text', text: question }] });
 
-      const rawText = await resp.text();
-      try { data = JSON.parse(rawText); }
-      catch { return json({ error: 'API 응답 파싱 실패: ' + rawText.substring(0, 200) }, 500); }
+  try {
+    // Anthropic Messages API — 스트리밍 모드
+    const resp = await fetch('https://api.anthropic.com/v1/messages?beta=mcp-client-2025-11-20', {
+      method: 'POST',
+      headers: {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'mcp-client-2025-11-20',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 16000,
+        temperature: 1,
+        stream: true,
+        system: SYSTEM_PROMPT,
+        messages,
+        mcp_servers: [{
+          type: 'url',
+          url: mcpUrl,
+          name: 'korean-law'
+        }],
+        tools: [{
+          type: 'mcp_toolset',
+          mcp_server_name: 'korean-law'
+        }]
+      })
+    });
 
-      // Overloaded → 3초 대기 후 재시도
-      if (data.error && data.error.type === 'overloaded_error' && attempt === 0) {
-        await new Promise(r => setTimeout(r, 3000));
-        continue;
-      }
-      break;
+    // API 에러 (non-stream 응답)
+    if (!resp.ok) {
+      const errText = await resp.text();
+      let errMsg = 'Claude API 오류';
+      try { errMsg = JSON.parse(errText).error?.message || errMsg; } catch {}
+      return json({ error: errMsg }, resp.status);
     }
 
-    if (data.error) return json({ error: data.error.message || 'Claude API 오류' }, 500);
+    // SSE 스트림을 클라이언트로 전달
+    const { readable, writable } = new TransformStream();
+    const writer = writable.getWriter();
+    const encoder = new TextEncoder();
 
-    // 최종 텍스트 추출
-    const answer = (data.content || [])
-      .filter(b => b.type === 'text')
-      .map(b => b.text)
-      .join('\n');
+    // 백그라운드에서 Anthropic SSE → 클라이언트 SSE 변환
+    context.waitUntil((async () => {
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
 
-    return json({ answer });
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const data = line.slice(6).trim();
+            if (data === '[DONE]') continue;
+
+            let event;
+            try { event = JSON.parse(data); } catch { continue; }
+
+            // text delta → 클라이언트로 전달
+            if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+              await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'text', text: event.delta.text })}\n\n`));
+            }
+            // MCP 도구 호출 시작 → 상태 알림
+            else if (event.type === 'content_block_start' && event.content_block?.type === 'mcp_tool_use') {
+              const toolName = event.content_block.name || '';
+              await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'status', text: `🔍 ${toolName} 도구 호출 중...` })}\n\n`));
+            }
+            // 스트림 종료
+            else if (event.type === 'message_stop') {
+              await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'done' })}\n\n`));
+            }
+          }
+        }
+        // 버퍼에 남은 데이터 처리
+        if (buffer.startsWith('data: ')) {
+          const data = buffer.slice(6).trim();
+          if (data && data !== '[DONE]') {
+            try {
+              const event = JSON.parse(data);
+              if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+                await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'text', text: event.delta.text })}\n\n`));
+              }
+            } catch {}
+          }
+        }
+        await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'done' })}\n\n`));
+      } catch (e) {
+        await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'error', text: e.message || '스트림 오류' })}\n\n`));
+      } finally {
+        await writer.close();
+      }
+    })());
+
+    return new Response(readable, {
+      headers: {
+        ...CORS,
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      }
+    });
 
   } catch (e) {
     return json({ error: e.message || '서버 오류' }, 500);

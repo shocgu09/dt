@@ -1,4 +1,4 @@
-// ===== DT 법률 도우미 =====
+// ===== DT 법률 도우미 — 스트리밍 =====
 // API는 같은 도메인의 Pages Functions로 호출 (/api/legal)
 
 const legal = {
@@ -63,7 +63,7 @@ function legalPreset(text) {
   legalSend();
 }
 
-// --- Send ---
+// --- Send (스트리밍) ---
 async function legalSend() {
   var input = document.getElementById('legalInput');
   var text = input.value.trim();
@@ -79,55 +79,109 @@ async function legalSend() {
   input.disabled = true;
   setPresetsDisabled(true);
 
-  var typingEl = showTyping();
+  // 봇 버블 미리 생성 (스트리밍으로 채워나감)
+  var botBubble = createEmptyBotBubble();
+  var fullText = '';
+  var statusEl = null;
 
   try {
     var controller = new AbortController();
-    var timer = setTimeout(function () { controller.abort(); }, 90000);
+    var timer = setTimeout(function () { controller.abort(); }, 120000);
 
     var resp = await fetch('/api/legal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         question: text,
-        history: legal.history.slice(-6)
+        history: legal.history.slice(-3)
       }),
       signal: controller.signal
     });
     clearTimeout(timer);
 
-    var data = await resp.json();
-    typingEl.remove();
+    // 비스트리밍 에러 응답 처리
+    var contentType = resp.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      var data = await resp.json();
+      if (data.error) {
+        botBubble.innerHTML = escHtml('죄송합니다. 오류가 발생했습니다: ' + data.error);
+      } else {
+        botBubble.innerHTML = '<div class="legal-answer">' + renderMarkdown(data.answer || '') + '</div>';
+        fullText = data.answer || '';
+      }
+      finishSend(fullText);
+      return;
+    }
 
-    if (data.error) {
-      appendMsg('bot', '죄송합니다. 오류가 발생했습니다: ' + data.error);
-    } else {
-      renderAnswer(data);
-      legal.history.push({ role: 'assistant', content: data.answer || '' });
+    // SSE 스트리밍 수신
+    var reader = resp.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = '';
+
+    while (true) {
+      var result = await reader.read();
+      if (result.done) break;
+
+      buffer += decoder.decode(result.value, { stream: true });
+      var lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (!line.startsWith('data: ')) continue;
+        var jsonStr = line.slice(6).trim();
+        if (!jsonStr) continue;
+
+        var event;
+        try { event = JSON.parse(jsonStr); } catch (e) { continue; }
+
+        if (event.type === 'text') {
+          // 상태 메시지 제거 후 텍스트 추가
+          if (statusEl) { statusEl.remove(); statusEl = null; }
+          fullText += event.text;
+          botBubble.innerHTML = '<div class="legal-answer">' + renderMarkdown(fullText) + '</div>';
+          scrollToBottom();
+        }
+        else if (event.type === 'status') {
+          // MCP 도구 호출 상태 표시
+          if (!statusEl) {
+            statusEl = document.createElement('div');
+            statusEl.className = 'legal-status';
+            botBubble.appendChild(statusEl);
+          }
+          statusEl.textContent = event.text;
+          scrollToBottom();
+        }
+        else if (event.type === 'error') {
+          botBubble.innerHTML = escHtml('죄송합니다. 오류가 발생했습니다: ' + event.text);
+        }
+        else if (event.type === 'done') {
+          if (statusEl) { statusEl.remove(); statusEl = null; }
+        }
+      }
     }
   } catch (e) {
-    typingEl.remove();
     if (e.name === 'AbortError') {
-      appendMsg('bot', '응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.');
-    } else {
-      appendMsg('bot', '서버와 연결할 수 없습니다. 잠시 후 다시 시도해주세요.');
+      botBubble.innerHTML = escHtml('응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.');
+    } else if (!fullText) {
+      botBubble.innerHTML = escHtml('서버와 연결할 수 없습니다. 잠시 후 다시 시도해주세요.');
     }
   }
 
+  finishSend(fullText);
+}
+
+function finishSend(fullText) {
+  if (fullText) {
+    legal.history.push({ role: 'assistant', content: fullText });
+  }
   legal._sending = false;
+  var sendBtn = document.getElementById('legalSendBtn');
+  var input = document.getElementById('legalInput');
   sendBtn.disabled = false;
   input.disabled = false;
   input.focus();
   setPresetsDisabled(false);
-}
-
-// --- 답변 렌더링 — AI 텍스트 그대로 마크다운 렌더링 ---
-function renderAnswer(data) {
-  var html = '';
-  if (data.answer) {
-    html += '<div class="legal-answer">' + renderMarkdown(data.answer) + '</div>';
-  }
-  appendBubble('bot', html);
 }
 
 // --- UI 헬퍼 ---
@@ -144,17 +198,25 @@ function appendBubble(role, html) {
   bubble.innerHTML = html;
   div.appendChild(bubble);
   container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
+  scrollToBottom();
 }
 
-function showTyping() {
+function createEmptyBotBubble() {
   var container = document.getElementById('legalMessages');
   var div = document.createElement('div');
   div.className = 'legal-msg legal-bot';
-  div.innerHTML = '<div class="legal-typing"><span></span><span></span><span></span></div>';
+  var bubble = document.createElement('div');
+  bubble.className = 'legal-bubble';
+  bubble.innerHTML = '<div class="legal-typing"><span></span><span></span><span></span></div>';
+  div.appendChild(bubble);
   container.appendChild(div);
+  scrollToBottom();
+  return bubble;
+}
+
+function scrollToBottom() {
+  var container = document.getElementById('legalMessages');
   container.scrollTop = container.scrollHeight;
-  return div;
 }
 
 function setPresetsDisabled(disabled) {
