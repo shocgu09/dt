@@ -108,18 +108,18 @@ async function mcpRequest(url, sessionId, payload) {
   const newSessionId = resp.headers.get('mcp-session-id') || sessionId;
   const contentType = resp.headers.get('content-type') || '';
 
+  const rawText = await resp.text();
   let data;
   if (contentType.includes('text/event-stream')) {
-    // SSE 응답 파싱
-    const text = await resp.text();
-    for (const line of text.split('\n')) {
+    for (const line of rawText.split('\n')) {
       if (line.startsWith('data: ')) {
         try { data = JSON.parse(line.slice(6)); } catch {}
       }
     }
-    if (!data) throw new Error('MCP SSE 파싱 실패');
+    if (!data) throw new Error('MCP SSE 파싱 실패: ' + rawText.substring(0, 200));
   } else {
-    data = await resp.json();
+    try { data = JSON.parse(rawText); }
+    catch { throw new Error('MCP 응답 파싱 실패: ' + rawText.substring(0, 200)); }
   }
 
   if (data.error) throw new Error(data.error.message || 'MCP 오류');
@@ -194,7 +194,10 @@ async function callClaude(apiKey, messages, tools) {
     })
   });
 
-  const data = await resp.json();
+  const rawText = await resp.text();
+  let data;
+  try { data = JSON.parse(rawText); }
+  catch { throw new Error('Claude API 응답 파싱 실패: ' + rawText.substring(0, 200)); }
   if (data.error) throw new Error(data.error.message || 'Claude API 오류');
   return data;
 }
