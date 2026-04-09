@@ -3659,7 +3659,7 @@ async function refineWithAI() {
   btn.disabled = true;
   btn.textContent = '⏳ 정리 중...';
   try {
-    var res = await fetch('https://dt-ai.shocguna.workers.dev/api/refine', {
+    var res = await fetch('/api/refine', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: text })
