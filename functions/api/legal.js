@@ -9,6 +9,7 @@ const CORS = {
 };
 
 const DEFAULT_MCP_URL = 'https://korean-law-mcp.fly.dev/mcp?oc=mylaw2026';
+const FALLBACK_MCP_URL = 'https://korean-law-mcp.fly.dev/mcp?oc=mylaw2026';
 const SYSTEM_PROMPT = `한국 법률 질문에 답변하는 AI 법률 도우미입니다.
 
 [필수 규칙]
@@ -23,10 +24,53 @@ export async function onRequestOptions() {
   return new Response(null, { headers: CORS });
 }
 
+async function callAnthropic(apiKey, mcpUrl, messages) {
+  return fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta': 'mcp-client-2025-11-20',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 8192,
+      temperature: 1,
+      stream: true,
+      system: SYSTEM_PROMPT,
+      messages,
+      mcp_servers: [{
+        type: 'url',
+        url: mcpUrl,
+        name: 'korean-law'
+      }],
+      tools: [{
+        type: 'mcp_toolset',
+        mcp_server_name: 'korean-law',
+        cache_control: { type: 'ephemeral' }
+      }]
+    })
+  });
+}
+
+// MCP 연결 실패 에러인지 판단
+function isMcpConnectionError(errText) {
+  if (!errText) return false;
+  const lower = errText.toLowerCase();
+  return lower.includes('failed to connect to mcp') ||
+         lower.includes('name or service not known') ||
+         lower.includes('mcp server') && lower.includes('connection');
+}
+
 export async function onRequestPost(context) {
   const { ANTHROPIC_API_KEY, LAW_MCP_URL } = context.env;
   if (!ANTHROPIC_API_KEY) return json({ error: 'ANTHROPIC_API_KEY가 설정되지 않았습니다.' }, 500);
-  const mcpUrl = LAW_MCP_URL || DEFAULT_MCP_URL;
+
+  // MCP URL 우선순위: 환경변수(터널) → fly.dev 폴백
+  const primaryMcpUrl = LAW_MCP_URL || DEFAULT_MCP_URL;
+  const mcpUrls = [primaryMcpUrl];
+  if (primaryMcpUrl !== FALLBACK_MCP_URL) mcpUrls.push(FALLBACK_MCP_URL);
 
   let question, history;
   try { ({ question, history } = await context.request.json()); }
@@ -46,41 +90,34 @@ export async function onRequestPost(context) {
   messages.push({ role: 'user', content: [{ type: 'text', text: question }] });
 
   try {
-    // Anthropic Messages API — 스트리밍 모드
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'mcp-client-2025-11-20',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 8192,
-        temperature: 1,
-        stream: true,
-        system: SYSTEM_PROMPT,
-        messages,
-        mcp_servers: [{
-          type: 'url',
-          url: mcpUrl,
-          name: 'korean-law'
-        }],
-        tools: [{
-          type: 'mcp_toolset',
-          mcp_server_name: 'korean-law',
-          cache_control: { type: 'ephemeral' }
-        }]
-      })
-    });
+    // MCP URL 순차 시도: 실패 시 폴백으로 자동 전환
+    let resp = null;
+    let lastErrText = '';
+    let lastErrStatus = 500;
 
-    // API 에러 (non-stream 응답)
-    if (!resp.ok) {
+    for (const url of mcpUrls) {
+      resp = await callAnthropic(ANTHROPIC_API_KEY, url, messages);
+      if (resp.ok) break;
+
+      // 에러 응답 읽기
       const errText = await resp.text();
-      let errMsg = 'Claude API 오류';
-      try { errMsg = JSON.parse(errText).error?.message || errMsg; } catch {}
-      return json({ error: errMsg }, resp.status);
+      lastErrText = errText;
+      lastErrStatus = resp.status;
+
+      // MCP 연결 실패면 다음 URL로 재시도, 아니면 바로 에러 반환
+      if (!isMcpConnectionError(errText)) {
+        let errMsg = 'Claude API 오류';
+        try { errMsg = JSON.parse(errText).error?.message || errMsg; } catch {}
+        return json({ error: errMsg }, resp.status);
+      }
+      resp = null; // 다음 시도
+    }
+
+    // 모든 MCP URL이 실패
+    if (!resp) {
+      let errMsg = '모든 MCP 서버 연결 실패';
+      try { errMsg = JSON.parse(lastErrText).error?.message || errMsg; } catch {}
+      return json({ error: errMsg }, lastErrStatus);
     }
 
     // SSE 스트림을 클라이언트로 전달
