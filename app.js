@@ -4727,8 +4727,22 @@ document.addEventListener('DOMContentLoaded', () => {
       const modal = document.getElementById('installGuideModal');
       modal.style.display = '';
       modal.classList.add('open');
+      // iOS 기기면 iOS 탭, 아니면 Android 탭 기본 선택
+      const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+      window.switchInstallTab(isIos ? 'ios' : 'android');
     }, 100);
   });
+
+  // 설치 가이드 탭 전환
+  window.switchInstallTab = (tab) => {
+    document.querySelectorAll('.install-tab').forEach(b => {
+      b.classList.toggle('active', b.dataset.tab === tab);
+    });
+    const iosPanel = document.getElementById('installPanelIos');
+    const androidPanel = document.getElementById('installPanelAndroid');
+    if (iosPanel) iosPanel.style.display = tab === 'ios' ? '' : 'none';
+    if (androidPanel) androidPanel.style.display = tab === 'android' ? '' : 'none';
+  };
 
   document.querySelectorAll('.modal-close, [data-modal]').forEach(btn => {
     btn.addEventListener('click', () => closeModal(btn.dataset.modal || btn.closest('.modal-overlay')?.id));

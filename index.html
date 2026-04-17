@@ -529,62 +529,224 @@
 
   <!-- 앱 설치 안내 모달 -->
   <div class="modal-overlay" id="installGuideModal">
-    <div class="modal" style="max-width:420px">
+    <div class="modal install-guide-modal" style="max-width:460px">
       <div class="modal-header">
         <h3>📲 앱으로 설치하기</h3>
         <button class="modal-close" onclick="closeModal('installGuideModal')" aria-label="닫기">✕</button>
       </div>
-      <div class="modal-body" style="padding:20px">
+      <div class="modal-body" style="padding:0">
 
-        <!-- iOS -->
-        <div style="margin-bottom:24px">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-            <span style="font-size:1.4rem"></span>
-            <span style="font-weight:700;font-size:1rem">iPhone / iPad (Safari)</span>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:10px;font-size:.88rem;color:var(--text2)">
-            <div style="display:flex;align-items:center;gap:12px">
-              <span style="background:var(--primary);color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;flex-shrink:0">1</span>
-              <span>하단 가운데 <strong style="color:var(--text)">공유 버튼 ↑</strong> 탭</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:12px">
-              <span style="background:var(--primary);color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;flex-shrink:0">2</span>
-              <span>스크롤해서 <strong style="color:var(--text)">"홈 화면에 추가"</strong> 탭</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:12px">
-              <span style="background:var(--primary);color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;flex-shrink:0">3</span>
-              <span>오른쪽 위 <strong style="color:var(--text)">"추가"</strong> 탭</span>
-            </div>
-          </div>
-          <div style="margin-top:10px;padding:8px 12px;background:var(--bg3);border-radius:8px;font-size:.78rem;color:var(--text3)">
-            ⚠️ 반드시 <strong>Safari</strong>에서 접속해야 합니다
-          </div>
+        <!-- 탭 선택 -->
+        <div class="install-tabs">
+          <button class="install-tab active" data-tab="ios" onclick="switchInstallTab('ios')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>
+            iPhone / iPad
+          </button>
+          <button class="install-tab" data-tab="android" onclick="switchInstallTab('android')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.523 15.3414c-.5511 0-.9993-.4486-.9993-.9997s.4482-.9993.9993-.9993c.5511 0 .9993.4482.9993.9993.0001.5511-.4482.9997-.9993.9997m-11.046 0c-.5511 0-.9993-.4486-.9993-.9997s.4482-.9993.9993-.9993c.5511 0 .9993.4482.9993.9993 0 .5511-.4482.9997-.9993.9997m11.4045-6.02l1.9973-3.4592a.416.416 0 00-.1521-.5676.416.416 0 00-.5676.1521l-2.0223 3.503C15.5902 8.2439 13.8533 7.8508 12 7.8508s-3.5902.3931-5.1367 1.0989L4.841 5.4467a.4161.4161 0 00-.5676-.1521.4157.4157 0 00-.1521.5676l1.9973 3.4592C2.6889 11.1867.3432 14.6589 0 18.761h24c-.3432-4.1021-2.6889-7.5743-6.1185-9.4396"/></svg>
+            Android
+          </button>
         </div>
 
-        <div style="border-top:1px solid var(--border);margin-bottom:24px"></div>
+        <!-- iOS 안내 (기본 표시) -->
+        <div class="install-panel" id="installPanelIos">
 
-        <!-- Android -->
-        <div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-            <span style="font-size:1.4rem">🤖</span>
-            <span style="font-weight:700;font-size:1rem">Android (Chrome / 삼성 인터넷)</span>
+          <!-- Safari 브라우저 시각화 -->
+          <div class="ios-visual-wrapper">
+            <div class="ios-browser-mockup">
+              <!-- Safari 상단바 -->
+              <div class="ios-browser-topbar">
+                <div class="ios-browser-dots">
+                  <span></span><span></span><span></span>
+                </div>
+                <div class="ios-browser-url">dt-1js.pages.dev</div>
+              </div>
+              <!-- 콘텐츠 미리보기 -->
+              <div class="ios-browser-content">
+                <div class="ios-content-icon">🏁</div>
+                <div class="ios-content-title">DT Club</div>
+                <div class="ios-content-sub">드라이브를 사랑하는 사람들</div>
+              </div>
+              <!-- Safari 하단 툴바 -->
+              <div class="ios-browser-bottombar">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                <!-- 공유 버튼 강조 -->
+                <div class="ios-share-btn-highlight">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                  <div class="ios-share-pulse"></div>
+                  <div class="ios-share-pulse ios-share-pulse-2"></div>
+                </div>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+              </div>
+            </div>
+            <!-- 화살표 + 라벨 (mockup 밖) -->
+            <div class="ios-arrow-indicator">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="var(--primary)" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+            </div>
+            <div class="ios-arrow-label">여기를 탭하세요</div>
           </div>
-          <div style="display:flex;flex-direction:column;gap:10px;font-size:.88rem;color:var(--text2)">
-            <div style="display:flex;align-items:center;gap:12px">
-              <span style="background:var(--primary);color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;flex-shrink:0">1</span>
-              <span>주소창 오른쪽 <strong style="color:var(--text)">⋮ 메뉴</strong> 탭</span>
+
+          <!-- Safari 경고 -->
+          <div class="ios-safari-warning">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span>반드시 <strong>Safari 브라우저</strong>에서 접속해야 설치할 수 있어요<br><span class="ios-safari-warning-sub">Chrome·네이버앱·카카오톡 내장 브라우저는 설치 불가</span></span>
+          </div>
+
+          <!-- 단계별 상세 설명 -->
+          <div class="install-steps">
+            <!-- Step 1 -->
+            <div class="install-step">
+              <div class="install-step-num">1</div>
+              <div class="install-step-content">
+                <div class="install-step-title">
+                  <span>하단 가운데 <strong>공유 버튼</strong> 탭</span>
+                  <span class="install-step-icon-inline">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                  </span>
+                </div>
+                <div class="install-step-desc">Safari 화면 아래 가운데 사각형에 화살표(↑)가 있는 아이콘을 탭하세요</div>
+              </div>
             </div>
-            <div style="display:flex;align-items:center;gap:12px">
-              <span style="background:var(--primary);color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;flex-shrink:0">2</span>
-              <span><strong style="color:var(--text)">"앱 설치"</strong> 또는 <strong style="color:var(--text)">"홈 화면에 추가"</strong> 탭</span>
+
+            <!-- Step 2 -->
+            <div class="install-step">
+              <div class="install-step-num">2</div>
+              <div class="install-step-content">
+                <div class="install-step-title">
+                  메뉴에서 <strong>"홈 화면에 추가"</strong> 선택
+                </div>
+                <div class="install-step-desc">공유 메뉴가 열리면 <strong>아래로 스크롤</strong>해서 찾으세요</div>
+                <!-- 메뉴 미리보기 -->
+                <div class="ios-menu-preview">
+                  <div class="ios-menu-item">
+                    <div class="ios-menu-icon">📋</div>
+                    <span>복사</span>
+                  </div>
+                  <div class="ios-menu-item">
+                    <div class="ios-menu-icon">🔖</div>
+                    <span>책갈피 추가</span>
+                  </div>
+                  <div class="ios-menu-item ios-menu-highlight">
+                    <div class="ios-menu-icon">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                    </div>
+                    <span>홈 화면에 추가</span>
+                    <svg class="ios-menu-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div style="display:flex;align-items:center;gap:12px">
-              <span style="background:var(--primary);color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;flex-shrink:0">3</span>
-              <span><strong style="color:var(--text)">"설치"</strong> 탭</span>
+
+            <!-- Step 3 -->
+            <div class="install-step">
+              <div class="install-step-num">3</div>
+              <div class="install-step-content">
+                <div class="install-step-title">
+                  오른쪽 위 <strong>"추가"</strong> 탭
+                </div>
+                <div class="install-step-desc">앱 이름을 확인하고 오른쪽 상단 <strong>파란색 "추가"</strong> 버튼을 눌러주세요</div>
+              </div>
+            </div>
+
+            <!-- Step 4 -->
+            <div class="install-step">
+              <div class="install-step-num">4</div>
+              <div class="install-step-content">
+                <div class="install-step-title">
+                  🎉 <strong>홈 화면에서 DT Club 앱 실행</strong>
+                </div>
+                <div class="install-step-desc">이제 홈 화면 아이콘을 탭해서 앱처럼 사용하세요. 알림도 받을 수 있어요!</div>
+              </div>
             </div>
           </div>
-          <div style="margin-top:10px;padding:8px 12px;background:var(--bg3);border-radius:8px;font-size:.78rem;color:var(--text3)">
-            💡 주소창에 설치 아이콘이 자동으로 뜨기도 합니다
+
+          <!-- FAQ -->
+          <details class="install-faq">
+            <summary>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              공유 버튼이 보이지 않아요
+            </summary>
+            <div class="install-faq-body">
+              <strong>1. 카카오톡·인스타그램 내장 브라우저</strong>라면 "Safari로 열기"를 선택하세요<br>
+              <strong>2. Chrome 브라우저</strong>라면 Safari로 바꿔서 접속하세요<br>
+              <strong>3. 주소창이 보이지 않는다면</strong> 화면을 아래로 조금 스와이프하세요
+            </div>
+          </details>
+        </div>
+
+        <!-- Android 안내 (기본 숨김) -->
+        <div class="install-panel" id="installPanelAndroid" style="display:none">
+
+          <!-- Chrome 브라우저 시각화 -->
+          <div class="ios-visual-wrapper">
+            <div class="ios-browser-mockup">
+              <div class="ios-browser-topbar">
+                <div class="ios-browser-dots">
+                  <span></span><span></span><span></span>
+                </div>
+                <div class="ios-browser-url">dt-1js.pages.dev</div>
+                <!-- ⋮ 메뉴 강조 -->
+                <div class="android-menu-highlight">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+                  <div class="ios-share-pulse"></div>
+                </div>
+              </div>
+              <div class="ios-browser-content">
+                <div class="ios-content-icon">🏁</div>
+                <div class="ios-content-title">DT Club</div>
+                <div class="ios-content-sub">드라이브를 사랑하는 사람들</div>
+              </div>
+            </div>
+            <div class="ios-arrow-indicator ios-arrow-indicator-top">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="var(--primary)" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+            </div>
+            <div class="ios-arrow-label ios-arrow-label-top">여기를 탭하세요</div>
+          </div>
+
+          <div class="install-steps">
+            <div class="install-step">
+              <div class="install-step-num">1</div>
+              <div class="install-step-content">
+                <div class="install-step-title">
+                  주소창 오른쪽 <strong>⋮ 점 3개 메뉴</strong> 탭
+                </div>
+                <div class="install-step-desc">Chrome 또는 삼성 인터넷 브라우저에서 주소창 오른쪽의 세로 점 3개 아이콘을 탭하세요</div>
+              </div>
+            </div>
+            <div class="install-step">
+              <div class="install-step-num">2</div>
+              <div class="install-step-content">
+                <div class="install-step-title">
+                  <strong>"앱 설치"</strong> 또는 <strong>"홈 화면에 추가"</strong> 탭
+                </div>
+                <div class="install-step-desc">메뉴 목록에서 설치 관련 항목을 찾아 선택하세요</div>
+              </div>
+            </div>
+            <div class="install-step">
+              <div class="install-step-num">3</div>
+              <div class="install-step-content">
+                <div class="install-step-title">
+                  팝업에서 <strong>"설치"</strong> 탭
+                </div>
+                <div class="install-step-desc">확인 팝업이 뜨면 설치 버튼을 눌러 완료하세요</div>
+              </div>
+            </div>
+            <div class="install-step">
+              <div class="install-step-num">4</div>
+              <div class="install-step-content">
+                <div class="install-step-title">
+                  🎉 <strong>홈 화면에서 DT Club 앱 실행</strong>
+                </div>
+                <div class="install-step-desc">이제 홈 화면 아이콘을 탭해서 앱처럼 사용하세요. 알림도 받을 수 있어요!</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="install-faq install-faq-info">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <span>주소창 오른쪽에 <strong>다운로드 아이콘(⬇)</strong>이 바로 뜨면 한 번에 설치할 수 있어요</span>
           </div>
         </div>
 
