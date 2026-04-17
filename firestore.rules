@@ -281,6 +281,23 @@ service cloud.firestore {
         && resource.data.userId == request.auth.uid;
     }
 
+    // ── legal_usage 컬렉션 (AI 법률 도우미 토큰 사용량/비용) ──
+    // - 서버(Service Account)만 write (Firebase Admin SDK 경로)
+    // - 본인 사용량만 read, 관리자는 전체 read
+    match /legal_usage/{docId} {
+      allow create: if false;  // 서버만 (Service Account bypass)
+      allow read: if isAdmin() || (isAuth() && resource.data.userId == request.auth.uid);
+      allow update, delete: if false;
+    }
+
+    // ── legal_rate_limits 컬렉션 (분단위 요청 카운터) ─────
+    // - 서버(Service Account)만 write/read (Firebase Admin SDK 경로)
+    // - 일반 유저 접근 차단
+    match /legal_rate_limits/{docId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;  // 서버만
+    }
+
     // ── drive_courses 컬렉션 (DT 스팟 — 드라이브 코스) ──────
     // - 누구나 읽기 가능 (비회원 포함)
     // - 실제 회원이면 등록 가능

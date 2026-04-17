@@ -89,9 +89,16 @@ async function legalSend() {
     var controller = new AbortController();
     var timer = setTimeout(function () { controller.abort(); }, 120000);
 
+    // Firebase ID Token 획득 (게스트 포함 모든 인증 유저)
+    var idToken = '';
+    try { idToken = await legal.user.getIdToken(); } catch (e) {}
+
     var resp = await fetch('/api/legal', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + idToken,
+      },
       body: JSON.stringify({
         question: text,
         history: legal.history.slice(-3)
@@ -99,6 +106,15 @@ async function legalSend() {
       signal: controller.signal
     });
     clearTimeout(timer);
+
+    // 429 (Rate Limit) / 401 (인증 실패) 특별 처리
+    if (resp.status === 429 || resp.status === 401) {
+      var errData = await resp.json().catch(function () { return {}; });
+      var errBubble = createBotBubble();
+      errBubble.innerHTML = escHtml(errData.error || (resp.status === 429 ? '요청이 너무 많습니다.' : '로그인이 필요합니다.'));
+      finishSend('');
+      return;
+    }
 
     // 비스트리밍 에러 응답 처리
     var contentType = resp.headers.get('content-type') || '';
@@ -195,6 +211,7 @@ async function legalSend() {
 function finishSend(fullText) {
   if (fullText) {
     legal.history.push({ role: 'assistant', content: fullText });
+    appendCompletionFooter(fullText);
   }
   legal._sending = false;
   var sendBtn = document.getElementById('legalSendBtn');
@@ -203,6 +220,96 @@ function finishSend(fullText) {
   input.disabled = false;
   input.focus();
   setPresetsDisabled(false);
+}
+
+// 답변 완료 표시 + 후속 질문 제안 (중복 방지)
+function appendCompletionFooter(fullText) {
+  var container = document.getElementById('legalMessages');
+  // 이미 완료 푸터가 있으면 기존 것 제거
+  var oldFooter = document.getElementById('legalCompletionFooter');
+  if (oldFooter) oldFooter.remove();
+
+  var div = document.createElement('div');
+  div.className = 'legal-msg legal-bot legal-completion';
+  div.id = 'legalCompletionFooter';
+
+  var bubble = document.createElement('div');
+  bubble.className = 'legal-bubble legal-completion-bubble';
+
+  // 완료 배지 + 메시지
+  var header = document.createElement('div');
+  header.className = 'legal-completion-header';
+  header.innerHTML =
+    '<span class="legal-completion-badge">' +
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' +
+      '답변 완료' +
+    '</span>' +
+    '<span class="legal-completion-text">추가로 궁금한 점이 있으신가요?</span>';
+  bubble.appendChild(header);
+
+  // 후속 질문 제안 버튼 (AI 답변 맥락 기반 + 기본)
+  var suggestions = buildFollowupSuggestions(fullText);
+  if (suggestions.length) {
+    var chips = document.createElement('div');
+    chips.className = 'legal-followup-chips';
+    suggestions.forEach(function (s) {
+      var btn = document.createElement('button');
+      btn.className = 'legal-followup-chip';
+      btn.textContent = s;
+      btn.onclick = function () {
+        if (legal._sending) return;
+        document.getElementById('legalInput').value = s;
+        legalSend();
+      };
+      chips.appendChild(btn);
+    });
+    bubble.appendChild(chips);
+  }
+
+  // "대화 초기화" 액션
+  var actions = document.createElement('div');
+  actions.className = 'legal-completion-actions';
+  var resetBtn = document.createElement('button');
+  resetBtn.className = 'legal-completion-action';
+  resetBtn.innerHTML = '🔄 새 상담 시작';
+  resetBtn.onclick = function () {
+    if (legal._sending) return;
+    legal.history = [];
+    document.getElementById('legalMessages').innerHTML =
+      '<div class="legal-msg legal-bot"><div class="legal-bubble">새 상담을 시작합니다. 법률 질문을 입력해주세요.</div></div>';
+  };
+  actions.appendChild(resetBtn);
+  bubble.appendChild(actions);
+
+  div.appendChild(bubble);
+  container.appendChild(div);
+  scrollToBottom();
+}
+
+// 답변 내용에서 후속 질문 후보 추출
+function buildFollowupSuggestions(answer) {
+  var text = (answer || '').toLowerCase();
+  var suggestions = [];
+
+  // 답변에 등장한 법률 키워드로 자연스러운 후속 질문 생성
+  if (/처벌|벌금|징역|형량/.test(text)) suggestions.push('이 처벌을 감경할 수 있는 사유가 있나요?');
+  if (/판례|대법원|선고/.test(text)) suggestions.push('관련 최신 판례를 더 알려주세요');
+  if (/조항|제\s*\d+조/.test(text)) suggestions.push('이 조항의 시행령도 알려주세요');
+  if (/과실|비율|사고/.test(text)) suggestions.push('과실 비율 판단 기준을 더 자세히 알려주세요');
+  if (/면허|정지|취소/.test(text)) suggestions.push('면허 구제 절차(이의신청)가 있나요?');
+
+  // 기본 후속 질문 (최대 3개까지)
+  if (suggestions.length < 3) {
+    var defaults = [
+      '예시 사례로 설명해주세요',
+      '실무에서 어떻게 적용되나요?',
+      '유사 법률과의 차이는 무엇인가요?',
+    ];
+    for (var i = 0; i < defaults.length && suggestions.length < 3; i++) {
+      if (suggestions.indexOf(defaults[i]) === -1) suggestions.push(defaults[i]);
+    }
+  }
+  return suggestions.slice(0, 3);
 }
 
 // --- UI 헬퍼 ---

@@ -199,6 +199,71 @@ body {
 }
 @keyframes legalPulse { 0%,100% { opacity: .9; } 50% { opacity: .4; } }
 
+/* ===== 답변 완료 푸터 ===== */
+.legal-completion-bubble {
+  background: linear-gradient(135deg, rgba(var(--primary-rgb),0.08) 0%, rgba(var(--primary-rgb),0.03) 100%) !important;
+  border: 2px solid rgba(var(--primary-rgb),0.3) !important;
+  box-shadow: 2px 2px 0 rgba(var(--primary-rgb),.15) !important;
+  max-width: 100% !important;
+  padding: 14px 16px !important;
+  animation: legalFadeIn .4s ease-out;
+}
+@keyframes legalFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.legal-completion-header {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.legal-completion-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; font-size: .7rem; font-weight: 800; color: #000;
+  background: var(--success); border: none; letter-spacing: .3px;
+}
+.legal-completion-badge svg { stroke-width: 3; }
+.legal-completion-text {
+  font-size: .82rem; font-weight: 600; color: var(--text2);
+}
+
+.legal-followup-chips {
+  display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;
+}
+.legal-followup-chip {
+  padding: 9px 13px; font-size: .78rem; font-weight: 600;
+  background: var(--bg2); color: var(--text); border: 2px solid var(--border);
+  cursor: pointer; transition: all .15s; border-radius: 0;
+  font-family: inherit; text-align: left; line-height: 1.4;
+  display: flex; align-items: center; gap: 8px;
+}
+.legal-followup-chip::before {
+  content: '→'; color: var(--primary-light); font-weight: 800; flex-shrink: 0;
+}
+.legal-followup-chip:hover {
+  color: var(--primary-light); border-color: var(--primary);
+  background: var(--bg3);
+  transform: translate(-1px,-1px);
+  box-shadow: 2px 2px 0 rgba(var(--primary-rgb),.2);
+}
+.legal-followup-chip:active {
+  transform: translate(0,0); box-shadow: none;
+}
+
+.legal-completion-actions {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  padding-top: 10px; border-top: 1px dashed var(--border);
+}
+.legal-completion-action {
+  padding: 6px 12px; font-size: .74rem; font-weight: 700;
+  background: transparent; color: var(--text3); border: 2px solid var(--border);
+  cursor: pointer; transition: all .15s; border-radius: 0;
+  font-family: inherit;
+}
+.legal-completion-action:hover {
+  color: var(--primary-light); border-color: var(--primary);
+}
+
 /* ===== Footer ===== */
 .legal-footer {
   padding: 10px 20px; background: var(--bg); border-top: 1px solid var(--border);
