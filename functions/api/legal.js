@@ -11,9 +11,10 @@ const ALLOWED_ORIGINS = new Set([
 ]);
 
 // ── MCP 서버 URL
-// LAW_MCP_URL(환경변수, 터널) → FALLBACK(공용 fly.dev) 순으로 시도
-// 터널은 LAW_MCP_URL secret에 설정. 없으면 곧바로 fly.dev만 사용.
-const FALLBACK_MCP_URL = 'https://korean-law-mcp.fly.dev/mcp?oc=mylaw2026';
+// 공용 fly.dev(primary) → LAW_MCP_URL(로컬 터널, env) 순으로 시도
+// 평상시엔 fly.dev로 처리. fly.dev가 막히면 수동으로 로컬 터널 띄우고
+// LAW_MCP_URL secret에 터널 URL 설정 → 자동 폴백.
+const PRIMARY_MCP_URL = 'https://korean-law-mcp.fly.dev/mcp?oc=mylaw2026';
 
 // ── 모델 / 가격 (USD per 1M tokens)
 const MODEL = 'claude-haiku-4-5-20251001';
@@ -106,10 +107,9 @@ export async function onRequestPost(context) {
     content: [{ type: 'text', text: `<user_question>\n${cleanQuestion}\n</user_question>` }],
   });
 
-  // 7) MCP URL 순차 시도 (터널 → fly.dev 폴백, 중복 제거)
-  const mcpUrls = [];
-  if (LAW_MCP_URL && LAW_MCP_URL !== FALLBACK_MCP_URL) mcpUrls.push(LAW_MCP_URL);
-  mcpUrls.push(FALLBACK_MCP_URL);
+  // 7) MCP URL 순차 시도 (fly.dev primary → 로컬 터널 fallback, 중복 제거)
+  const mcpUrls = [PRIMARY_MCP_URL];
+  if (LAW_MCP_URL && LAW_MCP_URL !== PRIMARY_MCP_URL) mcpUrls.push(LAW_MCP_URL);
 
   try {
     let upstream = null;
