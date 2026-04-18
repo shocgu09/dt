@@ -79,9 +79,8 @@ async function legalSend() {
   input.disabled = true;
   setPresetsDisabled(true);
 
-  // 상태 말풍선 (MCP 도구 호출 표시용) — 별도 버블
-  var statusBubble = null;
-  // 답변 말풍선 — 텍스트 스트리밍용
+  // 단일 로딩 버블 — 요청 시작 시 표시, 첫 답변 도착 시 답변 버블로 전환
+  var loadingBubble = createLoadingBubble();
   var answerBubble = null;
   var fullText = '';
 
@@ -110,6 +109,7 @@ async function legalSend() {
     // 429 (Rate Limit) / 401 (인증 실패) 특별 처리
     if (resp.status === 429 || resp.status === 401) {
       var errData = await resp.json().catch(function () { return {}; });
+      if (loadingBubble) { loadingBubble.parentElement.remove(); loadingBubble = null; }
       var errBubble = createBotBubble();
       errBubble.innerHTML = escHtml(errData.error || (resp.status === 429 ? '요청이 너무 많습니다.' : '로그인이 필요합니다.'));
       finishSend('');
@@ -120,6 +120,7 @@ async function legalSend() {
     var contentType = resp.headers.get('content-type') || '';
     if (contentType.includes('application/json')) {
       var data = await resp.json();
+      if (loadingBubble) { loadingBubble.parentElement.remove(); loadingBubble = null; }
       var errBubble = createBotBubble();
       if (data.error) {
         errBubble.innerHTML = escHtml('죄송합니다. 오류가 발생했습니다: ' + data.error);
@@ -154,49 +155,37 @@ async function legalSend() {
         try { event = JSON.parse(jsonStr); } catch (e) { continue; }
 
         if (event.type === 'clear') {
-          // 새 도구 호출 전 → 이전 중간 텍스트 삭제
+          // 도구 호출 감지 → 이전 중간 텍스트 폐기, 로딩만 남김
           if (answerBubble) {
             answerBubble.parentElement.remove();
             answerBubble = null;
           }
           fullText = '';
+          if (!loadingBubble) loadingBubble = createLoadingBubble();
         }
         else if (event.type === 'text') {
-          // 텍스트 → 상태 말풍선 숨기고, 답변 말풍선에 추가
-          if (statusBubble) {
-            statusBubble.parentElement.remove();
-            statusBubble = null;
+          // 첫 텍스트 도착 → 로딩 제거, 답변 버블 생성
+          if (loadingBubble) {
+            loadingBubble.parentElement.remove();
+            loadingBubble = null;
           }
-          if (!answerBubble) {
-            answerBubble = createBotBubble();
-          }
+          if (!answerBubble) answerBubble = createBotBubble();
           fullText += event.text;
           answerBubble.innerHTML = '<div class="legal-answer">' + renderMarkdown(fullText) + '</div>';
           scrollToBottom();
         }
-        else if (event.type === 'status') {
-          // MCP 도구 호출 → 별도 상태 말풍선
-          if (statusBubble) {
-            statusBubble.textContent = event.text;
-          } else {
-            statusBubble = createBotBubble();
-            statusBubble.className = 'legal-bubble legal-status-bubble';
-            statusBubble.textContent = event.text;
-          }
-          scrollToBottom();
-        }
         else if (event.type === 'error') {
-          if (statusBubble) { statusBubble.parentElement.remove(); statusBubble = null; }
+          if (loadingBubble) { loadingBubble.parentElement.remove(); loadingBubble = null; }
           var errBbl = answerBubble || createBotBubble();
           errBbl.innerHTML = escHtml('죄송합니다. 오류가 발생했습니다: ' + event.text);
         }
         else if (event.type === 'done') {
-          if (statusBubble) { statusBubble.parentElement.remove(); statusBubble = null; }
+          if (loadingBubble) { loadingBubble.parentElement.remove(); loadingBubble = null; }
         }
       }
     }
   } catch (e) {
-    if (statusBubble) { statusBubble.parentElement.remove(); statusBubble = null; }
+    if (loadingBubble) { loadingBubble.parentElement.remove(); loadingBubble = null; }
     var errTarget = answerBubble || createBotBubble();
     if (e.name === 'AbortError') {
       errTarget.innerHTML = escHtml('응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.');
@@ -205,7 +194,27 @@ async function legalSend() {
     }
   }
 
+  // 스트림 종료 시 로딩 버블이 남아있으면 정리
+  if (loadingBubble) { loadingBubble.parentElement.remove(); loadingBubble = null; }
   finishSend(fullText);
+}
+
+// 로딩 버블: 점 3개 애니메이션 + "법령을 찾고 있어요..." 텍스트
+function createLoadingBubble() {
+  var container = document.getElementById('legalMessages');
+  var div = document.createElement('div');
+  div.className = 'legal-msg legal-bot legal-loading-msg';
+  var bubble = document.createElement('div');
+  bubble.className = 'legal-bubble legal-loading-bubble';
+  bubble.innerHTML =
+    '<div class="legal-loading-content">' +
+      '<div class="legal-loading-dots"><span></span><span></span><span></span></div>' +
+      '<span class="legal-loading-text">법령을 찾고 있어요</span>' +
+    '</div>';
+  div.appendChild(bubble);
+  container.appendChild(div);
+  scrollToBottom();
+  return bubble;
 }
 
 function finishSend(fullText) {

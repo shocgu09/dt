@@ -193,17 +193,11 @@ export async function onRequestPost(context) {
               blockTypes[ev.index] = btype;
               if (btype === 'mcp_tool_use') {
                 toolCallCount++;
-                const toolName = ev.content_block.name || '';
+                // 도구 호출 감지 → 이전 중간 텍스트 폐기 (사용자에겐 조용히 로딩만 보임)
                 await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'clear' })}\n\n`));
-                await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'status', text: `🔍 ${toolName} 호출 중... (${toolCallCount}회차)` })}\n\n`));
               }
               else if (btype === 'mcp_tool_result') {
-                // 도구 결과 에러 감지
-                const isError = ev.content_block?.is_error === true;
-                if (isError) {
-                  toolErrorCount++;
-                  await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'status', text: `⚠️ 도구 오류 — 재시도 중...` })}\n\n`));
-                }
+                if (ev.content_block?.is_error === true) toolErrorCount++;
               }
             }
             else if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
