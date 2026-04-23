@@ -127,10 +127,10 @@ export default {
           body: JSON.stringify(queryBody),
         });
         const results = await resp.json();
-        const docs = results
-          .filter(r => r.document)
+        const docs = (Array.isArray(results) ? results : [])
+          .filter(r => r.document && r.document.fields)
           .map(r => {
-            const f = r.document.fields;
+            const f = r.document.fields || {};
             return {
               id: r.document.name.split('/').pop(),
               date: f.date?.stringValue || '',
@@ -139,7 +139,8 @@ export default {
               authorName: f.authorName?.stringValue || '',
               createdAt: f.createdAt?.timestampValue || '',
             };
-          });
+          })
+          .filter(d => d.date || d.title || d.body);
         return new Response(JSON.stringify({ docs }), {
           headers: { ...jsonHeaders, 'Cache-Control': 'public, max-age=300' }
         });
@@ -256,9 +257,9 @@ export default {
         });
         const carResults = await resp.json();
         const carDocs = (Array.isArray(carResults) ? carResults : [])
-          .filter(r => r.document)
+          .filter(r => r.document && r.document.fields)
           .map(r => {
-            const f = r.document.fields;
+            const f = r.document.fields || {};
             return {
               id: r.document.name.split('/').pop(),
               date: f.date?.stringValue || '',
@@ -268,7 +269,12 @@ export default {
               createdAt: f.createdAt?.timestampValue || '',
             };
           })
-          .sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date))
+          .filter(d => d.date || d.title || d.body)  // 완전히 빈 문서 제외
+          .sort((a, b) => {
+            const ta = new Date(a.createdAt || a.date || 0).getTime() || 0;
+            const tb = new Date(b.createdAt || b.date || 0).getTime() || 0;
+            return tb - ta;
+          })
           .slice(0, 10);
         return new Response(JSON.stringify({ docs: carDocs }), {
           headers: { ...jsonHeaders, 'Cache-Control': 'public, max-age=300' }
