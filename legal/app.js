@@ -86,7 +86,14 @@ async function legalSend() {
 
   try {
     var controller = new AbortController();
-    var timer = setTimeout(function () { controller.abort(); }, 120000);
+    // ── 롤링 유휴 타임아웃: 마지막 청크로부터 2분 무응답 시 abort
+    // (연결 후 clearTimeout하지 않고, 청크마다 리셋)
+    var idleTimer = null;
+    function resetIdle() {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(function () { controller.abort(); }, 120000);
+    }
+    resetIdle(); // 최초 시작
 
     // Firebase ID Token 획득 (게스트 포함 모든 인증 유저)
     var idToken = '';
@@ -104,7 +111,7 @@ async function legalSend() {
       }),
       signal: controller.signal
     });
-    clearTimeout(timer);
+    resetIdle(); // 연결 성공 → 타이머 리셋 (스트리밍 구간도 계속 감시)
 
     // 429 (Rate Limit) / 401 (인증 실패) 특별 처리
     if (resp.status === 429 || resp.status === 401) {
@@ -141,6 +148,7 @@ async function legalSend() {
       var result = await reader.read();
       if (result.done) break;
 
+      resetIdle(); // 청크 수신마다 타이머 리셋
       buffer += decoder.decode(result.value, { stream: true });
       var lines = buffer.split('\n');
       buffer = lines.pop() || '';
@@ -154,7 +162,10 @@ async function legalSend() {
         var event;
         try { event = JSON.parse(jsonStr); } catch (e) { continue; }
 
-        if (event.type === 'clear') {
+        if (event.type === 'heartbeat') {
+          // 서버 keepalive — 클라이언트 idle 타이머는 청크 수신 시 이미 리셋됨, 무시
+        }
+        else if (event.type === 'clear') {
           // 도구 호출 감지 → 이전 중간 텍스트 폐기, 로딩만 남김
           if (answerBubble) {
             answerBubble.parentElement.remove();
@@ -185,14 +196,16 @@ async function legalSend() {
       }
     }
   } catch (e) {
+    clearTimeout(idleTimer);
     if (loadingBubble) { loadingBubble.parentElement.remove(); loadingBubble = null; }
     var errTarget = answerBubble || createBotBubble();
     if (e.name === 'AbortError') {
-      errTarget.innerHTML = escHtml('응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.');
+      errTarget.innerHTML = escHtml('법령 검색 서버가 응답하지 않습니다. 잠시 후 다시 시도해주세요.');
     } else if (!fullText) {
       errTarget.innerHTML = escHtml('서버와 연결할 수 없습니다. 잠시 후 다시 시도해주세요.');
     }
   }
+  clearTimeout(idleTimer);
 
   // 스트림 종료 시 로딩 버블이 남아있으면 정리
   if (loadingBubble) { loadingBubble.parentElement.remove(); loadingBubble = null; }

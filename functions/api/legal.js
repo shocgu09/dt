@@ -155,8 +155,12 @@ export async function onRequestPost(context) {
     let lastErrText = '';
     let lastErrStatus = 500;
 
+    // 서버 측 전체 타임아웃: 3분 (MCP 서버 무한 대기 방지)
+    const anthropicController = new AbortController();
+    const anthropicTimeoutId = setTimeout(() => anthropicController.abort(), 180000);
+
     for (const url of mcpUrls) {
-      upstream = await callAnthropic(ANTHROPIC_API_KEY, url, messages);
+      upstream = await callAnthropic(ANTHROPIC_API_KEY, url, messages, anthropicController.signal);
       if (upstream.ok) break;
       const errText = await upstream.text();
       lastErrText = errText;
@@ -193,9 +197,27 @@ export async function onRequestPost(context) {
       let toolErrorCount = 0;
 
       try {
+        // ── heartbeat 패턴: Promise.race로 45s마다 keepalive 전송
+        // (MCP 도구 응답 대기 중 클라이언트 idle 타이머 리셋)
+        let pendingRead = reader.read();
         while (true) {
-          const { done, value } = await reader.read();
+          let hbId = null;
+          const res = await Promise.race([
+            pendingRead,
+            new Promise(resolve => { hbId = setTimeout(() => resolve({ _hb: true }), 45000); }),
+          ]);
+          clearTimeout(hbId);
+
+          if (res._hb) {
+            // 클라이언트에 keepalive 전송 (idle 타이머 리셋용)
+            try { await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'heartbeat' })}\n\n`)); }
+            catch { break; } // 클라이언트 연결 끊김
+            continue; // 동일 pendingRead 계속 대기
+          }
+
+          const { done, value } = res;
           if (done) break;
+          pendingRead = reader.read(); // 다음 read 시작
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split('\n');
           buffer = lines.pop() || '';
@@ -253,8 +275,14 @@ export async function onRequestPost(context) {
         }
         await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'done', stopReason, toolCalls: toolCallCount, toolErrors: toolErrorCount })}\n\n`));
       } catch (e) {
-        await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'error', text: e.message || '스트림 오류' })}\n\n`));
+        const isTimeout = e.name === 'AbortError' || anthropicController.signal.aborted;
+        const errMsg = isTimeout
+          ? '법령 검색 서버가 응답하지 않습니다. (3분 초과) 잠시 후 다시 시도해주세요.'
+          : (e.message || '스트림 오류');
+        try { await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'error', text: errMsg })}\n\n`)); }
+        catch {} // 클라이언트가 이미 연결 끊긴 경우 무시
       } finally {
+        clearTimeout(anthropicTimeoutId);
         await writer.close();
 
         // 9) 사용량 로깅 (async, 응답 차단 안 함)
@@ -301,7 +329,7 @@ export async function onRequestPost(context) {
 // ──────────────────────────────────────────────────────────────
 // Anthropic API
 // ──────────────────────────────────────────────────────────────
-async function callAnthropic(apiKey, mcpUrl, messages) {
+async function callAnthropic(apiKey, mcpUrl, messages, signal) {
   return fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -320,6 +348,7 @@ async function callAnthropic(apiKey, mcpUrl, messages) {
       mcp_servers: [{ type: 'url', url: mcpUrl, name: 'korean-law' }],
       tools: [{ type: 'mcp_toolset', mcp_server_name: 'korean-law', cache_control: { type: 'ephemeral' } }],
     }),
+    signal, // 3분 AbortSignal — MCP 서버 무한 대기 방지
   });
 }
 
