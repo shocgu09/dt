@@ -90,7 +90,7 @@ body {
   background: var(--success); color: #000; border: none; letter-spacing: .5px;
 }
 .legal-header-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.legal-user { font-size: .78rem; color: var(--text2); font-weight: 600; white-space: nowrap; }
+.legal-header-right .legal-user { font-size: .78rem; color: var(--text2); font-weight: 600; white-space: nowrap; }
 .legal-back-btn, .legal-logout-btn {
   font-size: .73rem; padding: 4px 10px; background: var(--bg3); color: var(--text2);
   border: 2px solid var(--border); text-decoration: none; font-weight: 700;
@@ -127,6 +127,7 @@ body {
 .legal-user .legal-bubble {
   background: var(--primary); color: #fff; border: 2px solid var(--primary-dark);
   box-shadow: 2px 2px 0 rgba(var(--primary-rgb),.25);
+  white-space: normal; overflow-wrap: break-word;
 }
 .legal-hint { font-size: .68rem; color: var(--text3); display: inline-block; margin-top: 4px; }
 
