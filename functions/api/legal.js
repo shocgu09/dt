@@ -150,198 +150,186 @@ export async function onRequestPost(context) {
   const mcpUrls = [PRIMARY_MCP_URL];
   if (LAW_MCP_URL && LAW_MCP_URL !== PRIMARY_MCP_URL) mcpUrls.push(LAW_MCP_URL);
 
-  try {
-  // ── 핵심 구조: SSE 헤더를 즉시 반환 후 Anthropic 호출을 waitUntil로 이동
-  // (callAnthropic이 메인 핸들러를 블록하면 클라이언트 idle 타이머가 만료됨)
-  const { readable, writable } = new TransformStream();
-  const writer = writable.getWriter();
+  // ── SSE 스트리밍: ReadableStream async start() 패턴
+  // waitUntil 대신 ReadableStream start()를 사용 — Cloudflare는 start()가 완료될 때까지
+  // 스트림(=응답 body)을 유지하므로 장시간 Anthropic+MCP 호출도 안전하게 처리됨
   const encoder = new TextEncoder();
 
-  // 클라이언트에 즉시 "thinking" 이벤트 전송 → idle 타이머 리셋
-  await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'thinking' })}\n\n`));
-
-  context.waitUntil((async () => {
-  // ── 최상위 try/catch: waitUntil 태스크 내 어떤 예외도 클라이언트에 전달
   try {
-    // 서버 측 전체 타임아웃: 3분
-    const anthropicController = new AbortController();
-    const anthropicTimeoutId = setTimeout(() => anthropicController.abort(), 180000);
+    const stream = new ReadableStream({
+      async start(controller) {
+        // controller.enqueue()로 SSE 이벤트 전송 (동기, 즉시 flush)
+        function send(data) {
+          try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`)); } catch {}
+        }
 
-    // Anthropic 호출 (MCP 연결 포함) — 이제 백그라운드에서 실행
-    let upstream = null;
-    try {
-      for (const url of mcpUrls) {
+        // 서버 측 전체 타임아웃: 3분
+        const anthropicController = new AbortController();
+        const anthropicTimeoutId = setTimeout(() => anthropicController.abort(), 180000);
+
+        let inputTokens = 0, outputTokens = 0, cacheCreationTokens = 0, cacheReadTokens = 0;
+        let answerText = '', stopReason = '', toolCallCount = 0, toolErrorCount = 0;
+
         try {
-          upstream = await callAnthropic(ANTHROPIC_API_KEY, url, messages, anthropicController.signal);
-        } catch (fetchErr) {
-          if (anthropicController.signal.aborted) throw fetchErr;
-          upstream = null; continue;
-        }
-        if (upstream.ok) break;
-        const errText = await upstream.text();
-        if (!isMcpConnectionError(errText)) {
-          let errMsg = 'AI 서비스 일시 오류';
-          try { errMsg = JSON.parse(errText).error?.message || errMsg; } catch {}
-          try { await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'error', text: errMsg })}\n\n`)); } catch {}
-          try { await writer.close(); } catch {}
-          clearTimeout(anthropicTimeoutId);
-          return;
-        }
-        upstream = null;
-      }
-      if (!upstream) {
-        try { await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'error', text: '법률 데이터 서버에 연결할 수 없습니다.' })}\n\n`)); } catch {}
-        try { await writer.close(); } catch {}
-        clearTimeout(anthropicTimeoutId);
-        return;
-      }
-    } catch (connErr) {
-      const isTimeout = connErr.name === 'AbortError' || anthropicController.signal.aborted;
-      const errMsg = isTimeout ? '법령 검색 서버가 응답하지 않습니다. (3분 초과) 잠시 후 다시 시도해주세요.' : (connErr.message || '연결 오류');
-      try { await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'error', text: errMsg })}\n\n`)); } catch {}
-      try { await writer.close(); } catch {}
-      clearTimeout(anthropicTimeoutId);
-      return;
-    }
+          // 즉시 "thinking" 이벤트 전송 → 클라이언트 idle 타이머 리셋
+          send({ type: 'thinking' });
 
-    // Anthropic SSE 스트리밍
-    const reader = upstream.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    const blockTypes = {};
-    let inputTokens = 0;
-    let outputTokens = 0;
-    let cacheCreationTokens = 0;
-    let cacheReadTokens = 0;
-    let answerText = '';
-    let stopReason = '';
-    let toolCallCount = 0;
-    let toolErrorCount = 0;
-
-    try {
-      // ── heartbeat 패턴: Promise.race로 45s마다 keepalive 전송
-      let pendingRead = reader.read();
-      while (true) {
-        let hbId = null;
-        const res = await Promise.race([
-          pendingRead,
-          new Promise(resolve => { hbId = setTimeout(() => resolve({ _hb: true }), 45000); }),
-        ]);
-        clearTimeout(hbId);
-
-        if (res._hb) {
-          try { await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'heartbeat' })}\n\n`)); }
-          catch { break; }
-          continue;
-        }
-
-        const { done, value } = res;
-        if (done) break;
-        pendingRead = reader.read();
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const data = line.slice(6).trim();
-          if (data === '[DONE]') continue;
-          let ev;
-          try { ev = JSON.parse(data); } catch { continue; }
-
-          if (ev.type === 'message_start' && ev.message?.usage) {
-            inputTokens = ev.message.usage.input_tokens || 0;
-            cacheCreationTokens = ev.message.usage.cache_creation_input_tokens || 0;
-            cacheReadTokens = ev.message.usage.cache_read_input_tokens || 0;
-          }
-          else if (ev.type === 'message_delta') {
-            if (ev.usage) outputTokens = ev.usage.output_tokens || outputTokens;
-            if (ev.delta?.stop_reason) stopReason = ev.delta.stop_reason;
-          }
-          else if (ev.type === 'content_block_start') {
-            const btype = ev.content_block?.type || '';
-            blockTypes[ev.index] = btype;
-            if (btype === 'mcp_tool_use') {
-              toolCallCount++;
-              await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'clear' })}\n\n`));
-            }
-            else if (btype === 'mcp_tool_result') {
-              if (ev.content_block?.is_error === true) toolErrorCount++;
-            }
-          }
-          else if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
-            if (blockTypes[ev.index] === 'text') {
-              const delta = ev.delta.text || '';
-              answerText += delta;
-              await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'text', text: delta })}\n\n`));
-            }
-          }
-          else if (ev.type === 'error') {
-            // Anthropic 스트리밍 중 서버측 에러 이벤트 (MCP 연결 실패, 과부하, rate limit 등)
-            const errMsg = ev.error?.message || 'AI 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
-            try { await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'error', text: errMsg })}\n\n`)); } catch {}
-            answerText = errMsg; // message_stop 없이 스트림이 닫혀도 done에서 중복 오류 방지
-          }
-          else if (ev.type === 'message_stop') {
-            if (!answerText.trim()) {
-              let diagMsg = '답변 생성에 실패했습니다.';
-              if (stopReason === 'max_tokens') diagMsg = '답변이 너무 길어 잘렸습니다. 더 구체적으로 질문해주세요.';
-              else if (stopReason === 'end_turn' && toolCallCount > 0) diagMsg = `도구 호출은 완료했으나 답변을 생성하지 못했습니다. (도구 ${toolCallCount}회 호출, 에러 ${toolErrorCount}회) 다시 시도해주세요.`;
-              else if (toolErrorCount > 0) diagMsg = `법령 검색이 실패했습니다. (도구 에러 ${toolErrorCount}회) 질문을 조금 바꿔 다시 시도해주세요.`;
-              await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'text', text: diagMsg })}\n\n`));
-              answerText = diagMsg;
-            }
-            await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'done', stopReason, toolCalls: toolCallCount, toolErrors: toolErrorCount })}\n\n`));
-          }
-        }
-      }
-      await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'done', stopReason, toolCalls: toolCallCount, toolErrors: toolErrorCount })}\n\n`));
-    } catch (e) {
-      const isTimeout = e.name === 'AbortError' || anthropicController.signal.aborted;
-      const errMsg = isTimeout
-        ? '법령 검색 서버가 응답하지 않습니다. (3분 초과) 잠시 후 다시 시도해주세요.'
-        : (e.message || '스트림 오류');
-      try { await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'error', text: errMsg })}\n\n`)); }
-      catch {}
-    } finally {
-      clearTimeout(anthropicTimeoutId);
-      await writer.close();
-
-        // 9) 사용량 로깅 (async, 응답 차단 안 함)
-        if (useFirestore && accessToken && (inputTokens > 0 || outputTokens > 0)) {
-          const costUsd = (inputTokens * PRICE_INPUT_PER_MTOK + outputTokens * PRICE_OUTPUT_PER_MTOK) / 1_000_000;
+          // Anthropic 호출 (MCP 연결 포함)
+          let upstream = null;
           try {
-            await logUsage({
-              uid,
-              email: email || null,
-              isAnonymous: !!isAnonymous,
-              question: cleanQuestion.slice(0, 500),
-              answerPreview: answerText.slice(0, 200),
-              inputTokens,
-              outputTokens,
-              cacheCreationTokens,
-              cacheReadTokens,
-              totalTokens: inputTokens + outputTokens,
-              costUsd,
-              costKrw: Math.round(costUsd * USD_TO_KRW * 10000) / 10000,
-              model: MODEL,
-              accessToken,
-              projectId: FIREBASE_PROJECT_ID || 'dt-club',
-            });
-          } catch (e) {
-            console.warn('Usage logging failed:', e.message);
+            for (const url of mcpUrls) {
+              try {
+                upstream = await callAnthropic(ANTHROPIC_API_KEY, url, messages, anthropicController.signal);
+              } catch (fetchErr) {
+                if (anthropicController.signal.aborted) throw fetchErr;
+                upstream = null; continue;
+              }
+              if (upstream.ok) break;
+              const errText = await upstream.text();
+              if (!isMcpConnectionError(errText)) {
+                let errMsg = 'AI 서비스 일시 오류';
+                try { errMsg = JSON.parse(errText).error?.message || errMsg; } catch {}
+                send({ type: 'error', text: errMsg });
+                clearTimeout(anthropicTimeoutId);
+                return;
+              }
+              upstream = null;
+            }
+            if (!upstream) {
+              send({ type: 'error', text: '법률 데이터 서버에 연결할 수 없습니다.' });
+              clearTimeout(anthropicTimeoutId);
+              return;
+            }
+          } catch (connErr) {
+            const isTimeout = connErr.name === 'AbortError' || anthropicController.signal.aborted;
+            const errMsg = isTimeout
+              ? '법령 검색 서버가 응답하지 않습니다. (3분 초과) 잠시 후 다시 시도해주세요.'
+              : (connErr.message || '연결 오류');
+            send({ type: 'error', text: errMsg });
+            clearTimeout(anthropicTimeoutId);
+            return;
+          }
+
+          // Anthropic SSE 스트리밍
+          const reader = upstream.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          const blockTypes = {};
+
+          try {
+            // ── heartbeat 패턴: Promise.race로 45s마다 keepalive 전송
+            let pendingRead = reader.read();
+            while (true) {
+              let hbId = null;
+              const res = await Promise.race([
+                pendingRead,
+                new Promise(resolve => { hbId = setTimeout(() => resolve({ _hb: true }), 45000); }),
+              ]);
+              clearTimeout(hbId);
+
+              if (res._hb) { send({ type: 'heartbeat' }); continue; }
+
+              const { done, value } = res;
+              if (done) break;
+              pendingRead = reader.read();
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split('\n');
+              buffer = lines.pop() || '';
+
+              for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const data = line.slice(6).trim();
+                if (data === '[DONE]') continue;
+                let ev;
+                try { ev = JSON.parse(data); } catch { continue; }
+
+                if (ev.type === 'message_start' && ev.message?.usage) {
+                  inputTokens = ev.message.usage.input_tokens || 0;
+                  cacheCreationTokens = ev.message.usage.cache_creation_input_tokens || 0;
+                  cacheReadTokens = ev.message.usage.cache_read_input_tokens || 0;
+                }
+                else if (ev.type === 'message_delta') {
+                  if (ev.usage) outputTokens = ev.usage.output_tokens || outputTokens;
+                  if (ev.delta?.stop_reason) stopReason = ev.delta.stop_reason;
+                }
+                else if (ev.type === 'content_block_start') {
+                  const btype = ev.content_block?.type || '';
+                  blockTypes[ev.index] = btype;
+                  if (btype === 'mcp_tool_use') { toolCallCount++; send({ type: 'clear' }); }
+                  else if (btype === 'mcp_tool_result' && ev.content_block?.is_error === true) toolErrorCount++;
+                }
+                else if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
+                  if (blockTypes[ev.index] === 'text') {
+                    const delta = ev.delta.text || '';
+                    answerText += delta;
+                    send({ type: 'text', text: delta });
+                  }
+                }
+                else if (ev.type === 'error') {
+                  // Anthropic SSE 에러 이벤트 (MCP 연결 실패, 과부하 등)
+                  const errMsg = ev.error?.message || 'AI 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+                  send({ type: 'error', text: errMsg });
+                  answerText = errMsg;
+                }
+                else if (ev.type === 'message_stop') {
+                  if (!answerText.trim()) {
+                    let diagMsg = '답변 생성에 실패했습니다.';
+                    if (stopReason === 'max_tokens') diagMsg = '답변이 너무 길어 잘렸습니다. 더 구체적으로 질문해주세요.';
+                    else if (stopReason === 'end_turn' && toolCallCount > 0) diagMsg = `도구 호출은 완료했으나 답변을 생성하지 못했습니다. (도구 ${toolCallCount}회 호출, 에러 ${toolErrorCount}회) 다시 시도해주세요.`;
+                    else if (toolErrorCount > 0) diagMsg = `법령 검색이 실패했습니다. (도구 에러 ${toolErrorCount}회) 질문을 조금 바꿔 다시 시도해주세요.`;
+                    send({ type: 'text', text: diagMsg });
+                    answerText = diagMsg;
+                  }
+                  send({ type: 'done', stopReason, toolCalls: toolCallCount, toolErrors: toolErrorCount });
+                }
+              }
+            }
+            // while 루프 정상 종료 후 done (message_stop이 없었던 경우 대비)
+            send({ type: 'done', stopReason, toolCalls: toolCallCount, toolErrors: toolErrorCount });
+          } catch (streamErr) {
+            const isTimeout = streamErr.name === 'AbortError' || anthropicController.signal.aborted;
+            const errMsg = isTimeout
+              ? '법령 검색 서버가 응답하지 않습니다. (3분 초과) 잠시 후 다시 시도해주세요.'
+              : (streamErr.message || '스트림 오류');
+            send({ type: 'error', text: errMsg });
+          }
+        } catch (topErr) {
+          // start() 내 처리되지 않은 예외 — 에러 전달
+          send({ type: 'error', text: topErr.message || '내부 서버 오류가 발생했습니다.' });
+        } finally {
+          clearTimeout(anthropicTimeoutId);
+          // 스트림 종료
+          try { controller.close(); } catch {}
+          // 사용량 로깅 (비동기, 응답 차단 안 함)
+          if (useFirestore && accessToken && (inputTokens > 0 || outputTokens > 0)) {
+            const costUsd = (inputTokens * PRICE_INPUT_PER_MTOK + outputTokens * PRICE_OUTPUT_PER_MTOK) / 1_000_000;
+            try {
+              await logUsage({
+                uid,
+                email: email || null,
+                isAnonymous: !!isAnonymous,
+                question: cleanQuestion.slice(0, 500),
+                answerPreview: answerText.slice(0, 200),
+                inputTokens,
+                outputTokens,
+                cacheCreationTokens,
+                cacheReadTokens,
+                totalTokens: inputTokens + outputTokens,
+                costUsd,
+                costKrw: Math.round(costUsd * USD_TO_KRW * 10000) / 10000,
+                model: MODEL,
+                accessToken,
+                projectId: FIREBASE_PROJECT_ID || 'dt-club',
+              });
+            } catch (e) {
+              console.warn('Usage logging failed:', e.message);
+            }
           }
         }
-      }
-  } catch (topErr) {
-    // waitUntil 태스크 내 처리되지 않은 예외 — 클라이언트에 에러 전달 후 스트림 종료
-    const topErrMsg = topErr.message || '내부 서버 오류가 발생했습니다.';
-    try { await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'error', text: topErrMsg })}\n\n`)); } catch {}
-    try { await writer.close(); } catch {}
-  }
-  })());
+      },
+    });
 
-    return new Response(readable, {
+    return new Response(stream, {
       headers: {
         ...cors,
         'Content-Type': 'text/event-stream',
