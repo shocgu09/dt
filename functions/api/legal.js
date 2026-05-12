@@ -146,144 +146,158 @@ export async function onRequestPost(context) {
     content: [{ type: 'text', text: `<user_question>\n${cleanQuestion}\n</user_question>` }],
   });
 
-  // 7) MCP URL 순차 시도 (fly.dev primary → 로컬 터널 fallback, 중복 제거)
+  // 7) MCP URL 목록
   const mcpUrls = [PRIMARY_MCP_URL];
   if (LAW_MCP_URL && LAW_MCP_URL !== PRIMARY_MCP_URL) mcpUrls.push(LAW_MCP_URL);
 
   try {
-    let upstream = null;
-    let lastErrText = '';
-    let lastErrStatus = 500;
+  // ── 핵심 구조: SSE 헤더를 즉시 반환 후 Anthropic 호출을 waitUntil로 이동
+  // (callAnthropic이 메인 핸들러를 블록하면 클라이언트 idle 타이머가 만료됨)
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter();
+  const encoder = new TextEncoder();
 
-    // 서버 측 전체 타임아웃: 3분 (MCP 서버 무한 대기 방지)
+  // 클라이언트에 즉시 "thinking" 이벤트 전송 → idle 타이머 리셋
+  await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'thinking' })}\n\n`));
+
+  context.waitUntil((async () => {
+    // 서버 측 전체 타임아웃: 3분
     const anthropicController = new AbortController();
     const anthropicTimeoutId = setTimeout(() => anthropicController.abort(), 180000);
 
-    for (const url of mcpUrls) {
-      upstream = await callAnthropic(ANTHROPIC_API_KEY, url, messages, anthropicController.signal);
-      if (upstream.ok) break;
-      const errText = await upstream.text();
-      lastErrText = errText;
-      lastErrStatus = upstream.status;
-      if (!isMcpConnectionError(errText)) {
-        let errMsg = 'AI 서비스 일시 오류';
-        try { errMsg = JSON.parse(errText).error?.message || errMsg; } catch {}
-        return jsonResp({ error: errMsg }, upstream.status, cors);
+    // Anthropic 호출 (MCP 연결 포함) — 이제 백그라운드에서 실행
+    let upstream = null;
+    try {
+      for (const url of mcpUrls) {
+        try {
+          upstream = await callAnthropic(ANTHROPIC_API_KEY, url, messages, anthropicController.signal);
+        } catch (fetchErr) {
+          if (anthropicController.signal.aborted) throw fetchErr;
+          upstream = null; continue;
+        }
+        if (upstream.ok) break;
+        const errText = await upstream.text();
+        if (!isMcpConnectionError(errText)) {
+          let errMsg = 'AI 서비스 일시 오류';
+          try { errMsg = JSON.parse(errText).error?.message || errMsg; } catch {}
+          try { await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'error', text: errMsg })}\n\n`)); } catch {}
+          try { await writer.close(); } catch {}
+          clearTimeout(anthropicTimeoutId);
+          return;
+        }
+        upstream = null;
       }
-      upstream = null;
+      if (!upstream) {
+        try { await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'error', text: '법률 데이터 서버에 연결할 수 없습니다.' })}\n\n`)); } catch {}
+        try { await writer.close(); } catch {}
+        clearTimeout(anthropicTimeoutId);
+        return;
+      }
+    } catch (connErr) {
+      const isTimeout = connErr.name === 'AbortError' || anthropicController.signal.aborted;
+      const errMsg = isTimeout ? '법령 검색 서버가 응답하지 않습니다. (3분 초과) 잠시 후 다시 시도해주세요.' : (connErr.message || '연결 오류');
+      try { await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'error', text: errMsg })}\n\n`)); } catch {}
+      try { await writer.close(); } catch {}
+      clearTimeout(anthropicTimeoutId);
+      return;
     }
 
-    if (!upstream) {
-      return jsonResp({ error: '법률 데이터 서버에 연결할 수 없습니다.' }, lastErrStatus, cors);
-    }
+    // Anthropic SSE 스트리밍
+    const reader = upstream.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    const blockTypes = {};
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let cacheCreationTokens = 0;
+    let cacheReadTokens = 0;
+    let answerText = '';
+    let stopReason = '';
+    let toolCallCount = 0;
+    let toolErrorCount = 0;
 
-    // 8) SSE 스트리밍: Anthropic → 클라이언트 변환 + 토큰 사용량 캡처
-    const { readable, writable } = new TransformStream();
-    const writer = writable.getWriter();
-    const encoder = new TextEncoder();
+    try {
+      // ── heartbeat 패턴: Promise.race로 45s마다 keepalive 전송
+      let pendingRead = reader.read();
+      while (true) {
+        let hbId = null;
+        const res = await Promise.race([
+          pendingRead,
+          new Promise(resolve => { hbId = setTimeout(() => resolve({ _hb: true }), 45000); }),
+        ]);
+        clearTimeout(hbId);
 
-    context.waitUntil((async () => {
-      const reader = upstream.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      const blockTypes = {};
-      let inputTokens = 0;
-      let outputTokens = 0;
-      let cacheCreationTokens = 0;
-      let cacheReadTokens = 0;
-      let answerText = '';
-      let stopReason = '';
-      let toolCallCount = 0;
-      let toolErrorCount = 0;
+        if (res._hb) {
+          try { await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'heartbeat' })}\n\n`)); }
+          catch { break; }
+          continue;
+        }
 
-      try {
-        // ── heartbeat 패턴: Promise.race로 45s마다 keepalive 전송
-        // (MCP 도구 응답 대기 중 클라이언트 idle 타이머 리셋)
-        let pendingRead = reader.read();
-        while (true) {
-          let hbId = null;
-          const res = await Promise.race([
-            pendingRead,
-            new Promise(resolve => { hbId = setTimeout(() => resolve({ _hb: true }), 45000); }),
-          ]);
-          clearTimeout(hbId);
+        const { done, value } = res;
+        if (done) break;
+        pendingRead = reader.read();
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
 
-          if (res._hb) {
-            // 클라이언트에 keepalive 전송 (idle 타이머 리셋용)
-            try { await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'heartbeat' })}\n\n`)); }
-            catch { break; } // 클라이언트 연결 끊김
-            continue; // 동일 pendingRead 계속 대기
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6).trim();
+          if (data === '[DONE]') continue;
+          let ev;
+          try { ev = JSON.parse(data); } catch { continue; }
+
+          if (ev.type === 'message_start' && ev.message?.usage) {
+            inputTokens = ev.message.usage.input_tokens || 0;
+            cacheCreationTokens = ev.message.usage.cache_creation_input_tokens || 0;
+            cacheReadTokens = ev.message.usage.cache_read_input_tokens || 0;
           }
-
-          const { done, value } = res;
-          if (done) break;
-          pendingRead = reader.read(); // 다음 read 시작
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
-            const data = line.slice(6).trim();
-            if (data === '[DONE]') continue;
-            let ev;
-            try { ev = JSON.parse(data); } catch { continue; }
-
-            // 사용량: message_start의 usage.input_tokens
-            if (ev.type === 'message_start' && ev.message?.usage) {
-              inputTokens = ev.message.usage.input_tokens || 0;
-              cacheCreationTokens = ev.message.usage.cache_creation_input_tokens || 0;
-              cacheReadTokens = ev.message.usage.cache_read_input_tokens || 0;
+          else if (ev.type === 'message_delta') {
+            if (ev.usage) outputTokens = ev.usage.output_tokens || outputTokens;
+            if (ev.delta?.stop_reason) stopReason = ev.delta.stop_reason;
+          }
+          else if (ev.type === 'content_block_start') {
+            const btype = ev.content_block?.type || '';
+            blockTypes[ev.index] = btype;
+            if (btype === 'mcp_tool_use') {
+              toolCallCount++;
+              await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'clear' })}\n\n`));
             }
-            // 사용량 + stop_reason: message_delta
-            else if (ev.type === 'message_delta') {
-              if (ev.usage) outputTokens = ev.usage.output_tokens || outputTokens;
-              if (ev.delta?.stop_reason) stopReason = ev.delta.stop_reason;
+            else if (btype === 'mcp_tool_result') {
+              if (ev.content_block?.is_error === true) toolErrorCount++;
             }
-            else if (ev.type === 'content_block_start') {
-              const btype = ev.content_block?.type || '';
-              blockTypes[ev.index] = btype;
-              if (btype === 'mcp_tool_use') {
-                toolCallCount++;
-                // 도구 호출 감지 → 이전 중간 텍스트 폐기 (사용자에겐 조용히 로딩만 보임)
-                await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'clear' })}\n\n`));
-              }
-              else if (btype === 'mcp_tool_result') {
-                if (ev.content_block?.is_error === true) toolErrorCount++;
-              }
+          }
+          else if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
+            if (blockTypes[ev.index] === 'text') {
+              const delta = ev.delta.text || '';
+              answerText += delta;
+              await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'text', text: delta })}\n\n`));
             }
-            else if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
-              if (blockTypes[ev.index] === 'text') {
-                const delta = ev.delta.text || '';
-                answerText += delta;
-                await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'text', text: delta })}\n\n`));
-              }
+          }
+          else if (ev.type === 'message_stop') {
+            if (!answerText.trim()) {
+              let diagMsg = '답변 생성에 실패했습니다.';
+              if (stopReason === 'max_tokens') diagMsg = '답변이 너무 길어 잘렸습니다. 더 구체적으로 질문해주세요.';
+              else if (stopReason === 'end_turn' && toolCallCount > 0) diagMsg = `도구 호출은 완료했으나 답변을 생성하지 못했습니다. (도구 ${toolCallCount}회 호출, 에러 ${toolErrorCount}회) 다시 시도해주세요.`;
+              else if (toolErrorCount > 0) diagMsg = `법령 검색이 실패했습니다. (도구 에러 ${toolErrorCount}회) 질문을 조금 바꿔 다시 시도해주세요.`;
+              await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'text', text: diagMsg })}\n\n`));
+              answerText = diagMsg;
             }
-            else if (ev.type === 'message_stop') {
-              // 답변이 비어있으면 진단 메시지 전송
-              if (!answerText.trim()) {
-                let diagMsg = '답변 생성에 실패했습니다.';
-                if (stopReason === 'max_tokens') diagMsg = '답변이 너무 길어 잘렸습니다. 더 구체적으로 질문해주세요.';
-                else if (stopReason === 'end_turn' && toolCallCount > 0) diagMsg = `도구 호출은 완료했으나 답변을 생성하지 못했습니다. (도구 ${toolCallCount}회 호출, 에러 ${toolErrorCount}회) 다시 시도해주세요.`;
-                else if (toolErrorCount > 0) diagMsg = `법령 검색이 실패했습니다. (도구 에러 ${toolErrorCount}회) 질문을 조금 바꿔 다시 시도해주세요.`;
-                await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'text', text: diagMsg })}\n\n`));
-                answerText = diagMsg;
-              }
-              await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'done', stopReason, toolCalls: toolCallCount, toolErrors: toolErrorCount })}\n\n`));
-            }
+            await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'done', stopReason, toolCalls: toolCallCount, toolErrors: toolErrorCount })}\n\n`));
           }
         }
-        await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'done', stopReason, toolCalls: toolCallCount, toolErrors: toolErrorCount })}\n\n`));
-      } catch (e) {
-        const isTimeout = e.name === 'AbortError' || anthropicController.signal.aborted;
-        const errMsg = isTimeout
-          ? '법령 검색 서버가 응답하지 않습니다. (3분 초과) 잠시 후 다시 시도해주세요.'
-          : (e.message || '스트림 오류');
-        try { await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'error', text: errMsg })}\n\n`)); }
-        catch {} // 클라이언트가 이미 연결 끊긴 경우 무시
-      } finally {
-        clearTimeout(anthropicTimeoutId);
-        await writer.close();
+      }
+      await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'done', stopReason, toolCalls: toolCallCount, toolErrors: toolErrorCount })}\n\n`));
+    } catch (e) {
+      const isTimeout = e.name === 'AbortError' || anthropicController.signal.aborted;
+      const errMsg = isTimeout
+        ? '법령 검색 서버가 응답하지 않습니다. (3분 초과) 잠시 후 다시 시도해주세요.'
+        : (e.message || '스트림 오류');
+      try { await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'error', text: errMsg })}\n\n`)); }
+      catch {}
+    } finally {
+      clearTimeout(anthropicTimeoutId);
+      await writer.close();
 
         // 9) 사용량 로깅 (async, 응답 차단 안 함)
         if (useFirestore && accessToken && (inputTokens > 0 || outputTokens > 0)) {
