@@ -161,6 +161,8 @@ export async function onRequestPost(context) {
   await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'thinking' })}\n\n`));
 
   context.waitUntil((async () => {
+  // ── 최상위 try/catch: waitUntil 태스크 내 어떤 예외도 클라이언트에 전달
+  try {
     // 서버 측 전체 타임아웃: 3분
     const anthropicController = new AbortController();
     const anthropicTimeoutId = setTimeout(() => anthropicController.abort(), 180000);
@@ -331,7 +333,13 @@ export async function onRequestPost(context) {
           }
         }
       }
-    })());
+  } catch (topErr) {
+    // waitUntil 태스크 내 처리되지 않은 예외 — 클라이언트에 에러 전달 후 스트림 종료
+    const topErrMsg = topErr.message || '내부 서버 오류가 발생했습니다.';
+    try { await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'error', text: topErrMsg })}\n\n`)); } catch {}
+    try { await writer.close(); } catch {}
+  }
+  })());
 
     return new Response(readable, {
       headers: {

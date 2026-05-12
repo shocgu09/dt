@@ -187,15 +187,15 @@ async function legalSend() {
         }
         else if (event.type === 'error') {
           if (loadingBubble) { loadingBubble.parentElement.remove(); loadingBubble = null; }
-          var errBbl = answerBubble || createBotBubble();
-          errBbl.innerHTML = escHtml('죄송합니다. 오류가 발생했습니다: ' + event.text);
+          if (!answerBubble) answerBubble = createBotBubble();
+          answerBubble.innerHTML = escHtml('죄송합니다. 오류가 발생했습니다: ' + event.text);
         }
         else if (event.type === 'done') {
           if (loadingBubble) { loadingBubble.parentElement.remove(); loadingBubble = null; }
           // 서버에서 에러/텍스트 없이 done만 온 경우 (비정상 종료) 폴백 메시지
           if (!fullText && !answerBubble) {
-            var noRespBubble = createBotBubble();
-            noRespBubble.innerHTML = escHtml('응답을 생성하지 못했습니다. 잠시 후 다시 시도해주세요.');
+            answerBubble = createBotBubble();
+            answerBubble.innerHTML = escHtml('응답을 생성하지 못했습니다. 잠시 후 다시 시도해주세요.');
           }
         }
       }
@@ -214,6 +214,11 @@ async function legalSend() {
 
   // 스트림 종료 시 로딩 버블이 남아있으면 정리
   if (loadingBubble) { loadingBubble.parentElement.remove(); loadingBubble = null; }
+  // 아무 내용도 표시되지 않은 경우 폴백 — 서버가 응답 없이 스트림을 닫은 경우
+  if (!fullText && !answerBubble) {
+    answerBubble = createBotBubble();
+    answerBubble.innerHTML = escHtml('응답을 받지 못했습니다. 잠시 후 다시 시도해주세요.');
+  }
   finishSend(fullText);
 }
 
