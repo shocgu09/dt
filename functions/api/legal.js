@@ -274,6 +274,12 @@ export async function onRequestPost(context) {
               await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'text', text: delta })}\n\n`));
             }
           }
+          else if (ev.type === 'error') {
+            // Anthropic 스트리밍 중 서버측 에러 이벤트 (MCP 연결 실패, 과부하, rate limit 등)
+            const errMsg = ev.error?.message || 'AI 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+            try { await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'error', text: errMsg })}\n\n`)); } catch {}
+            answerText = errMsg; // message_stop 없이 스트림이 닫혀도 done에서 중복 오류 방지
+          }
           else if (ev.type === 'message_stop') {
             if (!answerText.trim()) {
               let diagMsg = '답변 생성에 실패했습니다.';
@@ -349,7 +355,7 @@ async function callAnthropic(apiKey, mcpUrl, messages, signal) {
     headers: {
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
-      'anthropic-beta': 'mcp-client-2025-11-20',
+      'anthropic-beta': 'mcp-client-2025-11-20,prompt-caching-2024-07-31',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({

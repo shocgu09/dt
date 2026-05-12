@@ -192,6 +192,11 @@ async function legalSend() {
         }
         else if (event.type === 'done') {
           if (loadingBubble) { loadingBubble.parentElement.remove(); loadingBubble = null; }
+          // 서버에서 에러/텍스트 없이 done만 온 경우 (비정상 종료) 폴백 메시지
+          if (!fullText && !answerBubble) {
+            var noRespBubble = createBotBubble();
+            noRespBubble.innerHTML = escHtml('응답을 생성하지 못했습니다. 잠시 후 다시 시도해주세요.');
+          }
         }
       }
     }
