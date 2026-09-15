@@ -1,0 +1,608 @@
+/* ===== DT 재테크 — 국내주식 (Phase 1: 시황 브리핑 + 댓글) ===== */
+
+var db = null;
+var currentUser = null;
+var isAdmin = false;
+var isMember = false;
+var myName = '';
+var currentTab = 'briefing';
+
+var briefings = [];
+var openComments = {};     // briefingId -> true (댓글 섹션 펼침 상태)
+var commentCache = {};     // briefingId -> [comment]
+var commentError = {};     // briefingId -> true (로드 실패)
+var editingId = null;      // 수정 중인 브리핑 id
+var formSentiment = 'neutral';
+var formTickers = [];
+var cfgAlwaysOn = [];
+
+/* ===== 테마 ===== */
+function toggleTheme() {
+  var current = document.documentElement.getAttribute('data-theme');
+  var next = current === 'light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('dt-theme', next);
+  document.getElementById('themeToggle').textContent = next === 'light' ? '☀️' : '🌙';
+}
+(function() {
+  var saved = localStorage.getItem('dt-theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', saved);
+  var btn = document.getElementById('themeToggle');
+  if (btn) btn.textContent = saved === 'light' ? '☀️' : '🌙';
+})();
+
+/* ===== Firebase 초기화 + 회원 게이트 ===== */
+try {
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.firestore();
+  firebase.auth().onAuthStateChanged(function(user) {
+    currentUser = user;
+    if (!user || user.isAnonymous) { showGate(); return; }
+    db.collection('users').doc(user.uid).get().then(function(doc) {
+      var data = doc.exists ? doc.data() : null;
+      var role = data && data.role;
+      if (!role) { showGate(); return; }
+      isMember = true;
+      isAdmin = (role === 'admin' || role === 'superadmin');
+      myName = (data && (data.name || data.displayName)) || user.displayName || '회원';
+      showMain();
+    }).catch(function() { showGate(); });
+  });
+} catch (e) {
+  console.log('Firebase 미연결', e);
+  showGate();
+}
+
+function showGate() {
+  document.getElementById('bootLoading').style.display = 'none';
+  document.getElementById('gate').style.display = '';
+  document.getElementById('main').style.display = 'none';
+}
+
+function showMain() {
+  document.getElementById('bootLoading').style.display = 'none';
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('main').style.display = '';
+  if (isAdmin) document.getElementById('tabAdmin').style.display = '';
+  loadBriefings();
+  loadConfig();
+}
+
+/* ===== 탭 ===== */
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.toggle('active', b.dataset.tab === tab); });
+  document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.toggle('active', c.id === 'tab-' + tab); });
+  if (tab === 'admin') {
+    var d = document.getElementById('bDate');
+    if (d && !d.value) d.value = todayStr();
+    renderAdminBriefingList();
+  }
+}
+
+/* ===== 브리핑 로드 ===== */
+async function loadBriefings() {
+  if (!db) return;
+  var el = document.getElementById('briefingList');
+  try {
+    // 단일 orderBy만 사용 → 복합 인덱스 불필요. 고정(pinned) 정렬은 클라이언트에서 처리
+    var snap = await db.collection('invest_briefings').orderBy('createdAt', 'desc').limit(50).get();
+    briefings = snap.docs.map(function(d) { return Object.assign({ id: d.id }, d.data()); });
+    briefings.sort(function(a, b) {
+      if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+      return (b.createdAt && b.createdAt.seconds || 0) - (a.createdAt && a.createdAt.seconds || 0);
+    });
+    renderBriefings();
+    renderAdminBriefingList();
+  } catch (e) {
+    el.innerHTML = '<div class="empty">브리핑을 불러오지 못했습니다.<br>잠시 후 다시 시도해 주세요.</div>';
+  }
+}
+
+function renderBriefings() {
+  var el = document.getElementById('briefingList');
+  if (!briefings.length) {
+    el.innerHTML = '<div class="empty">아직 등록된 시황 브리핑이 없습니다.'
+      + (isAdmin ? '<br>관리 탭에서 첫 브리핑을 작성해 보세요.' : '<br>운영진의 첫 브리핑을 기다려 주세요.') + '</div>';
+    return;
+  }
+  el.innerHTML = briefings.map(briefingCardHtml).join('');
+  // 펼쳐둔 댓글 섹션 복원
+  Object.keys(openComments).forEach(function(id) {
+    if (openComments[id]) renderComments(id);
+  });
+}
+
+var SENT_LABEL = { bull: '🔴 강세', bear: '🔵 약세', neutral: '⚪ 중립' };
+var MARKET_LABEL = { all: '전체', kospi: '코스피', kosdaq: '코스닥' };
+
+function briefingCardHtml(p) {
+  var sent = p.sentiment || 'neutral';
+  var bodyHtml = linkifyBody(escapeHtml(p.body || ''));
+  var isLong = (p.body || '').length > 180;
+  var preview = escapeHtml(plainPreview(p.body || '', 180)) + (isLong ? '…' : '');
+
+  var h = '<div class="briefing-card' + (p.pinned ? ' pinned' : '') + '" id="bc-' + p.id + '">';
+  h += '<div class="briefing-card-header">';
+  h += p.pinned ? '<span class="briefing-badge pin">📌 고정</span>' : '<span class="briefing-badge">📋 시황</span>';
+  h += '<span class="sentiment-badge sentiment-' + sent + '">' + SENT_LABEL[sent] + '</span>';
+  if (p.market && p.market !== 'all') h += '<span class="sentiment-badge sentiment-neutral">' + MARKET_LABEL[p.market] + '</span>';
+  h += '<span class="briefing-date">' + escapeHtml(p.date || '') + '</span>';
+  h += '</div>';
+  h += '<div class="briefing-title">' + escapeHtml(p.title || '') + '</div>';
+
+  if (isLong) {
+    h += '<div class="briefing-preview" id="bp-' + p.id + '">' + preview + '</div>';
+    h += '<div class="briefing-body" id="bb-' + p.id + '" style="display:none">' + bodyHtml + '</div>';
+    h += '<button class="briefing-toggle-btn" onclick="toggleBody(\'' + p.id + '\', this)">더보기 ▾</button>';
+  } else {
+    h += '<div class="briefing-body">' + bodyHtml + '</div>';
+  }
+
+  if (Array.isArray(p.tickers) && p.tickers.length) {
+    h += '<div class="ticker-row">';
+    h += p.tickers.map(function(t) {
+      return '<span class="ticker-chip">📈 <span class="code">' + escapeHtml(t) + '</span></span>';
+    }).join('');
+    h += '</div>';
+  }
+
+  h += '<div class="briefing-footer">';
+  h += '<span class="briefing-meta">' + escapeHtml(p.authorName || '운영진') + '</span>';
+  h += '<button class="comment-toggle" onclick="toggleComments(\'' + p.id + '\')">💬 댓글 '
+     + (p.commentCount || 0) + ' <span id="ct-' + p.id + '">▾</span></button>';
+  h += '</div>';
+
+  if (isAdmin) {
+    h += '<div class="admin-actions">';
+    h += '<button class="mini-btn" onclick="editBriefing(\'' + p.id + '\')">✏️ 수정</button>';
+    h += '<button class="mini-btn" onclick="togglePin(\'' + p.id + '\')">' + (p.pinned ? '📌 고정 해제' : '📌 고정') + '</button>';
+    h += '<button class="mini-btn danger" onclick="deleteBriefing(\'' + p.id + '\')">🗑️ 삭제</button>';
+    h += '</div>';
+  }
+
+  h += '<div class="comment-section" id="cs-' + p.id + '" style="display:none"></div>';
+  h += '</div>';
+  return h;
+}
+
+function toggleBody(id, btn) {
+  var prev = document.getElementById('bp-' + id);
+  var body = document.getElementById('bb-' + id);
+  var open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : '';
+  prev.style.display = open ? '' : 'none';
+  btn.textContent = open ? '더보기 ▾' : '접기 ▴';
+}
+
+/* ===== 댓글 ===== */
+function toggleComments(id) {
+  var sec = document.getElementById('cs-' + id);
+  var caret = document.getElementById('ct-' + id);
+  var open = sec.style.display !== 'none';
+  if (open) {
+    sec.style.display = 'none';
+    caret.textContent = '▾';
+    openComments[id] = false;
+  } else {
+    sec.style.display = '';
+    caret.textContent = '▴';
+    openComments[id] = true;
+    renderComments(id);
+    loadComments(id);
+  }
+}
+
+async function loadComments(id) {
+  if (!db) return;
+  try {
+    var snap = await db.collection('invest_briefings').doc(id)
+      .collection('comments').orderBy('createdAt', 'asc').limit(300).get();
+    commentCache[id] = snap.docs.map(function(d) { return Object.assign({ id: d.id }, d.data()); });
+    commentError[id] = false;
+    renderComments(id);
+  } catch (e) {
+    // 폼까지 날리지 않도록 목록 영역만 에러 상태로 렌더
+    commentError[id] = true;
+    renderComments(id);
+  }
+}
+
+function renderComments(id) {
+  var sec = document.getElementById('cs-' + id);
+  if (!sec) return;
+  var list = commentCache[id];
+
+  var h = '<div class="comment-form">';
+  h += '<textarea class="comment-input" id="ci-' + id + '" maxlength="1000" placeholder="시황에 대한 생각을 남겨 보세요"></textarea>';
+  h += '<div class="comment-submit-row">';
+  h += '<span class="comment-count-hint">최대 1000자</span>';
+  h += '<button class="btn-submit" onclick="submitComment(\'' + id + '\', null, this)">등록</button>';
+  h += '</div></div>';
+
+  if (commentError[id]) {
+    h += '<div class="empty">댓글을 불러오지 못했습니다.<br>'
+      + '<button class="mini-btn" style="margin-top:8px" onclick="retryComments(\'' + id + '\')">다시 시도</button></div>';
+  } else if (!list) {
+    h += '<div class="loading">댓글 로딩 중...</div>';
+  } else if (!list.length) {
+    h += '<div class="empty">첫 댓글을 남겨 보세요.</div>';
+  } else {
+    var roots = list.filter(function(c) { return !c.parentId; });
+    var byParent = {};
+    list.forEach(function(c) {
+      if (c.parentId) { (byParent[c.parentId] = byParent[c.parentId] || []).push(c); }
+    });
+    roots.forEach(function(c) {
+      h += commentHtml(id, c, false);
+      (byParent[c.id] || []).forEach(function(r) { h += commentHtml(id, r, true); });
+      h += '<div id="rf-' + c.id + '"></div>';
+    });
+  }
+  sec.innerHTML = h;
+}
+
+function retryComments(id) {
+  commentError[id] = false;
+  renderComments(id);
+  loadComments(id);
+}
+
+function commentHtml(briefingId, c, isReply) {
+  var liked = Array.isArray(c.likedBy) && currentUser && c.likedBy.indexOf(currentUser.uid) !== -1;
+  var mine = currentUser && c.authorUid === currentUser.uid;
+
+  var h = '<div class="comment-item' + (isReply ? ' reply' : '') + '">';
+  h += '<div class="comment-head">';
+  h += '<span class="comment-author">' + escapeHtml(c.authorName || '회원') + '</span>';
+  if (c.isAdmin) h += '<span class="admin-tag">운영진</span>';
+  h += '<span class="comment-time">' + timeAgo(c.createdAt) + '</span>';
+  h += '</div>';
+  h += '<div class="comment-body">' + linkifyBody(escapeHtml(c.body || '')) + '</div>';
+  h += '<div class="comment-actions">';
+  h += '<button class="comment-action' + (liked ? ' liked' : '') + '" onclick="toggleLike(\'' + briefingId + '\',\'' + c.id + '\')">'
+     + (liked ? '❤️' : '🤍') + ' ' + (c.likes || 0) + '</button>';
+  if (!isReply) h += '<button class="comment-action" onclick="showReplyForm(\'' + briefingId + '\',\'' + c.id + '\')">답글</button>';
+  if (mine || isAdmin) h += '<button class="comment-action danger" onclick="deleteComment(\'' + briefingId + '\',\'' + c.id + '\')">삭제</button>';
+  h += '</div></div>';
+  return h;
+}
+
+function showReplyForm(briefingId, parentId) {
+  var slot = document.getElementById('rf-' + parentId);
+  if (!slot) return;
+  if (slot.innerHTML) { slot.innerHTML = ''; return; }
+  slot.innerHTML = '<div class="reply-form">'
+    + '<textarea class="comment-input" id="ri-' + parentId + '" maxlength="1000" placeholder="답글을 입력하세요"></textarea>'
+    + '<div class="comment-submit-row" style="margin-top:8px">'
+    + '<button class="btn-ghost" onclick="document.getElementById(\'rf-' + parentId + '\').innerHTML=\'\'">취소</button>'
+    + '<button class="btn-submit" onclick="submitComment(\'' + briefingId + '\',\'' + parentId + '\', this)">답글 등록</button>'
+    + '</div></div>';
+  document.getElementById('ri-' + parentId).focus();
+}
+
+async function submitComment(briefingId, parentId, btn) {
+  if (!db || !currentUser || !isMember) return;
+  var inputId = parentId ? 'ri-' + parentId : 'ci-' + briefingId;
+  var input = document.getElementById(inputId);
+  if (!input) return;
+  var body = input.value.trim();
+  if (!body) { alert('내용을 입력해 주세요.'); return; }
+  if (body.length > 1000) { alert('댓글은 1000자를 넘을 수 없습니다.'); return; }
+
+  btn.disabled = true;
+  var label = btn.textContent;
+  btn.textContent = '등록 중...';
+  try {
+    var ref = db.collection('invest_briefings').doc(briefingId);
+    await ref.collection('comments').add({
+      authorUid: currentUser.uid,
+      authorName: myName,
+      isAdmin: isAdmin,
+      body: body,
+      parentId: parentId || null,
+      likes: 0,
+      likedBy: [],
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    await ref.update({ commentCount: firebase.firestore.FieldValue.increment(1) });
+    input.value = '';
+    var slot = parentId && document.getElementById('rf-' + parentId);
+    if (slot) slot.innerHTML = '';
+    bumpCommentCount(briefingId, 1);
+    await loadComments(briefingId);
+  } catch (e) {
+    alert('댓글 등록에 실패했습니다.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
+async function deleteComment(briefingId, commentId) {
+  if (!db || !confirm('이 댓글을 삭제할까요?')) return;
+  try {
+    var ref = db.collection('invest_briefings').doc(briefingId);
+    await ref.collection('comments').doc(commentId).delete();
+    await ref.update({ commentCount: firebase.firestore.FieldValue.increment(-1) });
+    bumpCommentCount(briefingId, -1);
+    await loadComments(briefingId);
+  } catch (e) {
+    alert('삭제에 실패했습니다.');
+  }
+}
+
+async function toggleLike(briefingId, commentId) {
+  if (!db || !currentUser || !isMember) return;
+  var list = commentCache[briefingId] || [];
+  var c = list.filter(function(x) { return x.id === commentId; })[0];
+  if (!c) return;
+  var liked = Array.isArray(c.likedBy) && c.likedBy.indexOf(currentUser.uid) !== -1;
+  var FV = firebase.firestore.FieldValue;
+  try {
+    await db.collection('invest_briefings').doc(briefingId).collection('comments').doc(commentId).update({
+      likes: FV.increment(liked ? -1 : 1),
+      likedBy: liked ? FV.arrayRemove(currentUser.uid) : FV.arrayUnion(currentUser.uid)
+    });
+    // 로컬 상태 갱신 (전체 재조회 없이 즉시 반영)
+    c.likes = (c.likes || 0) + (liked ? -1 : 1);
+    c.likedBy = c.likedBy || [];
+    if (liked) c.likedBy = c.likedBy.filter(function(u) { return u !== currentUser.uid; });
+    else c.likedBy.push(currentUser.uid);
+    renderComments(briefingId);
+  } catch (e) {
+    alert('처리에 실패했습니다.');
+  }
+}
+
+function bumpCommentCount(briefingId, delta) {
+  var b = briefings.filter(function(x) { return x.id === briefingId; })[0];
+  if (b) b.commentCount = Math.max(0, (b.commentCount || 0) + delta);
+  var btn = document.querySelector('#bc-' + briefingId + ' .comment-toggle');
+  if (btn && b) btn.innerHTML = '💬 댓글 ' + (b.commentCount || 0) + ' <span id="ct-' + briefingId + '">▴</span>';
+}
+
+/* ===== 관리자: 브리핑 작성/수정 ===== */
+function setSentiment(s) {
+  formSentiment = s;
+  document.querySelectorAll('.radio-btn').forEach(function(b) { b.classList.toggle('on', b.dataset.sent === s); });
+}
+
+function addTicker() {
+  var input = document.getElementById('bTickerInput');
+  var code = (input.value || '').trim();
+  if (!/^\d{6}$/.test(code)) { alert('종목코드는 6자리 숫자입니다. (예: 005930)'); return; }
+  if (formTickers.indexOf(code) === -1) formTickers.push(code);
+  input.value = '';
+  renderFormTickers();
+}
+
+function removeTicker(code) {
+  formTickers = formTickers.filter(function(t) { return t !== code; });
+  renderFormTickers();
+}
+
+function renderFormTickers() {
+  document.getElementById('bTickerList').innerHTML = formTickers.map(function(t) {
+    return '<button type="button" class="chip-del" onclick="removeTicker(\'' + t + '\')">' + t + ' ✕</button>';
+  }).join('');
+}
+
+async function submitBriefing() {
+  if (!db || !isAdmin) return;
+  var date = document.getElementById('bDate').value;
+  var title = document.getElementById('bTitle').value.trim();
+  var body = document.getElementById('bBody').value.trim();
+  var market = document.getElementById('bMarket').value;
+  var pinned = document.getElementById('bPinned').checked;
+  var status = document.getElementById('bStatus');
+  if (!date || !title || !body) { alert('날짜, 제목, 내용을 모두 입력해 주세요.'); return; }
+
+  var btn = document.getElementById('bSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = editingId ? '수정 중...' : '게시 중...';
+  try {
+    var payload = {
+      date: date, title: title, body: body, market: market,
+      sentiment: formSentiment, tickers: formTickers.slice(), pinned: pinned,
+      authorName: myName || '운영진',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    if (editingId) {
+      await db.collection('invest_briefings').doc(editingId).update(payload);
+      status.innerHTML = '<span class="ok">✅ 브리핑이 수정되었습니다.</span>';
+    } else {
+      payload.commentCount = 0;
+      payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+      await db.collection('invest_briefings').add(payload);
+      status.innerHTML = '<span class="ok">✅ 브리핑이 게시되었습니다.</span>';
+    }
+    resetBriefingForm();
+    await loadBriefings();
+  } catch (e) {
+    status.innerHTML = '<span class="err">❌ 실패: ' + escapeHtml(e.message || '') + '</span>';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = editingId ? '📋 브리핑 수정' : '📋 브리핑 게시';
+  }
+}
+
+function resetBriefingForm() {
+  editingId = null;
+  formTickers = [];
+  formSentiment = 'neutral';
+  document.getElementById('bDate').value = todayStr();
+  document.getElementById('bTitle').value = '';
+  document.getElementById('bBody').value = '';
+  document.getElementById('bMarket').value = 'all';
+  document.getElementById('bPinned').checked = false;
+  document.getElementById('bTickerInput').value = '';
+  document.getElementById('briefingFormTitle').textContent = '📋 시황 브리핑 작성';
+  document.getElementById('bSubmitBtn').textContent = '📋 브리핑 게시';
+  document.getElementById('bCancelBtn').style.display = 'none';
+  setSentiment('neutral');
+  renderFormTickers();
+}
+
+function editBriefing(id) {
+  var p = briefings.filter(function(x) { return x.id === id; })[0];
+  if (!p) return;
+  editingId = id;
+  document.getElementById('bDate').value = p.date || todayStr();
+  document.getElementById('bTitle').value = p.title || '';
+  document.getElementById('bBody').value = p.body || '';
+  document.getElementById('bMarket').value = p.market || 'all';
+  document.getElementById('bPinned').checked = !!p.pinned;
+  formTickers = Array.isArray(p.tickers) ? p.tickers.slice() : [];
+  setSentiment(p.sentiment || 'neutral');
+  renderFormTickers();
+  document.getElementById('briefingFormTitle').textContent = '✏️ 시황 브리핑 수정';
+  document.getElementById('bSubmitBtn').textContent = '📋 브리핑 수정';
+  document.getElementById('bCancelBtn').style.display = '';
+  switchTab('admin');
+  document.getElementById('bTitle').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function togglePin(id) {
+  if (!db || !isAdmin) return;
+  var p = briefings.filter(function(x) { return x.id === id; })[0];
+  if (!p) return;
+  try {
+    await db.collection('invest_briefings').doc(id).update({ pinned: !p.pinned });
+    await loadBriefings();
+  } catch (e) { alert('처리에 실패했습니다.'); }
+}
+
+async function deleteBriefing(id) {
+  if (!db || !isAdmin) return;
+  if (!confirm('이 브리핑을 삭제할까요? 달린 댓글도 함께 정리됩니다.')) return;
+  try {
+    var ref = db.collection('invest_briefings').doc(id);
+    // 서브컬렉션은 자동 삭제되지 않으므로 댓글을 먼저 배치 삭제
+    var snap = await ref.collection('comments').limit(400).get();
+    while (!snap.empty) {
+      var batch = db.batch();
+      snap.docs.forEach(function(d) { batch.delete(d.ref); });
+      await batch.commit();
+      snap = await ref.collection('comments').limit(400).get();
+    }
+    await ref.delete();
+    delete commentCache[id];
+    delete openComments[id];
+    await loadBriefings();
+  } catch (e) {
+    alert('삭제에 실패했습니다.');
+  }
+}
+
+function renderAdminBriefingList() {
+  var el = document.getElementById('adminBriefingList');
+  if (!el) return;
+  if (!briefings.length) { el.innerHTML = '<div class="empty">게시된 브리핑이 없습니다.</div>'; return; }
+  el.innerHTML = briefings.map(function(p) {
+    return '<div class="admin-list-item">'
+      + '<div class="admin-list-info">'
+      + '<div class="admin-list-title">' + (p.pinned ? '📌 ' : '') + escapeHtml(p.title || '') + '</div>'
+      + '<div class="admin-list-sub">' + escapeHtml(p.date || '') + ' · 댓글 ' + (p.commentCount || 0) + '</div>'
+      + '</div>'
+      + '<button class="mini-btn" onclick="editBriefing(\'' + p.id + '\')">수정</button>'
+      + '<button class="mini-btn danger" onclick="deleteBriefing(\'' + p.id + '\')">삭제</button>'
+      + '</div>';
+  }).join('');
+}
+
+/* ===== 관리자: 설정 ===== */
+async function loadConfig() {
+  if (!db) return;
+  try {
+    var doc = await db.collection('invest_config').doc('settings').get();
+    var d = doc.exists ? doc.data() : {};
+    cfgAlwaysOn = Array.isArray(d.alwaysOn) ? d.alwaysOn : [];
+    var notice = document.getElementById('cfgNotice');
+    if (notice) notice.value = d.notice || '';
+    renderCfgTickers();
+  } catch (e) { /* 설정 없음 — 기본값 사용 */ }
+}
+
+function addAlwaysOn() {
+  var input = document.getElementById('cfgTickerInput');
+  var code = (input.value || '').trim();
+  if (!/^\d{6}$/.test(code)) { alert('종목코드는 6자리 숫자입니다. (예: 005930)'); return; }
+  if (cfgAlwaysOn.length >= 5) { alert('상시 구독은 최대 5종목입니다.\n(웹소켓 41건 한도 관리를 위한 제한입니다)'); return; }
+  if (cfgAlwaysOn.indexOf(code) === -1) cfgAlwaysOn.push(code);
+  input.value = '';
+  renderCfgTickers();
+}
+
+function removeAlwaysOn(code) {
+  cfgAlwaysOn = cfgAlwaysOn.filter(function(t) { return t !== code; });
+  renderCfgTickers();
+}
+
+function renderCfgTickers() {
+  var el = document.getElementById('cfgTickerList');
+  if (!el) return;
+  el.innerHTML = cfgAlwaysOn.map(function(t) {
+    return '<button type="button" class="chip-del" onclick="removeAlwaysOn(\'' + t + '\')">' + t + ' ✕</button>';
+  }).join('') + '<span style="font-size:.72rem;color:var(--text3);align-self:center;margin-left:4px">' + cfgAlwaysOn.length + '/5</span>';
+}
+
+async function saveConfig() {
+  if (!db || !isAdmin) return;
+  var status = document.getElementById('cfgStatus');
+  try {
+    await db.collection('invest_config').doc('settings').set({
+      alwaysOn: cfgAlwaysOn,
+      notice: document.getElementById('cfgNotice').value.trim(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    status.innerHTML = '<span class="ok">✅ 설정이 저장되었습니다.</span>';
+  } catch (e) {
+    status.innerHTML = '<span class="err">❌ 저장 실패</span>';
+  }
+}
+
+/* ===== 헬퍼 ===== */
+function escapeHtml(str) {
+  var div = document.createElement('div');
+  div.textContent = str == null ? '' : String(str);
+  return div.innerHTML;
+}
+
+function plainPreview(body, len) {
+  return String(body || '')
+    .replace(/\[([^\]]+)\]\(https?:\/\/[^\)]+\)/g, '$1')
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/\n+/g, ' ')
+    .trim()
+    .substring(0, len || 180);
+}
+
+function linkifyBody(escaped) {
+  var result = escaped.replace(
+    /\[([^\]]+)\]\((https?:\/\/[^\s<>"'）\)]+)\)/g,
+    '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:var(--primary-light);text-decoration:underline">$1</a>'
+  );
+  result = result.replace(
+    /(?<!\bhref=["'])(?<!\])\b(https?:\/\/[^\s<>"'，）\)]+)/g,
+    '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:var(--primary-light);text-decoration:underline;word-break:break-all">$1</a>'
+  );
+  return result;
+}
+
+function todayStr() {
+  var d = new Date();
+  var off = d.getTimezoneOffset() * 60000;
+  return new Date(d - off).toISOString().slice(0, 10);
+}
+
+function timeAgo(ts) {
+  if (!ts || !ts.seconds) return '방금';
+  var diff = Date.now() / 1000 - ts.seconds;
+  if (diff < 60) return '방금';
+  if (diff < 3600) return Math.floor(diff / 60) + '분 전';
+  if (diff < 86400) return Math.floor(diff / 3600) + '시간 전';
+  if (diff < 604800) return Math.floor(diff / 86400) + '일 전';
+  var d = new Date(ts.seconds * 1000);
+  return (d.getMonth() + 1) + '.' + d.getDate();
+}

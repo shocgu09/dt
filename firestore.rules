@@ -138,7 +138,10 @@ service cloud.firestore {
       allow read: if isAuth();
       allow create: if isRealUser()
         && request.resource.data.createdBy == request.auth.uid;
-      allow update: if isRealUser();
+      allow update: if isAdmin()
+        || (isRealUser() && resource.data.createdBy == request.auth.uid)
+        || (isRealUser() && request.resource.data.diff(resource.data)
+              .affectedKeys().hasOnly(['likes', 'likedBy', 'commentCount']));
       allow delete: if isAdmin();
 
       match /comments/{commentId} {
@@ -310,6 +313,95 @@ service cloud.firestore {
         || (isRealUser() && resource.data.addedBy == request.auth.uid);
       allow delete: if isAdmin()
         || (isRealUser() && resource.data.addedBy == request.auth.uid);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  재테크 (DT Invest) — 폐쇄형 회원 전용
+    //  원칙: update 시 반드시 필드 화이트리스트를 건다
+    // ══════════════════════════════════════════════════════════
+
+    // ── invest_briefings 컬렉션 (관리자 시황 브리핑) ──────────
+    // - 실제 회원만 읽기 (게스트·비회원 차단)
+    // - 작성·수정·삭제는 관리자
+    // - 회원은 commentCount만 변경 가능 (댓글 작성/삭제 시)
+    match /invest_briefings/{briefingId} {
+      allow read: if isRealUser();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (isRealUser() && request.resource.data.diff(resource.data)
+              .affectedKeys().hasOnly(['commentCount']));
+
+      // 브리핑 댓글 (1단계 대댓글 지원)
+      match /comments/{commentId} {
+        allow read: if isRealUser();
+        allow create: if isRealUser()
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.body is string
+          && request.resource.data.body.size() > 0
+          && request.resource.data.body.size() <= 1000;
+        // 본인 댓글은 자유 수정, 남의 댓글은 좋아요 필드만
+        allow update: if isRealUser()
+          && (resource.data.authorUid == request.auth.uid
+              || request.resource.data.diff(resource.data)
+                   .affectedKeys().hasOnly(['likes', 'likedBy']));
+        allow delete: if isAdmin()
+          || (isRealUser() && resource.data.authorUid == request.auth.uid);
+      }
+    }
+
+    // ── stock_boards 컬렉션 (종목별 커뮤니티) ─────────────────
+    // - 실제 회원만 읽기/작성
+    // - 남의 글은 좋아요·댓글수·신고수 필드만 변경 가능
+    match /stock_boards/{code}/posts/{postId} {
+      allow read: if isRealUser();
+      allow create: if isRealUser()
+        && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.body is string
+        && request.resource.data.body.size() <= 3000;
+      allow update: if isAdmin()
+        || (isRealUser() && resource.data.authorUid == request.auth.uid)
+        || (isRealUser() && request.resource.data.diff(resource.data)
+              .affectedKeys().hasOnly(['likes', 'likedBy', 'commentCount', 'reportCount']));
+      allow delete: if isAdmin()
+        || (isRealUser() && resource.data.authorUid == request.auth.uid);
+
+      match /comments/{commentId} {
+        allow read: if isRealUser();
+        allow create: if isRealUser()
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.body is string
+          && request.resource.data.body.size() > 0
+          && request.resource.data.body.size() <= 1000;
+        allow update: if isRealUser()
+          && (resource.data.authorUid == request.auth.uid
+              || request.resource.data.diff(resource.data)
+                   .affectedKeys().hasOnly(['likes', 'likedBy']));
+        allow delete: if isAdmin()
+          || (isRealUser() && resource.data.authorUid == request.auth.uid);
+      }
+    }
+
+    // ── stock_watchlist 컬렉션 (내 관심종목) ──────────────────
+    // - 본인 것만 읽기/쓰기 (관리자는 열람만)
+    match /stock_watchlist/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow write: if isOwner(uid);
+    }
+
+    // ── stock_reports 컬렉션 (게시글 신고) ────────────────────
+    // - 접수는 실제 회원, 열람·처리는 관리자만
+    match /stock_reports/{reportId} {
+      allow read: if isAdmin();
+      allow create: if isRealUser()
+        && request.resource.data.reporterUid == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // ── invest_config 컬렉션 (재테크 설정·면책·상시구독 종목) ──
+    // - 실제 회원 읽기, 관리자만 수정
+    match /invest_config/{docId} {
+      allow read: if isRealUser();
+      allow write: if isAdmin();
     }
 
   }

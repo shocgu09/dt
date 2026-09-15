@@ -143,6 +143,7 @@
           <p class="hero-desc">드라이브 코스, 자동차 트렌드, AI 소식</p>
           <div class="hero-buttons">
             <a href="spots/" class="btn btn-primary">📍 DT 스팟</a>
+            <a href="invest/" class="btn btn-outline">💰 재테크</a>
             <a href="ai-trend/" class="btn btn-outline">🤖 AI 트렌드</a>
             <a href="car-trend/" class="btn btn-outline">🚘 자동차 트렌드</a>
             <a href="legal/" class="btn btn-outline">⚖️ 법률 도우미</a>
@@ -152,10 +153,11 @@
       </div>
       <!-- AI 브리핑 -->
       <div class="home-links-section">
-        <h3 class="home-links-title">🤖 AI 브리핑</h3>
+        <h3 class="home-links-title">📋 브리핑</h3>
         <div class="home-briefing-tabs">
           <button class="home-briefing-tab active" data-brief="ai">🤖 AI 트렌드</button>
           <button class="home-briefing-tab" data-brief="car">🚘 자동차 트렌드</button>
+          <button class="home-briefing-tab" data-brief="invest">💰 재테크</button>
         </div>
         <div class="home-briefing-panel active" id="home-brief-ai">
           <div id="home-briefing-ai" class="home-briefing-content">
@@ -168,6 +170,12 @@
             <div class="home-preview-loading">브리핑 로딩 중...</div>
           </div>
           <a href="car-trend/" class="home-briefing-more">자동차 트렌드 더보기 →</a>
+        </div>
+        <div class="home-briefing-panel" id="home-brief-invest">
+          <div id="home-briefing-invest" class="home-briefing-content">
+            <div class="home-preview-loading">브리핑 로딩 중...</div>
+          </div>
+          <a href="invest/" class="home-briefing-more">재테크 더보기 →</a>
         </div>
       </div>
 
@@ -204,6 +212,10 @@
           <a href="car-trend/" class="home-tool-card home-tool-sm">
             <span class="home-tool-icon">🚘</span>
             <span class="home-tool-name">자동차 트렌드</span>
+          </a>
+          <a href="invest/" class="home-tool-card home-tool-sm">
+            <span class="home-tool-icon">💰</span>
+            <span class="home-tool-name">재테크</span>
           </a>
         </div>
       </div>
@@ -1445,7 +1457,7 @@
   <script src="firebase-config.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
   <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=4e6bf0a48d4d8a637a18a4ba1d82deaf&libraries=services&autoload=false"></script>
-  <script src="app.js?v=10"></script>
+  <script src="app.js?v=11"></script>
 
   <!-- 공지 팝업 -->
   <div class="modal-overlay" id="noticePopup" style="display:none;z-index:999">

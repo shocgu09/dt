@@ -619,15 +619,22 @@ dt/
 
 > Phase 0 없이 Phase 2를 시작하면 안 됩니다. 계좌 개설에 영업일이 걸립니다.
 
-### Phase 1 — 시황 브리핑 + 댓글 (1~2주)
+### Phase 1 — 시황 브리핑 + 댓글 ✅ 완료 (2026-09-15)
 
-시세 없이도 서비스가 성립합니다. 여기부터 내는 이유는 Phase 0 대기 시간을 버리지 않기 위해서입니다.
+시세 없이도 서비스가 성립합니다. 여기부터 낸 이유는 Phase 0 대기 시간을 버리지 않기 위해서입니다.
 
-- [ ] `/invest/` 뼈대, 자산군 탭, 회원 전용 게이트
-- [ ] `invest_briefings` + 보안 규칙 배포
-- [ ] 관리자 브리핑 작성/수정/삭제/고정
-- [ ] **브리핑 댓글 + 1단계 대댓글 + 좋아요**, 관리자 배지
-- [ ] 면책 문구, 홈 진입점 3곳
+- [x] `/invest/` 뼈대, 자산군 탭, 회원 전용 게이트
+- [x] `invest_briefings` + 보안 규칙 배포 (`firebase deploy --only firestore:rules` 완료)
+- [x] 관리자 브리핑 작성/수정/삭제/고정
+- [x] **브리핑 댓글 + 1단계 대댓글 + 좋아요**, 관리자 배지
+- [x] 면책 문구, 홈 진입점 (히어로 / 브리핑 탭 / 라운지 카드)
+- [x] 시세 탭 자리표시 (실시간 오픈 전까지 예정 기능 안내)
+- [x] 관리자 설정: 상시 구독 종목 5개, 재테크 공지
+
+**구현 메모**
+- 브리핑 목록은 `orderBy('createdAt','desc')` 단일 정렬만 쓰고 **고정(pinned) 우선순위는 클라이언트에서 정렬**합니다 → 복합 인덱스 불필요
+- 브리핑 삭제 시 `comments` 서브컬렉션을 배치로 먼저 지웁니다 (Firestore는 서브컬렉션을 자동 삭제하지 않음)
+- 홈 프리뷰는 회원 전용이라 `dt-digest` 워커를 거치지 않고 Firestore에서 직접 읽습니다. 게스트에게는 잠금 안내만 표시
 
 ### Phase 2 — 실시간 릴레이 ★ 최대 난관 (2~3주)
 
@@ -760,8 +767,8 @@ Durable Objects는 **Workers 무료 플랜에서 사용 가능**합니다(SQLite
 
 | 우선순위 | 위치 | 내용 |
 |---------|------|------|
-| 🔴 높음 | `firestore.rules:141` | `anon_posts`의 `allow update: if isRealUser()` — 필드 제한이 없어 **아무 회원이나 남의 글 본문을 덮어쓸 수 있음**. `hasOnly(['likes','likedBy'])`로 제한 필요 |
-| 🔴 높음 | `firestore.rules:157` | `blacklist`의 `allow read: if true` — **강퇴 사유가 담긴 이메일 목록이 비인증 전체 공개**. read를 `isAdmin()`으로 제한하고 가입 시 체크는 서버로 이동 |
+| ✅ 처리됨 | `firestore.rules` | `anon_posts`의 `allow update: if isRealUser()` → **작성자 본인 / 관리자 / `['likes','likedBy','commentCount']` 화이트리스트**로 강화 완료. 실제 호출부(작성자 수정·좋아요·댓글수)를 모두 확인해 기존 동작은 그대로 유지됨 |
+| 🔴 높음 | `firestore.rules` | `blacklist`의 `allow read: if true` — **강퇴 사유가 담긴 이메일 목록이 비인증 전체 공개**. ⚠️ **지금 바로 조이면 회원가입이 깨집니다** — `app.js`가 가입 도중(비인증 상태) 이 컬렉션을 조회하기 때문. 이메일 중복 체크를 Worker/Cloud Function으로 옮긴 뒤 read를 `isAdmin()`으로 제한해야 함 (별도 작업) |
 | 🟡 중간 | `firestore.rules:143` | `anon_posts` 삭제가 관리자만 — 작성자 본인이 자기 글을 못 지움 |
 | 🟡 중간 | `app.js` (256KB / 170 함수) | 단일 파일 한계. 재테크를 서브앱으로 분리하는 게 이번 설계의 전제 |
 | 🟢 낮음 | `sw.js:4` | STATIC이 `/app.js`를 캐시하는데 HTML은 `app.js?v=10`을 요청 → 캐시 키 불일치 |

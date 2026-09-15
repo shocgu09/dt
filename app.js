@@ -3414,6 +3414,44 @@ function renderAnon() {
 async function loadHomePreview() {
   _loadHomeBriefing('ai');
   _loadHomeBriefing('car');
+  _loadInvestBriefing();
+}
+
+// 재테크 브리핑 — 회원 전용이라 Firestore에서 직접 읽는다 (digest 워커 경유 X)
+var _investBriefingLoaded = false;
+async function _loadInvestBriefing() {
+  if (_investBriefingLoaded) return;
+  var el = document.getElementById('home-briefing-invest');
+  if (!el) return;
+  if (state.isGuest || !state.currentUserId) {
+    el.innerHTML = '<div class="home-preview-empty">🔒 회원 전용입니다. 로그인 후 확인해 주세요</div>';
+    return;
+  }
+  if (!state.db) return;
+  try {
+    var snap = await state.db.collection('invest_briefings')
+      .orderBy('createdAt', 'desc').limit(5).get();
+    if (snap.empty) {
+      el.innerHTML = '<div class="home-preview-empty">아직 브리핑이 없습니다</div>';
+      return;
+    }
+    var docs = snap.docs.map(function(d) { return d.data(); });
+    // 고정 브리핑 우선 (복합 인덱스 없이 클라이언트에서 정렬)
+    docs.sort(function(a, b) { return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0); });
+    var doc = docs[0];
+    var preview = String(doc.body || '')
+      .replace(/\[([^\]]+)\]\(https?:\/\/[^\)]+\)/g, '$1')
+      .replace(/https?:\/\/\S+/g, '')
+      .replace(/\n+/g, ' ')
+      .trim()
+      .substring(0, 160);
+    el.innerHTML = '<div style="font-size:.78rem;color:var(--text3);margin-bottom:8px;font-weight:600">'
+      + (doc.pinned ? '📌 ' : '') + escapeHtml(doc.title || '') + '</div>'
+      + escapeHtml(preview) + (preview.length >= 160 ? '…' : '');
+    _investBriefingLoaded = true;
+  } catch (e) {
+    el.innerHTML = '<div class="home-preview-empty">브리핑을 불러올 수 없습니다</div>';
+  }
 }
 
 function switchHomeBriefing(tab) {
