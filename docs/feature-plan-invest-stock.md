@@ -110,7 +110,147 @@ $ nc -z ops.koreainvestment.com 443                         → closed
 
 ---
 
-## 3. 아키텍처 — Durable Object 릴레이
+## 2-B. ★ 계좌 없이 가는 경로 (2026-09-15 실측 검증 완료)
+
+"증권 계좌 없이 가능한가"를 조사한 결과 **가능합니다.** 네이버 증권이 내부적으로 쓰는 공개 JSON 엔드포인트로 **실시간 시세 + 호가 + 분봉/일봉 + 초성 검색**이 전부 해결됩니다. 인증키도, 계좌도, 가입도 필요 없습니다.
+
+### 2B-1. 검증된 엔드포인트
+
+전부 `curl`로 직접 호출해 확인했습니다.
+
+| 기능 | 엔드포인트 | 검증 결과 |
+|------|-----------|----------|
+| **실시간 현재가** | `polling.finance.naver.com/api/realtime/domestic/stock/{code}` | ✅ `delayTime: 0`, 권장 폴링 **7초** |
+| **호가** | `m.stock.naver.com/api/stock/{code}/askingPrice` | ✅ **매도 5 + 매수 5단계** + 총잔량 + 잔량비율 |
+| **분봉** | `api.stock.naver.com/chart/domestic/item/{code}/minute?startDateTime=&endDateTime=` | ✅ 1분봉 OHLCV |
+| **일봉** | `api.stock.naver.com/chart/domestic/item/{code}/day?startDateTime=&endDateTime=` | ✅ OHLCV + 외국인보유율 |
+| **지수** | `polling.finance.naver.com/api/realtime/domestic/index/KOSPI` (KOSDAQ 동일) | ✅ 권장 폴링 70초 |
+| **종목 검색** | `ac.stock.naver.com/ac?q={검색어}&target=stock` | ✅ **초성 검색 지원** (`ㅅㅅㅈㅈ` → 삼성전자) |
+
+**호가 응답 형태**
+```json
+{
+  "lastClosePrice": 249000,
+  "totalSell": "185,439", "totalBuy": "323,476",
+  "sellInfo":  [ {"price":"250,500","count":"13,001","rate":26}, ... 5건 ],
+  "buyInfos":  [ {"price":"248,000","count":"48,462","rate":100}, ... 5건 ]
+}
+```
+`rate`(0~100)가 이미 들어 있어 **잔량 비율 바를 그대로 그릴 수 있습니다.** 계산 불필요.
+
+### 2B-2. 접근 조건 — 게이팅이 사실상 없음
+
+| 조건 | 결과 |
+|------|------|
+| UA + Referer 둘 다 | 200 |
+| UA만 | 200 |
+| Referer만 | 200 |
+| **둘 다 없음** | **200** |
+| 20회 연속 호출 | 20/20 성공, 레이트리밋 미관측 |
+| `Origin` 헤더 포함 (CORS) | **403** → 브라우저 직접 호출 불가, **Worker 프록시 필요** |
+
+CORS가 막혀 있는 건 오히려 설계상 문제가 없습니다. 어차피 캐시 때문에 Worker를 거쳐야 합니다.
+
+### 2B-3. ★ 이것이 아키텍처를 통째로 바꿉니다
+
+§0에서 발견한 "Cloudflare `fetch()`가 비표준 포트를 무시한다"는 제약은 **KIS(9443/21000)에만 해당**합니다. 네이버는 전부 **표준 443 HTTPS**입니다.
+
+```
+  ❌ KIS 경로   : Worker → Durable Object → connect() TCP → RFC6455 직접 구현 → KIS
+  ✅ 네이버 경로 : Worker → fetch() → 네이버          (기존 dt-opinet/dt-rss와 동일)
+```
+
+즉 **Durable Object도, TCP 소켓도, WebSocket 프레이밍 직접 구현도 전부 불필요**합니다.
+기존 워커 8종과 똑같은 패턴으로 끝납니다.
+
+### 2B-4. KIS vs 네이버 — 무엇을 잃고 얻는가
+
+| 항목 | KIS (계좌 필요) | **네이버 (계좌 불필요)** |
+|------|----------------|------------------------|
+| 갱신 방식 | 틱 단위 WebSocket push | **7초 폴링** |
+| 호가 단계 | 10단계 | **5단계** |
+| 동시 종목 수 | **41건 한도 → 20종목** | **제한 없음** (관측 기준) |
+| 사전 준비 | 실전계좌 + 앱키 + HTS ID | **없음** |
+| Cloudflare 구현 | DO + TCP + RFC6455 (~450줄) | **Worker + fetch (~80줄)** |
+| Phase 2 예상 기간 | 2~3주 | **2~3일** |
+| 안정성 | 공식 API | 비공식 — 예고 없이 변경/차단 가능 |
+| 약관 | 개인 사용 전제 | 네이버 ToS의 자동수집 금지 조항 해당 소지 |
+
+**잃는 것은 실질적으로 두 가지뿐입니다: 틱 단위 실시간(→7초)과 호가 5단계(→10단계 아님).**
+반대로 **41건 한도가 사라지는 건 큰 이득**입니다. §3-4에서 공들여 설계한 LRU 구독 예산 관리가 통째로 불필요해집니다.
+
+동호회 회원이 모바일로 시황을 보는 용도라면 7초 갱신과 5단계 호가로 충분합니다.
+
+### 2B-5. 리스크 (솔직하게)
+
+1. **비공식 API입니다.** 네이버가 예고 없이 스펙을 바꾸거나 막을 수 있습니다.
+   → 폴백 체인을 구성하세요: **네이버 → 다음(`finance.daum.net/api/quotes/A{code}`) → 야후(`005930.KS`)**.
+   다만 **호가는 네이버에만 있습니다** (다음 호가 엔드포인트는 전부 500, 야후는 호가 미제공). 호가가 끊기면 현재가만 표시하고 호가 영역은 "일시 제공 중단"으로 처리하는 설계가 필요합니다.
+
+2. **데이터센터 IP 차단 가능성 — 최대 미검증 리스크.**
+   위 테스트는 전부 **가정용 IP**에서 했습니다. Cloudflare Worker의 IP에서도 되는지는 **배포해봐야 압니다.**
+   → Phase 2 첫 작업은 "워커 하나 띄워서 `/api/health`로 호가가 실제로 오는지 확인"이어야 합니다. 여기서 막히면 그때 KIS로 전환하세요.
+
+3. **네이버 이용약관.** 자동 수집을 금지하는 조항이 있습니다. 재배포 이슈는 신경 안 쓰기로 하셨지만 이건 네이버와의 관계라 별개 사안입니다. 실질적 방어는 **트래픽을 낮게 유지하는 것**입니다 — KV 캐시로 종목당 5초 1회, 아무도 안 보는 종목은 조회 안 함. 회원 30명이 붙어도 네이버 입장에서는 사람 몇 명 수준의 트래픽이 됩니다.
+
+4. **장중 지연 여부 미검증.** 테스트 시각이 장 마감 후였습니다. `delayTime: 0`으로 표기되지만 **장중에 실제로 실시간인지 한 번 확인**하세요 (증권사 앱과 나란히 놓고 비교).
+
+5. **호가 5단계 고정.** 10단계가 꼭 필요하면 KIS 외에는 답이 없습니다.
+
+### 2B-6. 결론 및 권고
+
+> **네이버 경로로 Phase 2를 먼저 진행하세요.**
+> 계좌 개설을 기다릴 필요가 없고, 구현이 2~3주에서 2~3일로 줄고, 41종목 한도가 사라집니다.
+> 시세 소스는 **어댑터 인터페이스**(`getQuote / getOrderBook / getOhlc`)로 감싸서,
+> 나중에 네이버가 막히거나 10단계 호가·틱 실시간이 필요해지면 **KIS 어댑터로 갈아끼우기만** 하면 되도록 설계합니다.
+>
+> 계좌 개설은 급하지 않지만, **보험으로 병행해 두시길 권합니다** (개설만 해두고 안 써도 비용 0).
+
+
+---
+
+## 3. 아키텍처 — 시세 소스별 두 갈래
+
+> **§2-B 검증 결과 네이버 경로가 기본값입니다.** 아래 Durable Object 설계는 KIS로 전환할 때를 위한 것으로,
+> 네이버 경로에서는 **3-1 ~ 3-7이 전부 불필요**합니다 (Worker + fetch + KV 캐시로 끝).
+> 3-8 회원 인증 게이트만 두 경로 공통으로 적용됩니다.
+
+### 3-0. 네이버 경로 아키텍처 (기본)
+
+```
+  회원 브라우저 (/invest/)
+        │  https (폴링 5~7초)
+        ▼
+  Worker  dt-stock          ← 기존 dt-opinet / dt-rss와 동일 패턴
+   ├─ GET /api/quote?code=     현재가      (KV 캐시 5초)
+   ├─ GET /api/book?code=      호가 5단계  (KV 캐시 3초)
+   ├─ GET /api/ohlc?code=&tf=  분봉/일봉   (KV 캐시 장중 60초 / 장후 12시간)
+   ├─ GET /api/index           지수        (KV 캐시 30초)
+   └─ GET /api/search?q=       초성 검색   (KV 캐시 24시간)
+        │  fetch() ← 전부 표준 443
+        ▼
+  네이버 증권 (폴백: 다음 → 야후)
+```
+
+**시세 어댑터 인터페이스** — 나중에 KIS로 갈아끼우기 위한 경계
+
+```js
+// providers/naver.js  ·  providers/kis.js 가 같은 형태를 구현
+export const provider = {
+  name: 'naver',
+  async getQuote(code)     { /* → {price, change, changeRate, volume, asOf, delayed} */ },
+  async getOrderBook(code) { /* → {ask:[[가격,잔량,비율]x5], bid:[...], askTotal, bidTotal} */ },
+  async getOhlc(code, tf)  { /* → [{t,o,h,l,c,v}] */ },
+  async getIndex()         { /* → {kospi, kosdaq} */ },
+  async search(q)          { /* → [{code, name, market}] */ }
+};
+```
+
+앱과 프론트엔드는 이 인터페이스만 알면 되므로, 소스를 바꿔도 **`providers/` 파일 하나만 교체**하면 됩니다.
+
+---
+
+## 3-A. KIS 경로 아키텍처 (전환 대비)
 
 ### 3-1. 전체 구조
 
@@ -610,14 +750,17 @@ dt/
 
 ## 8. 구현 단계
 
-### Phase 0 — 계좌·키 준비 (지금 바로) ★ 선행 조건
+### Phase 0 — ~~계좌·키 준비~~ → 불필요 (§2-B 검증으로 대체)
 
-- [ ] 한국투자증권 **실전 계좌** 비대면 개설
-- [ ] KIS Developers 가입 → 앱 등록 → `appkey`/`appsecret` 발급
-- [ ] HTS ID 등록
-- [ ] 로컬 Python 예제로 `H0UNCNT0` 수신 확인 — **여기서 먼저 검증하고 넘어가세요**
+~~한국투자증권 실전 계좌 개설~~ — **네이버 경로에서는 필요 없습니다.**
 
-> Phase 0 없이 Phase 2를 시작하면 안 됩니다. 계좌 개설에 영업일이 걸립니다.
+대신 Phase 2 착수 시 제일 먼저 할 일:
+
+- [ ] Worker 하나 띄워 **Cloudflare IP에서 네이버 호가가 실제로 오는지 확인** (최대 미검증 리스크)
+- [ ] 장중에 `delayTime: 0`이 진짜 실시간인지 증권사 앱과 대조
+
+> 계좌는 **보험으로만** 병행 개설해 두시길 권합니다(안 쓰면 비용 0).
+> 위 두 검증 중 하나라도 깨지면 그때 §3-A의 KIS 경로로 전환합니다.
 
 ### Phase 1 — 시황 브리핑 + 댓글 ✅ 완료 (2026-09-15)
 
@@ -636,15 +779,19 @@ dt/
 - 브리핑 삭제 시 `comments` 서브컬렉션을 배치로 먼저 지웁니다 (Firestore는 서브컬렉션을 자동 삭제하지 않음)
 - 홈 프리뷰는 회원 전용이라 `dt-digest` 워커를 거치지 않고 Firestore에서 직접 읽습니다. 게스트에게는 잠금 안내만 표시
 
-### Phase 2 — 실시간 릴레이 ★ 최대 난관 (2~3주)
+### Phase 2 — 시세 Worker (2~3일) ※ 네이버 경로
 
-- [ ] `kis-rest.js` — TLS 소켓 위 HTTP/1.1, 토큰 발급·캐시
-- [ ] `kis-ws-client.js` — RFC6455 핸드셰이크 + 프레임 파싱 + PING/PONG
-- [ ] `MarketHub` DO — 클라이언트 관리, 구독 예산(41건), LRU, 팬아웃
-- [ ] Firebase ID 토큰 검증 게이트
-- [ ] 장 운영시간 게이팅, 재연결 백오프
-- [ ] 관리자 릴레이 상태 패널
-- [ ] **중간 점검**: 이 단계에서 2주 넘게 막히면 Node.js 릴레이로 전환 (§3-2)
+DO·TCP소켓·RFC6455가 전부 빠지면서 난이도가 급감했습니다.
+
+- [ ] `dt-stock-worker.js` — `/api/quote` `/api/book` `/api/ohlc` `/api/index` `/api/search`
+- [ ] `providers/naver.js` — 어댑터 구현 (§3-0 인터페이스)
+- [ ] KV 캐시 (현재가 5초 / 호가 3초 / 분봉 60초 / 일봉 12시간 / 검색 24시간)
+- [ ] 폴백 체인: 네이버 → 다음 → 야후 (호가는 네이버 전용 → 실패 시 호가 영역만 비활성)
+- [ ] Firebase ID 토큰 검증 게이트 (§3-8)
+- [ ] 장 운영시간 게이팅 (장외에는 폴링 중단, 종가 스냅샷만)
+- [ ] 관리자 상태 패널: 소스/캐시 적중률/폴백 발생 여부
+
+> **KIS로 가는 경우** §3-A + 구 Phase 2 체크리스트(DO·RFC6455·41건 예산)를 대신 수행합니다. 2~3주 규모.
 
 ### Phase 3 — 실시간 화면 (2주)
 
@@ -779,10 +926,10 @@ Durable Objects는 **Workers 무료 플랜에서 사용 가능**합니다(SQLite
 
 | # | 질문 | 제안 |
 |---|------|------|
-| 1 | Phase 2에서 `connect()` 구현이 막히면 **Node.js 릴레이**로 전환해도 될까요? (Fly.io 무료 티어 등) | 전환 가능하도록 설계해둠. 2주 룰 적용 |
-| 2 | 상시 구독 종목 5개를 무엇으로 할까요? | 삼성전자·SK하이닉스·NAVER·현대차·KODEX 레버리지 등 — 관리자 화면에서 언제든 교체 |
-| 3 | 종목 커뮤니티를 **실명(회원명)** vs **익명**? | 실명 — 폐쇄형이고 `priceAtPost` 기록이 남으므로 실명이 건전성에 유리 |
-| 4 | 분봉 차트를 1분/5분 중 어디까지 지원할까요? | 1·5·일·주·월 5종. 틱 차트는 배터리 소모가 커서 제외 |
+| 1 | **시세 소스를 네이버로 갈까요?** (계좌 불필요, 7초 갱신, 호가 5단계) | **예 — 권장.** 어댑터로 감싸 KIS 전환 여지를 남김 (§2-B) |
+| 2 | 호가 **5단계로 충분**하신가요? 10단계가 꼭 필요하면 KIS 계좌가 필수입니다 | 모바일 화면에서는 5단계로 충분하다고 봅니다 |
+| 3 | 7초 갱신으로 괜찮으신가요? 틱 단위가 필요하면 KIS | 시황 열람 용도면 충분 |
+| 4 | 종목 커뮤니티를 **실명(회원명)** vs **익명**? | 실명 — 폐쇄형이고 `priceAtPost` 기록이 남으므로 실명이 건전성에 유리 |
 
 ---
 
@@ -796,4 +943,11 @@ Durable Objects는 **Workers 무료 플랜에서 사용 가능**합니다(SQLite
 - Cloudflare `fetch()` 비표준 포트 미지원 이슈 — https://github.com/cloudflare/cloudflare-docs/issues/4299
 - Durable Objects 요금·무료 한도 — https://developers.cloudflare.com/durable-objects/platform/pricing/
 - lightweight-charts — https://github.com/tradingview/lightweight-charts
+- (검증된 무인증 엔드포인트 — §2-B 참조)
+  - 현재가: `https://polling.finance.naver.com/api/realtime/domestic/stock/005930`
+  - 호가:   `https://m.stock.naver.com/api/stock/005930/askingPrice`
+  - 분봉:   `https://api.stock.naver.com/chart/domestic/item/005930/minute?startDateTime=202609150900&endDateTime=202609151530`
+  - 일봉:   `https://api.stock.naver.com/chart/domestic/item/005930/day?startDateTime=202601010000&endDateTime=202609160000`
+  - 검색:   `https://ac.stock.naver.com/ac?q=삼성&target=stock`
+  - 백업:   `https://finance.daum.net/api/quotes/A005930` · `https://query1.finance.yahoo.com/v8/finance/chart/005930.KS`
 - 금융위 유권해석: 온라인 주식방송의 유사투자자문업 신고 필요 여부 — https://better.fsc.go.kr/fsc_new/replyCase/LawreqDetail.do?stNo=11&muNo=171&muGpNo=75&lawreqIdx=3509
