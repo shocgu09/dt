@@ -1,0 +1,212 @@
+// DT 재테크 시세 Worker
+// 네이버 증권(무인증)을 프록시 + KV 캐시. 전부 표준 443이라 fetch()로 충분하다.
+// Secrets: FIREBASE_PROJECT_ID(vars), 없음(시세 소스에 키 불필요)
+// KV: STOCK_KV
+
+import { naver, daum, yahoo } from './providers/naver.js';
+
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Content-Type': 'application/json; charset=utf-8'
+};
+
+// 캐시 TTL(초) — 네이버 권장 폴링이 7초라 그보다 짧게 잡을 이유가 없다
+const TTL = { quote: 5, book: 3, index: 30, ohlcIntra: 60, ohlcDay: 43200, search: 86400 };
+
+function json(data, status = 200, extra) {
+  return new Response(JSON.stringify(data), { status, headers: { ...CORS, ...(extra || {}) } });
+}
+function fail(msg, status = 502) { return json({ error: msg }, status); }
+
+const isCode = (c) => /^\d{6}$/.test(c || '');
+
+// ── KV 캐시 래퍼 ───────────────────────────────────────────────
+async function cached(env, key, ttl, produce) {
+  if (env.STOCK_KV) {
+    const hit = await env.STOCK_KV.get(key, 'json');
+    if (hit) return { ...hit, cached: true };
+  }
+  const fresh = await produce();
+  if (env.STOCK_KV) {
+    // expirationTtl 최소값이 60초라 그 아래는 KV 대신 짧은 edge 캐시에 의존
+    await env.STOCK_KV.put(key, JSON.stringify(fresh), { expirationTtl: Math.max(60, ttl) });
+  }
+  return fresh;
+}
+
+// TTL이 60초 미만인 항목은 KV 대신 워커 인스턴스 메모리로 처리
+const mem = new Map();
+async function memo(key, ttlSec, produce) {
+  const now = Date.now();
+  const hit = mem.get(key);
+  if (hit && now - hit.at < ttlSec * 1000) return { ...hit.v, cached: true };
+  const v = await produce();
+  mem.set(key, { at: now, v });
+  if (mem.size > 500) mem.delete(mem.keys().next().value);
+  return v;
+}
+
+// ── 장 운영시간 (KST 08:30~16:00 평일) ─────────────────────────
+function marketOpen(d = new Date()) {
+  const kst = new Date(d.getTime() + 9 * 3600 * 1000);
+  const day = kst.getUTCDay();
+  if (day === 0 || day === 6) return false;
+  const min = kst.getUTCHours() * 60 + kst.getUTCMinutes();
+  return min >= 510 && min <= 960;
+}
+
+function kstStamp(d = new Date()) {
+  const k = new Date(d.getTime() + 9 * 3600 * 1000);
+  const p = (n) => String(n).padStart(2, '0');
+  return {
+    ymd: `${k.getUTCFullYear()}${p(k.getUTCMonth() + 1)}${p(k.getUTCDate())}`,
+    full: `${k.getUTCFullYear()}${p(k.getUTCMonth() + 1)}${p(k.getUTCDate())}${p(k.getUTCHours())}${p(k.getUTCMinutes())}`
+  };
+}
+
+// ── Firebase ID 토큰 검증 (폐쇄형 게이트) ──────────────────────
+// securetoken 공개키를 JWK로 받아 RS256 서명을 직접 검증한다.
+// (x509 PEM은 WebCrypto가 직접 import하지 못하므로 JWK 엔드포인트를 쓴다)
+const JWK_URL = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
+let _jwks = { at: 0, byKid: null };
+
+async function jwkFor(kid) {
+  if (!_jwks.byKid || Date.now() - _jwks.at > 3600e3) {
+    const r = await fetch(JWK_URL);
+    if (!r.ok) throw new Error('jwk fetch failed');
+    const d = await r.json();
+    const byKid = {};
+    for (const k of d.keys || []) byKid[k.kid] = k;
+    _jwks = { at: Date.now(), byKid };
+  }
+  return _jwks.byKid[kid] || null;
+}
+
+function b64urlToBytes(s) {
+  const t = s.replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(t + '='.repeat((4 - (t.length % 4)) % 4));
+  return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+}
+
+async function verifyIdToken(token, projectId) {
+  const parts = (token || '').split('.');
+  if (parts.length !== 3) return null;
+
+  let header, payload;
+  try {
+    header  = JSON.parse(new TextDecoder().decode(b64urlToBytes(parts[0])));
+    payload = JSON.parse(new TextDecoder().decode(b64urlToBytes(parts[1])));
+  } catch { return null; }
+
+  // 1) 클레임 검증
+  const now = Math.floor(Date.now() / 1000);
+  if (header.alg !== 'RS256' || !header.kid) return null;
+  if (!payload.exp || payload.exp <= now) return null;
+  if (payload.iat && payload.iat > now + 300) return null;      // 시계 오차 5분 허용
+  if (payload.aud !== projectId) return null;
+  if (payload.iss !== `https://securetoken.google.com/${projectId}`) return null;
+  if (!payload.sub) return null;
+  // 게스트(익명 로그인) 차단 — 폐쇄형 동호회 전제
+  if (payload.firebase && payload.firebase.sign_in_provider === 'anonymous') return null;
+
+  // 2) 서명 검증
+  const jwk = await jwkFor(header.kid);
+  if (!jwk) return null;
+  const key = await crypto.subtle.importKey(
+    'jwk',
+    { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: 'RS256', ext: true },
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['verify']
+  );
+  const ok = await crypto.subtle.verify(
+    'RSASSA-PKCS1-v1_5',
+    key,
+    b64urlToBytes(parts[2]),
+    new TextEncoder().encode(`${parts[0]}.${parts[1]}`)
+  );
+  return ok ? payload : null;
+}
+
+// ── 라우팅 ────────────────────────────────────────────────────
+export default {
+  async fetch(request, env) {
+    if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
+
+    const url = new URL(request.url);
+    const path = url.pathname;
+    const q = url.searchParams;
+
+    if (path === '/api/health') {
+      return json({ status: 'ok', marketOpen: marketOpen(), provider: naver.name, ts: new Date().toISOString() });
+    }
+
+    // 회원 전용 게이트 — health 제외한 모든 엔드포인트
+    if (env.REQUIRE_AUTH !== 'false') {
+      const auth = request.headers.get('Authorization') || '';
+      const token = auth.startsWith('Bearer ') ? auth.slice(7) : q.get('token');
+      const user = await verifyIdToken(token, env.FIREBASE_PROJECT_ID);
+      if (!user) return json({ error: '회원 전용입니다' }, 401);
+    }
+
+    try {
+      if (path === '/api/quote')  return json(await handleQuote(env, q.get('code')));
+      if (path === '/api/book')   return json(await handleBook(env, q.get('code')));
+      if (path === '/api/ohlc')   return json(await handleOhlc(env, q.get('code'), q.get('tf') || 'D'));
+      if (path === '/api/index')  return json(await handleIndex(env));
+      if (path === '/api/search') return json(await handleSearch(env, q.get('q')));
+    } catch (e) {
+      return fail(e.message || '시세 조회 실패');
+    }
+
+    return json({ error: 'Not Found' }, 404);
+  }
+};
+
+// ── 핸들러 ────────────────────────────────────────────────────
+async function handleQuote(env, code) {
+  if (!isCode(code)) return { error: '종목코드는 6자리 숫자입니다' };
+  return memo(`q:${code}`, TTL.quote, async () => {
+    // 폴백 체인: 네이버 → 다음 → 야후
+    try { return await naver.getQuote(code); }
+    catch (e1) {
+      try { return await daum.getQuote(code); }
+      catch (e2) { return await yahoo.getQuote(code); }
+    }
+  });
+}
+
+async function handleBook(env, code) {
+  if (!isCode(code)) return { error: '종목코드는 6자리 숫자입니다' };
+  // 호가는 네이버에만 있다 — 실패하면 폴백 없이 명시적으로 알린다
+  return memo(`b:${code}`, TTL.book, async () => {
+    try { return await naver.getOrderBook(code); }
+    catch (e) { return { code, unavailable: true, reason: '호가 일시 제공 중단', source: 'naver' }; }
+  });
+}
+
+async function handleOhlc(env, code, tf) {
+  if (!isCode(code)) return { error: '종목코드는 6자리 숫자입니다' };
+  const st = kstStamp();
+  if (tf === '1m') {
+    return memo(`o:${code}:1m:${st.ymd}`, TTL.ohlcIntra, async () => ({
+      code, tf, bars: await naver.getOhlc(code, '1m', { start: `${st.ymd}0900`, end: st.full }), source: 'naver'
+    }));
+  }
+  const startY = String(Number(st.ymd.slice(0, 4)) - 2) + '0101';
+  return cached(env, `o:${code}:D:${st.ymd}`, TTL.ohlcDay, async () => ({
+    code, tf: 'D', bars: await naver.getOhlc(code, 'D', { start: `${startY}0000`, end: `${st.ymd}0000` }), source: 'naver'
+  }));
+}
+
+async function handleIndex(env) {
+  return memo('idx', TTL.index, () => naver.getIndex());
+}
+
+async function handleSearch(env, term) {
+  const t = (term || '').trim();
+  if (t.length < 1) return { items: [] };
+  return cached(env, `s:${t}`, TTL.search, async () => ({ query: t, items: await naver.search(t) }));
+}

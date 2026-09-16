@@ -1,0 +1,16 @@
+name = "dt-stock"
+main = "dt-stock-worker.js"
+compatibility_date = "2026-01-01"
+
+[vars]
+FIREBASE_PROJECT_ID = "dt-club"
+# 개발 중 인증 게이트를 끄려면 "false" (운영에서는 절대 끄지 말 것)
+REQUIRE_AUTH = "true"
+
+# KV — 일봉/검색 캐시 (현재가·호가는 TTL이 짧아 워커 메모리 캐시 사용)
+# wrangler kv namespace create STOCK_KV --config functions/wrangler-stock.toml
+[[kv_namespaces]]
+binding = "STOCK_KV"
+id = "<생성 후 여기에 id 입력>"
+
+# 시세 소스에 API 키가 필요 없으므로 secret 없음
