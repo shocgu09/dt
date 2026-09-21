@@ -16,7 +16,7 @@
   <meta property="og:locale" content="ko_KR" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-  <link rel="stylesheet" href="style.css?v=1">
+  <link rel="stylesheet" href="style.css?v=2">
   <link rel="icon" href="../icon-192.png">
 </head>
 <body>
@@ -74,30 +74,65 @@
         </div>
       </div>
 
-      <!-- 시세 탭 (Phase 2~3) -->
+      <!-- 시세 탭 -->
       <div class="tab-content" id="tab-market">
-        <div class="soon-card">
-          <h3>📈 실시간 시세 · 준비 중</h3>
-          <ul class="soon-list">
-            <li>실시간 체결가 &amp; 등락률</li>
-            <li>10단계 호가창 + 매도/매수 잔량 비율</li>
-            <li>실시간 캔들 차트 (1분 · 5분 · 일 · 주 · 월)</li>
-            <li>관심종목 등록 &amp; 홈 시세 스트립</li>
-            <li>종목별 커뮤니티</li>
-          </ul>
-          <div class="book-preview">
-            <div class="book-row book-head"><div>매도잔량</div><div>호가</div><div>매수잔량</div></div>
-            <div class="book-row"><div class="book-ask">12,430</div><div class="book-price">71,600</div><div class="book-blank"></div></div>
-            <div class="book-row"><div class="book-ask">8,120</div><div class="book-price">71,500</div><div class="book-blank"></div></div>
-            <div class="book-row"><div class="book-ask">1,880</div><div class="book-price book-cur">71,200</div><div class="book-blank"></div></div>
-            <div class="book-row"><div class="book-blank"></div><div class="book-price">71,100</div><div class="book-bid">2,340</div></div>
-            <div class="book-row"><div class="book-blank"></div><div class="book-price">71,000</div><div class="book-bid">6,780</div></div>
-            <div class="mock-tag">↑ 예시 화면입니다 (실제 시세 아님)</div>
+
+        <!-- 종목 상세 (동적 렌더) -->
+        <div id="stockDetail" style="display:none"></div>
+
+        <!-- 시세 홈 -->
+        <div id="marketHome">
+          <div class="index-strip" id="indexStrip">
+            <div class="idx-cell"><div class="idx-name">불러오는 중...</div></div>
           </div>
-          <p class="soon-note">
-            실시간 시세는 한국투자증권 OpenAPI 연동이 필요합니다.
-            계좌·API 키 준비가 끝나면 순차적으로 열립니다.
-          </p>
+
+          <div class="search-wrap">
+            <input type="text" id="stockSearch" class="search-input" autocomplete="off"
+                   placeholder="종목명 · 코드 · 초성 검색 (예: ㅅㅅㅈㅈ)"
+                   oninput="onSearchInput(this.value)">
+            <button class="search-clear" onclick="clearSearch()" aria-label="검색어 지우기">✕</button>
+            <div class="search-results" id="searchResults" style="display:none"></div>
+          </div>
+
+          <section class="m-section" id="recentSection" style="display:none">
+            <div class="m-head">
+              <h3>🕘 최근 본 종목</h3>
+              <button class="mini-btn" onclick="onClearRecent()">지우기</button>
+            </div>
+            <div class="chip-row" id="recentList"></div>
+          </section>
+
+          <section class="m-section">
+            <div class="m-head"><h3>⭐ 관심종목</h3></div>
+            <div id="watchList"><div class="loading">불러오는 중...</div></div>
+          </section>
+
+          <section class="m-section">
+            <div class="m-head">
+              <h3>🔥 지금 뜨는 테마</h3>
+              <span class="m-hint">요즘 어디로 돈이 몰리는지</span>
+            </div>
+            <div id="themeList"><div class="loading">불러오는 중...</div></div>
+          </section>
+
+          <section class="m-section">
+            <div class="m-head"><h3>📊 오늘의 등락</h3></div>
+            <div class="seg-row">
+              <button class="seg on" data-rank="up" onclick="setRank('up')">급상승</button>
+              <button class="seg" data-rank="down" onclick="setRank('down')">급하락</button>
+              <button class="seg" data-rank="marketValue" onclick="setRank('marketValue')">시총</button>
+            </div>
+            <div class="seg-row sub">
+              <button class="seg on" data-rmkt="KOSPI" onclick="setRank(null,'KOSPI')">코스피</button>
+              <button class="seg" data-rmkt="KOSDAQ" onclick="setRank(null,'KOSDAQ')">코스닥</button>
+            </div>
+            <div id="rankList"><div class="loading">불러오는 중...</div></div>
+          </section>
+
+          <div class="disclaimer">
+            ⚠️ 시세는 네이버 증권 데이터이며 투자 참고용입니다. 지연·오류가 있을 수 있으므로
+            실제 매매는 증권사 앱에서 확인하세요. 투자 판단과 결과의 책임은 본인에게 있습니다.
+          </div>
         </div>
       </div>
 
@@ -173,6 +208,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="app.js?v=2"></script>
+  <script src="market.js?v=1"></script>
+  <script src="market-ui.js?v=1"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>

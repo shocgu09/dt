@@ -1,4 +1,4 @@
-/* ===== DT 재테크 — 국내주식 (Phase 1: 시황 브리핑 + 댓글) ===== */
+/* ===== DT 재테크 — 국내주식 (시황 브리핑 + 댓글 / 시세는 market*.js) ===== */
 
 var db = null;
 var currentUser = null;
@@ -70,9 +70,15 @@ function showMain() {
 
 /* ===== 탭 ===== */
 function switchTab(tab) {
+  var prev = currentTab;
   currentTab = tab;
   document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.toggle('active', b.dataset.tab === tab); });
   document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.toggle('active', c.id === 'tab-' + tab); });
+
+  // 시세 탭을 벗어나면 폴링을 반드시 멈춘다 (배터리·네이버 트래픽)
+  if (prev === 'market' && tab !== 'market' && typeof leaveMarketTab === 'function') leaveMarketTab();
+  if (tab === 'market' && typeof enterMarketTab === 'function') enterMarketTab();
+
   if (tab === 'admin') {
     var d = document.getElementById('bDate');
     if (d && !d.value) d.value = todayStr();
