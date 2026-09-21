@@ -168,7 +168,8 @@ function briefingCardHtml(p) {
     h += p.tickers.map(function(t) {
       var n = normalizeTicker(t);
       return '<button type="button" class="ticker-chip" onclick="goStock(\'' + n.code + '\',\'' + escapeJsArg(n.name) + '\')">'
-        + '📈 ' + escapeHtml(n.name) + ' <span class="code">' + escapeHtml(n.code) + '</span></button>';
+        + (typeof stockLogoHtml === 'function' ? stockLogoHtml(n.code, n.name, null, 'sm') : '📈 ')
+        + escapeHtml(n.name) + ' <span class="code">' + escapeHtml(n.code) + '</span></button>';
     }).join('');
     h += '</div>';
   }

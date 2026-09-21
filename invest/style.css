@@ -302,6 +302,8 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
   padding: 6px 11px; font-size: .8rem; font-weight: 700; cursor: pointer;
 }
 .chip:hover { border-color: var(--primary); color: var(--text); }
+/* 로고가 들어가는 칩 (최근 본 종목) */
+.chip-row .chip { display: inline-flex; align-items: center; gap: 6px; }
 
 /* 종목 행 */
 .q-row {

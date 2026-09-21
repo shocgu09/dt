@@ -252,7 +252,7 @@ function renderRecent() {
   wrap.style.display = list.length ? '' : 'none';
   el.innerHTML = list.map(function (r) {
     return '<button class="chip" onclick="openStock(\'' + r.code + '\',\'' + escapeJsArg(r.name) + '\')">'
-      + escapeHtml(r.name) + '</button>';
+      + stockLogoHtml(r.code, r.name, null, 'sm') + escapeHtml(r.name) + '</button>';
   }).join('');
 }
 
