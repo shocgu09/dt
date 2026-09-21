@@ -1,0 +1,150 @@
+/* ===== DT 재테크 — 모의투자 모드 (mock.js 와 함께 필요할 때만 불러온다) ===== */
+/* 색·테두리·각진 모서리는 style.css 의 토큰과 규칙을 그대로 따른다. 매수=상승색, 매도=하락색. */
+
+/* 헤더 아래 한 줄 요약 */
+.mk-bar {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  background: var(--bg2); border: 1px solid var(--border); border-left: 3px solid var(--primary);
+  padding: 10px 14px; margin-bottom: 12px; cursor: pointer; color: var(--text);
+  font-size: .84rem; font-weight: 700; text-align: left; font-family: inherit;
+}
+.mk-bar-label { color: var(--text2); font-weight: 600; }
+.mk-bar-eq { font-variant-numeric: tabular-nums; }
+.mk-bar-go { margin-left: auto; color: var(--primary-light); font-size: .76rem; }
+.mk-bar .up, .mk-card .up, .mk-pos .up, .mk-rank .up, .mk-hold .up, .mk-hall .up { color: var(--stock-up); }
+.mk-bar .down, .mk-card .down, .mk-pos .down, .mk-rank .down, .mk-hold .down, .mk-hall .down { color: var(--stock-down); }
+.mk-bar .flat, .mk-card .flat, .mk-pos .flat, .mk-rank .flat { color: var(--stock-flat); }
+
+/* 카드 */
+.mk-card {
+  background: var(--bg2); border: 1px solid var(--border); border-top: 3px solid var(--primary);
+  padding: 18px; margin-bottom: 16px;
+}
+.mk-card h3 { font-size: 1.02rem; font-weight: 800; margin-bottom: 8px; }
+.mk-card p { font-size: .86rem; color: var(--text2); line-height: 1.7; margin-bottom: 12px; }
+.mk-sum-head { display: flex; justify-content: space-between; font-size: .76rem; font-weight: 700; color: var(--text3); margin-bottom: 10px; }
+.mk-eq { font-size: 1.9rem; font-weight: 800; letter-spacing: -.5px; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.mk-eq-sub { font-size: .88rem; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.mk-dim { color: var(--text3); font-weight: 600; font-size: .76rem; }
+.mk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); border: 1px solid var(--border); margin-top: 14px; }
+.mk-cell { background: var(--bg2); padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; }
+.mk-cell-k { font-size: .72rem; color: var(--text3); font-weight: 600; }
+.mk-cell-v { font-size: .9rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.mk-note { font-size: .74rem; color: var(--text3); line-height: 1.6; margin-top: 10px; }
+
+/* 참가 안내 */
+.mk-join-lead { font-size: .92rem !important; color: var(--text) !important; }
+.mk-rules { list-style: none; margin: 0 0 16px; border: 1px solid var(--border); }
+.mk-rules li { font-size: .82rem; color: var(--text2); padding: 9px 12px; border-bottom: 1px solid var(--border); line-height: 1.5; }
+.mk-rules li:last-child { border-bottom: none; }
+.mk-join-btn { width: 100%; padding: 14px; font-size: .95rem; }
+
+/* 보유 종목 · 주문 · 순위 행 */
+.mk-pos, .mk-ord, .mk-rank {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  background: var(--bg2); border: 1px solid var(--border); border-top: none;
+  padding: 11px 12px; color: var(--text); font-family: inherit; text-align: left;
+}
+.m-section > .mk-pos:first-of-type, .m-section > .mk-ord:first-of-type, .m-section > .mk-rank:first-of-type,
+#mkHistory > .mk-ord:first-child { border-top: 1px solid var(--border); }
+.mk-pos { cursor: pointer; }
+.mk-pos:hover { background: var(--bg3); }
+.mk-pos-main, .mk-ord-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.mk-pos-name { font-size: .88rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mk-pos-sub { font-size: .72rem; color: var(--text3); font-weight: 600; font-variant-numeric: tabular-nums; }
+.mk-pos-num { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-variant-numeric: tabular-nums; }
+.mk-pos-val { font-size: .88rem; font-weight: 800; }
+.mk-pos-pnl { font-size: .72rem; font-weight: 700; }
+.mk-tag { font-style: normal; font-size: .64rem; font-weight: 800; background: var(--primary); color: #fff; padding: 1px 5px; vertical-align: 1px; }
+.mk-side { font-size: .72rem; font-weight: 800; padding: 3px 7px; color: #fff; flex-shrink: 0; }
+.mk-side.buy { background: var(--stock-up); }
+.mk-side.sell { background: var(--stock-down); }
+.mk-more { display: block; margin: 10px auto 0; }
+.mk-rank.me { border-left: 3px solid var(--primary); background: var(--bg3); }
+.mk-rank-no { width: 28px; text-align: center; font-weight: 800; font-size: .92rem; color: var(--text2); flex-shrink: 0; }
+.mk-hall { border: 1px solid var(--border); background: var(--bg2); padding: 12px 14px; margin-bottom: 8px; }
+.mk-hall-name { font-size: .78rem; font-weight: 800; color: var(--primary-light); margin-bottom: 6px; }
+.mk-hall-row { display: flex; justify-content: space-between; font-size: .82rem; font-weight: 600; color: var(--text2); padding: 3px 0; font-variant-numeric: tabular-nums; }
+
+/* 종목 상세 하단 매수·매도 */
+.mk-tradebar {
+  position: sticky; bottom: 0; z-index: 5; margin: 16px -16px -60px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: var(--bg); border-top: 1px solid var(--border);
+}
+.mk-hold { font-size: .76rem; font-weight: 600; color: var(--text2); margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+.mk-hold b { color: var(--text); }
+.mk-tb-btns { display: flex; gap: 8px; }
+.mk-buy, .mk-sell, .mk-submit {
+  flex: 1; border: none; color: #fff; font-family: inherit; font-size: .95rem; font-weight: 800;
+  padding: 14px; cursor: pointer; min-height: 48px;
+}
+.mk-buy, .mk-submit.buy { background: var(--stock-up); }
+.mk-sell, .mk-submit.sell { background: var(--stock-down); }
+.mk-buy:disabled, .mk-sell:disabled, .mk-submit:disabled { opacity: .45; cursor: not-allowed; }
+
+/* 주문창 (바텀 시트) */
+.mk-noscroll { overflow: hidden; }
+.mk-sheet-wrap { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center; }
+.mk-sheet-dim { position: absolute; inset: 0; background: rgba(0,0,0,.55); }
+.mk-sheet {
+  position: relative; width: 100%; max-width: 700px; max-height: 92vh; overflow-y: auto;
+  background: var(--bg2); border: 1px solid var(--border); border-bottom: none; border-top: 3px solid var(--stock-up);
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+  animation: mk-up .22s cubic-bezier(.2,.8,.2,1);
+}
+.mk-sheet.sell { border-top-color: var(--stock-down); }
+@keyframes mk-up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.mk-sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.mk-sheet-title { font-size: 1rem; font-weight: 800; }
+.mk-sheet-title i { font-style: normal; font-size: .72rem; color: var(--text3); font-weight: 600; margin-left: 4px; }
+.mk-seg2 { display: flex; }
+.mk-seg2 .seg { flex: 1; }
+.mk-seg2 .seg.on.buy { background: var(--stock-up); border-color: var(--stock-up); color: #fff; }
+.mk-seg2 .seg.on.sell { background: var(--stock-down); border-color: var(--stock-down); color: #fff; }
+.mk-info, .mk-warn { font-size: .78rem; font-weight: 600; padding: 9px 12px; margin: 10px 0 0; border: 1px solid var(--border); color: var(--text2); }
+.mk-info { border-left: 3px solid var(--primary); }
+.mk-warn { border-left: 3px solid var(--accent); color: var(--accent); }
+.mk-field { display: block; margin-top: 12px; }
+.mk-field > span { display: block; font-size: .74rem; font-weight: 700; color: var(--text3); margin-bottom: 5px; }
+.mk-stepper { display: flex; align-items: stretch; border: 1px solid var(--border); background: var(--bg); }
+.mk-stepper input {
+  flex: 1; min-width: 0; background: none; border: none; color: var(--text); font-family: inherit;
+  font-size: 1.05rem; font-weight: 800; text-align: right; padding: 12px; font-variant-numeric: tabular-nums;
+}
+.mk-stepper input:focus { outline: 2px solid var(--primary); outline-offset: -2px; }
+.mk-stepper button { width: 48px; background: var(--bg3); border: none; color: var(--text); font-size: 1.2rem; font-weight: 800; cursor: pointer; }
+.mk-stepper button:first-child { border-right: 1px solid var(--border); }
+.mk-stepper button:last-child { border-left: 1px solid var(--border); }
+.mk-stepper em { font-style: normal; align-self: center; padding-right: 12px; font-size: .82rem; color: var(--text3); font-weight: 700; }
+.mk-market { border: 1px dashed var(--border); padding: 13px 12px; font-size: .8rem; color: var(--text2); font-weight: 600; }
+.mk-pct { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.mk-pct .mk-dim { margin-left: auto; }
+.mk-calc { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 10px; }
+.mk-calc-row { display: flex; justify-content: space-between; font-size: .82rem; color: var(--text2); padding: 4px 0; font-variant-numeric: tabular-nums; }
+.mk-calc-row b { color: var(--text); font-weight: 800; }
+.mk-sheet-msg { min-height: 1.3em; font-size: .78rem; font-weight: 700; margin: 10px 0 8px; line-height: 1.5; }
+.mk-sheet-msg.err { color: var(--accent); }
+.mk-sheet-msg.ok { color: var(--primary-light); }
+.mk-submit { width: 100%; }
+
+/* 체결 알림 */
+.mk-toast {
+  position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  z-index: 60; max-width: min(92vw, 560px); background: var(--bg3); color: var(--text);
+  border: 1px solid var(--border); border-left: 4px solid var(--primary);
+  padding: 12px 16px; font-size: .84rem; font-weight: 700; line-height: 1.5;
+  box-shadow: 4px 4px 0 rgba(0,0,0,.35); transition: opacity .35s, transform .35s;
+}
+.mk-toast.buy { border-left-color: var(--stock-up); }
+.mk-toast.sell { border-left-color: var(--stock-down); }
+.mk-toast.out { opacity: 0; transform: translate(-50%, 8px); }
+
+/* 운영진 */
+.mk-admin { margin-top: 18px; border: 1px solid var(--border); background: var(--bg2); padding: 12px 14px; }
+.mk-admin summary { cursor: pointer; font-size: .82rem; font-weight: 700; color: var(--text2); }
+.mk-admin .form-grid { margin-top: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-sheet { animation: none; }
+  .mk-toast { transition: none; }
+}

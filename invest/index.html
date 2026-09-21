@@ -16,7 +16,7 @@
   <meta property="og:locale" content="ko_KR" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-  <link rel="stylesheet" href="style.css?v=19">
+  <link rel="stylesheet" href="style.css?v=20">
   <link rel="icon" href="../icon-192.png">
 </head>
 <body>
@@ -24,7 +24,11 @@
     <header class="header">
       <a href="/" class="back-btn">← 홈</a>
       <h1>💰 재테크</h1>
-      <button id="themeToggle" onclick="toggleTheme()" class="theme-btn" aria-label="테마 변경">🌙</button>
+      <div class="header-actions">
+        <!-- 모의투자 모드 — 켜면 내 계좌·랭킹·매수/매도가 생긴다. 회원 확인 뒤에만 보인다 -->
+        <button id="mockToggle" onclick="toggleMockMode()" class="mock-btn" aria-pressed="false" style="display:none"><span class="dot"></span>모의투자</button>
+        <button id="themeToggle" onclick="toggleTheme()" class="theme-btn" aria-label="테마 변경">🌙</button>
+      </div>
     </header>
 
     <!-- 로딩 -->
@@ -45,9 +49,12 @@
     <div id="main" style="display:none">
       <!-- 자산군 -->
       <!-- 서브 탭 -->
+      <button id="mockBar" class="mk-bar" style="display:none" onclick="switchTab('account')"></button>
       <div class="tab-bar">
         <button class="tab-btn active" data-tab="briefing" onclick="switchTab('briefing')">📋 시황</button>
         <button class="tab-btn" data-tab="market" onclick="switchTab('market')">📈 시세</button>
+        <button class="tab-btn" data-tab="account" onclick="switchTab('account')" id="tabAccount" style="display:none">💼 내 계좌</button>
+        <button class="tab-btn" data-tab="ranking" onclick="switchTab('ranking')" id="tabRanking" style="display:none">🏆 랭킹</button>
         <button class="tab-btn" data-tab="admin" onclick="switchTab('admin')" id="tabAdmin" style="display:none">⚙️ 관리</button>
       </div>
 
@@ -138,6 +145,10 @@
         </div>
       </div>
 
+      <!-- 모의투자 (모드를 켰을 때만 — mock.js 가 그린다) -->
+      <div class="tab-content" id="tab-account"></div>
+      <div class="tab-content" id="tab-ranking"></div>
+
       <!-- 관리 탭 -->
       <div class="tab-content" id="tab-admin">
         <div class="admin-section">
@@ -207,7 +218,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="market.js?v=15"></script>
-  <script src="market-ui.js?v=20"></script>
-  <script src="app.js?v=14"></script>
+  <script src="market-ui.js?v=21"></script>
+  <script src="app.js?v=15"></script>
 </body>
 </html>

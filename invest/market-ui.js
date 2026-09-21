@@ -429,6 +429,7 @@ async function openStock(code, name) {
   // 뼈대를 그린 뒤에 탭을 전환한다 — enterMarketTab 이 startStockPolling 을 돌린다
   switchTab('market');
   loadStockChart();
+  if (window.Mock) Mock.renderTradeBar();      // 모의투자 모드면 하단에 매수·매도
 
   // 시세 홈을 거치지 않고(브리핑 종목 칩) 들어오면 관심종목이 아직 없다 — 불러온 뒤 하트를 맞춘다
   ensureWatchlist().then(function () {

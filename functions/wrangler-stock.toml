@@ -14,3 +14,14 @@ binding = "STOCK_KV"
 id = "4a2b6f90383f4e46b7a2808599a2c892"
 
 # 시세 소스에 API 키가 필요 없으므로 secret 없음
+
+# 모의투자 장부 (D1) — 이 워커만 접근한다
+# 스키마 적용: npx wrangler d1 execute dt-mock --remote --file mock/schema.sql --config wrangler-stock.toml
+[[d1_databases]]
+binding = "MOCK_DB"
+database_name = "dt-mock"
+database_id = "9f3385ce-0c5f-41ae-a8dc-b25df64e912f"
+
+# 평일 09:00~15:59 KST 매분 (UTC 00:00~06:59) — 미체결 주문 체결, 장 마감 후 종가 저장
+[triggers]
+crons = ["* 0-6 * * MON-FRI"]

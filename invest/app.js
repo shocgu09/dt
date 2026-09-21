@@ -68,6 +68,52 @@ function showMain() {
   if (isAdmin) document.getElementById('tabAdmin').style.display = '';
   loadBriefings();
   loadConfig();
+  initMockMode();
+}
+
+/* ===== 모의투자 모드 =====
+ * 코드(mock.js · mock.css)는 모드를 켤 때 처음 불러온다 — 쓰지 않는 회원에게는 아무 변화가 없다.
+ */
+var MOCK_VER = '1';
+var _mockLoading = null;
+
+function loadMockAssets() {
+  if (window.Mock) return Promise.resolve();
+  if (_mockLoading) return _mockLoading;
+  _mockLoading = new Promise(function (resolve, reject) {
+    var css = document.createElement('link');
+    css.rel = 'stylesheet'; css.href = 'mock.css?v=' + MOCK_VER;
+    document.head.appendChild(css);
+    var s = document.createElement('script');
+    s.src = 'mock.js?v=' + MOCK_VER;
+    s.onload = resolve;
+    s.onerror = function () { _mockLoading = null; reject(new Error('모의투자를 불러오지 못했습니다')); };
+    document.head.appendChild(s);
+  });
+  return _mockLoading;
+}
+
+/** 회원 확인 뒤 버튼을 보여 주고, 지난번에 켜 둔 회원은 그대로 켠다 */
+function initMockMode() {
+  var btn = document.getElementById('mockToggle');
+  if (!btn || !currentUser) return;
+  btn.style.display = '';
+  var saved = null;
+  try { saved = localStorage.getItem('dt-invest-mock:' + currentUser.uid); } catch (e) {}
+  if (saved === '1') loadMockAssets().then(function () { Mock.setMode(true); }).catch(function () {});
+}
+
+async function toggleMockMode() {
+  var btn = document.getElementById('mockToggle');
+  btn.disabled = true;
+  try {
+    await loadMockAssets();
+    await Mock.setMode(!Mock.isOn());
+  } catch (e) {
+    alert(e.message);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 /* ===== 탭 ===== */
@@ -80,6 +126,8 @@ function switchTab(tab) {
   // 시세 탭을 벗어나면 폴링을 반드시 멈춘다 (배터리·네이버 트래픽)
   if (prev === 'market' && tab !== 'market' && typeof leaveMarketTab === 'function') leaveMarketTab();
   if (tab === 'market' && typeof enterMarketTab === 'function') enterMarketTab();
+
+  if (window.Mock) Mock.onTab(tab);
 
   if (tab === 'admin') {
     var d = document.getElementById('bDate');

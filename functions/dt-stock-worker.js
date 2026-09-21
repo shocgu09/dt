@@ -5,10 +5,11 @@
 
 import { naver, daum, yahoo } from './providers/naver.js';
 import { verifyIdToken, bearerToken } from './lib/verify-id-token.js';
+import { handleMock, mockErrorResponse, runCron } from './mock/api.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   'Content-Type': 'application/json; charset=utf-8'
 };
@@ -137,11 +138,20 @@ export default {
     }
 
     // 회원 전용 게이트 — health 제외한 모든 엔드포인트
+    let user = null;
     if (env.REQUIRE_AUTH !== 'false') {
       // 게스트(익명 로그인)는 공용 모듈에서 걸러진다 — 폐쇄형 동호회 전제
-      const user = await verifyIdToken(bearerToken(request), env.FIREBASE_PROJECT_ID);
+      user = await verifyIdToken(bearerToken(request), env.FIREBASE_PROJECT_ID);
       if (!user) return json({ error: '회원 전용입니다' }, 401);
     }
+
+    // 모의투자 — 장부(D1)를 다루므로 인증을 끈 개발 모드에서는 열지 않는다
+    if (path.startsWith('/api/mock')) {
+      if (!user) return json({ error: '회원 전용입니다' }, 401);
+      try { return json(await handleMock(request, env, user, bearerToken(request), url)); }
+      catch (e) { return mockErrorResponse(e, json); }
+    }
+    if (request.method !== 'GET') return json({ error: 'Method Not Allowed' }, 405);
 
     try {
       if (path === '/api/quote')  return json(await handleQuote(env, q.get('code')));
@@ -160,6 +170,11 @@ export default {
     }
 
     return json({ error: 'Not Found' }, 404);
+  },
+
+  // 평일 장중 매분 — 미체결 주문 체결, 장 마감 후 종가 저장·자산 스냅샷
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runCron(env).catch((e) => console.error('cron failed', e && e.stack || e)));
   }
 };
 
