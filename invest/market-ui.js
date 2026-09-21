@@ -372,10 +372,9 @@ function stockShellHtml(code, name) {
     +   '<button class="sd-tab" data-sdtab="community" onclick="sdSwitch(\'community\')">커뮤니티</button>'
     + '</div>'
     + '<div class="sd-panel" id="sdChart">'
-    +   '<div class="chart-mode-row">'
-    +     '<button class="cm-btn" data-cm="simple" onclick="setChartMode(\'simple\')">간단 보기</button>'
-    +     '<button class="cm-btn" data-cm="detail" onclick="setChartMode(\'detail\')">자세히 보기</button>'
-    +   '</div>'
+    +   '<button type="button" class="cm-toggle" id="cmToggle" onclick="toggleChartMode()" aria-pressed="false">'
+    +     '<span class="cm-check" aria-hidden="true">✓</span>자세히 보기'
+    +   '</button>'
     +   '<div class="tf-row">'
     +     ['m:1분', 'm5:5분', 'D:일', 'W:주', 'M:월'].map(function (x) {
             var v = x.split(':')[0], label = x.split(':')[1];
@@ -476,9 +475,11 @@ async function loadStockQuote() {
 
     renderRange(q);
 
-    // ★ 차트 마지막 봉을 새로고침 없이 갱신
-    if (chartHandle && isMarketOpen()) {
-      chartHandle.updateLast(q.price, currentBucketTime(), q.volume);
+    // ★ 차트 마지막 봉을 새로고침 없이 갱신.
+    // 장 마감 후에도 한 번은 맞춰야 종가가 차트에 반영된다 (상단 시세와 끝점 불일치 방지).
+    if (chartHandle) {
+      var isMin = (curTf === 'm' || curTf === 'm5');
+      chartHandle.updateLast(q.price, currentBucketTime(), q.volume, isMin && isMarketOpen());
     }
   } catch (e) {
     if (!box.dataset.built) box.innerHTML = '<div class="empty">' + escapeHtml(e.message) + '</div>';
@@ -524,11 +525,23 @@ function setTf(tf) {
   loadStockChart();
 }
 
+function syncChartModeBtn() {
+  var btn = document.getElementById('cmToggle');
+  if (!btn) return;
+  var on = chartMode === 'detail';
+  btn.classList.toggle('on', on);
+  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+
 function setChartMode(m) {
   chartMode = (m === 'detail') ? 'detail' : 'simple';
   try { localStorage.setItem('dt-invest-chartmode', chartMode); } catch (e) {}
-  document.querySelectorAll('.cm-btn').forEach(function (b) { b.classList.toggle('on', b.dataset.cm === chartMode); });
+  syncChartModeBtn();
   loadStockChart();
+}
+
+function toggleChartMode() {
+  setChartMode(chartMode === 'detail' ? 'simple' : 'detail');
 }
 
 (function initChartMode() {
@@ -539,7 +552,7 @@ async function loadStockChart() {
   if (!curStock) return;
   var box = document.getElementById('chartBox');
   if (!box) return;
-  document.querySelectorAll('.cm-btn').forEach(function (b) { b.classList.toggle('on', b.dataset.cm === chartMode); });
+  syncChartModeBtn();
   box.innerHTML = '<div class="loading">차트 불러오는 중...</div>';
   if (chartHandle) { chartHandle.dispose(); chartHandle = null; }
   try {

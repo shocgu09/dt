@@ -224,7 +224,10 @@ async function handleOhlc(env, code, tf) {
     }));
   }
   const startY = String(Number(st.ymd.slice(0, 4)) - 2) + '0101';
-  return cached(env, `o:${code}:D:${st.ymd}`, TTL.ohlcDay, async () => ({
+  // 오늘 봉은 장중·시간외에 계속 변하므로 12시간 캐시를 그대로 쓰면 종가가 어긋난다.
+  // 장이 도는 동안에는 짧게, 끝난 뒤에는 길게.
+  const dayTtl = marketOpen() ? 180 : TTL.ohlcDay;
+  return cached(env, `o:${code}:D:${st.ymd}`, dayTtl, async () => ({
     code, tf: 'D', bars: await naver.getOhlc(code, 'D', { start: `${startY}0000`, end: `${st.ymd}0000` }), source: 'naver'
   }));
 }

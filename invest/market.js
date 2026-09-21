@@ -363,14 +363,20 @@ async function renderChart(container, bars, tf, mode) {
       window.removeEventListener('resize', onResize);
       try { chart.remove(); } catch (e) {}
     },
-    /** 틱이 올 때마다 마지막 봉만 갱신 (O(1)) */
-    updateLast: function (price, bucketTime, volume) {
-      if (price == null || !isFinite(price)) return;
-      var same = lastBar && JSON.stringify(lastBar.time) === JSON.stringify(bucketTime);
-      if (!lastBar || !same) {
+    /**
+     * 틱이 올 때마다 마지막 봉만 갱신 (O(1)).
+     * @param allowNewBar 분봉에서만 true — 일/주/월봉은 새 봉을 만들면 안 된다.
+     *   (휴장일에 '오늘' 버킷으로 유령 봉이 생기는 것을 막는다)
+     */
+    updateLast: function (price, bucketTime, volume, allowNewBar) {
+      if (price == null || !isFinite(price) || !lastBar) return;
+      var same = JSON.stringify(lastBar.time) === JSON.stringify(bucketTime);
+      if (!same && allowNewBar) {
         lastBar = { time: bucketTime, open: price, high: price, low: price, close: price };
         lastVolV = volume || 0;
       } else {
+        // 일/주/월봉은 버킷이 달라도 마지막 봉(= 최근 거래일)의 종가를 현재가로 맞춘다.
+        // 이게 없으면 상단 현재가와 차트 끝점이 어긋나 보인다.
         lastBar.high = Math.max(lastBar.high, price);
         lastBar.low = Math.min(lastBar.low, price);
         lastBar.close = price;

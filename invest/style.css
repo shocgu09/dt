@@ -525,13 +525,23 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 .spark.down .spark-line { stroke: var(--stock-down); }
 .spark.down .spark-area { fill: var(--stock-down); opacity: .16; }
 
-/* ── 차트 간단/자세히 ── */
-.chart-mode-row { display: flex; gap: 4px; margin-bottom: 8px; }
-.cm-btn {
-  flex: 1; padding: 7px 4px; background: var(--bg2); border: 1px solid var(--border);
-  color: var(--text2); font-size: .8rem; font-weight: 700; cursor: pointer;
+/* ── 차트 자세히 보기 토글 (체크 형식) ── */
+.cm-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: none; border: none; padding: 2px 0 8px;
+  color: var(--text3); font-size: .82rem; font-weight: 700; cursor: pointer;
 }
-.cm-btn.on { background: var(--bg3); border-color: var(--primary); color: var(--text); }
+.cm-toggle:hover { color: var(--text2); }
+.cm-toggle .cm-check {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 17px; height: 17px; border: 1.5px solid var(--border);
+  border-radius: 50%; font-size: .62rem; line-height: 1;
+  color: transparent; transition: all .15s;
+}
+.cm-toggle.on { color: var(--primary-light); }
+.cm-toggle.on .cm-check {
+  background: var(--primary); border-color: var(--primary); color: #fff;
+}
 
 @media (max-width: 420px) {
   .watch-cards { grid-template-columns: 1fr 1fr; }
