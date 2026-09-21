@@ -11,6 +11,9 @@ var chartHandle = null;
 var searchTimer = null;
 var rankType = 'up';
 var rankMarket = 'KOSPI';
+var watchView = 'card';          // 'card' | 'list'
+var chartMode = 'simple';        // 'simple' | 'detail'
+var sparkCache = {};             // code -> { values, at }
 
 /* ===== 시세 탭 진입 ===== */
 async function enterMarketTab() {
@@ -35,6 +38,7 @@ function leaveMarketTab() {
 function startHomePolling() {
   Poller.stopAll();
   Poller.add('index', loadIndex, isMarketOpen() ? 15000 : 600000);
+  Poller.add('rep', loadRepStocks, isMarketOpen() ? 7000 : 600000);
   if (watchlist.length) {
     Poller.add('watch', loadWatchQuotes, isMarketOpen() ? 5000 : 600000);
   } else {
@@ -118,12 +122,50 @@ function clearSearch() {
 }
 
 /* ===== 관심종목 ===== */
+function setWatchView(v) {
+  watchView = (v === 'list') ? 'list' : 'card';
+  try { localStorage.setItem('dt-invest-watchview', watchView); } catch (e) {}
+  document.querySelectorAll('.vt-btn').forEach(function (b) {
+    b.classList.toggle('on', b.dataset.view === watchView);
+  });
+  var el = document.getElementById('watchList');
+  if (el) { el.dataset.key = ''; el.dataset.built = ''; }   // 뼈대 재생성 강제
+  loadWatchQuotes();
+}
+
+(function initWatchView() {
+  try { watchView = localStorage.getItem('dt-invest-watchview') || 'card'; } catch (e) {}
+})();
+
+/** 스파크라인용 당일 분봉 — 5초마다 부를 필요가 없어 60초 캐시 */
+async function ensureSparkline(code) {
+  var hit = sparkCache[code];
+  if (hit && Date.now() - hit.at < 60000) return hit.values;
+  try {
+    var d = await Market.ohlc(code, '1m');
+    var bars = d.bars || [];
+    // 포인트가 너무 많으면 균등 샘플링 (SVG 경로 길이 절약)
+    var step = Math.max(1, Math.ceil(bars.length / 48));
+    var vals = bars.filter(function (_, i) { return i % step === 0; }).map(function (b) { return b.c; });
+    if (bars.length && vals[vals.length - 1] !== bars[bars.length - 1].c) vals.push(bars[bars.length - 1].c);
+    sparkCache[code] = { values: vals, at: Date.now() };
+    return vals;
+  } catch (e) {
+    sparkCache[code] = { values: [], at: Date.now() };
+    return [];
+  }
+}
+
 async function loadWatchQuotes() {
   var el = document.getElementById('watchList');
   if (!el) return;
+
+  document.querySelectorAll('.vt-btn').forEach(function (b) {
+    b.classList.toggle('on', b.dataset.view === watchView);
+  });
+
   if (!watchlist.length) {
-    el.dataset.built = '';
-    el.dataset.key = '';
+    el.dataset.built = ''; el.dataset.key = '';
     el.innerHTML = '<div class="empty">관심종목이 없습니다.<br>종목을 검색해 ⭐를 눌러보세요.</div>';
     return;
   }
@@ -137,14 +179,27 @@ async function loadWatchQuotes() {
       return;
     }
 
-    // 종목 구성이 바뀐 경우에만 뼈대를 다시 만든다
-    var key = rows.map(function (q) { return q.code; }).join(',');
+    var key = watchView + '|' + rows.map(function (q) { return q.code; }).join(',');
     if (el.dataset.key !== key) {
+      el.className = watchView === 'card' ? 'watch-cards' : '';
       el.innerHTML = rows.map(function (q) {
-        return '<button class="q-row" onclick="openStock(\'' + q.code + '\',\'' + escapeAttr(q.name) + '\')">'
-          + '<span class="q-name">' + escapeHtml(q.name) + '</span>'
-          + '<span class="q-price" id="wqp-' + q.code + '"></span>'
-          + '<span class="q-chg" id="wqc-' + q.code + '"></span>'
+        if (watchView === 'list') {
+          return '<button class="q-row" onclick="openStock(\'' + q.code + '\',\'' + escapeAttr(q.name) + '\')">'
+            + '<span class="q-name">' + escapeHtml(q.name) + '</span>'
+            + '<span class="q-price" id="wqp-' + q.code + '"></span>'
+            + '<span class="q-chg" id="wqc-' + q.code + '"></span>'
+            + '</button>';
+        }
+        return '<button class="w-card" onclick="openStock(\'' + q.code + '\',\'' + escapeAttr(q.name) + '\')">'
+          + '<div class="w-card-head">'
+          +   '<span class="w-card-name">' + escapeHtml(q.name) + '</span>'
+          +   '<span class="w-card-code">' + q.code + '</span>'
+          + '</div>'
+          + '<div class="w-card-row">'
+          +   '<span class="q-price" id="wqp-' + q.code + '"></span>'
+          +   '<span class="q-chg" id="wqc-' + q.code + '"></span>'
+          + '</div>'
+          + '<div class="w-card-spark" id="wqs-' + q.code + '"></div>'
           + '</button>';
       }).join('');
       el.dataset.key = key;
@@ -158,10 +213,62 @@ async function loadWatchQuotes() {
       setTextFlash(pEl, fmtNum(q.price), dirOf('w:' + q.code, q.price));
       cEl.textContent = signMark(q.change) + ' ' + fmtRate(q.changeRate);
       cEl.className = 'q-chg ' + signClass(q.change);
+
+      if (watchView === 'card') {
+        var sEl = document.getElementById('wqs-' + q.code);
+        if (sEl) {
+          ensureSparkline(q.code).then(function (vals) {
+            var cur = document.getElementById('wqs-' + q.code);
+            if (cur) cur.innerHTML = sparklineSvg(vals, q.change >= 0);
+          });
+        }
+      }
     });
   } catch (e) {
     if (!el.dataset.built) el.innerHTML = '<div class="empty">시세를 불러오지 못했습니다</div>';
   }
+}
+
+/* ===== 대표 종목 (운영진 큐레이션) ===== */
+async function loadRepStocks() {
+  var wrap = document.getElementById('repSection');
+  var el = document.getElementById('repList');
+  if (!wrap || !el || !db) return;
+  try {
+    var doc = await db.collection('invest_config').doc('settings').get();
+    var raw = (doc.exists && Array.isArray(doc.data().alwaysOn)) ? doc.data().alwaysOn : [];
+    var list = raw.map(function (t) {
+      return (t && typeof t === 'object') ? { code: t.code, name: t.name || t.code } : { code: String(t), name: String(t) };
+    }).filter(function (t) { return /^\d{6}$/.test(t.code); });
+
+    if (!list.length) { wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
+
+    var quotes = (await Promise.all(list.map(function (t) {
+      return Market.quote(t.code).catch(function () { return null; });
+    }))).filter(Boolean);
+    if (!quotes.length) { wrap.style.display = 'none'; return; }
+
+    var key = quotes.map(function (q) { return q.code; }).join(',');
+    if (el.dataset.key !== key) {
+      el.innerHTML = quotes.map(function (q) {
+        return '<button class="q-row" onclick="openStock(\'' + q.code + '\',\'' + escapeAttr(q.name) + '\')">'
+          + '<span class="q-name">' + escapeHtml(q.name) + '</span>'
+          + '<span class="q-price" id="rqp-' + q.code + '"></span>'
+          + '<span class="q-chg" id="rqc-' + q.code + '"></span>'
+          + '</button>';
+      }).join('');
+      el.dataset.key = key;
+    }
+    quotes.forEach(function (q) {
+      var pEl = document.getElementById('rqp-' + q.code);
+      var cEl = document.getElementById('rqc-' + q.code);
+      if (!pEl || !cEl) return;
+      setTextFlash(pEl, fmtNum(q.price), dirOf('r:' + q.code, q.price));
+      cEl.textContent = signMark(q.change) + ' ' + fmtRate(q.changeRate);
+      cEl.className = 'q-chg ' + signClass(q.change);
+    });
+  } catch (e) { wrap.style.display = 'none'; }
 }
 
 /* ===== 최근 본 종목 ===== */
@@ -312,12 +419,18 @@ function stockShellHtml(code, name) {
     +   '<button class="sd-tab" data-sdtab="community" onclick="sdSwitch(\'community\')">커뮤니티</button>'
     + '</div>'
     + '<div class="sd-panel" id="sdChart">'
+    +   '<div class="chart-mode-row">'
+    +     '<button class="cm-btn" data-cm="simple" onclick="setChartMode(\'simple\')">간단 보기</button>'
+    +     '<button class="cm-btn" data-cm="detail" onclick="setChartMode(\'detail\')">자세히 보기</button>'
+    +   '</div>'
     +   '<div class="tf-row">'
     +     ['m:1분', 'm5:5분', 'D:일', 'W:주', 'M:월'].map(function (x) {
             var v = x.split(':')[0], label = x.split(':')[1];
             return '<button class="tf-btn' + (v === 'D' ? ' on' : '') + '" data-tf="' + v + '" onclick="setTf(\'' + v + '\')">' + label + '</button>';
           }).join('')
     +   '</div>'
+    +   '<div class="chart-hilo" id="chartHiLo" style="display:none"></div>'
+    +   '<div class="ma-legend" id="maLegend" style="display:none"></div>'
     +   '<div class="chart-box" id="chartBox"><div class="loading">차트 불러오는 중...</div></div>'
     +   '<button class="book-toggle" id="bookToggle" onclick="toggleBook()">▾ 호가 보기</button>'
     +   '<div class="book-wrap" id="bookWrap" style="display:none"></div>'
@@ -458,10 +571,22 @@ function setTf(tf) {
   loadStockChart();
 }
 
+function setChartMode(m) {
+  chartMode = (m === 'detail') ? 'detail' : 'simple';
+  try { localStorage.setItem('dt-invest-chartmode', chartMode); } catch (e) {}
+  document.querySelectorAll('.cm-btn').forEach(function (b) { b.classList.toggle('on', b.dataset.cm === chartMode); });
+  loadStockChart();
+}
+
+(function initChartMode() {
+  try { chartMode = localStorage.getItem('dt-invest-chartmode') || 'simple'; } catch (e) {}
+})();
+
 async function loadStockChart() {
   if (!curStock) return;
   var box = document.getElementById('chartBox');
   if (!box) return;
+  document.querySelectorAll('.cm-btn').forEach(function (b) { b.classList.toggle('on', b.dataset.cm === chartMode); });
   box.innerHTML = '<div class="loading">차트 불러오는 중...</div>';
   if (chartHandle) { chartHandle.dispose(); chartHandle = null; }
   try {
@@ -478,7 +603,29 @@ async function loadStockChart() {
     else if (curTf === 'M') use = aggregateCandles(bars, 'M');
     else if (curTf === 'D') use = bars.slice(-120);
 
-    chartHandle = await renderChart(box, use, curTf);
+    chartHandle = await renderChart(box, use, curTf, chartMode);
+
+    // 기간 최고/최저를 차트 위에 텍스트로 — 가장자리 마커가 잘려도 값은 보인다
+    var hl = document.getElementById('chartHiLo');
+    if (hl) {
+      if (chartHandle.periodHigh != null && chartHandle.periodLow != null) {
+        hl.style.display = '';
+        hl.innerHTML = '<span class="hl-hi">최고 ' + fmtNum(chartHandle.periodHigh) + '</span>'
+                     + '<span class="hl-lo">최저 ' + fmtNum(chartHandle.periodLow) + '</span>';
+      } else hl.style.display = 'none';
+    }
+
+    var legend = document.getElementById('maLegend');
+    if (legend) {
+      if (chartMode === 'detail' && typeof MA_DEFS !== 'undefined') {
+        legend.style.display = '';
+        legend.innerHTML = '<span class="ma-label">이동평균선</span>' + MA_DEFS.map(function (m) {
+          return '<span class="ma-item" style="color:' + m[1] + '">' + m[0] + '</span>';
+        }).join('');
+      } else {
+        legend.style.display = 'none';
+      }
+    }
   } catch (e) {
     box.innerHTML = '<div class="empty">' + escapeHtml(e.message) + '</div>';
   }

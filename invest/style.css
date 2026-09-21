@@ -490,3 +490,61 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 }
 .ticker-chip:hover { border-color: var(--primary); color: var(--text); }
 .ticker-chip .code { color: var(--text3); font-size: .68rem; font-weight: 600; }
+
+/* ── 관심종목 보기 토글 ── */
+.view-toggle { margin-left: auto; display: flex; gap: 3px; }
+.vt-btn {
+  background: var(--bg2); border: 1px solid var(--border); color: var(--text3);
+  padding: 4px 9px; font-size: .82rem; cursor: pointer; line-height: 1.2;
+}
+.vt-btn.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+
+/* ── 관심종목 카드 (스파크라인) ── */
+.watch-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.w-card {
+  background: var(--bg2); border: 1px solid var(--border);
+  padding: 11px 12px 6px; text-align: left; cursor: pointer; color: var(--text);
+  display: flex; flex-direction: column; gap: 5px;
+}
+.w-card:hover { border-color: var(--primary); }
+.w-card-head { display: flex; align-items: baseline; gap: 6px; }
+.w-card-name {
+  font-size: .86rem; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.w-card-code { font-size: .66rem; color: var(--text3); font-weight: 600; margin-left: auto; }
+.w-card-row { display: flex; align-items: baseline; gap: 6px; }
+.w-card-row .q-price { font-size: .95rem; font-weight: 800; }
+.w-card-row .q-chg { flex: 0 0 auto; margin-left: auto; font-size: .76rem; }
+.w-card-spark { height: 46px; margin: 2px -4px -2px; }
+
+.spark { width: 100%; height: 100%; display: block; }
+.spark .spark-line { fill: none; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+.spark .spark-area { stroke: none; }
+.spark.up .spark-line { stroke: var(--stock-up); }
+.spark.up .spark-area { fill: var(--stock-up); opacity: .16; }
+.spark.down .spark-line { stroke: var(--stock-down); }
+.spark.down .spark-area { fill: var(--stock-down); opacity: .16; }
+
+/* ── 차트 간단/자세히 ── */
+.chart-mode-row { display: flex; gap: 4px; margin-bottom: 8px; }
+.cm-btn {
+  flex: 1; padding: 7px 4px; background: var(--bg2); border: 1px solid var(--border);
+  color: var(--text2); font-size: .8rem; font-weight: 700; cursor: pointer;
+}
+.cm-btn.on { background: var(--bg3); border-color: var(--primary); color: var(--text); }
+
+@media (max-width: 420px) {
+  .watch-cards { grid-template-columns: 1fr 1fr; }
+  .w-card-name { font-size: .8rem; }
+  .w-card-row .q-price { font-size: .86rem; }
+}
+
+/* 이동평균 범례 (자세히 보기) */
+.ma-legend { display: flex; gap: 8px; align-items: center; margin-bottom: 5px; }
+.ma-label { font-size: .7rem; color: var(--text3); font-weight: 700; }
+.ma-item { font-size: .72rem; font-weight: 800; }
+
+/* 기간 최고/최저 (차트 상단) */
+.chart-hilo { display: flex; gap: 10px; align-items: center; margin-bottom: 5px; font-size: .72rem; font-weight: 800; }
+.hl-hi { color: var(--stock-up); }
+.hl-lo { color: var(--stock-down); }

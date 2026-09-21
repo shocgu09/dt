@@ -228,10 +228,28 @@ function isoWeekKey(ymd) {
   return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
 }
 
-/** 차트를 그린다. 반환값은 dispose 함수 */
-async function renderChart(container, bars, tf) {
+var MA_DEFS = [[5, '#4ade80'], [20, '#fbbf24'], [60, '#a09aff']];
+
+/** 이동평균선 (자세히 보기용) */
+function movingAverage(bars, n) {
+  var out = [], sum = 0;
+  for (var i = 0; i < bars.length; i++) {
+    sum += bars[i].c;
+    if (i >= n) sum -= bars[i - n].c;
+    if (i >= n - 1) out.push({ time: bars[i]._t, value: sum / n });
+  }
+  return out;
+}
+
+/**
+ * 차트를 그린다.
+ * @param mode 'simple' = 라인 + 최고/최저 (토스 기본) · 'detail' = 캔들 + 거래량 + 이동평균
+ * 반환: { dispose, updateLast }
+ */
+async function renderChart(container, bars, tf, mode) {
   await ensureChartLib();
   container.innerHTML = '';
+  mode = mode === 'detail' ? 'detail' : 'simple';
 
   var up = cssVar('--stock-up') || '#f0616d';
   var down = cssVar('--stock-down') || '#4d8bff';
@@ -241,10 +259,13 @@ async function renderChart(container, bars, tf) {
 
   var chart = LightweightCharts.createChart(container, {
     width: container.clientWidth,
-    height: 260,
-    layout: { background: { color: bg }, textColor: text, fontSize: 11 },
-    grid: { vertLines: { color: grid }, horzLines: { color: grid } },
-    rightPriceScale: { borderColor: grid, scaleMargins: { top: 0.1, bottom: 0.28 } },
+    height: mode === 'detail' ? 300 : 240,
+    layout: { background: { color: bg }, textColor: text, fontSize: 11, attributionLogo: false },
+    grid: {
+      vertLines: { color: mode === 'detail' ? grid : 'transparent' },
+      horzLines: { color: grid }
+    },
+    rightPriceScale: { borderColor: grid, scaleMargins: { top: 0.14, bottom: mode === 'detail' ? 0.28 : 0.1 } },
     timeScale: { borderColor: grid, timeVisible: tf === 'm' || tf === 'm5', secondsVisible: false },
     crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
     handleScale: { axisPressedMouseMove: false },
@@ -254,66 +275,137 @@ async function renderChart(container, bars, tf) {
     }
   });
 
-  var candleSeries = chart.addCandlestickSeries({
-    upColor: up, downColor: down, borderUpColor: up, borderDownColor: down,
-    wickUpColor: up, wickDownColor: down,
-    priceFormat: { type: 'price', precision: 0, minMove: 1 }
-  });
-  var volSeries = chart.addHistogramSeries({
-    priceFormat: { type: 'volume' },
-    priceScaleId: 'vol',
-    color: grid
-  });
-  chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.78, bottom: 0 } });
+  bars.forEach(function (b) { b._t = toChartTime(b.t, tf); });
 
-  var candles = bars.map(function (b) {
-    return { time: toChartTime(b.t, tf), open: b.o, high: b.h, low: b.l, close: b.c };
-  });
-  var vols = bars.map(function (b) {
-    return { time: toChartTime(b.t, tf), value: b.v || 0, color: b.c >= b.o ? up + '55' : down + '55' };
-  });
+  // 기간 전체가 오르면 빨강 / 내리면 파랑 (간단 보기 라인 색)
+  var first = bars[0], last = bars[bars.length - 1];
+  var rising = last && first ? last.c >= first.c : true;
+  var lineColor = rising ? up : down;
 
-  candleSeries.setData(candles);
-  volSeries.setData(vols);
+  var mainSeries, volSeries = null, maSeries = [];
+
+  if (mode === 'simple') {
+    mainSeries = chart.addAreaSeries({
+      lineColor: lineColor, lineWidth: 2,
+      topColor: lineColor + '44', bottomColor: lineColor + '05',
+      priceLineVisible: true, priceFormat: { type: 'price', precision: 0, minMove: 1 }
+    });
+    mainSeries.setData(bars.map(function (b) { return { time: b._t, value: b.c }; }));
+
+    // 최고·최저 지점 표시 (토스 차용)
+    var hiIdx = 0, loIdx = 0;
+    bars.forEach(function (b, i) {
+      if (b.c > bars[hiIdx].c) hiIdx = i;
+      if (b.c < bars[loIdx].c) loIdx = i;
+    });
+    if (bars.length > 2 && hiIdx !== loIdx) {
+      mainSeries.setMarkers([
+        { time: bars[hiIdx]._t, position: 'aboveBar', color: up, shape: 'circle',
+          text: '최고 ' + Math.round(bars[hiIdx].c).toLocaleString('ko-KR') },
+        { time: bars[loIdx]._t, position: 'belowBar', color: down, shape: 'circle',
+          text: '최저 ' + Math.round(bars[loIdx].c).toLocaleString('ko-KR') }
+      ].sort(function (a, b) { return (a.time.day ? 0 : a.time) - (b.time.day ? 0 : b.time); }));
+    }
+  } else {
+    mainSeries = chart.addCandlestickSeries({
+      upColor: up, downColor: down, borderUpColor: up, borderDownColor: down,
+      wickUpColor: up, wickDownColor: down,
+      priceFormat: { type: 'price', precision: 0, minMove: 1 }
+    });
+    mainSeries.setData(bars.map(function (b) {
+      return { time: b._t, open: b.o, high: b.h, low: b.l, close: b.c };
+    }));
+
+    volSeries = chart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol' });
+    chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.78, bottom: 0 } });
+    volSeries.setData(bars.map(function (b) {
+      return { time: b._t, value: b.v || 0, color: (b.c >= b.o ? up : down) + '55' };
+    }));
+
+    // 이동평균선 5·20·60
+    MA_DEFS.forEach(function (cfg) {
+      if (bars.length < cfg[0]) return;
+      var ls = chart.addLineSeries({
+        color: cfg[1], lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
+        crosshairMarkerVisible: false
+      });
+      ls.setData(movingAverage(bars, cfg[0]));
+      maSeries.push(ls);
+    });
+  }
+
   chart.timeScale().fitContent();
 
   var onResize = function () { chart.applyOptions({ width: container.clientWidth }); };
   window.addEventListener('resize', onResize);
 
-  var lastBar = candles.length ? Object.assign({}, candles[candles.length - 1]) : null;
-  var lastVol = vols.length ? Object.assign({}, vols[vols.length - 1]) : null;
+  // 화면에 그려진 것과 같은 기준으로 계산한다.
+  // 간단 보기는 종가 선을 그리므로 종가 기준, 자세히 보기는 캔들이라 고가/저가 기준.
+  var periodHigh = bars.length ? Math.max.apply(null, bars.map(function (b) { return mode === 'simple' ? b.c : b.h; })) : null;
+  var periodLow = bars.length ? Math.min.apply(null, bars.map(function (b) { return mode === 'simple' ? b.c : b.l; })) : null;
+
+  var lastBar = last ? { time: last._t, open: last.o, high: last.h, low: last.l, close: last.c } : null;
+  var lastVolV = last ? (last.v || 0) : 0;
 
   return {
+    mode: mode,
+    periodHigh: periodHigh,
+    periodLow: periodLow,
     dispose: function () {
       window.removeEventListener('resize', onResize);
       try { chart.remove(); } catch (e) {}
     },
-    /**
-     * 틱이 올 때마다 마지막 봉만 갱신한다 (O(1)).
-     * bucketTime이 마지막 봉과 다르면 새 봉을 만든다.
-     * @param price 현재가
-     * @param bucketTime 이 틱이 속한 봉의 시간값 (toChartTime 결과)
-     * @param volume 누적 거래량 (선택)
-     */
+    /** 틱이 올 때마다 마지막 봉만 갱신 (O(1)) */
     updateLast: function (price, bucketTime, volume) {
       if (price == null || !isFinite(price)) return;
-      var sameBucket = lastBar && JSON.stringify(lastBar.time) === JSON.stringify(bucketTime);
-      if (!lastBar || !sameBucket) {
+      var same = lastBar && JSON.stringify(lastBar.time) === JSON.stringify(bucketTime);
+      if (!lastBar || !same) {
         lastBar = { time: bucketTime, open: price, high: price, low: price, close: price };
-        lastVol = { time: bucketTime, value: volume || 0, color: up + '55' };
+        lastVolV = volume || 0;
       } else {
         lastBar.high = Math.max(lastBar.high, price);
         lastBar.low = Math.min(lastBar.low, price);
         lastBar.close = price;
-        if (volume != null) lastVol.value = volume;
-        lastVol.color = (lastBar.close >= lastBar.open ? up : down) + '55';
+        if (volume != null) lastVolV = volume;
       }
       try {
-        candleSeries.update(lastBar);
-        volSeries.update(lastVol);
+        if (mode === 'simple') mainSeries.update({ time: lastBar.time, value: lastBar.close });
+        else {
+          mainSeries.update(lastBar);
+          if (volSeries) volSeries.update({
+            time: lastBar.time, value: lastVolV,
+            color: (lastBar.close >= lastBar.open ? up : down) + '55'
+          });
+        }
       } catch (e) { /* 시간 역행 등은 무시 */ }
     }
   };
+}
+
+/* ===== 미니 스파크라인 (관심종목 카드용) =====
+ * 종가 배열만으로 작은 SVG를 직접 그린다. 차트 라이브러리를 쓸 필요가 없다.
+ */
+function sparklineSvg(values, rising, w, h) {
+  w = w || 260; h = h || 56;
+  var vals = (values || []).filter(function (v) { return v != null && isFinite(v); });
+  if (vals.length < 2) return '<svg class="spark" viewBox="0 0 ' + w + ' ' + h + '"></svg>';
+
+  var min = Math.min.apply(null, vals);
+  var max = Math.max.apply(null, vals);
+  var span = (max - min) || 1;
+  var pad = 4;
+  var stepX = w / (vals.length - 1);
+  var y = function (v) { return pad + (h - pad * 2) * (1 - (v - min) / span); };
+
+  var pts = vals.map(function (v, i) { return (i * stepX).toFixed(1) + ',' + y(v).toFixed(1); });
+  var line = pts.join(' ');
+  var area = '0,' + h + ' ' + line + ' ' + w + ',' + h;
+  var cls = rising ? 'up' : 'down';
+
+  return '<svg class="spark ' + cls + '" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" aria-hidden="true">'
+    + '<polygon class="spark-area" points="' + area + '"/>'
+    + '<polyline class="spark-line" points="' + line + '"/>'
+    + '</svg>';
 }
 
 /* ===== 숫자 포맷 ===== */

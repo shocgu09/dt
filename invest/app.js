@@ -595,34 +595,79 @@ async function loadConfig() {
   try {
     var doc = await db.collection('invest_config').doc('settings').get();
     var d = doc.exists ? doc.data() : {};
-    cfgAlwaysOn = Array.isArray(d.alwaysOn) ? d.alwaysOn : [];
+    cfgAlwaysOn = Array.isArray(d.alwaysOn) ? d.alwaysOn.map(normalizeTicker) : [];
+    // 구버전(코드만 저장)은 종목명을 조회해 채운 뒤 다시 그린다
+    var legacyRep = cfgAlwaysOn.filter(function (t) { return t.name === t.code; }).map(function (t) { return t.code; });
+    if (legacyRep.length) {
+      resolveTickerNames(legacyRep).then(function (found) {
+        if (!found) return;
+        cfgAlwaysOn = cfgAlwaysOn.map(function (t) {
+          return { code: t.code, name: _tickerNameCache[t.code] || t.name };
+        });
+        renderCfgTickers();
+      });
+    }
     var notice = document.getElementById('cfgNotice');
     if (notice) notice.value = d.notice || '';
     renderCfgTickers();
   } catch (e) { /* 설정 없음 — 기본값 사용 */ }
 }
 
-function addAlwaysOn() {
-  var input = document.getElementById('cfgTickerInput');
-  var code = (input.value || '').trim();
-  if (!/^\d{6}$/.test(code)) { alert('종목코드는 6자리 숫자입니다. (예: 005930)'); return; }
-  if (cfgAlwaysOn.length >= 5) { alert('상시 구독은 최대 5종목입니다.\n(웹소켓 41건 한도 관리를 위한 제한입니다)'); return; }
-  if (cfgAlwaysOn.indexOf(code) === -1) cfgAlwaysOn.push(code);
-  input.value = '';
+var _repSearchTimer = null;
+
+function onRepSearch(v) {
+  clearTimeout(_repSearchTimer);
+  var q = (v || '').trim();
+  var box = document.getElementById('cfgTickerResults');
+  if (!q) { box.innerHTML = ''; box.style.display = 'none'; return; }
+  _repSearchTimer = setTimeout(function () { runRepSearch(q); }, 250);
+}
+
+async function runRepSearch(q) {
+  var box = document.getElementById('cfgTickerResults');
+  box.style.display = '';
+  box.innerHTML = '<div class="tr-empty">검색 중...</div>';
+  try {
+    var d = await Market.search(q);
+    if (!d.items || !d.items.length) { box.innerHTML = '<div class="tr-empty">검색 결과가 없습니다</div>'; return; }
+    box.innerHTML = d.items.map(function (i) {
+      return '<button type="button" class="tr-item" onclick="pickRep(\'' + i.code + '\',\'' + escapeAttr(i.name) + '\')">'
+        + '<span class="tr-name">' + escapeHtml(i.name) + '</span>'
+        + '<span class="tr-meta">' + escapeHtml(i.market || '') + ' · ' + i.code + '</span>'
+        + '</button>';
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="tr-empty">' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+function pickRep(code, name) {
+  _tickerNameCache[code] = name;
+  if (cfgAlwaysOn.length >= 8) { alert('대표 종목은 최대 8개까지입니다.'); return; }
+  if (!cfgAlwaysOn.some(function (t) { return normalizeTicker(t).code === code; })) {
+    cfgAlwaysOn.push({ code: code, name: name });
+  }
+  document.getElementById('cfgTickerInput').value = '';
+  var box = document.getElementById('cfgTickerResults');
+  box.innerHTML = ''; box.style.display = 'none';
   renderCfgTickers();
 }
 
 function removeAlwaysOn(code) {
-  cfgAlwaysOn = cfgAlwaysOn.filter(function(t) { return t !== code; });
+  cfgAlwaysOn = cfgAlwaysOn.filter(function (t) { return normalizeTicker(t).code !== code; });
   renderCfgTickers();
 }
 
 function renderCfgTickers() {
   var el = document.getElementById('cfgTickerList');
   if (!el) return;
-  el.innerHTML = cfgAlwaysOn.map(function(t) {
-    return '<button type="button" class="chip-del" onclick="removeAlwaysOn(\'' + t + '\')">' + t + ' ✕</button>';
-  }).join('') + '<span style="font-size:.72rem;color:var(--text3);align-self:center;margin-left:4px">' + cfgAlwaysOn.length + '/5</span>';
+  el.innerHTML = cfgAlwaysOn.map(function (t) {
+    var n = normalizeTicker(t);
+    return '<button type="button" class="chip-del" onclick="removeAlwaysOn(\'' + n.code + '\')">'
+      + escapeHtml(n.name) + ' ✕</button>';
+  }).join('')
+  + '<span style="font-size:.72rem;color:var(--text3);align-self:center;margin-left:4px">'
+  + cfgAlwaysOn.length + '/8</span>';
 }
 
 async function saveConfig() {
@@ -630,7 +675,7 @@ async function saveConfig() {
   var status = document.getElementById('cfgStatus');
   try {
     await db.collection('invest_config').doc('settings').set({
-      alwaysOn: cfgAlwaysOn,
+      alwaysOn: cfgAlwaysOn.map(normalizeTicker),
       notice: document.getElementById('cfgNotice').value.trim(),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
