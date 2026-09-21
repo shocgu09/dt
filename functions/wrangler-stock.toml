@@ -11,6 +11,6 @@ REQUIRE_AUTH = "true"
 # wrangler kv namespace create STOCK_KV --config functions/wrangler-stock.toml
 [[kv_namespaces]]
 binding = "STOCK_KV"
-id = "<생성 후 여기에 id 입력>"
+id = "4a2b6f90383f4e46b7a2808599a2c892"
 
 # 시세 소스에 API 키가 필요 없으므로 secret 없음

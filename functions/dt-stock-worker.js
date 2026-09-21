@@ -141,7 +141,30 @@ export default {
     const q = url.searchParams;
 
     if (path === '/api/health') {
-      return json({ status: 'ok', marketOpen: marketOpen(), provider: naver.name, ts: new Date().toISOString() });
+      // 소스별 실제 도달 여부를 확인한다 (데이터센터 IP 차단 감지용).
+      // 값은 싣지 않고 성공/지연/에러만 보고 — 무인증 엔드포인트이므로.
+      const probe = async (name, fn) => {
+        const t0 = Date.now();
+        try { await fn(); return [name, { ok: true, ms: Date.now() - t0 }]; }
+        catch (e) { return [name, { ok: false, ms: Date.now() - t0, error: String((e && e.message) || e).slice(0, 120) }]; }
+      };
+      const results = Object.fromEntries(await Promise.all([
+        probe('naver.quote', () => naver.getQuote('005930')),
+        probe('naver.book',  () => naver.getOrderBook('005930')),
+        probe('naver.index', () => naver.getIndex()),
+        probe('daum.quote',  () => daum.getQuote('005930')),
+        probe('yahoo.quote', () => yahoo.getQuote('005930', 'KOSPI'))
+      ]));
+      const primaryOk = results['naver.quote'].ok && results['naver.book'].ok;
+      return json({
+        status: primaryOk ? 'ok' : 'degraded',
+        marketOpen: marketOpen(),
+        provider: naver.name,
+        kv: !!env.STOCK_KV,
+        colo: request.cf && request.cf.colo,
+        probes: results,
+        ts: new Date().toISOString()
+      }, primaryOk ? 200 : 503);
     }
 
     // 회원 전용 게이트 — health 제외한 모든 엔드포인트
