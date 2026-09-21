@@ -453,6 +453,54 @@ async function renderChart(container, bars, tf, mode) {
   return handle;
 }
 
+/* ===== 종목 로고 (네이버 증권 이미지 CDN) =====
+ * 랭킹 API 는 로고 URL 을 직접 주지만 시세·검색·테마 응답에는 없다.
+ * 없을 때는 URL 규칙으로 유추하고, 실패하면 다음 후보 → 끝내 없으면 종목명 첫 글자로 대체한다.
+ *   일반 종목  logo/stock/Stock{코드}.svg
+ *   ETF       logo/etf/StockKRETF{브랜드}.svg   (KODEX·TIGER·ACE·RISE·SOL …  이름 첫 단어)
+ */
+var LOGO_BASE = 'https://ssl.pstatic.net/imgstock/fn/real/logo/';
+var _logoBad = {};        // url -> true  (404 난 주소는 세션 동안 다시 요청하지 않는다)
+var _logoGood = {};       // code -> url  (한 번 성공한 주소는 바로 쓴다)
+
+function logoCandidates(code, name, apiUrl) {
+  if (_logoGood[code]) return [_logoGood[code]];
+  var list = [];
+  if (apiUrl && /^https:\/\/ssl\.pstatic\.net\//.test(apiUrl)) list.push(apiUrl);
+  // "KODEX 200" 처럼 영문 대문자 브랜드 + 공백으로 시작하면 ETF 로 보고 브랜드 로고를 먼저 시도
+  var m = /^([A-Z0-9]{2,12}) /.exec(String(name || ''));
+  if (m) list.push(LOGO_BASE + 'etf/StockKRETF' + m[1] + '.svg');
+  if (/^\d{6}$/.test(code)) list.push(LOGO_BASE + 'stock/Stock' + code + '.svg');
+  return list.filter(function (u, i) { return !_logoBad[u] && list.indexOf(u) === i; });
+}
+
+/** @param size '' | 'sm' | 'lg' */
+function stockLogoHtml(code, name, apiUrl, size) {
+  var urls = logoCandidates(code, name, apiUrl);
+  var ch = String(name || '').trim().charAt(0) || '·';
+  var h = '<span class="s-logo' + (size ? ' ' + size : '') + '" aria-hidden="true">'
+        + '<span class="s-logo-fb">' + escapeHtml(ch) + '</span>';
+  if (urls.length) {
+    h += '<img src="' + escapeAttr(urls[0]) + '" data-code="' + escapeAttr(code) + '"'
+       + ' data-next="' + escapeAttr(urls.slice(1).join('|')) + '" alt="" loading="lazy" decoding="async"'
+       + ' onload="onLogoLoad(this)" onerror="onLogoError(this)">';
+  }
+  return h + '</span>';
+}
+
+function onLogoLoad(img) {
+  _logoGood[img.getAttribute('data-code')] = img.getAttribute('src');
+  if (img.parentNode) img.parentNode.classList.add('ok');
+}
+
+function onLogoError(img) {
+  _logoBad[img.getAttribute('src')] = true;
+  var rest = (img.getAttribute('data-next') || '').split('|').filter(function (u) { return u && !_logoBad[u]; });
+  if (!rest.length) { img.remove(); return; }       // 후보 소진 — 첫 글자 대체 표시가 남는다
+  img.setAttribute('data-next', rest.slice(1).join('|'));
+  img.src = rest[0];
+}
+
 /* ===== 미니 스파크라인 (관심종목 카드용) =====
  * 종가 배열만으로 작은 SVG를 직접 그린다. 차트 라이브러리를 쓸 필요가 없다.
  */

@@ -576,6 +576,27 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 .notice-icon { flex: 0 0 auto; font-size: .95rem; line-height: 1.5; }
 .notice-text { flex: 1; word-break: break-word; }
 
+/* ── 종목 로고 ──
+   원본이 원형 이미지라 여기만 예외적으로 둥글게 둔다.
+   이미지가 없거나 404면 .s-logo-fb(종목명 첫 글자)가 그대로 보인다. */
+.s-logo {
+  position: relative; flex: 0 0 auto; width: 28px; height: 28px;
+  border-radius: 50%; overflow: hidden;
+  background: var(--bg3); border: 1px solid var(--border);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.s-logo.sm { width: 20px; height: 20px; align-self: center; }
+.s-logo.lg { width: 32px; height: 32px; }
+.s-logo-fb { font-size: .72rem; font-weight: 800; color: var(--text2); line-height: 1; }
+.s-logo.sm .s-logo-fb { font-size: .6rem; }
+.s-logo img {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; background: #fff; opacity: 0; transition: opacity .15s;
+}
+.s-logo.ok img { opacity: 1; }
+.s-logo.ok { border-color: transparent; }
+.s-logo.ok .s-logo-fb { visibility: hidden; }
+
 /* 랭킹 행 — 거래대금 + 관심종목 하트 */
 .rank-row { padding: 0; gap: 0; }
 .rank-main {
@@ -613,7 +634,10 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 }
 
 /* 관심종목 카드 — 본문 버튼 + 우상단 하트 */
-.w-card { position: relative; padding: 0; }
+/* min-width:0 — 긴 종목명(nowrap)이 그리드 칸을 밀어내지 않고 말줄임되게 */
+.w-card { position: relative; padding: 0; min-width: 0; }
+.w-card-head { min-width: 0; align-items: center; }
+.w-card-name { min-width: 0; }
 .w-card-main {
   width: 100%; background: none; border: none; color: var(--text);
   padding: 11px 12px 6px; text-align: left; cursor: pointer;

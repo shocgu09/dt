@@ -138,7 +138,8 @@ export const naver = {
       volume: num(s.accumulatedTradingVolumeRaw) ?? num(s.accumulatedTradingVolume),
       // accumulatedTradingValue 는 백만원 단위라 그대로 쓰면 "659억"이 "7만"으로 찍힌다 — 원 단위(Raw)를 쓴다
       tradingValue: num(s.accumulatedTradingValueRaw),
-      tradingValueText: s.accumulatedTradingValueKrwHangeul || null
+      tradingValueText: s.accumulatedTradingValueKrwHangeul || null,
+      logo: s.itemLogoUrl || null            // 종목 로고(SVG). ETF 는 운용사 브랜드 로고
     }));
   },
 
@@ -168,7 +169,8 @@ export const naver = {
                   * Math.abs(num(s.compareToPreviousClosePrice) || 0),
           volume: num(s.accumulatedTradingVolume),
           tradingValue: tv,
-          tradingValueText: s.accumulatedTradingValueKrwHangeul || null
+          tradingValueText: s.accumulatedTradingValueKrwHangeul || null,
+          logo: s.itemLogoUrl || null
         });
       }
     }

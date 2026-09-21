@@ -112,6 +112,7 @@ async function doSearch(q) {
     if (!d.items || !d.items.length) { box.innerHTML = '<div class="sr-empty">검색 결과가 없습니다</div>'; return; }
     box.innerHTML = d.items.map(function (i) {
       return '<button class="sr-item" onclick="openStock(\'' + i.code + '\',\'' + escapeJsArg(i.name) + '\')">'
+        + stockLogoHtml(i.code, i.name, null, 'sm')
         + '<span class="sr-name">' + escapeHtml(i.name) + '</span>'
         + '<span class="sr-meta">' + escapeHtml(i.market || '') + ' · ' + i.code + '</span>'
         + '</button>';
@@ -193,6 +194,7 @@ async function loadWatchQuotes() {
         if (watchView === 'list') {
           return '<div class="q-row rank-row">'
             + '<button class="rank-main" onclick="' + open + '">'
+            +   stockLogoHtml(q.code, q.name, q.logo)
             +   '<span class="q-name">' + escapeHtml(q.name) + '</span>'
             +   '<span class="rank-nums">'
             +     '<span class="q-price" id="wqp-' + q.code + '"></span>'
@@ -203,6 +205,7 @@ async function loadWatchQuotes() {
         return '<div class="w-card">'
           + '<button class="w-card-main" onclick="' + open + '">'
           +   '<div class="w-card-head">'
+          +     stockLogoHtml(q.code, q.name, q.logo, 'sm')
           +     '<span class="w-card-name">' + escapeHtml(q.name) + '</span>'
           +     '<span class="w-card-code">' + q.code + '</span>'
           +   '</div>'
@@ -289,6 +292,7 @@ async function openSector(no, name) {
       + (d.items || []).map(function (s) {
         var c = signClass(s.changeRate);
         return '<button class="q-row" onclick="openStock(\'' + s.code + '\',\'' + escapeJsArg(s.name) + '\')">'
+          + stockLogoHtml(s.code, s.name, s.logo, 'sm')
           + '<span class="q-name">' + escapeHtml(s.name) + '</span>'
           + '<span class="q-price">' + fmtNum(s.price) + '</span>'
           + '<span class="q-chg ' + c + '">' + fmtRate(s.changeRate) + '</span>'
@@ -332,6 +336,7 @@ async function loadRank() {
       return '<div class="q-row rank-row">'
         + '<button class="rank-main" onclick="openStock(\'' + s.code + '\',\'' + escapeJsArg(s.name) + '\')">'
         +   '<span class="q-rank">' + (i + 1) + '</span>'
+        +   stockLogoHtml(s.code, s.name, s.logo)
         +   '<span class="rank-names">'
         +     '<span class="q-name">' + escapeHtml(s.name) + '</span>'
         +     '<span class="rank-code">' + s.code + '</span>'
@@ -446,6 +451,7 @@ function stockShellHtml(code, name) {
   return ''
     + '<div class="sd-head">'
     +   '<button class="mini-btn" onclick="backToMarket()">← 시세</button>'
+    +   stockLogoHtml(code, name, null, 'lg')
     +   '<span class="sd-title">' + escapeHtml(name) + '</span>'
     +   '<button class="fav-btn sd-fav' + (watched ? ' on' : '') + '" id="starBtn" onclick="onToggleWatch()"'
     +     ' aria-label="관심종목">' + (watched ? '♥' : '♡') + '</button>'
