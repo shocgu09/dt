@@ -37,9 +37,9 @@ function leaveMarketTab() {
 
 function startHomePolling() {
   Poller.stopAll();
-  Poller.add('index', loadIndex, isMarketOpen() ? 15000 : 600000);
+  Poller.add('index', loadIndex, isMarketOpen() ? 15000 : 120000);
   if (watchlist.length) {
-    Poller.add('watch', loadWatchQuotes, isMarketOpen() ? 5000 : 600000);
+    Poller.add('watch', loadWatchQuotes, isMarketOpen() ? 5000 : 120000);
   } else {
     loadWatchQuotes();       // 비어 있어도 1회는 그려야 "불러오는 중"이 안 남는다
   }
@@ -51,6 +51,7 @@ async function loadIndex() {
   if (!el) return;
   try {
     var d = await Market.index();
+    if (d.kospi && d.kospi.marketStatus) setMarketStatus(d.kospi.marketStatus);
     var st = marketStateLabel();
 
     // 최초 1회만 뼈대를 만들고 이후엔 값만 갈아끼운다 (플래시 애니메이션 유지)
@@ -338,7 +339,8 @@ async function openStock(code, name) {
 
   loadStockQuote();
   loadStockChart();
-  Poller.add('quote', loadStockQuote, isMarketOpen() ? 3000 : 600000);
+  Poller.add('quote', loadStockQuote, isMarketOpen() ? 3000 : 60000);
+  Poller.add('bars', refreshChartBars, 60000);
 }
 
 function backToMarket() {
@@ -437,6 +439,7 @@ async function loadStockQuote() {
   if (!box) return;
   try {
     var q = await Market.quote(curStock.code);
+    setMarketStatus(q.marketStatus);        // 시계 대신 서버 상태를 신뢰
     var cls = signClass(q.change);
     var st = marketStateLabel();
 
@@ -572,14 +575,7 @@ async function loadStockChart() {
     chartHandle = await renderChart(box, use, curTf, chartMode);
 
     // 기간 최고/최저를 차트 위에 텍스트로 — 가장자리 마커가 잘려도 값은 보인다
-    var hl = document.getElementById('chartHiLo');
-    if (hl) {
-      if (chartHandle.periodHigh != null && chartHandle.periodLow != null) {
-        hl.style.display = '';
-        hl.innerHTML = '<span class="hl-hi">최고 ' + fmtNum(chartHandle.periodHigh) + '</span>'
-                     + '<span class="hl-lo">최저 ' + fmtNum(chartHandle.periodLow) + '</span>';
-      } else hl.style.display = 'none';
-    }
+    updateHiLoLabel();
 
     var legend = document.getElementById('maLegend');
     if (legend) {
@@ -595,6 +591,39 @@ async function loadStockChart() {
   } catch (e) {
     box.innerHTML = '<div class="empty">' + escapeHtml(e.message) + '</div>';
   }
+}
+
+/** 봉 데이터만 다시 받아 교체한다 (차트를 재생성하지 않아 줌/스크롤이 유지됨) */
+async function refreshChartBars() {
+  if (!curStock || !chartHandle || !chartHandle.replaceData) return;
+  try {
+    var isMin = (curTf === 'm' || curTf === 'm5');
+    var d = await Market.ohlc(curStock.code, isMin ? '1m' : 'D');
+    var bars = d.bars || d.candles || [];
+    if (!bars.length) return;
+    if (!isMin) _dayBars = bars;
+
+    var use = bars;
+    if (curTf === 'm5') use = groupMinutes(bars, 5);
+    else if (curTf === 'W') use = aggregateCandles(bars, 'W');
+    else if (curTf === 'M') use = aggregateCandles(bars, 'M');
+    else if (curTf === 'D') use = bars.slice(-120);
+
+    chartHandle.replaceData(use);
+    updateHiLoLabel();
+    if (_lastQuote) renderRange(_lastQuote);
+  } catch (e) { /* 다음 주기에 재시도 */ }
+}
+
+/** 차트 위 최고/최저 라벨 갱신 */
+function updateHiLoLabel() {
+  var hl = document.getElementById('chartHiLo');
+  if (!hl || !chartHandle) return;
+  if (chartHandle.periodHigh != null && chartHandle.periodLow != null) {
+    hl.style.display = '';
+    hl.innerHTML = '<span class="hl-hi">최고 ' + fmtNum(chartHandle.periodHigh) + '</span>'
+                 + '<span class="hl-lo">최저 ' + fmtNum(chartHandle.periodLow) + '</span>';
+  } else hl.style.display = 'none';
 }
 
 /** 1분봉 → N분봉 */
@@ -622,7 +651,7 @@ function toggleBook() {
   btn.textContent = bookOpen ? '▴ 호가 접기' : '▾ 호가 보기';
   if (bookOpen) {
     loadBook();
-    Poller.add('book', loadBook, isMarketOpen() ? 3000 : 600000);
+    Poller.add('book', loadBook, isMarketOpen() ? 3000 : 60000);
   } else {
     Poller.remove('book');
   }

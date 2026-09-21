@@ -38,13 +38,30 @@ var Market = {
 };
 
 /* ===== 장 운영시간 (KST 평일 09:00~15:30, 시간외 16:00까지) ===== */
+/* 네이버가 내려주는 marketStatus 를 우선 신뢰한다.
+ * 시계로만 판단하면 시간외 단일가(16:00~18:00)를 "장 마감"으로 잘못 보고
+ * 폴링이 10분으로 늘어져 시세가 멈춘 것처럼 보인다. */
+var _serverMarketStatus = null;   // 'OPEN' | 'CLOSE' | null(모름)
+var _serverStatusAt = 0;
+
+function setMarketStatus(st) {
+  if (!st) return;
+  _serverMarketStatus = st;
+  _serverStatusAt = Date.now();
+}
+
 function isMarketOpen(now) {
+  // 서버 응답이 5분 이내면 그걸 따른다
+  if (_serverMarketStatus && Date.now() - _serverStatusAt < 300000) {
+    return _serverMarketStatus === 'OPEN';
+  }
   var d = now || new Date();
   var kst = new Date(d.getTime() + (d.getTimezoneOffset() * 60000) + 9 * 3600000);
   var day = kst.getDay();
   if (day === 0 || day === 6) return false;
   var m = kst.getHours() * 60 + kst.getMinutes();
-  return m >= 9 * 60 && m <= 16 * 60;
+  // 장전 시간외 08:30 ~ 시간외 단일가 18:00 (+여유 10분)
+  return m >= 8 * 60 + 30 && m <= 18 * 60 + 10;
 }
 
 function marketStateLabel() {
@@ -337,7 +354,7 @@ async function renderChart(container, bars, tf, mode) {
         crosshairMarkerVisible: false
       });
       ls.setData(movingAverage(bars, cfg[0]));
-      maSeries.push(ls);
+      maSeries.push({ series: ls, period: cfg[0] });
     });
   }
 
@@ -355,10 +372,33 @@ async function renderChart(container, bars, tf, mode) {
   var lastBar = last ? { time: last._t, open: last.o, high: last.h, low: last.l, close: last.c } : null;
   var lastVolV = last ? (last.v || 0) : 0;
 
-  return {
+  var handle = {
     mode: mode,
     periodHigh: periodHigh,
     periodLow: periodLow,
+    /** 차트를 다시 만들지 않고 봉 데이터만 교체 — 줌/스크롤이 유지된다 */
+    replaceData: function (newBars) {
+      if (!newBars || !newBars.length) return;
+      newBars.forEach(function (b) { b._t = toChartTime(b.t, tf); });
+      if (mode === 'simple') {
+        mainSeries.setData(newBars.map(function (b) { return { time: b._t, value: b.c }; }));
+      } else {
+        mainSeries.setData(newBars.map(function (b) {
+          return { time: b._t, open: b.o, high: b.h, low: b.l, close: b.c };
+        }));
+        if (volSeries) volSeries.setData(newBars.map(function (b) {
+          return { time: b._t, value: b.v || 0, color: (b.c >= b.o ? up : down) + '55' };
+        }));
+        maSeries.forEach(function (m) {
+          if (newBars.length >= m.period) m.series.setData(movingAverage(newBars, m.period));
+        });
+      }
+      var nl = newBars[newBars.length - 1];
+      lastBar = { time: nl._t, open: nl.o, high: nl.h, low: nl.l, close: nl.c };
+      lastVolV = nl.v || 0;
+      handle.periodHigh = Math.max.apply(null, newBars.map(function (b) { return b.h; }));
+      handle.periodLow = Math.min.apply(null, newBars.map(function (b) { return b.l; }));
+    },
     dispose: function () {
       window.removeEventListener('resize', onResize);
       try { chart.remove(); } catch (e) {}
@@ -394,6 +434,7 @@ async function renderChart(container, bars, tf, mode) {
       } catch (e) { /* 시간 역행 등은 무시 */ }
     }
   };
+  return handle;
 }
 
 /* ===== 미니 스파크라인 (관심종목 카드용) =====

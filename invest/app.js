@@ -665,7 +665,19 @@ async function loadConfig() {
     var d = doc.exists ? doc.data() : {};
     var notice = document.getElementById('cfgNotice');
     if (notice) notice.value = d.notice || '';
+    renderNotice(d.notice);
   } catch (e) { /* 설정 없음 — 기본값 사용 */ }
+}
+
+/** 관리자가 설정한 재테크 공지를 시황 탭 상단에 띄운다 */
+function renderNotice(text) {
+  var el = document.getElementById('investNotice');
+  if (!el) return;
+  var t = (text || '').trim();
+  if (!t) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = '';
+  el.innerHTML = '<span class="notice-icon">📢</span><span class="notice-text">'
+    + linkifyBody(escapeHtml(t)) + '</span>';
 }
 
 async function saveConfig() {
@@ -676,7 +688,8 @@ async function saveConfig() {
       notice: document.getElementById('cfgNotice').value.trim(),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
-    status.innerHTML = '<span class="ok">✅ 설정이 저장되었습니다.</span>';
+    renderNotice(document.getElementById('cfgNotice').value);
+    status.innerHTML = '<span class="ok">✅ 저장했습니다. 시황 탭 상단에 표시됩니다.</span>';
   } catch (e) {
     status.innerHTML = '<span class="err">❌ 저장 실패</span>';
   }

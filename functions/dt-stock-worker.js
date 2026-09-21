@@ -13,7 +13,7 @@ const CORS = {
 };
 
 // 캐시 TTL(초) — 네이버 권장 폴링이 7초라 그보다 짧게 잡을 이유가 없다
-const TTL = { quote: 3, book: 3, index: 15, ohlcIntra: 60, ohlcDay: 43200, search: 86400,
+const TTL = { quote: 3, book: 3, index: 15, ohlcIntra: 30, ohlcDay: 43200, search: 86400,
               rank: 60, sectors: 120, news: 300, spark: 60 };
 
 function json(data, status = 200, extra) {
@@ -50,12 +50,15 @@ async function memo(key, ttlSec, produce) {
 }
 
 // ── 장 운영시간 (KST 08:30~16:00 평일) ─────────────────────────
+/* 거래가 일어나는 시간대. 정규장(09:00~15:30)만 잡으면
+ * 시간외 단일가(16:00~18:00) 동안 캐시가 얼어붙어 시세가 멈춘 것처럼 보인다.
+ * 장전 시간외 08:30 ~ 시간외 단일가 종료 18:10 까지를 "도는 중"으로 본다. */
 function marketOpen(d = new Date()) {
   const kst = new Date(d.getTime() + 9 * 3600 * 1000);
   const day = kst.getUTCDay();
   if (day === 0 || day === 6) return false;
   const min = kst.getUTCHours() * 60 + kst.getUTCMinutes();
-  return min >= 510 && min <= 960;
+  return min >= 8 * 60 + 30 && min <= 18 * 60 + 10;
 }
 
 function kstStamp(d = new Date()) {
