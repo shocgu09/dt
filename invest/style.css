@@ -399,6 +399,18 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 .tf-btn.on { background: var(--bg3); border-color: var(--primary); color: var(--text); }
 .chart-box { width: 100%; min-height: 260px; background: var(--bg); border: 1px solid var(--border); }
 
+/* 최고·최저 지점 표시 — 차트 그리는 영역(가격축·시간축 제외) 위에 얹는 레이어 */
+.hilo-layer { position: absolute; left: 0; top: 0; overflow: hidden; pointer-events: none; z-index: 3; }
+.hilo-dot {
+  position: absolute; left: 0; top: 0; width: 8px; height: 8px; border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+.hilo-tag {
+  position: absolute; left: 0; top: 0; white-space: nowrap;
+  font-size: .7rem; font-weight: 800; line-height: 1.25; font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 3px var(--bg), 0 0 3px var(--bg), 0 0 6px var(--bg);
+}
+
 .book-toggle {
   width: 100%; margin-top: 10px; background: var(--bg2); border: 1px solid var(--border);
   color: var(--text2); padding: 9px; font-size: .82rem; font-weight: 700; cursor: pointer;

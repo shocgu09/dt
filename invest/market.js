@@ -277,6 +277,96 @@ function movingAverage(bars, n) {
 }
 
 /**
+ * 최고·최저 지점 표시 (간단 보기 전용).
+ * 점은 해당 봉의 종가 선 위에 찍고, 글자는 그 봉의 실제 고가/저가를 쓴다 (상단 "최고/최저" 라벨과 일치).
+ * 글자는 차트 그리는 영역 안으로 밀어 넣는다 — 첫 봉·마지막 봉에 걸려도 "129,000"이 "29,000"으로 잘리지 않는다.
+ */
+function makeHiLoOverlay(container, chart, series, upColor, downColor) {
+  var bars = [], hiIdx = -1, loIdx = -1, raf = 0, dead = false;
+
+  if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
+  var layer = document.createElement('div');
+  layer.className = 'hilo-layer';
+  layer.setAttribute('aria-hidden', 'true');       // 같은 값이 차트 위 텍스트(#chartHiLo)에 있다
+
+  function part(cls, color) {
+    var dot = document.createElement('i');
+    dot.className = 'hilo-dot';
+    dot.style.background = color;
+    var tag = document.createElement('span');
+    tag.className = 'hilo-tag ' + cls;
+    tag.style.color = color;
+    layer.appendChild(dot); layer.appendChild(tag);
+    return { dot: dot, tag: tag };
+  }
+  var hi = part('hi', upColor), lo = part('lo', downColor);
+  container.appendChild(layer);
+
+  function place(p, idx, above, plotW, plotH) {
+    var b = bars[idx], x = null, y = null;
+    if (b) {
+      x = chart.timeScale().timeToCoordinate(b._t);
+      var d = series.dataByIndex ? series.dataByIndex(idx) : null;
+      y = series.priceToCoordinate(d && d.value != null ? d.value : b.c);
+    }
+    // 스크롤·줌으로 그 봉이 화면 밖이면 숨긴다
+    if (x == null || y == null || x < 0 || x > plotW || y < 0 || y > plotH) {
+      p.dot.style.display = 'none'; p.tag.style.display = 'none';
+      return;
+    }
+    p.dot.style.display = ''; p.tag.style.display = '';
+    p.dot.style.transform = 'translate(' + (x - 4) + 'px,' + (y - 4) + 'px)';
+
+    var w = p.tag.offsetWidth, h = p.tag.offsetHeight, gap = 7;
+    var tx = Math.max(2, Math.min(plotW - w - 2, x - w / 2));           // ← 가장자리에서 안쪽으로
+    var ty = above ? y - gap - h : y + gap;
+    ty = Math.max(1, Math.min(plotH - h - 1, ty));
+    p.tag.style.transform = 'translate(' + Math.round(tx) + 'px,' + Math.round(ty) + 'px)';
+  }
+
+  function draw() {
+    raf = 0;
+    if (dead) return;
+    var ts = chart.timeScale();
+    var plotW = ts.width(), plotH = container.clientHeight - ts.height();
+    layer.style.width = plotW + 'px';
+    layer.style.height = Math.max(0, plotH) + 'px';
+    var show = bars.length > 2 && hiIdx !== loIdx;
+    layer.style.display = show ? '' : 'none';
+    if (!show) return;
+    place(hi, hiIdx, true, plotW, plotH);
+    place(lo, loIdx, false, plotW, plotH);
+  }
+
+  function refresh() { if (!raf && !dead) raf = requestAnimationFrame(draw); }
+
+  chart.timeScale().subscribeVisibleLogicalRangeChange(refresh);
+  if (chart.timeScale().subscribeSizeChange) chart.timeScale().subscribeSizeChange(refresh);
+
+  return {
+    setBars: function (list) {
+      bars = list || [];
+      hiIdx = 0; loIdx = 0;
+      bars.forEach(function (b, i) {
+        if (b.h > bars[hiIdx].h) hiIdx = i;
+        if (b.l < bars[loIdx].l) loIdx = i;
+      });
+      if (bars.length) {
+        hi.tag.textContent = '최고 ' + Math.round(bars[hiIdx].h).toLocaleString('ko-KR');
+        lo.tag.textContent = '최저 ' + Math.round(bars[loIdx].l).toLocaleString('ko-KR');
+      }
+      refresh();
+    },
+    refresh: refresh,
+    dispose: function () {
+      dead = true;
+      if (raf) cancelAnimationFrame(raf);
+      if (layer.parentNode) layer.parentNode.removeChild(layer);
+    }
+  };
+}
+
+/**
  * 차트를 그린다.
  * @param mode 'simple' = 라인 + 최고/최저 (토스 기본) · 'detail' = 캔들 + 거래량 + 이동평균
  * 반환: { dispose, updateLast }
@@ -300,7 +390,7 @@ async function renderChart(container, bars, tf, mode) {
       vertLines: { color: mode === 'detail' ? grid : 'transparent' },
       horzLines: { color: grid }
     },
-    rightPriceScale: { borderColor: grid, scaleMargins: { top: 0.14, bottom: mode === 'detail' ? 0.28 : 0.1 } },
+    rightPriceScale: { borderColor: grid, scaleMargins: { top: 0.14, bottom: mode === 'detail' ? 0.28 : 0.14 } },
     timeScale: { borderColor: grid, timeVisible: tf === 'm' || tf === 'm5', secondsVisible: false },
     crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
     handleScale: { axisPressedMouseMove: false },
@@ -318,7 +408,7 @@ async function renderChart(container, bars, tf, mode) {
   var rising = last && first ? last.c >= first.c : true;
   var lineColor = rising ? up : down;
 
-  var mainSeries, volSeries = null, maSeries = [];
+  var mainSeries, volSeries = null, maSeries = [], hiloOverlay = null;
 
   if (mode === 'simple') {
     mainSeries = chart.addAreaSeries({
@@ -328,25 +418,10 @@ async function renderChart(container, bars, tf, mode) {
     });
     mainSeries.setData(bars.map(function (b) { return { time: b._t, value: b.c }; }));
 
-    // 최고·최저 지점 표시 (토스 차용) — 고가/저가가 발생한 봉에 찍고 그 값을 쓴다.
-    // 마커의 Y위치는 종가 선 위지만, 표시 숫자는 실제 고가/저가여야 상단 라벨과 일치한다.
-    var hiIdx = 0, loIdx = 0;
-    bars.forEach(function (b, i) {
-      if (b.h > bars[hiIdx].h) hiIdx = i;
-      if (b.l < bars[loIdx].l) loIdx = i;
-    });
-    if (bars.length > 2 && hiIdx !== loIdx) {
-      mainSeries.setMarkers([
-        { time: bars[hiIdx]._t, position: 'aboveBar', color: up, shape: 'circle',
-          text: '최고 ' + Math.round(bars[hiIdx].h).toLocaleString('ko-KR') },
-        { time: bars[loIdx]._t, position: 'belowBar', color: down, shape: 'circle',
-          text: '최저 ' + Math.round(bars[loIdx].l).toLocaleString('ko-KR') }
-      ].sort(function (a, b) {
-        var av = (a.time && a.time.day) ? Date.UTC(a.time.year, a.time.month - 1, a.time.day) / 1000 : a.time;
-        var bv = (b.time && b.time.day) ? Date.UTC(b.time.year, b.time.month - 1, b.time.day) / 1000 : b.time;
-        return av - bv;
-      }));
-    }
+    // 최고·최저 지점 표시 (토스 차용)는 아래 hiloOverlay 가 직접 그린다.
+    // 라이브러리 마커는 글자를 봉 중앙에 고정해서, 첫 봉·마지막 봉에 걸리면 차트 밖으로 잘린다.
+    hiloOverlay = makeHiLoOverlay(container, chart, mainSeries, up, down);
+    hiloOverlay.setBars(bars);
   } else {
     mainSeries = chart.addCandlestickSeries({
       upColor: up, downColor: down, borderUpColor: up, borderDownColor: down,
@@ -377,7 +452,10 @@ async function renderChart(container, bars, tf, mode) {
 
   chart.timeScale().fitContent();
 
-  var onResize = function () { chart.applyOptions({ width: container.clientWidth }); };
+  var onResize = function () {
+    chart.applyOptions({ width: container.clientWidth });
+    if (hiloOverlay) hiloOverlay.refresh();
+  };
   window.addEventListener('resize', onResize);
 
   // 최고/최저는 언제나 고가·저가 기준.
@@ -415,9 +493,11 @@ async function renderChart(container, bars, tf, mode) {
       lastVolV = nl.v || 0;
       handle.periodHigh = Math.max.apply(null, newBars.map(function (b) { return b.h; }));
       handle.periodLow = Math.min.apply(null, newBars.map(function (b) { return b.l; }));
+      if (hiloOverlay) hiloOverlay.setBars(newBars);    // 최고·최저 봉이 바뀌었을 수 있다
     },
     dispose: function () {
       window.removeEventListener('resize', onResize);
+      if (hiloOverlay) hiloOverlay.dispose();
       try { chart.remove(); } catch (e) {}
     },
     /**
@@ -449,6 +529,7 @@ async function renderChart(container, bars, tf, mode) {
           });
         }
       } catch (e) { /* 시간 역행 등은 무시 */ }
+      if (hiloOverlay) hiloOverlay.refresh();            // 끝점이 움직이면 세로축이 다시 잡힐 수 있다
     }
   };
   return handle;
