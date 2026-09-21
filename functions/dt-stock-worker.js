@@ -24,17 +24,26 @@ function fail(msg, status = 502) { return json({ error: msg }, status); }
 const isCode = (c) => /^\d{6}$/.test(c || '');
 
 // ── KV 캐시 래퍼 ───────────────────────────────────────────────
+// KV 는 어디까지나 캐시다 — 읽기/쓰기가 실패해도(일일 쓰기 한도 초과 등) 요청은 살린다.
+// KV 가 죽으면 워커 메모리 캐시로 떨어져 네이버 호출이 폭증하지 않게 한다.
 async function cached(env, key, ttl, produce) {
+  if (key.length > 200) return produce();          // KV 키 한도(512B) — 비정상적으로 긴 입력은 캐시하지 않는다
   if (env.STOCK_KV) {
-    const hit = await env.STOCK_KV.get(key, 'json');
-    if (hit) return { ...hit, cached: true };
+    try {
+      const hit = await env.STOCK_KV.get(key, 'json');
+      if (hit) return { ...hit, cached: true };
+    } catch (e) { /* 캐시 미스로 취급 */ }
   }
-  const fresh = await produce();
-  if (env.STOCK_KV) {
-    // expirationTtl 최소값이 60초라 그 아래는 KV 대신 짧은 edge 캐시에 의존
-    await env.STOCK_KV.put(key, JSON.stringify(fresh), { expirationTtl: Math.max(60, ttl) });
-  }
-  return fresh;
+  return memo(`kv:${key}`, Math.min(ttl, 60), async () => {
+    const fresh = await produce();
+    if (env.STOCK_KV) {
+      try {
+        // expirationTtl 최소값이 60초라 그 아래는 KV 대신 짧은 edge 캐시에 의존
+        await env.STOCK_KV.put(key, JSON.stringify(fresh), { expirationTtl: Math.max(60, ttl) });
+      } catch (e) { console.warn('KV put 실패', key, String((e && e.message) || e).slice(0, 120)); }
+    }
+    return fresh;
+  });
 }
 
 // TTL이 60초 미만인 항목은 KV 대신 워커 인스턴스 메모리로 처리
@@ -79,7 +88,11 @@ const JWK_URL = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@
 let _jwks = { at: 0, byKid: null };
 
 async function jwkFor(kid) {
-  if (!_jwks.byKid || Date.now() - _jwks.at > 3600e3) {
+  // 구글이 서명 키를 교체하면 캐시에 없는 kid 가 온다 — 그때는 1시간을 기다리지 않고 다시 받는다.
+  // (엉터리 kid 로 재요청을 유발하지 못하도록 재조회는 1분에 한 번으로 제한)
+  const stale = !_jwks.byKid || Date.now() - _jwks.at > 3600e3;
+  const rotated = _jwks.byKid && !_jwks.byKid[kid] && Date.now() - _jwks.at > 60e3;
+  if (stale || rotated) {
     const r = await fetch(JWK_URL);
     if (!r.ok) throw new Error('jwk fetch failed');
     const d = await r.json();
@@ -175,7 +188,8 @@ export default {
     // 회원 전용 게이트 — health 제외한 모든 엔드포인트
     if (env.REQUIRE_AUTH !== 'false') {
       const auth = request.headers.get('Authorization') || '';
-      const token = auth.startsWith('Bearer ') ? auth.slice(7) : q.get('token');
+      // 토큰은 헤더로만 받는다 — 쿼리스트링은 접속 로그·히스토리에 남는다
+      const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
       const user = await verifyIdToken(token, env.FIREBASE_PROJECT_ID);
       if (!user) return json({ error: '회원 전용입니다' }, 401);
     }

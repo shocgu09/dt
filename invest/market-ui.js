@@ -111,7 +111,7 @@ async function doSearch(q) {
     var d = await Market.search(q);
     if (!d.items || !d.items.length) { box.innerHTML = '<div class="sr-empty">검색 결과가 없습니다</div>'; return; }
     box.innerHTML = d.items.map(function (i) {
-      return '<button class="sr-item" onclick="openStock(\'' + i.code + '\',\'' + escapeAttr(i.name) + '\')">'
+      return '<button class="sr-item" onclick="openStock(\'' + i.code + '\',\'' + escapeJsArg(i.name) + '\')">'
         + '<span class="sr-name">' + escapeHtml(i.name) + '</span>'
         + '<span class="sr-meta">' + escapeHtml(i.market || '') + ' · ' + i.code + '</span>'
         + '</button>';
@@ -185,7 +185,7 @@ async function loadWatchQuotes() {
     if (el.dataset.key !== key) {
       el.className = watchView === 'card' ? 'watch-cards' : '';
       el.innerHTML = rows.map(function (q) {
-        var open = 'openStock(\'' + q.code + '\',\'' + escapeAttr(q.name) + '\')';
+        var open = 'openStock(\'' + q.code + '\',\'' + escapeJsArg(q.name) + '\')';
         // 관심종목에서 바로 뺄 수 있도록 하트를 단다 (전역 동일한 fav-btn)
         var fav = '<button class="fav-btn on" id="fav-' + q.code + '"'
                 + ' onclick="onFavToggle(\'' + q.code + '\')" aria-label="관심종목에서 빼기">♥</button>';
@@ -248,7 +248,7 @@ function renderRecent() {
   var list = getRecent();
   wrap.style.display = list.length ? '' : 'none';
   el.innerHTML = list.map(function (r) {
-    return '<button class="chip" onclick="openStock(\'' + r.code + '\',\'' + escapeAttr(r.name) + '\')">'
+    return '<button class="chip" onclick="openStock(\'' + r.code + '\',\'' + escapeJsArg(r.name) + '\')">'
       + escapeHtml(r.name) + '</button>';
   }).join('');
 }
@@ -267,7 +267,7 @@ async function loadSectors() {
     var top = (d.groups || []).slice(0, 8);
     el.innerHTML = top.map(function (g) {
       var c = signClass(g.changeRate);
-      return '<button class="theme-row" onclick="openSector(' + g.no + ',\'' + escapeAttr(g.name) + '\')">'
+      return '<button class="theme-row" onclick="openSector(' + g.no + ',\'' + escapeJsArg(g.name) + '\')">'
         + '<span class="theme-name">' + escapeHtml(g.name) + '</span>'
         + '<span class="theme-sub">↑' + g.rise + ' ↓' + g.fall + ' / ' + g.total + '</span>'
         + '<span class="theme-rate ' + c + '">' + fmtRate(g.changeRate) + '</span>'
@@ -288,7 +288,7 @@ async function openSector(no, name) {
       + '<button class="mini-btn" onclick="loadSectors()">← 테마 목록</button></div>'
       + (d.items || []).map(function (s) {
         var c = signClass(s.changeRate);
-        return '<button class="q-row" onclick="openStock(\'' + s.code + '\',\'' + escapeAttr(s.name) + '\')">'
+        return '<button class="q-row" onclick="openStock(\'' + s.code + '\',\'' + escapeJsArg(s.name) + '\')">'
           + '<span class="q-name">' + escapeHtml(s.name) + '</span>'
           + '<span class="q-price">' + fmtNum(s.price) + '</span>'
           + '<span class="q-chg ' + c + '">' + fmtRate(s.changeRate) + '</span>'
@@ -325,7 +325,7 @@ async function loadRank() {
       var c = signClass(s.changeRate);
       var watched = watchlist.indexOf(s.code) !== -1;
       return '<div class="q-row rank-row">'
-        + '<button class="rank-main" onclick="openStock(\'' + s.code + '\',\'' + escapeAttr(s.name) + '\')">'
+        + '<button class="rank-main" onclick="openStock(\'' + s.code + '\',\'' + escapeJsArg(s.name) + '\')">'
         +   '<span class="q-rank">' + (i + 1) + '</span>'
         +   '<span class="rank-names">'
         +     '<span class="q-name">' + escapeHtml(s.name) + '</span>'
@@ -888,7 +888,7 @@ async function loadStockNews() {
     var d = await Market.news(curStock.code);
     if (!d.items || !d.items.length) { el.innerHTML = '<div class="empty">관련 뉴스가 없습니다</div>'; return; }
     el.innerHTML = d.items.map(function (n) {
-      return '<a class="news-item" href="' + escapeAttr(n.url) + '" target="_blank" rel="noopener noreferrer">'
+      return '<a class="news-item" href="' + escapeAttr(safeUrl(n.url)) + '" target="_blank" rel="noopener noreferrer">'
         + '<div class="news-title">' + escapeHtml(n.title) + '</div>'
         + '<div class="news-meta">' + escapeHtml(n.office || '') + ' · ' + newsTime(n.datetime) + '</div>'
         + '</a>';
@@ -900,8 +900,24 @@ async function loadStockNews() {
 }
 
 /* ===== 유틸 ===== */
+/** HTML 속성값용 — escapeHtml 은 따옴표를 건드리지 않으므로 여기서 막는다 */
 function escapeAttr(s) {
-  return escapeHtml(s).replace(/'/g, '&#39;');
+  return escapeHtml(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/**
+ * onclick="fn('...')" 안의 JS 문자열 인자용.
+ * 속성값은 브라우저가 먼저 HTML 디코드한 뒤 JS 로 읽으므로 &#39; 만으로는 문자열이 깨진다.
+ * JS 이스케이프(\\ , \')를 먼저 하고 그 결과를 속성용으로 한 번 더 감싼다.
+ */
+function escapeJsArg(s) {
+  return escapeAttr(String(s == null ? '' : s)
+    .replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/[\r\n]+/g, ' '));
+}
+
+/** 외부에서 받은 링크는 http(s) 만 허용 (javascript: 등 차단) */
+function safeUrl(u) {
+  return /^https?:\/\//i.test(String(u || '')) ? String(u) : '#';
 }
 
 function shortTime(iso) {

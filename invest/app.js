@@ -167,7 +167,7 @@ function briefingCardHtml(p) {
     h += '<div class="ticker-row">';
     h += p.tickers.map(function(t) {
       var n = normalizeTicker(t);
-      return '<button type="button" class="ticker-chip" onclick="goStock(\'' + n.code + '\',\'' + escapeAttr(n.name) + '\')">'
+      return '<button type="button" class="ticker-chip" onclick="goStock(\'' + n.code + '\',\'' + escapeJsArg(n.name) + '\')">'
         + '📈 ' + escapeHtml(n.name) + ' <span class="code">' + escapeHtml(n.code) + '</span></button>';
     }).join('');
     h += '</div>';
@@ -251,10 +251,25 @@ function renderComments(id) {
     list.forEach(function(c) {
       if (c.parentId) { (byParent[c.parentId] = byParent[c.parentId] || []).push(c); }
     });
-    roots.forEach(function(c) {
-      h += commentHtml(id, c, false);
-      (byParent[c.id] || []).forEach(function(r) { h += commentHtml(id, r, true); });
-      h += '<div id="rf-' + c.id + '"></div>';
+    // 부모 댓글이 삭제돼도 답글은 남는다 (남의 답글은 지울 권한이 없다).
+    // 자리표시자를 세워 답글이 화면에서 사라지지 않게 하고, 댓글 수와도 맞춘다.
+    var rootIds = {};
+    roots.forEach(function(c) { rootIds[c.id] = true; });
+    var items = roots.map(function(c) { return { c: c, at: c.createdAt }; });
+    Object.keys(byParent).forEach(function(pid) {
+      if (!rootIds[pid]) items.push({ c: null, pid: pid, at: byParent[pid][0].createdAt });
+    });
+    items.sort(function(a, b) { return (a.at && a.at.seconds || 0) - (b.at && b.at.seconds || 0); });
+
+    items.forEach(function(it) {
+      if (it.c) {
+        h += commentHtml(id, it.c, false);
+        (byParent[it.c.id] || []).forEach(function(r) { h += commentHtml(id, r, true); });
+        h += '<div id="rf-' + it.c.id + '"></div>';
+      } else {
+        h += '<div class="comment-item"><div class="comment-body deleted">삭제된 댓글입니다.</div></div>';
+        byParent[it.pid].forEach(function(r) { h += commentHtml(id, r, true); });
+      }
     });
   }
   sec.innerHTML = h;
@@ -482,7 +497,7 @@ async function runTickerSearch(q) {
     var d = await Market.search(q);
     if (!d.items || !d.items.length) { box.innerHTML = '<div class="tr-empty">검색 결과가 없습니다</div>'; return; }
     box.innerHTML = d.items.map(function (i) {
-      return '<button type="button" class="tr-item" onclick="pickTicker(\'' + i.code + '\',\'' + escapeAttr(i.name) + '\')">'
+      return '<button type="button" class="tr-item" onclick="pickTicker(\'' + i.code + '\',\'' + escapeJsArg(i.name) + '\')">'
         + '<span class="tr-name">' + escapeHtml(i.name) + '</span>'
         + '<span class="tr-meta">' + escapeHtml(i.market || '') + ' · ' + i.code + '</span>'
         + '</button>';
@@ -748,7 +763,10 @@ function goStock(code, name) {
   openStock(code, name);
 }
 
-/** 관리자 폼 등에서 쓰는 속성 이스케이프 (market-ui.js 미로드 시 대비) */
-if (typeof escapeAttr !== 'function') {
-  window.escapeAttr = function (s) { return escapeHtml(s).replace(/'/g, '&#39;'); };
+/** onclick 인자 이스케이프 — 본체는 market-ui.js. 미로드 시에만 같은 동작으로 대비한다 */
+if (typeof escapeJsArg !== 'function') {
+  window.escapeJsArg = function (s) {
+    return escapeHtml(String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/[\r\n]+/g, ' '))
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  };
 }

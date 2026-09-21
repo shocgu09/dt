@@ -23,6 +23,39 @@ service cloud.firestore {
       return isRealUser() && request.auth.uid == uid;
     }
 
+    // 재테크 댓글 작성 — 본인 명의 + 본문 길이 + 좋아요 0에서 시작.
+    // isAdmin(운영진 배지)은 실제 관리자만 true 로 쓸 수 있다 (배지 위조 차단)
+    function validInvestCommentCreate() {
+      let d = request.resource.data;
+      return isRealUser()
+        && d.authorUid == request.auth.uid
+        && d.body is string
+        && d.body.size() > 0
+        && d.body.size() <= 1000
+        && d.get('likes', 0) == 0
+        && d.get('likedBy', []).size() == 0
+        && (d.get('isAdmin', false) == false || isAdmin());
+    }
+
+    // 좋아요 토글 — likedBy 에 본인 uid 하나만 넣거나 빼고, likes 는 정확히 ±1
+    // (남의 좋아요를 지우거나 숫자를 임의로 바꾸는 것 차단)
+    function validLikeToggle() {
+      let before = resource.data.get('likedBy', []).toSet();
+      let after = request.resource.data.get('likedBy', []).toSet();
+      let me = [request.auth.uid].toSet();
+      let oldLikes = resource.data.get('likes', 0);
+      let newLikes = request.resource.data.get('likes', 0);
+      return isRealUser()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'likedBy'])
+        && (
+             (after.difference(before) == me && before.difference(after).size() == 0
+              && newLikes == oldLikes + 1)
+             ||
+             (before.difference(after) == me && after.difference(before).size() == 0
+              && newLikes == oldLikes - 1)
+           );
+    }
+
     // ── users 컬렉션 ────────────────────────────────────────
     // - 인증된 유저(게스트 포함) 읽기
     // - 본인 문서 생성 가능 (role은 반드시 'member', 게스트 불가)
@@ -323,24 +356,23 @@ service cloud.firestore {
     // ── invest_briefings 컬렉션 (관리자 시황 브리핑) ──────────
     // - 실제 회원만 읽기 (게스트·비회원 차단)
     // - 작성·수정·삭제는 관리자
-    // - 회원은 commentCount만 변경 가능 (댓글 작성/삭제 시)
+    // - 회원은 commentCount만, 그것도 ±1 로만 변경 가능 (댓글 작성/삭제 시)
     match /invest_briefings/{briefingId} {
       allow read: if isRealUser();
       allow create, delete: if isAdmin();
       allow update: if isAdmin()
-        || (isRealUser() && request.resource.data.diff(resource.data)
-              .affectedKeys().hasOnly(['commentCount']));
+        || (isRealUser()
+            && request.resource.data.diff(resource.data)
+                 .affectedKeys().hasOnly(['commentCount'])
+            && (request.resource.data.commentCount == resource.data.get('commentCount', 0) + 1
+                || request.resource.data.commentCount == resource.data.get('commentCount', 0) - 1));
 
       // 브리핑 댓글 (1단계 대댓글 지원)
       match /comments/{commentId} {
         allow read: if isRealUser();
-        allow create: if isRealUser()
-          && request.resource.data.authorUid == request.auth.uid
-          && request.resource.data.body is string
-          && request.resource.data.body.size() > 0
-          && request.resource.data.body.size() <= 1000;
+        allow create: if validInvestCommentCreate();
         // 본인 댓글은 본문만 수정 가능 (authorUid·isAdmin 등을 못 바꾸게 화이트리스트),
-        // 그 외에는 좋아요 필드만 — 본인이 자기 댓글에 좋아요를 누르는 것도 이 경로
+        // 그 외에는 좋아요 토글만 — 본인이 자기 댓글에 좋아요를 누르는 것도 이 경로
         allow update: if isRealUser()
           && (
                (resource.data.authorUid == request.auth.uid
@@ -349,8 +381,7 @@ service cloud.firestore {
                 && request.resource.data.body is string
                 && request.resource.data.body.size() > 0
                 && request.resource.data.body.size() <= 1000)
-               || request.resource.data.diff(resource.data)
-                    .affectedKeys().hasOnly(['likes', 'likedBy'])
+               || validLikeToggle()
              );
         allow delete: if isAdmin()
           || (isRealUser() && resource.data.authorUid == request.auth.uid);
@@ -375,13 +406,9 @@ service cloud.firestore {
 
       match /comments/{commentId} {
         allow read: if isRealUser();
-        allow create: if isRealUser()
-          && request.resource.data.authorUid == request.auth.uid
-          && request.resource.data.body is string
-          && request.resource.data.body.size() > 0
-          && request.resource.data.body.size() <= 1000;
+        allow create: if validInvestCommentCreate();
         // 본인 댓글은 본문만 수정 가능 (authorUid·isAdmin 등을 못 바꾸게 화이트리스트),
-        // 그 외에는 좋아요 필드만 — 본인이 자기 댓글에 좋아요를 누르는 것도 이 경로
+        // 그 외에는 좋아요 토글만 — 본인이 자기 댓글에 좋아요를 누르는 것도 이 경로
         allow update: if isRealUser()
           && (
                (resource.data.authorUid == request.auth.uid
@@ -390,8 +417,7 @@ service cloud.firestore {
                 && request.resource.data.body is string
                 && request.resource.data.body.size() > 0
                 && request.resource.data.body.size() <= 1000)
-               || request.resource.data.diff(resource.data)
-                    .affectedKeys().hasOnly(['likes', 'likedBy'])
+               || validLikeToggle()
              );
         allow delete: if isAdmin()
           || (isRealUser() && resource.data.authorUid == request.auth.uid);

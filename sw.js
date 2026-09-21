@@ -1,4 +1,4 @@
-const CACHE = 'dt-club-v8';
+const CACHE = 'dt-club-v9';
 const STATIC = [
   '/',
   '/index.html',
@@ -28,12 +28,15 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   // Firebase / 외부 API는 캐시 건너뜀
   if (!e.request.url.startsWith(self.location.origin)) return;
+  // Cache API 는 GET 만 저장할 수 있다 — 그 외는 그대로 네트워크로
+  if (e.request.method !== 'GET') return;
   // Stale-While-Revalidate: 캐시 즉시 반환 + 백그라운드에서 캐시 최신화
   e.respondWith(
     caches.open(CACHE).then(cache =>
       cache.match(e.request).then(cached => {
         const networkFetch = fetch(e.request).then(response => {
-          cache.put(e.request, response.clone());
+          // 정상 응답만 저장한다 — 일시적인 404/5xx 가 캐시에 박혀 계속 내려가는 것을 막는다
+          if (response.ok) cache.put(e.request, response.clone());
           return response;
         }).catch(() => cached);
         return cached || networkFetch;
