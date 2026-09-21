@@ -60,8 +60,11 @@ function isMarketOpen(now) {
   var day = kst.getDay();
   if (day === 0 || day === 6) return false;
   var m = kst.getHours() * 60 + kst.getMinutes();
-  // 장전 시간외 08:30 ~ 시간외 단일가 18:00 (+여유 10분)
-  return m >= 8 * 60 + 30 && m <= 18 * 60 + 10;
+  // 넥스트레이드(NXT) 출범으로 거래시간이 08:00~20:00 으로 연장됐다.
+  //   프리마켓 08:00~08:50 / 메인마켓 09:00~15:20 / 애프터마켓 15:40~20:00
+  //   (KRX 정규장은 09:00~15:30 그대로)
+  // 어차피 네이버 marketStatus 가 우선이고 이건 폴백이므로 넉넉히 잡는다.
+  return m >= 8 * 60 && m <= 20 * 60 + 10;
 }
 
 function marketStateLabel() {

@@ -50,15 +50,17 @@ async function memo(key, ttlSec, produce) {
 }
 
 // ── 장 운영시간 (KST 08:30~16:00 평일) ─────────────────────────
-/* 거래가 일어나는 시간대. 정규장(09:00~15:30)만 잡으면
- * 시간외 단일가(16:00~18:00) 동안 캐시가 얼어붙어 시세가 멈춘 것처럼 보인다.
- * 장전 시간외 08:30 ~ 시간외 단일가 종료 18:10 까지를 "도는 중"으로 본다. */
+/* 거래가 일어나는 시간대 — 캐시 TTL 을 여기서 가른다.
+ * 넥스트레이드(NXT) 출범으로 국내 거래시간이 08:00~20:00 으로 연장됐다.
+ *   프리마켓 08:00~08:50 / 메인마켓 09:00~15:20 / 애프터마켓 15:40~20:00
+ *   KRX 정규장은 09:00~15:30 유지.
+ * 정규장만 잡으면 애프터마켓 동안 캐시가 얼어붙어 시세가 멈춘 것처럼 보인다. */
 function marketOpen(d = new Date()) {
   const kst = new Date(d.getTime() + 9 * 3600 * 1000);
   const day = kst.getUTCDay();
   if (day === 0 || day === 6) return false;
   const min = kst.getUTCHours() * 60 + kst.getUTCMinutes();
-  return min >= 8 * 60 + 30 && min <= 18 * 60 + 10;
+  return min >= 8 * 60 && min <= 20 * 60 + 10;
 }
 
 function kstStamp(d = new Date()) {
@@ -223,7 +225,7 @@ async function handleOhlc(env, code, tf) {
   const st = kstStamp();
   if (tf === '1m') {
     return memo(`o:${code}:1m:${st.ymd}`, TTL.ohlcIntra, async () => ({
-      code, tf, bars: await naver.getOhlc(code, '1m', { start: `${st.ymd}0900`, end: st.full }), source: 'naver'
+      code, tf, bars: await naver.getOhlc(code, '1m', { start: `${st.ymd}0800`, end: st.full }), source: 'naver'
     }));
   }
   const startY = String(Number(st.ymd.slice(0, 4)) - 2) + '0101';
@@ -251,7 +253,7 @@ async function handleSpark(env, code) {
     let bars = [];
     let span = 'intraday';
     try {
-      bars = await naver.getOhlc(code, '1m', { start: `${st.ymd}0900`, end: st.full });
+      bars = await naver.getOhlc(code, '1m', { start: `${st.ymd}0800`, end: st.full });
     } catch (e) { bars = []; }
 
     // 장 시작 전이거나 분봉이 없으면 최근 일봉으로 대체
