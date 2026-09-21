@@ -463,3 +463,30 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 @media (prefers-reduced-motion: reduce) {
   .flash-up, .flash-down { animation: none; }
 }
+
+/* 관리자 — 종목 검색 선택기 */
+.ticker-picker { position: relative; }
+.ticker-results {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 40;
+  background: var(--bg2); border: 1px solid var(--primary); border-top: none;
+  max-height: 220px; overflow-y: auto;
+}
+.tr-item {
+  display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
+  background: none; border: none; border-bottom: 1px solid var(--border);
+  padding: 9px 12px; cursor: pointer; color: var(--text);
+}
+.tr-item:last-child { border-bottom: none; }
+.tr-item:hover { background: var(--bg3); }
+.tr-name { font-size: .86rem; font-weight: 700; }
+.tr-meta { font-size: .72rem; color: var(--text3); margin-left: auto; }
+.tr-empty { padding: 12px; text-align: center; font-size: .8rem; color: var(--text3); }
+
+/* 브리핑 카드의 종목 칩 — 탭하면 시세로 이동 */
+.ticker-chip {
+  background: var(--bg3); border: 1px solid var(--border); padding: 5px 11px;
+  font-size: .78rem; font-weight: 700; color: var(--text2);
+  display: inline-flex; gap: 6px; align-items: center; cursor: pointer;
+}
+.ticker-chip:hover { border-color: var(--primary); color: var(--text); }
+.ticker-chip .code { color: var(--text3); font-size: .68rem; font-weight: 600; }

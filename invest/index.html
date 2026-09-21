@@ -16,7 +16,7 @@
   <meta property="og:locale" content="ko_KR" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-  <link rel="stylesheet" href="style.css?v=3">
+  <link rel="stylesheet" href="style.css?v=4">
   <link rel="icon" href="../icon-192.png">
 </head>
 <body>
@@ -149,11 +149,12 @@
               <button type="button" class="radio-btn on" data-sent="neutral" onclick="setSentiment('neutral')">⚪ 중립</button>
               <button type="button" class="radio-btn" data-sent="bear" onclick="setSentiment('bear')">🔵 약세</button>
             </div>
-            <div class="f-label">언급 종목 (6자리 코드)</div>
-            <div class="chip-input-row">
-              <input type="text" id="bTickerInput" class="f-input" placeholder="005930" maxlength="6" inputmode="numeric"
-                     onkeydown="if(event.key==='Enter'){event.preventDefault();addTicker();}">
-              <button type="button" class="btn-ghost" onclick="addTicker()">추가</button>
+            <div class="f-label">언급 종목</div>
+            <div class="ticker-picker">
+              <input type="text" id="bTickerInput" class="f-input" autocomplete="off"
+                     placeholder="종목명으로 검색 (예: 삼성전자, ㅅㅅㅈㅈ, 005930)"
+                     oninput="onTickerSearch(this.value)">
+              <div class="ticker-results" id="bTickerResults" style="display:none"></div>
             </div>
             <div class="chip-list" id="bTickerList"></div>
             <textarea id="bBody" class="f-textarea" placeholder="🔥 오늘의 시장 한 줄 요약&#10;&#10;📊 지수 · 수급&#10;&#10;🎯 주목할 섹터 / 종목&#10;&#10;📌 내일 체크포인트"></textarea>
@@ -201,8 +202,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="market.js?v=2"></script>
-  <script src="market-ui.js?v=2"></script>
-  <script src="app.js?v=4"></script>
+  <script src="market.js?v=3"></script>
+  <script src="market-ui.js?v=3"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>

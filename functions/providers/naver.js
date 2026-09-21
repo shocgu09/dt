@@ -176,7 +176,8 @@ export const naver = {
           title: (it.title || '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&apos;/g, "'"),
           office: it.officeName,
           datetime: it.datetime,
-          url: `https://n.news.naver.com/mnews/article/${it.officeId}/${it.articleId}`
+          // 네이버가 정식 모바일 URL을 주면 그걸 쓴다 (직접 조립한 주소는 폴백)
+          url: it.mobileNewsUrl || `https://n.news.naver.com/mnews/article/${it.officeId}/${it.articleId}`
         });
       }
     }

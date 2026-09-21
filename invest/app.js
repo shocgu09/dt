@@ -44,6 +44,7 @@ try {
       if (!role) { showGate(); return; }
       isMember = true;
       isAdmin = (role === 'admin' || role === 'superadmin');
+      if (typeof purgeLegacyRecent === 'function') purgeLegacyRecent();
       myName = (data && (data.name || data.displayName)) || user.displayName || '회원';
       showMain();
     }).catch(function() { showGate(); });
@@ -113,6 +114,19 @@ function renderBriefings() {
     return;
   }
   el.innerHTML = briefings.map(briefingCardHtml).join('');
+
+  // 구버전 브리핑은 코드만 저장돼 있어 이름을 조회해 채운 뒤 한 번 더 그린다
+  var legacy = [];
+  briefings.forEach(function(p) {
+    (p.tickers || []).forEach(function(t) {
+      if (typeof t === 'string' && !_tickerNameCache[t]) legacy.push(t);
+    });
+  });
+  if (legacy.length) {
+    resolveTickerNames(legacy).then(function(found) {
+      if (found) el.innerHTML = briefings.map(briefingCardHtml).join('');
+    });
+  }
   // 펼쳐둔 댓글 섹션 복원
   Object.keys(openComments).forEach(function(id) {
     if (openComments[id]) renderComments(id);
@@ -148,7 +162,9 @@ function briefingCardHtml(p) {
   if (Array.isArray(p.tickers) && p.tickers.length) {
     h += '<div class="ticker-row">';
     h += p.tickers.map(function(t) {
-      return '<span class="ticker-chip">📈 <span class="code">' + escapeHtml(t) + '</span></span>';
+      var n = normalizeTicker(t);
+      return '<button type="button" class="ticker-chip" onclick="goStock(\'' + n.code + '\',\'' + escapeAttr(n.name) + '\')">'
+        + '📈 ' + escapeHtml(n.name) + ' <span class="code">' + escapeHtml(n.code) + '</span></button>';
     }).join('');
     h += '</div>';
   }
@@ -374,24 +390,80 @@ function setSentiment(s) {
   document.querySelectorAll('.radio-btn').forEach(function(b) { b.classList.toggle('on', b.dataset.sent === s); });
 }
 
-function addTicker() {
-  var input = document.getElementById('bTickerInput');
-  var code = (input.value || '').trim();
-  if (!/^\d{6}$/.test(code)) { alert('종목코드는 6자리 숫자입니다. (예: 005930)'); return; }
-  if (formTickers.indexOf(code) === -1) formTickers.push(code);
-  input.value = '';
+/* ===== 언급 종목 선택 (종목명·초성 검색) =====
+ * 저장 형식: [{ code, name }]  — 구버전은 ["005930"] 문자열 배열이라 양쪽 다 받는다.
+ */
+var _tickerSearchTimer = null;
+var _tickerNameCache = {};     // code -> name (구버전 코드 표시용)
+
+function normalizeTicker(t) {
+  if (t && typeof t === 'object') return { code: t.code, name: t.name || _tickerNameCache[t.code] || t.code };
+  return { code: String(t), name: _tickerNameCache[String(t)] || String(t) };
+}
+
+function onTickerSearch(v) {
+  clearTimeout(_tickerSearchTimer);
+  var q = (v || '').trim();
+  var box = document.getElementById('bTickerResults');
+  if (!q) { box.innerHTML = ''; box.style.display = 'none'; return; }
+  _tickerSearchTimer = setTimeout(function () { runTickerSearch(q); }, 250);
+}
+
+async function runTickerSearch(q) {
+  var box = document.getElementById('bTickerResults');
+  box.style.display = '';
+  box.innerHTML = '<div class="tr-empty">검색 중...</div>';
+  try {
+    var d = await Market.search(q);
+    if (!d.items || !d.items.length) { box.innerHTML = '<div class="tr-empty">검색 결과가 없습니다</div>'; return; }
+    box.innerHTML = d.items.map(function (i) {
+      return '<button type="button" class="tr-item" onclick="pickTicker(\'' + i.code + '\',\'' + escapeAttr(i.name) + '\')">'
+        + '<span class="tr-name">' + escapeHtml(i.name) + '</span>'
+        + '<span class="tr-meta">' + escapeHtml(i.market || '') + ' · ' + i.code + '</span>'
+        + '</button>';
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="tr-empty">' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+function pickTicker(code, name) {
+  _tickerNameCache[code] = name;
+  if (!formTickers.some(function (t) { return normalizeTicker(t).code === code; })) {
+    formTickers.push({ code: code, name: name });
+  }
+  document.getElementById('bTickerInput').value = '';
+  var box = document.getElementById('bTickerResults');
+  box.innerHTML = ''; box.style.display = 'none';
   renderFormTickers();
 }
 
 function removeTicker(code) {
-  formTickers = formTickers.filter(function(t) { return t !== code; });
+  formTickers = formTickers.filter(function (t) { return normalizeTicker(t).code !== code; });
   renderFormTickers();
 }
 
 function renderFormTickers() {
-  document.getElementById('bTickerList').innerHTML = formTickers.map(function(t) {
-    return '<button type="button" class="chip-del" onclick="removeTicker(\'' + t + '\')">' + t + ' ✕</button>';
+  document.getElementById('bTickerList').innerHTML = formTickers.map(function (t) {
+    var n = normalizeTicker(t);
+    return '<button type="button" class="chip-del" onclick="removeTicker(\'' + n.code + '\')">'
+      + escapeHtml(n.name) + ' ✕</button>';
   }).join('');
+}
+
+/** 구버전 브리핑(코드만 저장)의 종목명을 채워 넣고 다시 그린다 */
+async function resolveTickerNames(codes) {
+  var todo = codes.filter(function (c) { return !_tickerNameCache[c]; });
+  if (!todo.length || !currentUser) return false;
+  var found = false;
+  await Promise.all(todo.map(async function (c) {
+    try {
+      var d = await Market.search(c);
+      var hit = (d.items || []).filter(function (i) { return i.code === c; })[0];
+      if (hit) { _tickerNameCache[c] = hit.name; found = true; }
+    } catch (e) { /* 실패하면 코드 그대로 표시 */ }
+  }));
+  return found;
 }
 
 async function submitBriefing() {
@@ -410,7 +482,7 @@ async function submitBriefing() {
   try {
     var payload = {
       date: date, title: title, body: body, market: market,
-      sentiment: formSentiment, tickers: formTickers.slice(), pinned: pinned,
+      sentiment: formSentiment, tickers: formTickers.map(normalizeTicker), pinned: pinned,
       authorName: myName || '운영진',
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
@@ -459,7 +531,7 @@ function editBriefing(id) {
   document.getElementById('bBody').value = p.body || '';
   document.getElementById('bMarket').value = p.market || 'all';
   document.getElementById('bPinned').checked = !!p.pinned;
-  formTickers = Array.isArray(p.tickers) ? p.tickers.slice() : [];
+  formTickers = Array.isArray(p.tickers) ? p.tickers.map(normalizeTicker) : [];
   setSentiment(p.sentiment || 'neutral');
   renderFormTickers();
   document.getElementById('briefingFormTitle').textContent = '✏️ 시황 브리핑 수정';
@@ -611,4 +683,15 @@ function timeAgo(ts) {
   if (diff < 604800) return Math.floor(diff / 86400) + '일 전';
   var d = new Date(ts.seconds * 1000);
   return (d.getMonth() + 1) + '.' + d.getDate();
+}
+
+/** 브리핑의 종목 칩 → 시세 탭의 종목 상세로 이동 */
+function goStock(code, name) {
+  if (typeof openStock !== 'function') return;
+  openStock(code, name);
+}
+
+/** 관리자 폼 등에서 쓰는 속성 이스케이프 (market-ui.js 미로드 시 대비) */
+if (typeof escapeAttr !== 'function') {
+  window.escapeAttr = function (s) { return escapeHtml(s).replace(/'/g, '&#39;'); };
 }

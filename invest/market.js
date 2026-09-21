@@ -102,23 +102,40 @@ document.addEventListener('visibilitychange', function () {
 });
 
 /* ===== 최근 본 종목 (localStorage — 서버 비용 0) ===== */
-var RECENT_KEY = 'dt-invest-recent';
+/* 같은 기기를 여러 회원이 쓰면 최근 본 종목이 섞이므로 uid로 분리한다.
+ * 로그인 전에는 아예 읽고 쓰지 않는다. */
+var RECENT_PREFIX = 'dt-invest-recent:';
+var RECENT_LEGACY = 'dt-invest-recent';   // uid 구분 없던 구버전 키
+
+function recentKey() {
+  return (currentUser && currentUser.uid) ? RECENT_PREFIX + currentUser.uid : null;
+}
 
 function pushRecent(code, name) {
+  var key = recentKey();
+  if (!key) return;
   try {
     var list = getRecent().filter(function (r) { return r.code !== code; });
     list.unshift({ code: code, name: name });
-    localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 10)));
+    localStorage.setItem(key, JSON.stringify(list.slice(0, 10)));
   } catch (e) { /* 사파리 프라이빗 등 — 무시 */ }
 }
 
 function getRecent() {
-  try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); }
+  var key = recentKey();
+  if (!key) return [];
+  try { return JSON.parse(localStorage.getItem(key) || '[]'); }
   catch (e) { return []; }
 }
 
 function clearRecent() {
-  try { localStorage.removeItem(RECENT_KEY); } catch (e) {}
+  var key = recentKey();
+  try { if (key) localStorage.removeItem(key); } catch (e) {}
+}
+
+/** 회원 구분 없이 저장돼 공유되던 구버전 기록을 제거한다 (1회성 정리) */
+function purgeLegacyRecent() {
+  try { localStorage.removeItem(RECENT_LEGACY); } catch (e) {}
 }
 
 /* ===== 관심종목 (Firestore stock_watchlist/{uid}) ===== */
