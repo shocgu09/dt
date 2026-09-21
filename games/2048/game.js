@@ -260,6 +260,16 @@ function saveScore() {
   }).catch(function(e) { console.log('점수 저장 실패:', e); });
 }
 
+// 랭킹 이름은 사용자 입력값 → innerHTML에 넣기 전 이스케이프
+function escapeHtml(text) {
+  return String(text == null ? '' : text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 function loadRanking() {
   if (!db) return;
   db.collection('game_scores').orderBy('score', 'desc').limit(10).get().then(function(snap) {
@@ -277,8 +287,8 @@ function loadRanking() {
       var medal = rank <= 3 ? medals[rank - 1] : rank;
       html += '<div class="ranking-row' + (isMine ? ' mine' : '') + '">'
         + '<span class="rank-num">' + medal + '</span>'
-        + '<span class="rank-name">' + (d.name || '익명') + (isMine ? ' (나)' : '') + '</span>'
-        + '<span class="rank-score">' + (d.score || 0).toLocaleString() + '점</span>'
+        + '<span class="rank-name">' + escapeHtml(d.name || '익명') + (isMine ? ' (나)' : '') + '</span>'
+        + '<span class="rank-score">' + (Number(d.score) || 0).toLocaleString() + '점</span>'
         + '</div>';
       rank++;
     });

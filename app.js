@@ -836,11 +836,11 @@ async function renderAdminNotice() {
     const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     docs.sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
     list.innerHTML = docs.map(n => `
-        <div class="notice-list-item" draggable="true" data-id="${n.id}"
-          ondragstart="onNoticeDragStart(event,'${n.id}')"
+        <div class="notice-list-item" draggable="true" data-id="${escapeHtml(n.id)}"
+          ondragstart="onNoticeDragStart(event,'${escapeJsArg(n.id)}')"
           ondragend="onNoticeDragEnd(event)"
           ondragover="onNoticeDragOver(event)"
-          ondrop="onNoticeDrop(event,'${n.id}')">
+          ondrop="onNoticeDrop(event,'${escapeJsArg(n.id)}')">
           <span class="notice-drag-handle" title="드래그하여 순서 변경">⠿</span>
           <div class="notice-list-info">
             ${(() => {
@@ -848,13 +848,13 @@ async function renderAdminNotice() {
               const exp = new Date(n.expiresAt);
               const isActive = exp > new Date();
               const fmt = exp.toLocaleString('ko-KR', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' });
-              return `<span class="notice-list-badge ${isActive ? 'on' : 'off'}" title="${n.expiresAt}">${isActive ? '~' : '만료 '}${fmt}</span>`;
+              return `<span class="notice-list-badge ${isActive ? 'on' : 'off'}" title="${escapeHtml(n.expiresAt)}">${isActive ? '~' : '만료 '}${fmt}</span>`;
             })()}
             <span class="notice-list-title">${escapeHtml(n.title)}</span>
           </div>
           <div class="notice-list-actions">
-            <button class="btn btn-sm btn-outline" onclick="openNoticeModal('${n.id}')">수정</button>
-            <button class="btn btn-sm btn-danger" onclick="deleteNotice('${n.id}')">삭제</button>
+            <button class="btn btn-sm btn-outline" onclick="openNoticeModal('${escapeJsArg(n.id)}')">수정</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteNotice('${escapeJsArg(n.id)}')">삭제</button>
           </div>
         </div>`).join('');
     initNoticeTouchDrag();
@@ -1063,10 +1063,10 @@ async function renderAdminBlacklist() {
         <div class="user-item">
           <div class="user-item-info">
             <div class="user-item-name">${escapeHtml(b.email)}</div>
-            <div class="user-item-email">${escapeHtml(b.reason || '')} · ${date}</div>
+            <div class="user-item-email">${escapeHtml(b.reason || '')} · ${escapeHtml(date)}</div>
           </div>
           <div class="user-item-actions">
-            <button class="btn btn-sm btn-outline" onclick="removeFromBlacklist('${doc.id}')">해제</button>
+            <button class="btn btn-sm btn-outline" onclick="removeFromBlacklist('${escapeJsArg(doc.id)}')">해제</button>
           </div>
         </div>`;
     }).join('');
@@ -1135,11 +1135,11 @@ async function renderAdmin() {
         ${isSuperAdmin ? `<div class="user-item-lastseen">마지막 접속: ${formatLastSeen(u.lastSeen)}${u.lastLocation ? ' · 📍 ' + escapeHtml(u.lastLocation) : ''}</div>` : ''}
       </div>
       <div class="user-item-actions">
-        ${isSuperAdmin ? `<input class="role-select" style="min-width:80px;text-align:center" value="${escapeHtml(u.title || '')}" placeholder="칭호 입력" onchange="updateUserTitle('${u.uid}', this.value.trim())" onkeydown="if(event.key==='Enter'){this.blur()}">` : ''}
+        ${isSuperAdmin ? `<input class="role-select" style="min-width:80px;text-align:center" value="${escapeHtml(u.title || '')}" placeholder="칭호 입력" onchange="updateUserTitle('${escapeJsArg(u.uid)}', this.value.trim())" onkeydown="if(event.key==='Enter'){this.blur()}">` : ''}
         ${u.role === 'superadmin' ? `
           <span style="font-size:.82rem;color:#f59e0b;padding:6px 10px">슈퍼관리자</span>
         ` : isSuperAdmin ? `
-          <select class="role-select" onchange="updateUserRole('${u.uid}', this.value)" ${u.uid === state.currentUserId ? 'disabled' : ''}>
+          <select class="role-select" onchange="updateUserRole('${escapeJsArg(u.uid)}', this.value)" ${u.uid === state.currentUserId ? 'disabled' : ''}>
             <option value="member" ${u.role === 'member' ? 'selected' : ''}>일반 회원</option>
             <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>관리자</option>
           </select>
@@ -1147,7 +1147,7 @@ async function renderAdmin() {
           <span style="font-size:.82rem;color:var(--text2);padding:6px 10px">${u.role === 'admin' ? '관리자' : '일반 회원'}</span>
         `}
         ${u.uid !== state.currentUserId && u.role !== 'superadmin' && (isSuperAdmin || u.role === 'member') ? `
-          <button class="btn btn-sm btn-danger" onclick="deleteUserAccount('${u.uid}')">강퇴</button>` : ''}
+          <button class="btn btn-sm btn-danger" onclick="deleteUserAccount('${escapeJsArg(u.uid)}')">강퇴</button>` : ''}
       </div>
     </div>`).join('');
 }
@@ -1259,9 +1259,9 @@ function loadYouTubeShorts() {
         html += '<div style="font-size:.85rem;font-weight:700;color:var(--text2);margin:' + (html ? '16px' : '0') + ' 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border)">' + title + '</div>';
         html += '<div class="youtube-shorts">';
         list.forEach(function(v) {
-          html += '<div onclick="openYtModal(\'' + v.id + '\',' + (isShort ? 'true' : 'false') + ')" class="youtube-short-card' + (isShort ? ' is-short' : '') + '" style="cursor:pointer">'
+          html += '<div onclick="openYtModal(\'' + escapeJsArg(v.id) + '\',' + (isShort ? 'true' : 'false') + ')" class="youtube-short-card' + (isShort ? ' is-short' : '') + '" style="cursor:pointer">'
             + '<div style="position:relative">'
-            + '<img class="youtube-short-thumb' + (isShort ? ' is-short' : '') + '" src="' + v.thumbnail + '" alt="" loading="lazy">'
+            + '<img class="youtube-short-thumb' + (isShort ? ' is-short' : '') + '" src="' + escapeHtml(v.thumbnail || '') + '" alt="" loading="lazy">'
             + '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none"><div style="width:44px;height:44px;background:rgba(0,0,0,.6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.2rem">▶</div></div>'
             + '</div>'
             + '<div class="youtube-short-title">' + escapeHtml(v.channelTitle || '') + '</div>'
@@ -1289,7 +1289,7 @@ function openYtModal(id, isShort) {
   var sizeStyle = isShort ? 'width:min(360px,92vw);aspect-ratio:9/16' : 'width:min(820px,96vw);aspect-ratio:16/9';
   modal.innerHTML = '<div style="position:relative;' + sizeStyle + '">'
     + '<button onclick="document.getElementById(\'ytModal\').remove()" style="position:absolute;top:-40px;right:0;background:none;border:none;color:#fff;font-size:1.6rem;cursor:pointer;line-height:1">✕</button>'
-    + '<iframe src="' + embedUrl + '" style="width:100%;height:100%;border:none;border-radius:12px" allowfullscreen allow="autoplay;encrypted-media;picture-in-picture"></iframe>'
+    + '<iframe src="' + escapeHtml(embedUrl) + '" style="width:100%;height:100%;border:none;border-radius:12px" allowfullscreen allow="autoplay;encrypted-media;picture-in-picture"></iframe>'
     + '</div>';
   modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
   document.addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { modal.remove(); document.removeEventListener('keydown', esc); } });
@@ -1310,12 +1310,12 @@ async function renderAdminYouTube() {
     snap.forEach(function(doc) {
       var d = doc.data();
       html += '<div class="user-item">'
-        + '<img src="' + (d.thumbnail || '') + '" style="width:36px;height:36px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'">'
+        + '<img src="' + escapeHtml(d.thumbnail || '') + '" style="width:36px;height:36px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'">'
         + '<div class="user-item-info">'
         + '<div class="user-item-name">' + escapeHtml(d.title || doc.id) + '</div>'
-        + '<div class="user-item-email">구독자 ' + (d.subscribers || '?') + '명 · @' + escapeHtml(d.handle || '') + '</div>'
+        + '<div class="user-item-email">구독자 ' + escapeHtml(d.subscribers || '?') + '명 · @' + escapeHtml(d.handle || '') + '</div>'
         + '</div>'
-        + '<button class="btn btn-sm" style="background:var(--accent);color:#fff;border:none;font-size:.75rem" onclick="removeYouTubeChannel(\'' + doc.id + '\')">삭제</button>'
+        + '<button class="btn btn-sm" style="background:var(--accent);color:#fff;border:none;font-size:.75rem" onclick="removeYouTubeChannel(\'' + escapeJsArg(doc.id) + '\')">삭제</button>'
         + '</div>';
     });
     listEl.innerHTML = html;
@@ -1475,15 +1475,15 @@ function renderMembers() {
     return;
   }
   grid.innerHTML = members.map(m => `
-    <div class="member-card" onclick="openMemberDetail('${m.id}')">
+    <div class="member-card" onclick="openMemberDetail('${escapeJsArg(m.id)}')">
       <div class="member-card-top">
         <div class="member-avatar">${avatarEl(m)}</div>
         <div class="member-info">
           <div class="member-name">${escapeHtml(displayName(m.name))}${m.position ? ' <span class="position-badge">' + escapeHtml(m.position) + '</span>' : ''}${titleBadge(userTitle(m.createdBy))}${!g && m.createdBy === state.currentUserId ? ' <span style="color:var(--primary-light);font-size:.75rem;font-weight:600">나</span>' : ''}</div>
           <div class="member-nick">${escapeHtml(m.nickname || '-')}</div>
           <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px">
-            <span class="role-badge ${m.role}">${m.role === 'driver' ? '🚗 운전자' : '💺 동승자'}</span>
-            <span class="gender-badge ${m.gender || 'male'}">${m.gender === 'female' ? '♀ 여' : '♂ 남'}</span>
+            <span class="role-badge ${escapeHtml(m.role)}">${m.role === 'driver' ? '🚗 운전자' : '💺 동승자'}</span>
+            <span class="gender-badge ${escapeHtml(m.gender || 'male')}">${m.gender === 'female' ? '♀ 여' : '♂ 남'}</span>
           </div>
         </div>
       </div>
@@ -1492,15 +1492,15 @@ function renderMembers() {
         ${m.car ? `<div class="member-car-tag">${brandLogoHtml(m.car.brand, 18)} ${escapeHtml(m.car.brand)} ${escapeHtml(m.car.model)}</div>` : ''}
       </div>
       <div class="member-card-footer">
-        <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openMemberDetail('${m.id}')">상세보기</button>
+        <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openMemberDetail('${escapeJsArg(m.id)}')">상세보기</button>
         ${g ? '' : (() => {
           const dmUid = m.createdBy || state.users.find(u => u.name === m.name)?.uid;
           return dmUid && dmUid !== state.currentUserId
-            ? `<button class="btn btn-sm btn-outline" title="DM 보내기" onclick="event.stopPropagation();openDMChat('${dmUid}')">💬 DM</button>`
+            ? `<button class="btn btn-sm btn-outline" title="DM 보내기" onclick="event.stopPropagation();openDMChat('${escapeJsArg(dmUid)}')">💬 DM</button>`
             : '';
         })()}
-        ${!g && m.createdBy === state.currentUserId ? `<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openEditMember('${m.id}')">수정</button>` : ''}
-        ${!g && canEdit(m) ? `<button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="event.stopPropagation();deleteMember('${m.id}')">삭제</button>` : ''}
+        ${!g && m.createdBy === state.currentUserId ? `<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openEditMember('${escapeJsArg(m.id)}')">수정</button>` : ''}
+        ${!g && canEdit(m) ? `<button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="event.stopPropagation();deleteMember('${escapeJsArg(m.id)}')">삭제</button>` : ''}
       </div>
     </div>`).join('');
 }
@@ -1517,21 +1517,21 @@ function openMemberDetail(id) {
         <h2>${escapeHtml(displayName(m.name))}${m.position ? ' <span class="position-badge">' + escapeHtml(m.position) + '</span>' : ''}${titleBadge(userTitle(m.createdBy))}</h2>
         <div class="nick">${m.nickname ? `"${escapeHtml(m.nickname)}"` : ''}</div>
         <div class="detail-meta">
-          <span class="role-badge ${m.role}">${m.role === 'driver' ? '🚗 운전자' : '💺 동승자'}</span>
-          <span class="gender-badge ${m.gender || 'male'}">${m.gender === 'female' ? '♀ 여' : '♂ 남'}</span>
+          <span class="role-badge ${escapeHtml(m.role)}">${m.role === 'driver' ? '🚗 운전자' : '💺 동승자'}</span>
+          <span class="gender-badge ${escapeHtml(m.gender || 'male')}">${m.gender === 'female' ? '♀ 여' : '♂ 남'}</span>
         </div>
         <div style="font-size:.88rem;color:var(--text2)">${escapeHtml(m.bio || '')}</div>
       </div>
     </div>
     <div class="info-grid">
-      <div class="info-item"><div class="info-label">연락처</div><div class="info-value">${g ? '***-****-****' : (m.phone ? m.phone.slice(0, -4) + '****' : '-')}</div></div>
-      <div class="info-item"><div class="info-label">가입일</div><div class="info-value">${m.joinDate || '-'}</div></div>
+      <div class="info-item"><div class="info-label">연락처</div><div class="info-value">${g ? '***-****-****' : (m.phone ? escapeHtml(String(m.phone).slice(0, -4)) + '****' : '-')}</div></div>
+      <div class="info-item"><div class="info-label">가입일</div><div class="info-value">${escapeHtml(m.joinDate || '-')}</div></div>
     </div>
     ${m.car ? `
       <div class="detail-section">
         <h4>내 차</h4>
         <div class="detail-car">
-          <div class="detail-car-img${m.car.image ? '' : ' no-img'}">${m.car.image ? `<img src="${m.car.image}" alt="차량" loading="lazy">` : '🚗'}</div>
+          <div class="detail-car-img${m.car.image ? '' : ' no-img'}">${m.car.image ? `<img src="${safeImgSrc(m.car.image)}" alt="차량" loading="lazy">` : '🚗'}</div>
           <div class="detail-car-info">
             <div class="detail-car-name">${escapeHtml(m.car.brand)} ${escapeHtml(m.car.model)}</div>
             <div class="detail-car-sub">${escapeHtml(m.car.year || '')} · ${escapeHtml(m.car.color || '')}</div>
@@ -1542,8 +1542,8 @@ function openMemberDetail(id) {
     ${g ? `<div class="guest-cta-box"><p>회원 가입하면 DM, 이벤트 참여 등 모든 기능을 이용할 수 있습니다.</p><button class="btn btn-primary" onclick="guestToLogin();closeModal('memberDetailModal')">회원가입하기</button></div>` : ''}
     ${(!g && (m.createdBy === state.currentUserId || canEdit(m))) ? `
     <div class="detail-actions">
-      ${m.createdBy === state.currentUserId ? `<button class="btn btn-outline" onclick="openEditMember('${m.id}');closeModal('memberDetailModal')">수정</button>` : ''}
-      ${canEdit(m) ? `<button class="btn btn-danger" onclick="deleteMember('${m.id}');closeModal('memberDetailModal')">삭제</button>` : ''}
+      ${m.createdBy === state.currentUserId ? `<button class="btn btn-outline" onclick="openEditMember('${escapeJsArg(m.id)}');closeModal('memberDetailModal')">수정</button>` : ''}
+      ${canEdit(m) ? `<button class="btn btn-danger" onclick="deleteMember('${escapeJsArg(m.id)}');closeModal('memberDetailModal')">삭제</button>` : ''}
     </div>` : ''}
     `;
   openModal('memberDetailModal');
@@ -1764,9 +1764,9 @@ function renderGallery() {
     const author = state.users.find(u => u.uid === g.createdBy);
     const authorName = displayName(author?.name || '');
     return `
-    <div class="gallery-card" onclick="openGalleryDetail('${g.id}')">
+    <div class="gallery-card" onclick="openGalleryDetail('${escapeJsArg(g.id)}')">
       <div class="gallery-card-img">
-        ${g.photo ? `<img src="${g.photo}" alt="${g.title}" loading="lazy">` : '<div class="gallery-no-img">📷</div>'}
+        ${g.photo ? `<img src="${safeImgSrc(g.photo)}" alt="${escapeHtml(g.title)}" loading="lazy">` : '<div class="gallery-no-img">📷</div>'}
       </div>
       <div class="gallery-card-body">
         <div class="gallery-card-title">${escapeHtml(g.title)}</div>
@@ -1787,7 +1787,7 @@ function openGalleryDetail(id) {
   document.getElementById('galleryDetailMeta').textContent = `📅 ${formatDate(g.date)}`;
   document.getElementById('galleryDetailDesc').innerHTML = linkify(g.desc || '');
   document.getElementById('galleryDetailPhoto').innerHTML = g.photo
-    ? `<img src="${g.photo}" style="width:100%;max-height:340px;object-fit:cover;border-radius:12px;cursor:zoom-in" onclick="openLightbox('${g.photo}')">`
+    ? `<img src="${safeImgSrc(g.photo)}" style="width:100%;max-height:340px;object-fit:cover;border-radius:12px;cursor:zoom-in" onclick="openLightbox(this.src)">`
     : '';
   document.getElementById('commentInput').value = '';
   // 게스트: 댓글 입력폼 숨기기
@@ -1795,8 +1795,8 @@ function openGalleryDetail(id) {
   if (commentWrap) commentWrap.style.display = state.isGuest ? 'none' : '';
 
   document.getElementById('galleryDetailFooter').innerHTML = isAdmin ? `
-    <button class="btn btn-sm btn-outline" onclick="openEditGallery('${id}')">수정</button>
-    <button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="deleteGallery('${id}')">삭제</button>
+    <button class="btn btn-sm btn-outline" onclick="openEditGallery('${escapeJsArg(id)}')">수정</button>
+    <button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="deleteGallery('${escapeJsArg(id)}')">삭제</button>
   ` : '';
 
   // 댓글 실시간 구독
@@ -1825,7 +1825,7 @@ function renderComments(comments, galleryId) {
       <div class="comment-meta">
         <span class="comment-author">${escapeHtml(c.authorName)}${titleBadge(userTitle(c.authorUid))}</span>
         <span class="comment-time">${c.createdAt?.toDate ? c.createdAt.toDate().toLocaleDateString('ko') : ''}</span>
-        ${(c.authorUid === uid || isAdmin) ? `<button class="comment-del" onclick="deleteComment('${galleryId}','${c.id}')">✕</button>` : ''}
+        ${(c.authorUid === uid || isAdmin) ? `<button class="comment-del" onclick="deleteComment('${escapeJsArg(galleryId)}','${escapeJsArg(c.id)}')">✕</button>` : ''}
       </div>
       <div class="comment-text">${escapeHtml(c.text)}</div>
     </div>`).join('');
@@ -1895,7 +1895,7 @@ function renderEventCommentList(evId) {
       <div class="comment-meta">
         <span class="comment-author">${escapeHtml(c.authorName)}${titleBadge(userTitle(c.authorUid))}</span>
         <span class="comment-time">${c.createdAt?.toDate ? c.createdAt.toDate().toLocaleDateString('ko') : ''}</span>
-        ${(c.authorUid === uid || isAdminUser) ? `<button class="comment-del" onclick="deleteEventComment('${evId}','${c.id}')">✕</button>` : ''}
+        ${(c.authorUid === uid || isAdminUser) ? `<button class="comment-del" onclick="deleteEventComment('${escapeJsArg(evId)}','${escapeJsArg(c.id)}')">✕</button>` : ''}
       </div>
       <div class="comment-text">${escapeHtml(c.text)}</div>
     </div>`).join('');
@@ -1962,7 +1962,7 @@ function openEditGallery(id) {
   document.getElementById('galleryDate').value = g.date;
   document.getElementById('galleryDesc').value = g.desc || '';
   document.getElementById('galleryPhotoPreview').innerHTML = g.photo
-    ? `<div class="preview-photo-wrap"><img src="${g.photo}" class="preview-photo"><button type="button" class="preview-photo-del" onclick="document.getElementById('galleryPhotoPreview').innerHTML='';window._clearPhoto=true">✕</button></div>`
+    ? `<div class="preview-photo-wrap"><img src="${safeImgSrc(g.photo)}" class="preview-photo"><button type="button" class="preview-photo-del" onclick="document.getElementById('galleryPhotoPreview').innerHTML='';window._clearPhoto=true">✕</button></div>`
     : '';
   window._clearPhoto = false;
   closeModal('galleryDetailModal');
@@ -2019,8 +2019,8 @@ function renderCars() {
     return;
   }
   grid.innerHTML = drivers.map(m => `
-    <div class="car-card" onclick="openMemberDetail('${m.id}')">
-      <div class="car-card-img">${m.car.image ? `<img src="${m.car.image}" alt="${escapeHtml(m.car.model)}" loading="lazy">` : '🚗'}</div>
+    <div class="car-card" onclick="openMemberDetail('${escapeJsArg(m.id)}')">
+      <div class="car-card-img">${m.car.image ? `<img src="${safeImgSrc(m.car.image)}" alt="${escapeHtml(m.car.model)}" loading="lazy">` : '🚗'}</div>
       <div class="car-card-body">
         <div class="car-name" style="display:flex;align-items:center;gap:6px">${brandLogoHtml(m.car.brand, 20)} ${escapeHtml(m.car.brand)} ${escapeHtml(m.car.model)}</div>
         <div class="car-year-color">${escapeHtml(m.car.year || '')} ${m.car.year && m.car.color ? '·' : ''} ${escapeHtml(m.car.color || '')}</div>
@@ -2069,7 +2069,7 @@ function renderEvents() {
     return `
       <div class="event-card">
         <div class="event-card-header">
-          <span class="event-type-badge ${ev.type}">${ev.type === 'lightning' ? '⚡ 번개' : '🗓 정모'}</span>
+          <span class="event-type-badge ${escapeHtml(ev.type)}">${ev.type === 'lightning' ? '⚡ 번개' : '🗓 정모'}</span>
           <div class="event-title">${escapeHtml(ev.title)}</div>
           ${isPast ? '<span style="font-size:.78rem;color:var(--text3);background:var(--bg3);padding:3px 10px;border-radius:10px;white-space:nowrap">종료됨</span>' : ''}
         </div>
@@ -2081,15 +2081,15 @@ function renderEvents() {
         })()}
         <div class="event-meta">
           <span class="event-meta-item">📅 ${formatDate(ev.date)}</span>
-          ${ev.time ? `<span class="event-meta-item">🕐 ${ev.time}</span>` : ''}
+          ${ev.time ? `<span class="event-meta-item">🕐 ${escapeHtml(ev.time)}</span>` : ''}
           ${ev.location ? `<span class="event-meta-item">📍 ${escapeHtml(ev.location)}</span>` : ''}
           ${ev.fee ? `<span class="event-meta-item">💰 ${escapeHtml(ev.fee)}</span>` : ''}
-          ${ev.voteDeadline ? `<span class="event-meta-item ${new Date(ev.voteDeadline) < new Date() ? 'deadline-over' : 'deadline-active'}">⏰ 투표마감 ${ev.voteDeadline.replace('T', ' ')}</span>` : ''}
+          ${ev.voteDeadline ? `<span class="event-meta-item ${new Date(ev.voteDeadline) < new Date() ? 'deadline-over' : 'deadline-active'}">⏰ 투표마감 ${escapeHtml(String(ev.voteDeadline).replace('T', ' '))}</span>` : ''}
         </div>
         ${ev.desc ? `
           <div class="event-desc-wrap">
-            <div class="event-desc collapsed" id="desc-${ev.id}">${linkify(ev.desc)}</div>
-            <button class="desc-toggle" onclick="toggleDesc('${ev.id}')">더 보기 ▼</button>
+            <div class="event-desc collapsed" id="desc-${escapeHtml(ev.id)}">${linkify(ev.desc)}</div>
+            <button class="desc-toggle" onclick="toggleDesc('${escapeJsArg(ev.id)}')">더 보기 ▼</button>
           </div>` : ''}
         ${(() => {
           const uid = state.currentUserId;
@@ -2109,26 +2109,26 @@ function renderEvents() {
             <div style="font-size:.8rem;color:var(--text3);margin-bottom:8px">🔒 투표 마감됨</div>`;
           return `
             <div class="event-votes">
-              <button class="vote-count attending ${myVote === 'attending' ? 'voted' : ''}" onclick="castVote('${ev.id}','attending')">✅ 참여 <span class="num">${votes.attending.length}</span></button>
-              <button class="vote-count maybe ${myVote === 'maybe' ? 'voted' : ''}" onclick="castVote('${ev.id}','maybe')">🕐 늦참 <span class="num">${votes.maybe.length}</span></button>
-              <button class="vote-count absent ${myVote === 'absent' ? 'voted' : ''}" onclick="castVote('${ev.id}','absent')">❌ 불참 <span class="num">${votes.absent.length}</span></button>
+              <button class="vote-count attending ${myVote === 'attending' ? 'voted' : ''}" onclick="castVote('${escapeJsArg(ev.id)}','attending')">✅ 참여 <span class="num">${votes.attending.length}</span></button>
+              <button class="vote-count maybe ${myVote === 'maybe' ? 'voted' : ''}" onclick="castVote('${escapeJsArg(ev.id)}','maybe')">🕐 늦참 <span class="num">${votes.maybe.length}</span></button>
+              <button class="vote-count absent ${myVote === 'absent' ? 'voted' : ''}" onclick="castVote('${escapeJsArg(ev.id)}','absent')">❌ 불참 <span class="num">${votes.absent.length}</span></button>
             </div>
             ${total > 0 ? `<div class="vote-progress"><div class="vote-bar-attend" style="width:${aW}%"></div><div class="vote-bar-maybe" style="width:${mW}%"></div><div class="vote-bar-absent" style="width:${bW}%"></div></div>` : ''}`;
         })()}
         ${state.isGuest ? '' : renderReactions(ev)}
         <div class="event-actions">
-          ${state.isGuest ? '' : `<button class="btn btn-sm btn-outline" onclick="openVoteModal('${ev.id}')">📊 투표 현황</button>`}
-          ${state.isGuest ? '' : `<button class="btn btn-sm btn-outline" id="ev-comment-btn-${ev.id}" onclick="toggleEventComments('${ev.id}')">💬 댓글</button>`}
+          ${state.isGuest ? '' : `<button class="btn btn-sm btn-outline" onclick="openVoteModal('${escapeJsArg(ev.id)}')">📊 투표 현황</button>`}
+          ${state.isGuest ? '' : `<button class="btn btn-sm btn-outline" id="ev-comment-btn-${escapeHtml(ev.id)}" onclick="toggleEventComments('${escapeJsArg(ev.id)}')">💬 댓글</button>`}
           ${!state.isGuest && canEdit(ev) ? `
-            <button class="btn btn-sm btn-outline" onclick="openEditEvent('${ev.id}')">수정</button>
-            <button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="deleteEvent('${ev.id}')">삭제</button>
+            <button class="btn btn-sm btn-outline" onclick="openEditEvent('${escapeJsArg(ev.id)}')">수정</button>
+            <button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="deleteEvent('${escapeJsArg(ev.id)}')">삭제</button>
           ` : ''}
         </div>
-        ${state.isGuest ? '' : `<div class="event-comments-section" id="ev-comments-${ev.id}" style="display:none">
-          <div class="ev-comment-list" id="ev-comment-list-${ev.id}"></div>
+        ${state.isGuest ? '' : `<div class="event-comments-section" id="ev-comments-${escapeHtml(ev.id)}" style="display:none">
+          <div class="ev-comment-list" id="ev-comment-list-${escapeHtml(ev.id)}"></div>
           <div class="ev-comment-form">
-            <input class="ev-comment-input" id="ev-comment-input-${ev.id}" placeholder="댓글을 입력하세요..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitEventComment('${ev.id}')}">
-            <button class="btn btn-sm btn-primary" onclick="submitEventComment('${ev.id}')">등록</button>
+            <input class="ev-comment-input" id="ev-comment-input-${escapeHtml(ev.id)}" placeholder="댓글을 입력하세요..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitEventComment('${escapeJsArg(ev.id)}')}">
+            <button class="btn btn-sm btn-primary" onclick="submitEventComment('${escapeJsArg(ev.id)}')">등록</button>
           </div>
         </div>`}
       </div>`;
@@ -2178,7 +2178,7 @@ function openEditEvent(id) {
     options.forEach((opt, i) => {
       const row = document.createElement('div');
       row.className = 'quiz-option-row';
-      row.innerHTML = `<input type="text" class="quiz-option-input" placeholder="보기 ${i+1}" value="${opt.replace(/"/g, '&quot;')}" /><button type="button" class="quiz-option-del" onclick="removeQuizOption(this)" ${options.length <= 2 ? 'style="display:none"' : ''}>✕</button>`;
+      row.innerHTML = `<input type="text" class="quiz-option-input" placeholder="보기 ${i+1}" value="${escapeHtml(opt)}" /><button type="button" class="quiz-option-del" onclick="removeQuizOption(this)" ${options.length <= 2 ? 'style="display:none"' : ''}>✕</button>`;
       list.appendChild(row);
     });
     updateQuizAnswerSelect();
@@ -2263,7 +2263,7 @@ function openVoteModal(evId) {
     if (!person) return '';
     const name = person.name || '알 수 없음';
     const fakeM = { name, image: person.image || null, gender: person.gender || 'male' };
-    return `<div class="vote-person"><div class="mini-avatar">${avatarEl(fakeM)}</div>${name}</div>`;
+    return `<div class="vote-person"><div class="mini-avatar">${avatarEl(fakeM)}</div>${escapeHtml(name)}</div>`;
   }
 
   const myVote = votes.attending.includes(uid) ? 'attending'
@@ -2272,8 +2272,8 @@ function openVoteModal(evId) {
   const deadlinePassed = ev.voteDeadline && new Date(ev.voteDeadline) < new Date();
 
   document.getElementById('voteModalBody').innerHTML = `
-    ${ev.fee ? `<div style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.9rem">💰 참가비: <strong>${ev.fee}</strong></div>` : ''}
-    ${ev.voteDeadline ? `<div style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.9rem">⏰ 투표 마감: <strong>${ev.voteDeadline.replace('T',' ')}</strong>${deadlinePassed ? ' <span style="color:var(--accent);font-size:.82rem">· 마감됨</span>' : ''}</div>` : ''}
+    ${ev.fee ? `<div style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.9rem">💰 참가비: <strong>${escapeHtml(ev.fee)}</strong></div>` : ''}
+    ${ev.voteDeadline ? `<div style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.9rem">⏰ 투표 마감: <strong>${escapeHtml(String(ev.voteDeadline).replace('T',' '))}</strong>${deadlinePassed ? ' <span style="color:var(--accent);font-size:.82rem">· 마감됨</span>' : ''}</div>` : ''}
     <div class="vote-section">
       <h4>✅ 참여 (${votes.attending.length}명)</h4>
       <div class="vote-people">${votes.attending.map(chip).join('') || '<span style="color:var(--text3);font-size:.84rem">없음</span>'}</div>
@@ -2400,7 +2400,7 @@ function renderReactions(ev) {
   const buttons = REACTION_EMOJIS.map(e => {
     const cnt = counts[e];
     const active = myReaction === e;
-    return `<button class="reaction-btn${active ? ' active' : ''}" onclick="reactToEvent('${ev.id}','${e}')">${e}${cnt > 0 ? ` <span class="reaction-cnt">${cnt}</span>` : ''}</button>`;
+    return `<button class="reaction-btn${active ? ' active' : ''}" onclick="reactToEvent('${escapeJsArg(ev.id)}','${e}')">${e}${cnt > 0 ? ` <span class="reaction-cnt">${cnt}</span>` : ''}</button>`;
   }).join('');
   return `<div class="reaction-bar">${buttons}</div>`;
 }
@@ -2497,7 +2497,7 @@ function renderQuizCard(ev, today) {
     const countAnswered = Object.values(quizAnswers).filter(v => v === i).length;
     const pct = totalAnswers > 0 ? Math.round(countAnswered / totalAnswers * 100) : 0;
     return `
-      <button class="${cls}" onclick="${canVote ? `selectQuizOption('${ev.id}', ${i})` : ''}" ${disabled}>
+      <button class="${cls}" onclick="${canVote ? `selectQuizOption('${escapeJsArg(ev.id)}', ${i})` : ''}" ${disabled}>
         <span class="quiz-opt-label">${labels[i]}</span>
         <span class="quiz-opt-text">${escapeHtml(opt)}</span>
         ${revealed ? `<span class="quiz-opt-pct">${pct}%</span>` : (myAnswer !== null ? `<span class="quiz-opt-pct">${pct}%</span>` : '')}
@@ -2505,9 +2505,9 @@ function renderQuizCard(ev, today) {
   }).join('');
 
   const adminActions = canEdit(ev) ? `
-    ${!revealed && deadlinePassed ? `<button class="btn btn-sm btn-primary" onclick="revealQuizAndDraw('${ev.id}')">🎲 정답 공개 및 추첨</button>` : ''}
-    <button class="btn btn-sm btn-outline" onclick="openEditEvent('${ev.id}')">수정</button>
-    <button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="deleteEvent('${ev.id}')">삭제</button>` : '';
+    ${!revealed && deadlinePassed ? `<button class="btn btn-sm btn-primary" onclick="revealQuizAndDraw('${escapeJsArg(ev.id)}')">🎲 정답 공개 및 추첨</button>` : ''}
+    <button class="btn btn-sm btn-outline" onclick="openEditEvent('${escapeJsArg(ev.id)}')">수정</button>
+    <button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="deleteEvent('${escapeJsArg(ev.id)}')">삭제</button>` : '';
 
   return `
     <div class="event-card quiz-card">
@@ -2519,24 +2519,24 @@ function renderQuizCard(ev, today) {
       <div style="font-size:.78rem;color:var(--text3);margin-bottom:6px">✍️ ${escapeHtml(authorName)}${titleBadge(author?.title)}${isMe ? ' <span style="color:var(--primary-light);font-weight:600">(나)</span>' : ''}</div>
       <div class="event-meta">
         <span class="event-meta-item">📅 ${formatDate(ev.date)}</span>
-        ${deadline ? `<span class="event-meta-item ${deadlinePassed ? 'deadline-over' : 'deadline-active'}">⏰ 마감 ${ev.voteDeadline.replace('T', ' ')}</span>` : ''}
+        ${deadline ? `<span class="event-meta-item ${deadlinePassed ? 'deadline-over' : 'deadline-active'}">⏰ 마감 ${escapeHtml(String(ev.voteDeadline).replace('T', ' '))}</span>` : ''}
       </div>
       ${ev.desc ? `<div style="font-size:.88rem;color:var(--text2);margin-bottom:10px">${linkify(ev.desc)}</div>` : ''}
-      <div class="quiz-options" id="quiz-opts-${ev.id}">${optionsHtml}</div>
-      ${canVote ? `<button class="btn btn-sm btn-primary vote-confirm-btn" id="quiz-confirm-${ev.id}" style="display:none;margin-bottom:8px" onclick="confirmQuizAnswer('${ev.id}')">답변 제출</button>` : ''}
+      <div class="quiz-options" id="quiz-opts-${escapeHtml(ev.id)}">${optionsHtml}</div>
+      ${canVote ? `<button class="btn btn-sm btn-primary vote-confirm-btn" id="quiz-confirm-${escapeHtml(ev.id)}" style="display:none;margin-bottom:8px" onclick="confirmQuizAnswer('${escapeJsArg(ev.id)}')">답변 제출</button>` : ''}
       <div style="font-size:.78rem;color:var(--text3);margin:6px 0 8px">${myAnswer !== null ? `✅ 답변 완료 (${labels[myAnswer]})` : deadlinePassed ? '⏰ 마감됨' : '👆 정답을 고르고 제출하세요'} · 참여 ${totalAnswers}명</div>
       ${winnerHtml}
       ${state.isGuest ? '' : renderReactions(ev)}
       <div class="event-actions">
-        ${!state.isGuest && isMe ? `<button class="btn btn-sm btn-outline" onclick="openQuizAnswersModal('${ev.id}')">📊 응답 현황</button>` : ''}
-        ${state.isGuest ? '' : `<button class="btn btn-sm btn-outline" id="ev-comment-btn-${ev.id}" onclick="toggleEventComments('${ev.id}')">💬 댓글</button>`}
+        ${!state.isGuest && isMe ? `<button class="btn btn-sm btn-outline" onclick="openQuizAnswersModal('${escapeJsArg(ev.id)}')">📊 응답 현황</button>` : ''}
+        ${state.isGuest ? '' : `<button class="btn btn-sm btn-outline" id="ev-comment-btn-${escapeHtml(ev.id)}" onclick="toggleEventComments('${escapeJsArg(ev.id)}')">💬 댓글</button>`}
         ${state.isGuest ? '' : adminActions}
       </div>
-      ${state.isGuest ? '' : `<div class="event-comments-section" id="ev-comments-${ev.id}" style="display:none">
-        <div class="ev-comment-list" id="ev-comment-list-${ev.id}"></div>
+      ${state.isGuest ? '' : `<div class="event-comments-section" id="ev-comments-${escapeHtml(ev.id)}" style="display:none">
+        <div class="ev-comment-list" id="ev-comment-list-${escapeHtml(ev.id)}"></div>
         <div class="ev-comment-form">
-          <input class="ev-comment-input" id="ev-comment-input-${ev.id}" placeholder="댓글을 입력하세요..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitEventComment('${ev.id}')}">
-          <button class="btn btn-sm btn-primary" onclick="submitEventComment('${ev.id}')">등록</button>
+          <input class="ev-comment-input" id="ev-comment-input-${escapeHtml(ev.id)}" placeholder="댓글을 입력하세요..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitEventComment('${escapeJsArg(ev.id)}')}">
+          <button class="btn btn-sm btn-primary" onclick="submitEventComment('${escapeJsArg(ev.id)}')">등록</button>
         </div>
       </div>`}
     </div>`;
@@ -2657,7 +2657,7 @@ function renderDMList() {
       return isToday ? d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
     })() : '';
     return `
-      <div class="dm-conv-item" onclick="openDMChat('${otherUid}')">
+      <div class="dm-conv-item" onclick="openDMChat('${escapeJsArg(otherUid)}')">
         <div class="mini-avatar dm-conv-avatar">${avatarEl({ name, image: other?.image || null, gender: other?.gender || 'male' })}</div>
         <div class="dm-conv-info">
           <div class="dm-conv-name">${escapeHtml(name)}${titleBadge(other?.title)}</div>
@@ -2789,7 +2789,7 @@ function renderDMMessages(msgs, myUid) {
 
     let content = '';
     if (msg.image) {
-      content = `<div class="dm-bubble dm-bubble-img"><img src="${msg.image}" alt="사진" loading="lazy" onclick="openLightbox('${msg.image}')" onerror="this.outerHTML='<div style=\\'padding:12px;color:var(--text3);font-size:.82rem\\'>⚠️ 이미지를 불러올 수 없습니다</div>'"></div>`;
+      content = `<div class="dm-bubble dm-bubble-img"><img src="${safeImgSrc(msg.image)}" alt="사진" loading="lazy" onclick="openLightbox(this.src)" onerror="this.outerHTML='<div style=\\'padding:12px;color:var(--text3);font-size:.82rem\\'>⚠️ 이미지를 불러올 수 없습니다</div>'"></div>`;
       if (msg.text) content += `<div class="dm-bubble">${escapeHtml(msg.text)}</div>`;
     } else if (isSingleEmoji(msg.text)) {
       content = `<div class="dm-emoji-big">${msg.text}</div>`;
@@ -3112,7 +3112,7 @@ function searchGasDest() {
       }
       var html = '';
       data.slice(0, 8).forEach(function(place) {
-        html += '<div class="parking-dest-item" onclick="selectGasDest(' + place.y + ',' + place.x + ',\'' + escapeHtml(place.place_name).replace(/'/g, "\\'") + '\')">';
+        html += '<div class="parking-dest-item" onclick="selectGasDest(' + Number(place.y) + ',' + Number(place.x) + ',\'' + escapeJsArg(place.place_name) + '\')">';
         html += '<div class="parking-dest-name">' + escapeHtml(place.place_name) + '</div>';
         html += '<div class="parking-dest-addr">' + escapeHtml(place.address_name || '') + '</div>';
         html += '</div>';
@@ -3242,7 +3242,7 @@ function _renderGasStations(stations, fuel) {
     html += '<div class="gas-name">' + escapeHtml(name) + (isSelf ? '<span class="gas-self">셀프</span>' : '') + '</div>';
     html += '<div class="gas-brand">' + escapeHtml(brand) + (dist ? ' · ' + dist : '') + '</div>';
     html += '<div class="gas-detail">' + escapeHtml(s.NEW_ADR || s.VAN_ADR || '') + '</div>';
-    html += '<button class="gas-nav-btn" onclick="openGasNavigation(' + lat + ',' + lng + ',\'' + escapeHtml(name).replace(/'/g, "\\'") + '\')">🗺️ 길안내</button>';
+    html += '<button class="gas-nav-btn" onclick="openGasNavigation(' + Number(lat) + ',' + Number(lng) + ',\'' + escapeJsArg(name) + '\')">🗺️ 길안내</button>';
     html += '</div>';
     html += '<div class="gas-price-wrap">';
     html += '<div class="gas-price">' + price + '</div>';
@@ -3394,6 +3394,8 @@ let _anonCommentUnsub = null;
 let _boardFilter = 'all';
 
 function renderAnon() {
+  // 초기 URL(/anon) 복원 시점엔 Firebase 초기화 전 → 인증 후 renderCurrentPage에서 다시 호출됨
+  if (!state.db) return;
   // 실시간 구독
   if (_anonUnsub) _anonUnsub();
   _anonUnsub = state.db.collection('anon_posts').orderBy('createdAt', 'desc').limit(100)
@@ -3485,7 +3487,8 @@ async function _loadHomeBriefing(type) {
     var doc = docs[0];
     var body = (doc.body || '')
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#039;')
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^\s"'<>\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
       .replace(/\n/g, '<br>');
     el.innerHTML = '<div style="font-size:.78rem;color:var(--text3);margin-bottom:8px;font-weight:600">' + escapeHtml(doc.title || '') + '</div>' + body;
@@ -3562,7 +3565,7 @@ async function _loadTrendPreview(collection, el, basePath) {
 
     items = await Promise.all(fetches);
     el.innerHTML = items.map(function(item) {
-      return '<a href="' + escapeHtml(item.url) + '" target="_blank" class="home-preview-item">'
+      return '<a href="' + escapeHtml(/^https?:\/\//i.test(item.url || '') ? item.url : '#') + '" target="_blank" rel="noopener noreferrer" class="home-preview-item">'
         + '<div class="home-preview-item-title">' + item.icon + ' ' + escapeHtml(item.title) + '</div>'
         + '<div class="home-preview-item-sub">' + escapeHtml(item.sub) + '</div>'
         + '</a>';
@@ -3633,10 +3636,10 @@ function _renderAnonList() {
     var d = post.createdAt ? (post.createdAt.toDate ? post.createdAt.toDate() : new Date(post.createdAt)) : new Date();
     var timeAgo = _timeAgo(d);
     var liked = post.likedBy && post.likedBy.indexOf(uid) !== -1;
-    var likeCount = post.likes || 0;
-    var commentCount = post.commentCount || 0;
+    var likeCount = Number(post.likes) || 0;
+    var commentCount = Number(post.commentCount) || 0;
 
-    html += '<div class="anon-card" onclick="openAnonDetail(\'' + post.id + '\')">';
+    html += '<div class="anon-card" onclick="openAnonDetail(\'' + escapeJsArg(post.id) + '\')">';
     var rawAuthor = (post.anonymous !== false) ? '익명' : (post.authorName || '알 수 없음');
     var authorDisplay = (state.isGuest && rawAuthor !== '익명') ? escapeHtml(maskName(rawAuthor)) : escapeHtml(rawAuthor);
     html += '<div class="anon-card-header">';
@@ -3647,10 +3650,10 @@ function _renderAnonList() {
     html += '<div class="anon-title">' + catHtml + escapeHtml(post.title || '제목 없음') + (post.image ? '<span class="anon-has-img">📷</span>' : '') + '</div>';
     html += '<div class="anon-text anon-text-preview">' + escapeHtml(post.text) + '</div>';
     html += '<div class="anon-actions">';
-    html += '<button class="anon-action-btn' + (liked ? ' liked' : '') + '" onclick="event.stopPropagation();toggleAnonLike(\'' + post.id + '\')">' + (liked ? '❤️' : '🤍') + ' ' + likeCount + '</button>';
-    html += '<button class="anon-action-btn" onclick="event.stopPropagation();openAnonDetail(\'' + post.id + '\')">💬 ' + commentCount + '</button>';
+    html += '<button class="anon-action-btn' + (liked ? ' liked' : '') + '" onclick="event.stopPropagation();toggleAnonLike(\'' + escapeJsArg(post.id) + '\')">' + (liked ? '❤️' : '🤍') + ' ' + likeCount + '</button>';
+    html += '<button class="anon-action-btn" onclick="event.stopPropagation();openAnonDetail(\'' + escapeJsArg(post.id) + '\')">💬 ' + commentCount + '</button>';
     if (isAdmin) {
-      html += '<button class="anon-delete-btn" onclick="event.stopPropagation();deleteAnon(\'' + post.id + '\')">🗑️ 삭제</button>';
+      html += '<button class="anon-delete-btn" onclick="event.stopPropagation();deleteAnon(\'' + escapeJsArg(post.id) + '\')">🗑️ 삭제</button>';
     }
     html += '</div>';
     html += '</div>';
@@ -3697,9 +3700,13 @@ async function refineWithAI() {
   btn.disabled = true;
   btn.textContent = '⏳ 정리 중...';
   try {
+    // 서버에서 Firebase 인증을 요구 → 로그인(비익명) 사용자의 ID 토큰 첨부
+    var user = state.currentUser;
+    if (!user || user.isAnonymous) { alert('로그인이 필요합니다.'); return; }
+    var token = await user.getIdToken();
     var res = await fetch('/api/refine', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
       body: JSON.stringify({ text: text })
     });
     var data = await res.json();
@@ -3779,7 +3786,7 @@ function openEditAnon(postId) {
   // 기존 사진 미리보기
   var previewEl = document.getElementById('editAnonImagePreview');
   if (post.image) {
-    previewEl.innerHTML = '<div style="position:relative;display:inline-block"><img src="' + post.image + '" style="max-width:100%;max-height:200px;border-radius:8px"><button onclick="removeEditAnonImage()" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.7);color:#fff;border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:.8rem">✕</button></div>';
+    previewEl.innerHTML = '<div style="position:relative;display:inline-block"><img src="' + safeImgSrc(post.image) + '" style="max-width:100%;max-height:200px;border-radius:8px"><button onclick="removeEditAnonImage()" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.7);color:#fff;border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:.8rem">✕</button></div>';
   } else {
     previewEl.innerHTML = '';
   }
@@ -3791,11 +3798,11 @@ function previewEditAnonImage(input) {
   var file = input.files[0];
   if (file.size > 5 * 1024 * 1024) { alert('5MB 이하 이미지만 가능합니다.'); input.value = ''; return; }
   document.getElementById('editAnonImageName').textContent = file.name;
-  compressImage(file, 800, 0.75, function(dataUrl) {
+  compressImage(file, 800, 0.75).then(function(dataUrl) {
     _editAnonImageData = dataUrl;
     var previewEl = document.getElementById('editAnonImagePreview');
     previewEl.innerHTML = '<div style="position:relative;display:inline-block"><img src="' + dataUrl + '" style="max-width:100%;max-height:200px;border-radius:8px"><button onclick="removeEditAnonImage()" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.7);color:#fff;border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:.8rem">✕</button></div>';
-  });
+  }).catch(function() { alert('이미지 처리 실패'); input.value = ''; });
 }
 
 function removeEditAnonImage() {
@@ -3896,22 +3903,22 @@ function openAnonDetail(postId) {
   html += '<div class="anon-title" style="font-size:1.05rem;margin-bottom:8px">' + detailCatHtml + escapeHtml(post.title || '제목 없음') + '</div>';
   html += '<div class="anon-text" style="margin-bottom:12px">' + escapeHtml(post.text) + '</div>';
   if (post.image) {
-    html += '<div style="margin-bottom:12px"><img src="' + post.image + '" loading="lazy" style="max-width:100%;border-radius:8px;cursor:pointer" onclick="openLightbox(\'' + post.image + '\')" onerror="this.outerHTML=\'<div style=padding:12px;color:var(--text3);font-size:.82rem>⚠️ 이미지를 불러올 수 없습니다</div>\'"></div>';
+    html += '<div style="margin-bottom:12px"><img src="' + safeImgSrc(post.image) + '" loading="lazy" style="max-width:100%;border-radius:8px;cursor:pointer" onclick="openLightbox(this.src)" onerror="this.outerHTML=\'<div style=padding:12px;color:var(--text3);font-size:.82rem>⚠️ 이미지를 불러올 수 없습니다</div>\'"></div>';
   }
   html += '<div style="display:flex;gap:14px;align-items:center;padding-bottom:8px;border-bottom:1px solid var(--border);flex-wrap:wrap">';
   if (state.isGuest) {
-    html += '<button class="anon-action-btn" onclick="alert(\'로그인 후 이용 가능합니다.\')">🤍 ' + (post.likes || 0) + '</button>';
+    html += '<button class="anon-action-btn" onclick="alert(\'로그인 후 이용 가능합니다.\')">🤍 ' + (Number(post.likes) || 0) + '</button>';
   } else {
-    html += '<button class="anon-action-btn' + (liked ? ' liked' : '') + '" onclick="toggleAnonLike(\'' + postId + '\');setTimeout(function(){openAnonDetail(\'' + postId + '\')},500)">' + (liked ? '❤️' : '🤍') + ' ' + (post.likes || 0) + '</button>';
+    html += '<button class="anon-action-btn' + (liked ? ' liked' : '') + '" onclick="toggleAnonLike(\'' + escapeJsArg(postId) + '\');setTimeout(function(){openAnonDetail(\'' + escapeJsArg(postId) + '\')},500)">' + (liked ? '❤️' : '🤍') + ' ' + (Number(post.likes) || 0) + '</button>';
   }
   html += '<span class="anon-time">' + _timeAgo(d) + '</span>';
   var isOwner = post.createdBy === uid;
   var isAdmin = state.currentUserRole === 'superadmin' || state.currentUserRole === 'admin';
   if (isOwner) {
-    html += '<button class="anon-action-btn" onclick="openEditAnon(\'' + postId + '\')" style="margin-left:auto">✏️ 수정</button>';
+    html += '<button class="anon-action-btn" onclick="openEditAnon(\'' + escapeJsArg(postId) + '\')" style="margin-left:auto">✏️ 수정</button>';
   }
   if (isOwner || isAdmin) {
-    html += '<button class="anon-action-btn" onclick="deleteAnon(\'' + postId + '\')" style="color:#ef4444">🗑️ 삭제</button>';
+    html += '<button class="anon-action-btn" onclick="deleteAnon(\'' + escapeJsArg(postId) + '\')" style="color:#ef4444">🗑️ 삭제</button>';
   }
   html += '</div>';
 
@@ -3931,7 +3938,7 @@ function openAnonDetail(postId) {
     document.getElementById('anonCommentList').innerHTML = '';
     return;
   }
-  if (commentHeader) commentHeader.innerHTML = '💬 댓글 <span id="anonCommentCount">' + (post.commentCount || 0) + '</span>';
+  if (commentHeader) commentHeader.innerHTML = '💬 댓글 <span id="anonCommentCount">' + (Number(post.commentCount) || 0) + '</span>';
 
   // 댓글 실시간 구독
   if (_anonCommentUnsub) _anonCommentUnsub();
@@ -3968,7 +3975,7 @@ function _renderAnonComments(comments) {
     var cmtAuthor = (state.isGuest && rawCmtAuthor !== '익명') ? escapeHtml(maskName(rawCmtAuthor)) : escapeHtml(rawCmtAuthor);
     html += '<span class="anon-comment-name">' + cmtAuthor + '</span>';
     html += '<span class="anon-comment-time">' + _timeAgo(d);
-    if (isAdmin) html += ' <button onclick="deleteAnonComment(\'' + _anonDetailId + '\',\'' + c.id + '\')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:.68rem">🗑️</button>';
+    if (isAdmin) html += ' <button onclick="deleteAnonComment(\'' + escapeJsArg(_anonDetailId) + '\',\'' + escapeJsArg(c.id) + '\')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:.68rem">🗑️</button>';
     html += '</span>';
     html += '</div>';
     html += '<div class="anon-comment-text">' + escapeHtml(c.text) + '</div>';
@@ -4033,9 +4040,9 @@ function openTeamDivideModal() {
     var roleClass = isDriver ? 'team-role-driver' : 'team-role-passenger';
     var roleText = isDriver ? '운전' : '동승';
     html += '<div class="team-member-row">';
-    html += '<input type="checkbox" class="team-cb" id="team-' + m.id + '" data-id="' + m.id + '" checked onchange="updateTeamCount()">';
-    html += '<label for="team-' + m.id + '">' + escapeHtml(displayName(m.name)) + '</label>';
-    html += '<button class="team-role-badge ' + roleClass + '" style="border:none;cursor:pointer" data-id="' + m.id + '" onclick="toggleTeamRole(this)">🚗 ' + roleText + '</button>';
+    html += '<input type="checkbox" class="team-cb" id="team-' + escapeHtml(m.id) + '" data-id="' + escapeHtml(m.id) + '" checked onchange="updateTeamCount()">';
+    html += '<label for="team-' + escapeHtml(m.id) + '">' + escapeHtml(displayName(m.name)) + '</label>';
+    html += '<button class="team-role-badge ' + roleClass + '" style="border:none;cursor:pointer" data-id="' + escapeHtml(m.id) + '" onclick="toggleTeamRole(this)">🚗 ' + roleText + '</button>';
     html += '</div>';
   });
 
@@ -4272,7 +4279,7 @@ function searchParkingDest() {
       }
       var html = '';
       data.slice(0, 8).forEach(function(place) {
-        html += '<div class="parking-dest-item" onclick="selectParkingDest(' + place.y + ',' + place.x + ',\'' + escapeHtml(place.place_name).replace(/'/g, "\\'") + '\')">';
+        html += '<div class="parking-dest-item" onclick="selectParkingDest(' + Number(place.y) + ',' + Number(place.x) + ',\'' + escapeJsArg(place.place_name) + '\')">';
         html += '<div class="parking-dest-name">' + escapeHtml(place.place_name) + '</div>';
         html += '<div class="parking-dest-addr">' + escapeHtml(place.address_name || '') + '</div>';
         html += '</div>';
@@ -4326,10 +4333,10 @@ function _renderParkingList(places) {
     html += '<div class="parking-info">';
     html += '<div class="parking-name">' + escapeHtml(p.place_name) + '</div>';
     html += '<div class="parking-addr">' + escapeHtml(p.road_address_name || p.address_name || '') + '</div>';
-    if (p.phone) html += '<div class="parking-phone">📞 <a href="tel:' + p.phone + '">' + escapeHtml(p.phone) + '</a></div>';
-    html += '<button class="gas-nav-btn" onclick="event.stopPropagation();openGasNavigation(' + p.y + ',' + p.x + ',\'' + escapeHtml(p.place_name).replace(/'/g, "\\'") + '\')">🗺️ 길안내</button>';
+    if (p.phone) html += '<div class="parking-phone">📞 <a href="tel:' + escapeHtml(p.phone) + '">' + escapeHtml(p.phone) + '</a></div>';
+    html += '<button class="gas-nav-btn" onclick="event.stopPropagation();openGasNavigation(' + Number(p.y) + ',' + Number(p.x) + ',\'' + escapeJsArg(p.place_name) + '\')">🗺️ 길안내</button>';
     html += '</div>';
-    html += '<div class="parking-dist">' + dist + '</div>';
+    html += '<div class="parking-dist">' + escapeHtml(dist) + '</div>';
     html += '</div>';
   });
 
@@ -4378,7 +4385,7 @@ function _renderParkingMap(places) {
     var dist = p.distance ? (Number(p.distance) < 1000 ? p.distance + 'm' : (Number(p.distance) / 1000).toFixed(1) + 'km') : '';
     var infoContent = '<div style="padding:4px 8px;font-size:12px;white-space:nowrap;background:#fff;border-radius:4px;color:#333">'
       + '<b>' + (i + 1) + '. ' + escapeHtml(p.place_name) + '</b>'
-      + (dist ? '<br><span style="color:#60a5fa">' + dist + '</span>' : '')
+      + (dist ? '<br><span style="color:#60a5fa">' + escapeHtml(dist) + '</span>' : '')
       + '</div>';
 
     var infowindow = new kakao.maps.InfoWindow({ content: infoContent, removable: true });
@@ -4443,7 +4450,7 @@ function avatarEl(m) {
   const color = _avatarFallback(m.name);
   const initial = escapeHtml(m.name?.[0] || '?');
   const fallback = `<span style="background:${color};color:#fff;width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:inherit;font-weight:700">${initial}</span>`;
-  if (m.image) return `<img src="${m.image}" alt="${escapeHtml(displayName(m.name))}" style="width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.outerHTML=this.dataset.fallback" data-fallback='${fallback.replace(/'/g, "&#39;")}'>`;
+  if (m.image) return `<img src="${safeImgSrc(m.image)}" alt="${escapeHtml(displayName(m.name))}" style="width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.outerHTML=this.dataset.fallback" data-fallback='${fallback.replace(/'/g, "&#39;")}'>`;
   return fallback;
 }
 
@@ -4451,7 +4458,7 @@ function avatarSmall(m) {
   const color = _avatarFallback(m.name);
   const initial = escapeHtml(m.name?.[0] || '?');
   const fallback = `<span style="background:${color};color:#fff;width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700;flex-shrink:0">${initial}</span>`;
-  if (m.image) return `<img src="${m.image}" style="width:28px;height:28px;border-radius:50%;object-fit:cover" onerror="this.outerHTML=this.dataset.fallback" data-fallback='${fallback.replace(/'/g, "&#39;")}'>`;
+  if (m.image) return `<img src="${safeImgSrc(m.image)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover" onerror="this.outerHTML=this.dataset.fallback" data-fallback='${fallback.replace(/'/g, "&#39;")}'>`;
   return fallback;
 }
 
@@ -4533,7 +4540,7 @@ function profilePreviewHtml(src, isNew) {
   const label = isNew ? '선택된 새 사진' : '현재 사진 · 새 파일 선택 시 교체됩니다';
   return `<div class="preview-inline">
     <div class="preview-thumb-wrap">
-      <img src="${src}" class="preview-thumb-profile">
+      <img src="${safeImgSrc(src)}" class="preview-thumb-profile">
       <button type="button" class="preview-thumb-del" onclick="clearPhotoPreview('memberImage','memberImagePreview')">✕</button>
     </div>
     <span class="preview-label">${label}</span>
@@ -4544,7 +4551,7 @@ function carPreviewHtml(src, isNew) {
   const label = isNew ? '선택된 새 사진' : '현재 사진 · 새 파일 선택 시 교체됩니다';
   return `<div class="preview-inline">
     <div class="preview-thumb-wrap">
-      <img src="${src}" class="preview-thumb-34">
+      <img src="${safeImgSrc(src)}" class="preview-thumb-34">
       <button type="button" class="preview-thumb-del" onclick="clearPhotoPreview('carImage','carImagePreview')">✕</button>
     </div>
     <span class="preview-label">${label}</span>
@@ -4553,7 +4560,7 @@ function carPreviewHtml(src, isNew) {
 
 function quizPreviewHtml(src) {
   return `<div class="preview-thumb-wrap" style="display:inline-block;margin-top:6px">
-    <img src="${src}" class="preview-thumb-quiz">
+    <img src="${safeImgSrc(src)}" class="preview-thumb-quiz">
     <button type="button" class="preview-thumb-del" onclick="clearPhotoPreview('quizPhoto','quizPhotoPreview')">✕</button>
   </div>`;
 }
@@ -4587,6 +4594,22 @@ function escapeHtml(text) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+// 인라인 핸들러(onclick="fn('...')")의 JS 문자열 인자용 이스케이프 (JS 문자열 → HTML 속성 순서)
+function escapeJsArg(text) {
+  return escapeHtml(String(text ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '\\"')
+    .replace(/[\r\n\u2028\u2029]/g, ''));
+}
+
+// 이미지 src 허용 목록: base64 data:image 또는 https:// 만 통과 (그 외는 빈 문자열)
+function safeImgSrc(u) {
+  var s = String(u ?? '');
+  if (/^data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+\/=]+$/.test(s) || /^https:\/\//.test(s)) return escapeHtml(s);
+  return '';
 }
 
 function linkify(text) {
@@ -4857,11 +4880,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // 키보드 라이트박스 이동
+  // 키보드 라이트박스 닫기 (단일 이미지라 좌우 이동 없음)
   document.addEventListener('keydown', e => {
     if (!document.getElementById('lightbox').classList.contains('active')) return;
-    if (e.key === 'ArrowLeft') lightboxNav(-1);
-    if (e.key === 'ArrowRight') lightboxNav(1);
     if (e.key === 'Escape') closeLightbox();
   });
 
@@ -4937,7 +4958,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 초기 URL로 페이지 복원 (pathname 또는 hash 호환)
   const path = location.pathname.slice(1) || location.hash.replace('#', '') || 'home';
-  const validPages = ['home', 'members', 'cars', 'events', 'gallery', 'admin'];
+  const validPages = ['home', 'members', 'cars', 'events', 'gallery', 'anon', 'admin'];
   const initPage = validPages.includes(path) ? path : 'home';
   goPage(initPage, false);
   history.replaceState({ page: state.currentPage }, '', '/' + (state.currentPage === 'home' ? '' : state.currentPage));
@@ -5525,7 +5546,7 @@ function renderCostSummary() {
 
   document.getElementById('costSummary').innerHTML = `
     <div class="cost-month-nav"><button class="btn btn-sm btn-outline" onclick="changeCostMonth(-1)">◀</button><span class="cost-month-label">${monthLabel}</span><button class="btn btn-sm btn-outline" onclick="changeCostMonth(1)">▶</button></div>
-    <div class="cost-total-card"><span class="cost-total-label">이번 달 총 지출</span><span class="cost-total-amount">₩${total.toLocaleString()}</span></div>
+    <div class="cost-total-card"><span class="cost-total-label">이번 달 총 지출</span><span class="cost-total-amount">₩${escapeHtml(total.toLocaleString())}</span></div>
     ${barsHtml ? `<div class="cost-bars">${barsHtml}</div>` : ''}`;
 }
 
@@ -5574,7 +5595,7 @@ function renderCostList() {
       if (r.mileage) detail += ` · ${r.mileage.toLocaleString()}km`;
     }
     if (r.memo) detail += (detail ? ' · ' : '') + r.memo;
-    return `<div class="cost-record-card"><div class="cost-record-left"><span class="cost-record-icon" style="background:${info.color}">${info.icon}</span><div><div class="cost-record-cat">${info.label}</div><div class="cost-record-date">${dateStr}</div>${detail ? `<div class="cost-record-detail">${detail}</div>` : ''}</div></div><div class="cost-record-right"><span class="cost-record-amount">₩${(r.amount||0).toLocaleString()}</span><div class="cost-record-actions"><button class="btn-icon" onclick="editCostRecord('${r.id}')" title="수정">✏️</button><button class="btn-icon" onclick="deleteCostRecord('${r.id}')" title="삭제">🗑️</button></div></div></div>`;
+    return `<div class="cost-record-card"><div class="cost-record-left"><span class="cost-record-icon" style="background:${info.color}">${info.icon}</span><div><div class="cost-record-cat">${info.label}</div><div class="cost-record-date">${dateStr}</div>${detail ? `<div class="cost-record-detail">${escapeHtml(detail)}</div>` : ''}</div></div><div class="cost-record-right"><span class="cost-record-amount">₩${escapeHtml((r.amount||0).toLocaleString())}</span><div class="cost-record-actions"><button class="btn-icon" onclick="editCostRecord('${escapeJsArg(r.id)}')" title="수정">✏️</button><button class="btn-icon" onclick="deleteCostRecord('${escapeJsArg(r.id)}')" title="삭제">🗑️</button></div></div></div>`;
   }).join('');
   document.getElementById('costListView').innerHTML = html;
 }
@@ -5609,7 +5630,7 @@ async function renderCostStats() {
     }
     const barChartId = 'costBarChart_' + Date.now();
     const donutChartId = 'costDonutChart_' + Date.now();
-    container.innerHTML = `<div class="cost-stats-summary"><div class="cost-stat-card"><span class="cost-stat-label">📈 ${year}년 총 지출</span><span class="cost-stat-value">₩${yearTotal.toLocaleString()}</span></div><div class="cost-stat-card"><span class="cost-stat-label">📊 월 평균</span><span class="cost-stat-value">₩${monthAvg.toLocaleString()}</span></div>${fuelEfficiency ? `<div class="cost-stat-card"><span class="cost-stat-label">⛽ 평균 연비</span><span class="cost-stat-value">${fuelEfficiency} km/L</span></div>` : ''}</div><div class="cost-chart-section"><h4>월별 지출 추이</h4><canvas id="${barChartId}" width="600" height="260" style="width:100%;max-height:260px"></canvas></div><div class="cost-chart-section"><h4>카테고리별 비율</h4><canvas id="${donutChartId}" width="300" height="300" style="width:100%;max-width:300px;max-height:300px;margin:0 auto;display:block"></canvas></div>`;
+    container.innerHTML = `<div class="cost-stats-summary"><div class="cost-stat-card"><span class="cost-stat-label">📈 ${year}년 총 지출</span><span class="cost-stat-value">₩${escapeHtml(yearTotal.toLocaleString())}</span></div><div class="cost-stat-card"><span class="cost-stat-label">📊 월 평균</span><span class="cost-stat-value">₩${monthAvg.toLocaleString()}</span></div>${fuelEfficiency ? `<div class="cost-stat-card"><span class="cost-stat-label">⛽ 평균 연비</span><span class="cost-stat-value">${fuelEfficiency} km/L</span></div>` : ''}</div><div class="cost-chart-section"><h4>월별 지출 추이</h4><canvas id="${barChartId}" width="600" height="260" style="width:100%;max-height:260px"></canvas></div><div class="cost-chart-section"><h4>카테고리별 비율</h4><canvas id="${donutChartId}" width="300" height="300" style="width:100%;max-width:300px;max-height:300px;margin:0 auto;display:block"></canvas></div>`;
     drawCostBarChart(barChartId, monthlyData, year);
     drawCostDonutChart(donutChartId, catData);
   } catch(err) { container.innerHTML = '<p style="text-align:center;color:var(--accent);padding:20px">통계를 불러오지 못했습니다.</p>'; }

@@ -183,7 +183,7 @@ function renderBriefing(posts) {
     + '</div>'
     + '<div class="briefing-title">' + escapeHtml(p.title || '') + '</div>'
     + '<div class="briefing-preview" id="briefingPreview">' + preview + '</div>'
-    + '<div class="briefing-body" id="briefingBody" style="display:none">' + bodyEscaped + '</div>'
+    + '<div class="briefing-body" id="briefingBodyView" style="display:none">' + bodyEscaped + '</div>'
     + '<button class="briefing-toggle-btn" onclick="toggleLatestBriefing(this)">더보기 ▾</button>';
 
   if (posts.length > 1) {
@@ -209,7 +209,7 @@ function renderBriefing(posts) {
 function toggleLatestBriefing(btn) {
   var card = btn.parentElement;
   var preview = card.querySelector('#briefingPreview');
-  var body = card.querySelector('#briefingBody');
+  var body = card.querySelector('#briefingBodyView');
   var open = body.style.display !== 'none';
   preview.style.display = open ? '' : 'none';
   body.style.display = open ? 'none' : '';

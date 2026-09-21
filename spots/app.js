@@ -178,7 +178,7 @@ function renderMapOverlays(spots, courses) {
     if (!spot.lat || !spot.lng) return;
     var color = CATEGORY_COLOR[spot.category] || '#888';
     var emoji = CATEGORY_EMOJI[spot.category] || '📍';
-    var content = '<div class="map-marker" style="background:' + color + '" onclick="selectSpot(\'' + spot.id + '\')" title="' + escapeHtml(spot.name) + '">' + emoji + '</div>';
+    var content = '<div class="map-marker" style="background:' + color + '" onclick="selectSpot(\'' + escapeJsArg(spot.id) + '\')" title="' + escapeHtml(spot.name) + '">' + emoji + '</div>';
     var overlay = new kakao.maps.CustomOverlay({
       position: new kakao.maps.LatLng(spot.lat, spot.lng),
       content: content, yAnchor: 1.2
@@ -196,7 +196,7 @@ function renderCourseOverlay(course) {
   if (validWps.length < 2) return;
 
   validWps.forEach(function(wp, i) {
-    var content = '<div class="map-marker course-wp" onclick="selectCourse(\'' + course.id + '\')" title="' + escapeHtml(course.name) + '">' + (i + 1) + '</div>';
+    var content = '<div class="map-marker course-wp" onclick="selectCourse(\'' + escapeJsArg(course.id) + '\')" title="' + escapeHtml(course.name) + '">' + (i + 1) + '</div>';
     var overlay = new kakao.maps.CustomOverlay({
       position: new kakao.maps.LatLng(wp.lat, wp.lng),
       content: content, yAnchor: 1.2
@@ -325,7 +325,7 @@ function renderSpotCard(spot) {
   var color = CATEGORY_COLOR[spot.category] || '#888';
   var emoji = CATEGORY_EMOJI[spot.category] || '📍';
   var photo = spot.photo || '';
-  return '<div class="spot-card" id="card-spot-' + spot.id + '" onclick="selectSpot(\'' + spot.id + '\')">'
+  return '<div class="spot-card" id="card-spot-' + escapeHtml(spot.id) + '" onclick="selectSpot(\'' + escapeJsArg(spot.id) + '\')">'
     + (photo
       ? '<img class="spot-card-img" src="' + escapeHtml(photo) + '" alt="" onerror="this.className=\'spot-card-img no-photo\';this.outerHTML=\'<div class=&quot;spot-card-img no-photo&quot;>' + emoji + '</div>\'">'
       : '<div class="spot-card-img no-photo">' + emoji + '</div>')
@@ -335,15 +335,15 @@ function renderSpotCard(spot) {
     + (spot.address ? ' · ' + escapeHtml(spot.address) : '') + '</div>'
     + (spot.memo ? '<div class="spot-card-memo">' + escapeHtml(spot.memo) + '</div>' : '')
     + '</div>'
-    + (isAdmin ? '<button class="spot-edit-btn" onclick="event.stopPropagation();openEditSpotModal(\'' + spot.id + '\')">✎</button>' : '')
-    + (isAdmin ? '<button class="spot-del-btn" onclick="event.stopPropagation();deleteSpot(\'' + spot.id + '\')">✕</button>' : '')
+    + (isAdmin ? '<button class="spot-edit-btn" onclick="event.stopPropagation();openEditSpotModal(\'' + escapeJsArg(spot.id) + '\')">✎</button>' : '')
+    + (isAdmin ? '<button class="spot-del-btn" onclick="event.stopPropagation();deleteSpot(\'' + escapeJsArg(spot.id) + '\')">✕</button>' : '')
     + '</div>';
 }
 
 function renderCourseCard(course) {
   var wpCount = (course.waypoints || []).length;
   var photo = course.photo || '';
-  return '<div class="spot-card" id="card-course-' + course.id + '" onclick="selectCourse(\'' + course.id + '\')">'
+  return '<div class="spot-card" id="card-course-' + escapeHtml(course.id) + '" onclick="selectCourse(\'' + escapeJsArg(course.id) + '\')">'
     + (photo
       ? '<img class="spot-card-img" src="' + escapeHtml(photo) + '" alt="" onerror="this.className=\'spot-card-img no-photo\';this.outerHTML=\'<div class=&quot;spot-card-img no-photo&quot;>🛣️</div>\'">'
       : '<div class="spot-card-img no-photo">🛣️</div>')
@@ -351,12 +351,12 @@ function renderCourseCard(course) {
     + '<div class="spot-card-name">' + escapeHtml(course.name) + '</div>'
     + '<div class="spot-card-meta"><span style="color:' + COURSE_COLOR + '">🛣️ 드라이브 코스</span>'
     + ' · ' + wpCount + '개 경유지'
-    + (course.distance ? ' · ' + course.distance + 'km' : '')
-    + (course.duration ? ' · 약 ' + course.duration + '분' : '') + '</div>'
+    + (course.distance ? ' · ' + escapeHtml(course.distance) + 'km' : '')
+    + (course.duration ? ' · 약 ' + escapeHtml(course.duration) + '분' : '') + '</div>'
     + (course.description ? '<div class="spot-card-memo">' + escapeHtml(course.description) + '</div>' : '')
     + '</div>'
-    + (isAdmin || (currentUser && currentUser.uid === course.addedBy) ? '<button class="spot-edit-btn" onclick="event.stopPropagation();openEditCourseModal(\'' + course.id + '\')">✎</button>' : '')
-    + (isAdmin ? '<button class="spot-del-btn" onclick="event.stopPropagation();deleteCourse(\'' + course.id + '\')">✕</button>' : '')
+    + (isAdmin || (currentUser && currentUser.uid === course.addedBy) ? '<button class="spot-edit-btn" onclick="event.stopPropagation();openEditCourseModal(\'' + escapeJsArg(course.id) + '\')">✎</button>' : '')
+    + (isAdmin ? '<button class="spot-del-btn" onclick="event.stopPropagation();deleteCourse(\'' + escapeJsArg(course.id) + '\')">✕</button>' : '')
     + '</div>';
 }
 
@@ -400,8 +400,8 @@ function openSpotDetail(spot) {
   if (spot.memo) html += '<div class="detail-memo">' + escapeHtml(spot.memo) + '</div>';
   if (spot.lat && spot.lng) {
     html += '<div class="open-map-btns">'
-      + '<a href="https://map.kakao.com/link/to/' + encodeURIComponent(spot.name) + ',' + spot.lat + ',' + spot.lng + '" target="_blank">카카오맵</a>'
-      + '<a href="https://map.naver.com/v5/search/' + encodeURIComponent(spot.name) + '?c=' + spot.lng + ',' + spot.lat + ',15,0,0,0,dh" target="_blank">네이버맵</a>'
+      + '<a href="https://map.kakao.com/link/to/' + encodeURIComponent(spot.name) + ',' + escapeHtml(spot.lat) + ',' + escapeHtml(spot.lng) + '" target="_blank">카카오맵</a>'
+      + '<a href="https://map.naver.com/v5/search/' + encodeURIComponent(spot.name) + '?c=' + escapeHtml(spot.lng) + ',' + escapeHtml(spot.lat) + ',15,0,0,0,dh" target="_blank">네이버맵</a>'
       + '</div>';
   }
   document.getElementById('detailBody').innerHTML = html;
@@ -416,8 +416,8 @@ function openCourseDetail(course) {
   html += '<div class="detail-name">' + escapeHtml(course.name) + '</div>';
   if (course.distance || course.duration) {
     html += '<div class="route-info">';
-    if (course.distance) html += '<div class="route-info-item"><span class="route-info-label">총 거리</span><span class="route-info-value">' + course.distance + 'km</span></div>';
-    if (course.duration) html += '<div class="route-info-item"><span class="route-info-label">예상 시간</span><span class="route-info-value">' + course.duration + '분</span></div>';
+    if (course.distance) html += '<div class="route-info-item"><span class="route-info-label">총 거리</span><span class="route-info-value">' + escapeHtml(course.distance) + 'km</span></div>';
+    if (course.duration) html += '<div class="route-info-item"><span class="route-info-label">예상 시간</span><span class="route-info-value">' + escapeHtml(course.duration) + '분</span></div>';
     html += '</div>';
   }
   if (course.description) html += '<div class="detail-memo">' + escapeHtml(course.description) + '</div>';
@@ -755,7 +755,12 @@ function shareThisPage() {
 
 function escapeHtml(str) {
   if (!str) return '';
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+
+// 인라인 핸들러(onclick="fn('...')")의 JS 문자열 인자용 이스케이프 (JS 문자열 → HTML 속성 순서)
+function escapeJsArg(str) {
+  return escapeHtml(String(str == null ? '' : str).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"').replace(/[\r\n]/g,''));
 }
 
 // ===== 시작 =====
