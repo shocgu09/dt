@@ -15,6 +15,9 @@
 .mk-bar .down, .mk-card .down, .mk-pos .down, .mk-rank .down, .mk-hold .down, .mk-hall .down { color: var(--stock-down); }
 .mk-bar .flat, .mk-card .flat, .mk-pos .flat, .mk-rank .flat { color: var(--stock-flat); }
 
+.mk-bar-rank { font-weight: 800; color: var(--primary-light); }
+.mk-bar-rank i { font-style: normal; font-weight: 600; color: var(--text3); font-size: .74rem; }
+
 /* 카드 */
 .mk-card {
   background: var(--bg2); border: 1px solid var(--border); border-top: 3px solid var(--primary);
@@ -128,6 +131,28 @@
 .mk-sheet-msg.ok { color: var(--primary-light); }
 .mk-submit { width: 100%; }
 
+/* 참가 절차 */
+.mk-joinflow { border-top-color: var(--primary); }
+.mk-jf-step { font-size: .72rem; font-weight: 800; color: var(--text3); letter-spacing: .5px; margin-bottom: 8px; }
+.mk-jf-title { font-size: 1.2rem; font-weight: 800; line-height: 1.4; letter-spacing: -.3px; margin-bottom: 10px; }
+.mk-jf-lead { font-size: .88rem; color: var(--text2); line-height: 1.7; }
+.mk-jf-lead b, .mk-rules b { color: var(--text); }
+.mk-jf-h { font-size: .8rem; font-weight: 800; margin: 16px 0 8px; }
+.mk-jf-notice { border: 1px solid var(--border); border-left: 3px solid var(--primary); padding: 10px 12px; font-size: .84rem; color: var(--text); line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+.mk-joinflow .mk-rules { margin-bottom: 0; }
+.mk-jf-check { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 12px; border: 1px solid var(--border); font-size: .88rem; font-weight: 700; cursor: pointer; }
+.mk-jf-check input { width: 20px; height: 20px; accent-color: var(--primary); flex-shrink: 0; }
+.mk-jf-btns { display: flex; gap: 8px; margin-top: 16px; }
+.mk-jf-btns .btn-ghost { flex: 1; padding: 13px; }
+.mk-jf-btns .btn-submit { flex: 2; padding: 13px; font-size: .92rem; }
+.mk-jf-done { font-size: 2.6rem; text-align: center; margin: 8px 0; }
+
+/* 순위 변동 표시 (실시간 갱신) */
+.mk-rank.moved-up { animation: mk-mv-up 1.6s ease-out; }
+.mk-rank.moved-down { animation: mk-mv-down 1.6s ease-out; }
+@keyframes mk-mv-up { from { background: var(--bull-bg); } }
+@keyframes mk-mv-down { from { background: var(--bear-bg); } }
+
 /* 체결 알림 */
 .mk-toast {
   position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%);
@@ -146,6 +171,6 @@
 .mk-admin .form-grid { margin-top: 12px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .mk-sheet { animation: none; }
+  .mk-sheet, .mk-rank.moved-up, .mk-rank.moved-down { animation: none; }
   .mk-toast { transition: none; }
 }

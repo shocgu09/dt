@@ -154,7 +154,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     return {
       season: season && {
         id: season.id, name: season.name, startDate: season.start_date, endDate: season.end_date,
-        seed: season.seed, feeRate: season.fee_rate, taxRate: season.tax_rate
+        seed: season.seed, feeRate: season.fee_rate, taxRate: season.tax_rate, notice: season.notice || ''
       },
       next, joined: !!account, participants: count ? count.n : 0, isAdmin, ...sessionInfo(now)
     };
@@ -167,7 +167,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
   }
 
   if (path === '/leaderboard' && method === 'GET') {
-    const board = await memo(`lb:${season.id}`, 30000, () => leaderboard(db, season, now));
+    const board = await liveBoard(db, season, now);
     const me = board.rows.find((r) => r.uid === uid);
     return {
       season: { id: season.id, name: season.name, seed: season.seed, endDate: season.end_date },
@@ -186,7 +186,11 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     await db.prepare(`UPDATE accounts SET nickname=? WHERE season_id=? AND uid=?`).bind(profile.name, season.id, uid).run();
   }
 
-  if (path === '/account' && method === 'GET') return accountView(db, season, account, now);
+  if (path === '/account' && method === 'GET') {
+    const [view, board] = await Promise.all([accountView(db, season, account, now), liveBoard(db, season, now)]);
+    const me = board.rows.find((r) => r.uid === uid);
+    return { ...view, rank: me ? me.rank : null, participants: board.rows.length };
+  }
 
   if (path === '/orders' && method === 'POST') {
     const input = await body();
@@ -269,6 +273,11 @@ async function accountView(db, season, account, now) {
   };
 }
 
+/** 실시간 순위표 — 10초 동안은 같은 계산을 다시 하지 않는다 (시세는 3초 캐시를 함께 쓴다) */
+function liveBoard(db, season, now) {
+  return memo(`lb:${season.id}`, 10000, () => leaderboard(db, season, now));
+}
+
 async function leaderboard(db, season, now, official) {
   const [accRes, posRes] = await Promise.all([
     db.prepare(`SELECT uid, nickname, cash, fills, joined_at FROM accounts WHERE season_id=? AND status='active'`).bind(season.id).all(),
@@ -295,13 +304,14 @@ async function handleAdmin(db, actor, path, method, body, now) {
     }
     // 기본값은 기획안 v2 — 시드 1억, 수수료 0.015%, 매도세 0.20%
     await db.prepare(
-      `INSERT INTO seasons (id, name, start_date, end_date, seed, fee_rate, tax_rate, volume_fill, status)
-       VALUES (?,?,?,?,?,?,?,?, 'upcoming')
+      `INSERT INTO seasons (id, name, start_date, end_date, seed, fee_rate, tax_rate, volume_fill, notice, status)
+       VALUES (?,?,?,?,?,?,?,?,?, 'upcoming')
        ON CONFLICT (id) DO UPDATE SET name=excluded.name, start_date=excluded.start_date, end_date=excluded.end_date,
-         seed=excluded.seed, fee_rate=excluded.fee_rate, tax_rate=excluded.tax_rate, volume_fill=excluded.volume_fill`
+         seed=excluded.seed, fee_rate=excluded.fee_rate, tax_rate=excluded.tax_rate, volume_fill=excluded.volume_fill,
+         notice=excluded.notice`
     ).bind(b.id, String(b.name).slice(0, 40), b.startDate, b.endDate, Number(b.seed) || 100000000,
       b.feeRate != null ? Number(b.feeRate) : 0.00015, b.taxRate != null ? Number(b.taxRate) : 0.002,
-      b.volumeFill === false ? 0 : 1).run();
+      b.volumeFill === false ? 0 : 1, String(b.notice || '').slice(0, 1000) || null).run();
     await log('season.upsert', b);
     return { ok: true };
   }

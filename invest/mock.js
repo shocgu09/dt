@@ -69,8 +69,8 @@ var Mock = (function () {
     }
     await refreshSeason();
     renderTradeBar();
-    // 아직 참가 전이면 계좌 탭에서 참가 안내를 보여 준다
-    if (season && season.season && !season.joined) switchTab('account');
+    // 아직 참가 전이면 참가 여부부터 묻는다 (닫아도 계좌 탭에 참가 안내가 남는다)
+    if (season && season.season && !season.joined) { switchTab('account'); openJoinFlow(); }
   }
 
   async function refreshSeason() {
@@ -102,19 +102,23 @@ var Mock = (function () {
     el.innerHTML = '<span class="mk-bar-label">💼 내 자산</span>'
       + '<b class="mk-bar-eq">' + won(account.equity) + '</b>'
       + rateHtml(account.returnRate)
+      + (account.rank ? '<span class="mk-bar-rank">' + account.rank + '위<i>/' + fmtNum(account.participants) + '</i></span>' : '')
       + '<span class="mk-bar-go">계좌 →</span>';
   }
 
   /* ===== 탭 전환 훅 (app.js switchTab 에서 호출) ===== */
   function onTab(tab) {
     Poller.remove('mock-acc');
+    Poller.remove('mock-rank');
     if (!on) return;
     if (tab === 'account') {
       renderAccount();
       // 장중에는 10초, 장외에는 2분 — 계좌 탭을 보고 있을 때만 돈다
       Poller.add('mock-acc', refreshAccountOrSeason, pollMs(10000, 120000));
     } else if (tab === 'ranking') {
-      loadRanking();
+      _rankBuilt = false;
+      // 순위는 실시간 — 랭킹 탭을 보고 있는 동안 장중 10초마다 다시 매긴다
+      Poller.add('mock-rank', loadRanking, pollMs(10000, 120000));
     }
   }
   function refreshAccountOrSeason() { return (season && season.joined) ? refreshAccount() : refreshSeason(); }
@@ -209,17 +213,93 @@ var Mock = (function () {
       +   '<li>주문 뒤에 실제로 거래된 가격으로 체결됩니다</li>'
       +   '<li>참가자 ' + fmtNum(season.participants) + '명 · 분기마다 초기화</li>'
       + '</ul>'
-      + '<button class="btn-submit mk-join-btn" onclick="Mock.join(this)">' + fmtCompact(s.seed) + '원 받고 시작하기</button>'
+      + '<button class="btn-submit mk-join-btn" onclick="Mock.openJoinFlow()">시즌 참여하기</button>'
       + '<p class="mk-note">가상의 자금이며 실제 돈과 무관합니다. 어떤 것으로도 교환되지 않습니다.</p>'
       + '</div>';
+  }
+
+  /* ===== 참가 절차: 참여 여부 → 주의사항·전달사항 확인 → 시드머니 지급 ===== */
+  function joinShell(inner) {
+    var el = document.getElementById('mkJoin');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'mkJoin';
+      el.className = 'mk-sheet-wrap';
+      document.body.appendChild(el);
+      document.body.classList.add('mk-noscroll');
+    }
+    el.innerHTML = '<div class="mk-sheet-dim" onclick="Mock.closeJoin()"></div>'
+      + '<div class="mk-sheet mk-joinflow" role="dialog" aria-modal="true" aria-label="시즌 참가">' + inner + '</div>';
+  }
+
+  function closeJoin() {
+    var el = document.getElementById('mkJoin');
+    if (el) el.remove();
+    if (!document.getElementById('mkSheet')) document.body.classList.remove('mk-noscroll');
+  }
+
+  function openJoinFlow() {
+    if (!season || !season.season || season.joined) return;
+    var s = season.season;
+    joinShell(
+        '<div class="mk-jf-step">1 / 2</div>'
+      + '<h3 class="mk-jf-title">🏁 ' + escapeHtml(s.name) + '에<br>참여하시겠습니까?</h3>'
+      + '<p class="mk-jf-lead">가상 시드머니 <b>' + fmtCompact(s.seed) + '원</b>으로 실제 주가에 맞춰 매매하고, '
+      +   '<b>' + escapeHtml(s.endDate) + '</b> 종가 기준 최종 자산으로 순위를 가립니다.</p>'
+      + '<div class="mk-grid">'
+      +   cell('기간', escapeHtml(s.startDate) + ' ~ ' + escapeHtml(s.endDate))
+      +   cell('현재 참가자', fmtNum(season.participants) + '명')
+      + '</div>'
+      + '<div class="mk-jf-btns"><button class="btn-ghost" onclick="Mock.closeJoin()">나중에</button>'
+      + '<button class="btn-submit" onclick="Mock.joinStep2()">참여하기</button></div>');
+  }
+
+  function joinStep2() {
+    if (!season || !season.season) return;
+    var s = season.season;
+    var li = function (arr) { return '<ul class="mk-rules">' + arr.map(function (t) { return '<li>' + t + '</li>'; }).join('') + '</ul>'; };
+    joinShell(
+        '<div class="mk-jf-step">2 / 2</div>'
+      + '<h3 class="mk-jf-title">참여 전에 확인해 주세요</h3>'
+      + (s.notice ? '<div class="mk-jf-h">📢 운영진 전달사항</div><div class="mk-jf-notice">' + escapeHtml(s.notice) + '</div>' : '')
+      + '<div class="mk-jf-h">⚠️ 주의사항</div>'
+      + li([
+          '<b>가상의 자금</b>입니다. 실제 돈과 무관하며 현금·포인트·상품 등 어떤 것으로도 교환되지 않습니다.',
+          '실제 매매·투자 권유가 아닙니다. 모의 결과는 실제 투자 성과와 다를 수 있습니다.',
+          '시세는 네이버 증권 기준이며 지연·오류가 있을 수 있습니다. 시세 오류로 생긴 체결은 운영진이 바로잡을 수 있습니다.',
+          '순위표에 <b>이름 · 총자산 · 수익률 · 체결 건수</b>가 회원들에게 공개됩니다. 보유 종목은 공개되지 않습니다.',
+          '1인 1계정입니다. 부정한 방법이 확인되면 순위에서 제외됩니다.'
+        ])
+      + '<div class="mk-jf-h">📌 매매 규칙</div>'
+      + li([
+          '시드머니 <b>' + fmtCompact(s.seed) + '원</b> · 분기마다 초기화 · 순위는 <b>실시간</b>, 최종 순위는 ' + escapeHtml(s.endDate) + ' 15:30 종가 기준',
+          '국내 상장 <b>전 종목</b> — 주식 · ETF(레버리지 · 인버스 포함) · ETN',
+          '정규장 08:30~15:30 지정가 / 시장가 · 시간외 08:00~08:30, 15:40~20:00 지정가만',
+          '수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2) + '% (ETF · ETN 면제) — 실전과 동일',
+          '주문 뒤에 <b>실제로 거래된 가격과 수량</b>으로 체결됩니다. 거래가 적은 종목은 여러 번에 나눠 체결될 수 있습니다.',
+          '신용 · 미수 · 공매도는 없고, 배당은 반영되지 않습니다.'
+        ])
+      + '<label class="mk-jf-check"><input type="checkbox" id="mkAgree" onchange="document.getElementById(\'mkJoinGo\').disabled = !this.checked"> 위 내용을 확인했습니다</label>'
+      + '<div class="mk-jf-btns"><button class="btn-ghost" onclick="Mock.closeJoin()">취소</button>'
+      + '<button class="btn-submit" id="mkJoinGo" disabled onclick="Mock.join(this)">' + fmtCompact(s.seed) + '원 받고 시작하기</button></div>');
+  }
+
+  function joinDone(cash) {
+    joinShell(
+        '<div class="mk-jf-done">🎉</div>'
+      + '<h3 class="mk-jf-title" style="text-align:center">시드머니 ' + fmtCompact(cash) + '원이<br>지급됐습니다</h3>'
+      + '<p class="mk-jf-lead" style="text-align:center">시세 탭에서 종목을 고르면 아래에 <b>매수 · 매도</b> 버튼이 나옵니다.</p>'
+      + '<div class="mk-jf-btns"><button class="btn-ghost" onclick="Mock.closeJoin()">계좌 보기</button>'
+      + '<button class="btn-submit" onclick="Mock.closeJoin(); switchTab(\'market\')">종목 보러 가기</button></div>');
   }
 
   async function join(btn) {
     btn.disabled = true; btn.textContent = '참가 중...';
     try {
-      await api('/join', 'POST');
+      var r = await api('/join', 'POST');
       await refreshSeason();
       renderAccount();
+      joinDone(r.cash);
     } catch (e) { alert(e.message); btn.disabled = false; btn.textContent = '다시 시도'; }
   }
 
@@ -258,10 +338,13 @@ var Mock = (function () {
   }
 
   /* ===== 랭킹 ===== */
+  var _rankBuilt = false, _hallHtml = null, _prevRank = {};
+
   async function loadRanking() {
     var el = document.getElementById('tab-ranking');
     if (!el) return;
-    el.innerHTML = '<div class="loading">순위를 불러오는 중...</div>';
+    // 갱신할 때마다 "불러오는 중"으로 깜빡이지 않게 첫 번만 표시한다
+    if (!_rankBuilt) el.innerHTML = '<div class="loading">순위를 불러오는 중...</div>';
     var h = '';
     try {
       var d = await api('/leaderboard');
@@ -271,7 +354,10 @@ var Mock = (function () {
       h += d.rows.length ? d.rows.map(function (r) {
         var rr = (r.equity - d.season.seed) / d.season.seed * 100;
         var medal = r.rank === 1 ? '🥇' : (r.rank === 2 ? '🥈' : (r.rank === 3 ? '🥉' : r.rank));
-        return '<div class="mk-rank' + (r.me ? ' me' : '') + '">'
+        // 직전 갱신보다 순위가 오르내렸으면 잠깐 표시한다
+        var was = _prevRank[r.nickname], move = (was && was !== r.rank) ? (was > r.rank ? ' moved-up' : ' moved-down') : '';
+        _prevRank[r.nickname] = r.rank;
+        return '<div class="mk-rank' + (r.me ? ' me' : '') + move + '">'
           + '<span class="mk-rank-no">' + medal + '</span>'
           + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(r.nickname) + (r.me ? ' <i class="mk-tag">나</i>' : '') + '</span>'
           +   '<span class="mk-pos-sub">체결 ' + fmtNum(r.fills) + '건</span></span>'
@@ -279,17 +365,18 @@ var Mock = (function () {
           +   '<span class="mk-pos-pnl ' + signClass(rr) + '">' + fmtRate(rr) + '</span></span>'
           + '</div>';
       }).join('') : '<div class="empty">아직 참가자가 없습니다.</div>';
-      h += '<div class="mk-note">순위는 ' + escapeHtml(d.season.endDate) + ' KRX 정규장 종가 기준 총자산으로 확정됩니다.</div></section>';
+      h += '<div class="mk-note">실시간 순위입니다 — 장중 10초마다 다시 매깁니다. 최종 순위는 ' + escapeHtml(d.season.endDate) + ' KRX 정규장 종가 기준 총자산으로 확정됩니다.</div></section>';
     } catch (e) {
       if (e.code !== 'no_season') h += '<div class="empty">' + escapeHtml(e.message) + '</div>';
       else h += '<div class="mk-card"><h3>지금은 진행 중인 시즌이 없습니다</h3></div>';
     }
-    try {
+    if (_hallHtml === null) try {
+      _hallHtml = '';
       var hall = await api('/hall');
       if (hall.items.length) {
         var by = {};
         hall.items.forEach(function (r) { (by[r.season_id] = by[r.season_id] || { name: r.season_name, rows: [] }).rows.push(r); });
-        h += '<section class="m-section"><div class="m-head"><h3>🏛 명예의 전당</h3></div>'
+        _hallHtml = '<section class="m-section"><div class="m-head"><h3>🏛 명예의 전당</h3></div>'
           + Object.keys(by).map(function (k) {
               return '<div class="mk-hall"><div class="mk-hall-name">' + escapeHtml(by[k].name) + '</div>'
                 + by[k].rows.slice(0, 3).map(function (r) {
@@ -299,7 +386,9 @@ var Mock = (function () {
             }).join('') + '</section>';
       }
     } catch (e) { /* 명예의 전당은 없어도 된다 */ }
-    el.innerHTML = h;
+    if (currentTab !== 'ranking') return;
+    el.innerHTML = h + (_hallHtml || '');
+    _rankBuilt = true;
   }
 
   /* ===== 종목 상세의 매수·매도 바 ===== */
@@ -553,6 +642,7 @@ var Mock = (function () {
       + '<input class="f-input" id="mkSname" placeholder="이름 (예: 프리시즌, 2027년 1분기)">'
       + '<div class="form-row"><input type="date" class="f-input" id="mkSstart" aria-label="시작일">'
       + '<input type="date" class="f-input" id="mkSend" aria-label="종료일"></div>'
+      + '<textarea class="f-textarea" id="mkSnotice" maxlength="1000" placeholder="전달사항 (선택) — 참가 안내 창에 표시됩니다" style="min-height:80px"></textarea>'
       + '<button class="btn-submit" onclick="Mock.saveSeason(this)">시즌 저장</button>'
       + '<div class="status-msg" id="mkSstatus"></div>'
       + '<p class="mk-note">시드 1억원 · 수수료 0.015% · 매도세 0.20% 로 만들어집니다. 시작일이 되면 자동으로 열리고, 종료일 장 마감 후 최종 순위가 확정됩니다.</p>'
@@ -564,7 +654,7 @@ var Mock = (function () {
     var v = function (id) { return document.getElementById(id).value.trim(); };
     btn.disabled = true;
     try {
-      await api('/admin/seasons', 'POST', { id: v('mkSid'), name: v('mkSname'), startDate: v('mkSstart'), endDate: v('mkSend') });
+      await api('/admin/seasons', 'POST', { id: v('mkSid'), name: v('mkSname'), startDate: v('mkSstart'), endDate: v('mkSend'), notice: v('mkSnotice') });
       st.innerHTML = '<span class="ok">✅ 저장했습니다.</span>';
       await refreshSeason();
       renderAccount();
@@ -575,7 +665,7 @@ var Mock = (function () {
   return {
     isOn: function () { return on; },
     setMode: setMode, onTab: onTab, renderTradeBar: renderTradeBar,
-    join: join, cancel: cancel, loadHistory: loadHistory,
+    join: join, openJoinFlow: openJoinFlow, joinStep2: joinStep2, closeJoin: closeJoin, cancel: cancel, loadHistory: loadHistory,
     openSheet: openSheet, closeSheet: closeSheet, setSheet: setSheet, input: input, step: step, pct: pct, submit: submit,
     saveSeason: saveSeason
   };

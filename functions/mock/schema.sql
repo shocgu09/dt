@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS seasons (
   tax_rate    REAL NOT NULL,               -- 0.002 = 0.20% (매도, ETF·ETN 면제)
   volume_fill INTEGER NOT NULL DEFAULT 1,  -- 1: 실제 거래량 범위 안에서만 체결
   fill_mode   TEXT NOT NULL DEFAULT 'realtime',   -- realtime | close
+  notice      TEXT,                                 -- 운영진 전달사항 (참가 안내 창에 보여 준다)
   status      TEXT NOT NULL DEFAULT 'upcoming'    -- upcoming | active | settling | closed
 );
 
