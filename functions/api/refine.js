@@ -1,8 +1,10 @@
 // AI 글 정리 — Cloudflare Pages Function
+import { verifyIdToken, bearerToken } from '../lib/verify-id-token.js';
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
 export async function onRequestOptions() {
@@ -15,6 +17,10 @@ export async function onRequestPost(context) {
   if (!OPENAI_KEY) {
     return json({ error: 'OPENAI_API_KEY가 설정되지 않았습니다.' }, 500);
   }
+
+  // 유료 API(OpenAI)를 부르므로 실제 회원만 — 무인증이면 누구나 반복 호출해 과금시킬 수 있다
+  const user = await verifyIdToken(bearerToken(context.request), context.env.FIREBASE_PROJECT_ID || 'dt-club');
+  if (!user) return json({ error: '로그인이 필요합니다.' }, 401);
 
   let text;
   try {

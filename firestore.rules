@@ -59,7 +59,7 @@ service cloud.firestore {
     // ── users 컬렉션 ────────────────────────────────────────
     // - 인증된 유저(게스트 포함) 읽기
     // - 본인 문서 생성 가능 (role은 반드시 'member', 게스트 불가)
-    // - 본인은 role 변경 불가, 관리자만 변경 가능
+    // - 본인은 name·lastSeen·lastLocation 만 변경 가능 (role·title 등은 관리자만)
     // - 삭제는 본인(탈퇴) 또는 관리자(강퇴)
     match /users/{uid} {
       allow read: if isAuth();
@@ -67,8 +67,8 @@ service cloud.firestore {
         && request.resource.data.role == 'member';
       allow update: if isAdmin()
         || (isOwner(uid)
-            && !request.resource.data.diff(resource.data)
-                .affectedKeys().hasAny(['role']));
+            && request.resource.data.diff(resource.data)
+                .affectedKeys().hasOnly(['name', 'lastSeen', 'lastLocation']));
       allow delete: if isOwner(uid) || isAdmin();
     }
 
@@ -103,6 +103,17 @@ service cloud.firestore {
                 .affectedKeys().hasOnly(['votes', 'quizAnswers', 'reactions']));
       allow delete: if isAdmin()
         || (isRealUser() && resource.data.createdBy == request.auth.uid);
+
+      // 댓글 서브컬렉션 (gallery 댓글과 같은 규칙)
+      match /comments/{commentId} {
+        allow read: if isAuth();
+        allow create: if isRealUser()
+          && request.resource.data.authorUid == request.auth.uid;
+        allow update: if isRealUser()
+          && resource.data.authorUid == request.auth.uid;
+        allow delete: if isRealUser()
+          && (resource.data.authorUid == request.auth.uid || isAdmin());
+      }
     }
 
     // ── notices 컬렉션 ──────────────────────────────────────
@@ -390,17 +401,37 @@ service cloud.firestore {
 
     // ── stock_boards 컬렉션 (종목별 커뮤니티) ─────────────────
     // - 실제 회원만 읽기/작성
-    // - 남의 글은 좋아요·댓글수·신고수 필드만 변경 가능
+    // - 본인 글은 제목·본문만 수정 (authorUid·isAdmin·좋아요 수를 못 바꾸게 화이트리스트)
+    // - 남의 글은 좋아요 토글, 댓글수·신고수 ±1 만 가능 (임의 값으로 덮어쓰기 차단)
     match /stock_boards/{code}/posts/{postId} {
       allow read: if isRealUser();
       allow create: if isRealUser()
         && request.resource.data.authorUid == request.auth.uid
         && request.resource.data.body is string
-        && request.resource.data.body.size() <= 3000;
+        && request.resource.data.body.size() > 0
+        && request.resource.data.body.size() <= 3000
+        && request.resource.data.get('likes', 0) == 0
+        && request.resource.data.get('likedBy', []).size() == 0
+        && request.resource.data.get('commentCount', 0) == 0
+        && request.resource.data.get('reportCount', 0) == 0
+        && (request.resource.data.get('isAdmin', false) == false || isAdmin());
       allow update: if isAdmin()
-        || (isRealUser() && resource.data.authorUid == request.auth.uid)
-        || (isRealUser() && request.resource.data.diff(resource.data)
-              .affectedKeys().hasOnly(['likes', 'likedBy', 'commentCount', 'reportCount']));
+        || (isRealUser() && resource.data.authorUid == request.auth.uid
+            && request.resource.data.diff(resource.data)
+                 .affectedKeys().hasOnly(['title', 'body', 'editedAt'])
+            && request.resource.data.body is string
+            && request.resource.data.body.size() > 0
+            && request.resource.data.body.size() <= 3000)
+        || validLikeToggle()
+        || (isRealUser()
+            && request.resource.data.diff(resource.data)
+                 .affectedKeys().hasOnly(['commentCount'])
+            && (request.resource.data.commentCount == resource.data.get('commentCount', 0) + 1
+                || request.resource.data.commentCount == resource.data.get('commentCount', 0) - 1))
+        || (isRealUser()
+            && request.resource.data.diff(resource.data)
+                 .affectedKeys().hasOnly(['reportCount'])
+            && request.resource.data.reportCount == resource.data.get('reportCount', 0) + 1);
       allow delete: if isAdmin()
         || (isRealUser() && resource.data.authorUid == request.auth.uid);
 

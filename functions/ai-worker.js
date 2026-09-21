@@ -1,10 +1,12 @@
 // AI 글 정리 Worker (OpenAI Responses API 프록시)
+import { verifyIdToken, bearerToken } from './lib/verify-id-token.js';
+
 export default {
   async fetch(request, env) {
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     };
 
     if (request.method === 'OPTIONS') {
@@ -14,6 +16,13 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/refine' && request.method === 'POST') {
+      // 유료 API(OpenAI)를 부르므로 실제 회원만 — 무인증이면 누구나 반복 호출해 과금시킬 수 있다
+      const user = await verifyIdToken(bearerToken(request), env.FIREBASE_PROJECT_ID || 'dt-club');
+      if (!user) {
+        return new Response(JSON.stringify({ error: '로그인이 필요합니다.' }), {
+          status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
       try {
         const { text } = await request.json();
         if (!text || text.length > 2000) {

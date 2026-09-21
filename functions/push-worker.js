@@ -11,6 +11,8 @@
  *   PUSH_SUBS - 푸시 구독 정보 저장소
  */
 
+import { verifyIdToken, bearerToken } from './lib/verify-id-token.js';
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -117,8 +119,17 @@ async function handlePush(request, env) {
   const auth = await verifyAuth(request, env);
   if (!auth.ok) return jsonResponse({ error: 'Unauthorized' }, 401);
 
-  const { recipientUid, title, body, convId } = await request.json();
+  const data = await request.json();
+  const { recipientUid, convId } = data;
   if (!recipientUid) return jsonResponse({ error: 'Missing recipientUid' }, 400);
+
+  // DM 대화방 ID 는 두 uid 를 정렬해 '_' 로 이은 값이다 (app.js).
+  // 발신자가 그 대화의 당사자이고 수신자가 상대방일 때만 보낸다 — 아무에게나 푸시를 쏘는 것을 막는다.
+  if (convId !== [auth.uid, recipientUid].sort().join('_')) {
+    return jsonResponse({ error: 'Not a participant' }, 403);
+  }
+  const title = String(data.title || '').slice(0, 60);
+  const body = String(data.body || '').slice(0, 120);
 
   // 수신자의 구독 목록 가져오기
   const indexKey = `subs-index:${recipientUid}`;
@@ -325,30 +336,11 @@ async function encryptPayload(subscription, payload) {
 /* ===== 유틸리티 ===== */
 
 async function verifyAuth(request, env) {
-  const authHeader = request.headers.get('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return { ok: false };
-  }
-  const idToken = authHeader.slice(7);
-
-  try {
-    // Firebase ID Token 검증 (Google public keys)
-    const projectId = env.FIREBASE_PROJECT_ID || 'dt-club';
-    const tokenParts = idToken.split('.');
-    if (tokenParts.length !== 3) return { ok: false };
-
-    const payload = JSON.parse(atob(tokenParts[1].replace(/-/g, '+').replace(/_/g, '/')));
-
-    // 기본 검증: 만료, 발급자, audience
-    const now = Math.floor(Date.now() / 1000);
-    if (payload.exp < now) return { ok: false };
-    if (payload.iss !== `https://securetoken.google.com/${projectId}`) return { ok: false };
-    if (payload.aud !== projectId) return { ok: false };
-
-    return { ok: true, uid: payload.sub || payload.user_id };
-  } catch {
-    return { ok: false };
-  }
+  // RS256 서명까지 검증한다 (payload 만 풀어 보던 예전 방식은 토큰 위조에 뚫린다).
+  // DM 은 회원 기능이므로 게스트(익명 로그인)는 받지 않는다.
+  const payload = await verifyIdToken(bearerToken(request), env.FIREBASE_PROJECT_ID || 'dt-club');
+  if (!payload) return { ok: false };
+  return { ok: true, uid: payload.sub };
 }
 
 async function hashString(str) {

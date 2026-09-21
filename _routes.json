@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "include": [
+    "/api/*",
+    "/docs/*",
+    "/firestore.rules",
+    "/firebase.json",
+    "/.impeccable.md",
+    "/CLAUDE.md",
+    "/README.md"
+  ],
+  "exclude": []
+}

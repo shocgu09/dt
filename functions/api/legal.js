@@ -2,6 +2,8 @@
 // Cloudflare Pages Function — SSE 스트리밍으로 실시간 응답
 // 참고: https://docs.anthropic.com/en/docs/agents-and-tools/tool-use
 
+import { verifyIdToken, bearerToken } from '../lib/verify-id-token.js';
+
 // ── CORS: 허용된 origin만 통과
 const ALLOWED_ORIGINS = new Set([
   'https://dt-1js.pages.dev',
@@ -377,31 +379,18 @@ function isMcpConnectionError(errText) {
 }
 
 // ──────────────────────────────────────────────────────────────
-// 인증: Firebase ID Token 검증 (서명 없이 payload 검증 — push-worker 패턴)
+// 인증: Firebase ID Token 검증 (RS256 서명 검증 — lib/verify-id-token.js)
+// 게스트(익명 로그인)도 법률 도우미를 쓸 수 있으므로 익명은 허용하되 isAnonymous 로 구분해 둔다.
 // ──────────────────────────────────────────────────────────────
 async function verifyFirebaseToken(request, projectId) {
-  const authHeader = request.headers.get('Authorization') || '';
-  if (!authHeader.startsWith('Bearer ')) return { ok: false };
-  const idToken = authHeader.slice(7);
-  try {
-    const parts = idToken.split('.');
-    if (parts.length !== 3) return { ok: false };
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-    const now = Math.floor(Date.now() / 1000);
-    if (!payload.exp || payload.exp < now) return { ok: false };
-    if (payload.iss !== `https://securetoken.google.com/${projectId}`) return { ok: false };
-    if (payload.aud !== projectId) return { ok: false };
-    const uid = payload.sub || payload.user_id;
-    if (!uid) return { ok: false };
-    return {
-      ok: true,
-      uid,
-      email: payload.email || null,
-      isAnonymous: payload.firebase?.sign_in_provider === 'anonymous',
-    };
-  } catch {
-    return { ok: false };
-  }
+  const payload = await verifyIdToken(bearerToken(request), projectId, { allowAnonymous: true });
+  if (!payload) return { ok: false };
+  return {
+    ok: true,
+    uid: payload.sub,
+    email: payload.email || null,
+    isAnonymous: payload.firebase?.sign_in_provider === 'anonymous',
+  };
 }
 
 // ──────────────────────────────────────────────────────────────
