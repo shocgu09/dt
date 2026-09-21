@@ -13,7 +13,8 @@ const CORS = {
 };
 
 // 캐시 TTL(초) — 네이버 권장 폴링이 7초라 그보다 짧게 잡을 이유가 없다
-const TTL = { quote: 5, book: 3, index: 30, ohlcIntra: 60, ohlcDay: 43200, search: 86400 };
+const TTL = { quote: 5, book: 3, index: 30, ohlcIntra: 60, ohlcDay: 43200, search: 86400,
+              rank: 60, sectors: 120, news: 300 };
 
 function json(data, status = 200, extra) {
   return new Response(JSON.stringify(data), { status, headers: { ...CORS, ...(extra || {}) } });
@@ -157,6 +158,9 @@ export default {
       if (path === '/api/ohlc')   return json(await handleOhlc(env, q.get('code'), q.get('tf') || 'D'));
       if (path === '/api/index')  return json(await handleIndex(env));
       if (path === '/api/search') return json(await handleSearch(env, q.get('q')));
+      if (path === '/api/rank')    return json(await handleRank(env, q.get('type'), q.get('market')));
+      if (path === '/api/sectors') return json(await handleSectors(env, q.get('kind'), q.get('no')));
+      if (path === '/api/news')    return json(await handleNews(env, q.get('code')));
     } catch (e) {
       return fail(e.message || '시세 조회 실패');
     }
@@ -203,6 +207,36 @@ async function handleOhlc(env, code, tf) {
 
 async function handleIndex(env) {
   return memo('idx', TTL.index, () => naver.getIndex());
+}
+
+/** 급상승·급하락·시총 랭킹 (토스 "실시간 차트") */
+async function handleRank(env, type, market) {
+  const t = ['up', 'down', 'marketValue'].includes(type) ? type : 'up';
+  const m = market === 'KOSDAQ' ? 'KOSDAQ' : 'KOSPI';
+  return cached(env, `r:${t}:${m}`, TTL.rank, async () => ({
+    type: t, market: m, items: await naver.getRanking(t, m, 20), source: 'naver'
+  }));
+}
+
+/** 업종·테마 (토스 "지금 뜨는 산업") — no가 있으면 해당 그룹의 종목 목록 */
+async function handleSectors(env, kind, no) {
+  const k = kind === 'industry' ? 'industry' : 'theme';
+  if (no) {
+    return cached(env, `sg:${k}:${no}`, TTL.sectors, async () => ({
+      kind: k, no, items: await naver.getSectorStocks(k, no, 20), source: 'naver'
+    }));
+  }
+  return cached(env, `sc:${k}`, TTL.sectors, async () => ({
+    kind: k, groups: await naver.getSectors(k, 20), source: 'naver'
+  }));
+}
+
+/** 종목 뉴스 */
+async function handleNews(env, code) {
+  if (!isCode(code)) return { error: '종목코드는 6자리 숫자입니다' };
+  return cached(env, `n:${code}`, TTL.news, async () => ({
+    code, items: await naver.getNews(code, 10), source: 'naver'
+  }));
 }
 
 async function handleSearch(env, term) {

@@ -118,8 +118,72 @@ export const naver = {
     return (d.items || [])
       .filter((i) => i.nationCode === 'KOR' && /^\d{6}$/.test(i.code))
       .map((i) => ({ code: i.code, name: i.name, market: i.typeName }));
+  },
+
+  /**
+   * 랭킹 — 토스 "실시간 차트" 대응
+   * @param type 'up' | 'down' | 'marketValue'
+   */
+  async getRanking(type = 'up', market = 'KOSPI', size = 20) {
+    const d = await getJson(`https://m.stock.naver.com/api/stocks/${type}/${market}?page=1&pageSize=${size}`);
+    return (d.stocks || []).map((s) => ({
+      code: s.itemCode,
+      name: s.stockName,
+      price: num(s.closePrice),
+      changeRate: Number(s.fluctuationsRatio),
+      change: signOf(s.compareToPreviousPrice && s.compareToPreviousPrice.code)
+              * Math.abs(num(s.compareToPreviousClosePrice) || 0),
+      volume: num(s.accumulatedTradingVolume),
+      tradingValue: num(s.accumulatedTradingValue)
+    }));
+  },
+
+  /** 업종 / 테마 — 토스 "지금 뜨는 산업" 대응 */
+  async getSectors(kind = 'theme', size = 20) {
+    const path = kind === 'industry' ? 'industry' : 'theme';
+    const d = await getJson(`https://m.stock.naver.com/api/stocks/${path}?page=1&pageSize=${size}`);
+    return (d.groups || []).map((g) => ({
+      no: g.no,
+      name: g.name,
+      changeRate: Number(g.changeRate),
+      total: g.totalCount,
+      rise: g.riseCount,
+      fall: g.fallCount,
+      steady: g.steadyCount
+    }));
+  },
+
+  /** 업종/테마에 속한 종목 */
+  async getSectorStocks(kind, no, size = 20) {
+    const path = kind === 'industry' ? 'industry' : 'theme';
+    const d = await getJson(`https://m.stock.naver.com/api/stocks/${path}/${no}?page=1&pageSize=${size}`);
+    return (d.stocks || []).map((s) => ({
+      code: s.itemCode,
+      name: s.stockName,
+      price: num(s.closePrice),
+      changeRate: Number(s.fluctuationsRatio)
+    }));
+  },
+
+  /** 종목 뉴스 */
+  async getNews(code, size = 10) {
+    const d = await getJson(`https://m.stock.naver.com/api/news/stock/${code}?pageSize=${size}&page=1`);
+    const items = [];
+    for (const group of (Array.isArray(d) ? d : [])) {
+      for (const it of (group.items || [])) {
+        items.push({
+          id: it.id,
+          title: (it.title || '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&apos;/g, "'"),
+          office: it.officeName,
+          datetime: it.datetime,
+          url: `https://n.news.naver.com/mnews/article/${it.officeId}/${it.articleId}`
+        });
+      }
+    }
+    return items.slice(0, size);
   }
 };
+
 
 // ── 폴백 프로바이더 ────────────────────────────────────────────
 // 현재가만 대체 가능. 호가는 네이버에만 있어 폴백 불가(다음은 500, 야후는 미제공).
