@@ -185,7 +185,8 @@ main { padding: calc(80px + env(safe-area-inset-top, 0px)) 20px 24px; max-width:
 .home-briefing-content a { color: var(--primary-light); text-decoration: none; font-weight: 600; border-bottom: 1px solid rgba(124,111,255,.3); }
 .home-briefing-content a:hover { border-bottom-color: var(--primary); }
 .home-briefing-content strong { color: var(--text); font-weight: 700; }
-.home-briefing-more { display: block; text-align: right; padding: 10px 16px; background: var(--bg3); border: 1px solid var(--border); border-top: none; font-size: .78rem; font-weight: 600; color: var(--primary); text-decoration: none; }
+/* 본문과 떨어뜨려 별도의 바로 보이게 — 본문이 짧을 때 빈 입력칸처럼 붙어 보이던 것 방지 */
+.home-briefing-more { display: block; text-align: right; margin-top: 12px; padding: 10px 16px; background: var(--bg3); border: 1px solid var(--border); font-size: .78rem; font-weight: 600; color: var(--primary); text-decoration: none; }
 .home-briefing-more:hover { background: var(--bg2); }
 .home-links-section { margin-top: 24px; }
 .home-links-title { font-size: 1rem; font-weight: 700; margin-bottom: 14px; color: var(--text2); text-transform: uppercase; letter-spacing: .5px; }

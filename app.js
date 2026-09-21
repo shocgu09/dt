@@ -3441,15 +3441,11 @@ async function _loadInvestBriefing() {
     // 고정 브리핑 우선 (복합 인덱스 없이 클라이언트에서 정렬)
     docs.sort(function(a, b) { return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0); });
     var doc = docs[0];
-    var preview = String(doc.body || '')
-      .replace(/\[([^\]]+)\]\(https?:\/\/[^\)]+\)/g, '$1')
-      .replace(/https?:\/\/\S+/g, '')
-      .replace(/\n+/g, ' ')
-      .trim()
-      .substring(0, 160);
+    // AI·자동차 브리핑과 같은 방식으로 보여준다 — 줄바꿈을 살린 본문을 스크롤 박스에.
+    // (예전엔 160자로 자르고 줄바꿈을 공백으로 뭉개서 소제목이 문장에 섞이고 숫자 중간에서 끊겼다)
     el.innerHTML = '<div style="font-size:.78rem;color:var(--text3);margin-bottom:8px;font-weight:600">'
       + (doc.pinned ? '📌 ' : '') + escapeHtml(doc.title || '') + '</div>'
-      + escapeHtml(preview) + (preview.length >= 160 ? '…' : '');
+      + _homeBriefingBodyHtml(doc.body);
     _investBriefingLoaded = true;
   } catch (e) {
     el.innerHTML = '<div class="home-preview-empty">브리핑을 불러올 수 없습니다</div>';
@@ -3468,6 +3464,16 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 });
 
+/** 홈 브리핑 본문 → 안전한 HTML (이스케이프 후 [글](링크) · **굵게** · 줄바꿈만 허용). 세 탭이 같이 쓴다 */
+function _homeBriefingBodyHtml(body) {
+  return String(body || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s"'<>\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br>');
+}
+
 var _homeBriefingLoaded = {};
 async function _loadHomeBriefing(type) {
   if (_homeBriefingLoaded[type]) return;
@@ -3485,12 +3491,7 @@ async function _loadHomeBriefing(type) {
       return;
     }
     var doc = docs[0];
-    var body = (doc.body || '')
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;').replace(/'/g, '&#039;')
-      .replace(/\[([^\]]+)\]\((https?:\/\/[^\s"'<>\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-      .replace(/\n/g, '<br>');
+    var body = _homeBriefingBodyHtml(doc.body);
     el.innerHTML = '<div style="font-size:.78rem;color:var(--text3);margin-bottom:8px;font-weight:600">' + escapeHtml(doc.title || '') + '</div>' + body;
     _homeBriefingLoaded[type] = true;
   } catch(e) {
