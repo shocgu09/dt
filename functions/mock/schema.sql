@@ -55,6 +55,8 @@ CREATE TABLE IF NOT EXISTS orders (
   reserved        INTEGER NOT NULL DEFAULT 0 CHECK (reserved >= 0),   -- 매수 주문이 묶어 둔 현금(증거금)
   vol_at_accept   INTEGER NOT NULL DEFAULT 0,     -- 접수 시점 KRX 누적거래량 — 이후 늘어야 "실제 체결이 있었다"
   pre_open        INTEGER NOT NULL DEFAULT 0,     -- 09:00 전 접수 → 시가에 체결
+  session         TEXT NOT NULL DEFAULT 'regular',-- regular(정규장) | pre(NXT 프리마켓) | after(NXT·KRX 애프터마켓)
+  nxt_vol_at_accept INTEGER NOT NULL DEFAULT 0,   -- 접수 시점 NXT 누적거래량 (시간외 주문의 체결 판정용)
   marketable      INTEGER NOT NULL DEFAULT 0,     -- 접수 시점에 즉시 체결 가능한 지정가였는지
   tax_free        INTEGER NOT NULL DEFAULT 0,     -- ETF·ETN
   trade_date      TEXT NOT NULL,                  -- 접수한 거래일 (YYYYMMDD, KST) — 당일 장 마감에 만료

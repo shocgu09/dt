@@ -8,6 +8,11 @@
 //
 // db 는 D1 인터페이스(prepare/bind/first/all/run/batch)만 쓴다 — 테스트에서는 sqlite 로 대체한다.
 
+// 시간외 (실전과 같이 지정가만): NXT 프리마켓 08:00~08:50, 애프터마켓 NXT 15:40~ · KRX 16:00~ → 20:00
+export const PRE_FROM    = 8 * 60;        // 08:00 프리마켓 주문 접수 시작 (08:30 부터는 정규장 장전 주문)
+export const PRE_TO      = 8 * 60 + 50;   // 08:50 프리마켓 종료
+export const AFTER_FROM  = 15 * 60 + 40;  // 15:40 애프터마켓 시작
+export const AFTER_TO    = 20 * 60;       // 20:00 애프터마켓 종료
 export const ACCEPT_FROM = 8 * 60 + 30;   // 08:30 주문 접수 시작
 export const OPEN_AT     = 9 * 60;        // 09:00
 export const ACCEPT_TO   = 15 * 60 + 30;  // 15:30 접수 마감
@@ -94,15 +99,27 @@ export async function acceptOrder(db, season, account, input, quote, taxFree, no
     .bind(account.uid, String(input.clientOrderId)).first();
   if (dup) return dup;
 
-  if (t.dow === 0 || t.dow === 6 || t.hm < ACCEPT_FROM || t.hm >= ACCEPT_TO) {
-    throw new OrderError('주문은 평일 08:30~15:30 에 넣을 수 있습니다', 'closed');
-  }
+const weekday = t.dow >= 1 && t.dow <= 5;
+  let session = null;
+  if (weekday && t.hm >= PRE_FROM && t.hm < ACCEPT_FROM) session = 'pre';
+  else if (weekday && t.hm >= ACCEPT_FROM && t.hm < ACCEPT_TO) session = 'regular';
+  else if (weekday && t.hm >= AFTER_FROM && t.hm < AFTER_TO) session = 'after';
+  if (!session) throw new OrderError('주문은 평일 08:00~20:00 에 넣을 수 있습니다 (15:30~15:40 제외)', 'closed');
   if (!quote || quote.krx == null || quote.krx.price == null) throw new OrderError('시세를 확인할 수 없는 종목입니다');
+  if (session !== 'regular') {
+    // 시간외는 실전에서도 지정가만 받는다 (거래가 얇아 시장가는 위험하다)
+    if (type !== 'limit') throw new OrderError('시간외에는 지정가 주문만 가능합니다', 'limit_only');
+    const nxtOk = !!(quote.nxt && quote.nxt.price != null);
+    if (session === 'pre' && !nxtOk) throw new OrderError('프리마켓(NXT) 거래 대상이 아닌 종목입니다. 08:30 부터 정규장 주문을 넣을 수 있습니다', 'venue');
+    // 애프터마켓: NXT 대상이거나 KRX 애프터마켓 대상(ETF·ETN 제외)이어야 한다
+    if (session === 'after' && !nxtOk && taxFree) throw new OrderError('ETF·ETN 은 시간외 거래 대상이 아닙니다', 'venue');
+  }
   if (quote.halted) throw new OrderError('거래정지 종목입니다', 'halted');
   const blocked = await db.prepare(`SELECT 1 AS x FROM blocked_codes WHERE code=?`).bind(quote.code).first();
   if (blocked) throw new OrderError('일시적으로 주문을 받지 않는 종목입니다', 'blocked');
 
-  const cur = quote.krx.price;
+  // 기준가 — 시간외에는 지금 거래가 도는 시장의 가격
+  const cur = (session !== 'regular' && quote.nxt && quote.nxt.open && quote.nxt.price != null) ? quote.nxt.price : quote.krx.price;
   let limit = null;
   if (type === 'limit') {
     limit = Number(input.limitPrice);
@@ -138,17 +155,17 @@ export async function acceptOrder(db, season, account, input, quote, taxFree, no
     if (qty > sellable) throw new OrderError('매도 가능 수량이 부족합니다', 'qty');
   }
 
-  const preOpen = t.hm < OPEN_AT ? 1 : 0;
+  const preOpen = (session === 'regular' && t.hm < OPEN_AT) ? 1 : 0;
   const marketable = type === 'limit' && !preOpen
     ? ((side === 'buy' ? cur <= limit : cur >= limit) ? 1 : 0) : 0;
   const id = uuid();
   await db.prepare(
     `INSERT INTO orders (id, client_order_id, season_id, uid, code, name, side, type, qty, limit_price,
-       reserved, vol_at_accept, pre_open, marketable, tax_free, trade_date, accepted_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+       reserved, vol_at_accept, pre_open, marketable, tax_free, trade_date, accepted_at, updated_at, session, nxt_vol_at_accept)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(id, String(input.clientOrderId), season.id, account.uid, quote.code, quote.name || quote.code,
     side, type, qty, limit, reserved, preOpen ? 0 : (quote.krx.volume || 0), preOpen, marketable,
-    taxFree ? 1 : 0, t.ymd, now, now).run();
+    taxFree ? 1 : 0, t.ymd, now, now, session, (quote.nxt && quote.nxt.volume) || 0).run();
   return db.prepare(`SELECT * FROM orders WHERE id=?`).bind(id).first();
 }
 
@@ -164,8 +181,9 @@ export async function expireStale(db, now = Date.now()) {
   const t = kstNow(now);
   const r = await db.prepare(
     `UPDATE orders SET status='expired', reserved=0, updated_at=?, reason='장 마감'
-     WHERE status IN ('open','partial') AND (trade_date < ? OR (trade_date = ? AND ? >= ${FILL_TO}))`
-  ).bind(now, t.ymd, t.ymd, t.hm).run();
+     WHERE status IN ('open','partial') AND (trade_date < ? OR (trade_date = ? AND (
+       (session = 'regular' AND ? >= ${FILL_TO}) OR (session = 'pre' AND ? >= ${PRE_TO}) OR (session = 'after' AND ? >= ${AFTER_TO}))))`
+  ).bind(now, t.ymd, t.ymd, t.hm, t.hm, t.hm).run();
   return r.meta.changes;
 }
 
@@ -178,22 +196,58 @@ export async function expireStale(db, now = Date.now()) {
 export async function tryFill(db, season, order, ctx, now = Date.now()) {
   if (order.status !== 'open' && order.status !== 'partial') return null;
   const t = kstNow(now);
-  if (order.trade_date !== t.ymd || t.hm < OPEN_AT || t.hm >= FILL_TO) return null;
+  const ext = order.session === 'pre' || order.session === 'after';
+  if (order.trade_date !== t.ymd) return null;
+  if (order.session === 'pre' && (t.hm < PRE_FROM || t.hm >= PRE_TO)) return null;
+  if (order.session === 'after' && (t.hm < AFTER_FROM || t.hm >= AFTER_TO)) return null;
+  if (!ext && (t.hm < OPEN_AT || t.hm >= FILL_TO)) return null;
 
   const q = ctx.quote;
   if (!q || !q.krx || q.krx.price == null || q.halted) return null;
   const remaining = order.qty - order.filled_qty;
   const isBuy = order.side === 'buy';
   // 상한가에서의 매수·하한가에서의 매도는 잔량 뒤에 서게 돼 실전에서도 체결되지 않는다 — 풀릴 때까지 대기
-  if ((isBuy && q.limitState === 'upper') || (!isBuy && q.limitState === 'lower')) return null;
+  const stuck = (ls) => (isBuy && ls === 'upper') || (!isBuy && ls === 'lower');
+  if (!ext && stuck(q.limitState)) return null;
 
-  const todayBars = (ctx.bars || []).filter((b) => String(b.t).slice(0, 8) === t.ymd
-    && String(b.t).slice(8, 12) >= '0900' && String(b.t).slice(8, 12) <= '1530');
+  // 정규장 주문은 09:00~15:30 봉만, 애프터마켓 주문은 15:40 이후 봉만 본다
+  const todayBars = (ctx.bars || []).filter((b) => {
+    const hm = String(b.t).slice(8, 12);
+    return String(b.t).slice(0, 8) === t.ymd && (order.session === 'after' ? hm >= '1540' : (hm >= '0900' && hm <= '1530'));
+  });
+  // 접수한 분의 봉은 접수 전 거래가 섞여 있어 판정에서 뺀다
+  const barsAfterAccept = () => {
+    const acc = kstNow(order.accepted_at);
+    const accKey = acc.ymd + String(Math.floor(acc.hm / 60)).padStart(2, '0') + String(acc.hm % 60).padStart(2, '0');
+    return todayBars.filter((b) => String(b.t).slice(0, 12) > accKey);
+  };
   const hits = (p) => (order.type === 'market' ? true : (isBuy ? p <= order.limit_price : p >= order.limit_price));
 
   let price = null, volCap = Infinity;
 
-  if (order.pre_open && order.filled_qty === 0 && !order.vol_at_accept) {
+  if (ext) {
+    // 시간외 — 거래가 도는 시장(NXT, 16:00 이후에는 KRX 애프터마켓도)마다 "접수 이후 실제 거래가 있었고
+    // 그 가격이 지정가에 닿았는지"를 본다. 둘 다 되면 실전의 최선집행처럼 회원에게 유리한 쪽으로 체결한다.
+    const venues = [];
+    if (q.nxt && q.nxt.open && q.nxt.price != null
+        && q.nxt.session === (order.session === 'pre' ? 'PRE_MARKET' : 'AFTER_MARKET') && !stuck(q.nxt.limitState)) {
+      venues.push({ price: q.nxt.price, traded: (q.nxt.volume || 0) - order.nxt_vol_at_accept });
+    }
+    if (order.session === 'after' && !stuck(q.limitState)) {
+      // 15:40~16:00 의 KRX 거래량 증가는 시간외 종가 매매(종가로 체결)라 그대로 받아 준다
+      venues.push({ price: q.krx.price, traded: (q.krx.volume || 0) - order.vol_at_accept });
+    }
+    const ok = venues.filter((v) => v.traded > 0 && hits(v.price))
+      .sort((a, b) => (isBuy ? a.price - b.price : b.price - a.price));
+    if (ok.length) {
+      price = order.marketable ? ok[0].price : order.limit_price;
+      volCap = ok[0].traded - order.filled_qty;
+    } else if (order.session === 'after' && todayBars.length) {
+      // 폴링 사이에 스친 경우 — KRX 분봉(애프터마켓 포함)으로 판정. NXT 는 분봉이 없어 폴링에 맡긴다
+      const touched = barsAfterAccept().filter((b) => (isBuy ? b.l <= order.limit_price : b.h >= order.limit_price));
+      if (touched.length) { price = order.limit_price; volCap = touched.reduce((s, b) => s + (b.v || 0), 0) - order.filled_qty; }
+    }
+  } else if (order.pre_open && order.filled_qty === 0 && !order.vol_at_accept) {
     // 09:00 전에 받은 주문 — 시가 단일가. 오늘 날짜의 첫 분봉이 생겨야 "장이 열렸다"고 본다
     // (시세 필드만 보면 개장 직후 몇 초간 전일 값이 남아 있을 수 있다)
     if (!todayBars.length) return null;
@@ -214,10 +268,7 @@ export async function tryFill(db, season, order, ctx, now = Date.now()) {
       volCap = traded - order.filled_qty;
     } else if (order.type === 'limit' && todayBars.length) {
       // 폴링 사이에 지정가를 스치고 지나간 경우 — 접수한 분 이후의 분봉으로 판정
-      const acc = kstNow(order.accepted_at);
-      const accKey = acc.ymd + String(Math.floor(acc.hm / 60)).padStart(2, '0') + String(acc.hm % 60).padStart(2, '0');
-      const touched = todayBars.filter((b) => String(b.t).slice(0, 12) > accKey
-        && (isBuy ? b.l <= order.limit_price : b.h >= order.limit_price));
+      const touched = barsAfterAccept().filter((b) => (isBuy ? b.l <= order.limit_price : b.h >= order.limit_price));
       if (touched.length) {
         price = order.limit_price;
         volCap = touched.reduce((s, b) => s + (b.v || 0), 0) - order.filled_qty;

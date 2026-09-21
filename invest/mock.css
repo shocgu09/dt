@@ -99,6 +99,7 @@
 .mk-sheet-title i { font-style: normal; font-size: .72rem; color: var(--text3); font-weight: 600; margin-left: 4px; }
 .mk-seg2 { display: flex; }
 .mk-seg2 .seg { flex: 1; }
+.mk-seg2 .seg:disabled { opacity: .4; cursor: not-allowed; }
 .mk-seg2 .seg.on.buy { background: var(--stock-up); border-color: var(--stock-up); color: #fff; }
 .mk-seg2 .seg.on.sell { background: var(--stock-down); border-color: var(--stock-down); color: #fff; }
 .mk-info, .mk-warn { font-size: .78rem; font-weight: 600; padding: 9px 12px; margin: 10px 0 0; border: 1px solid var(--border); color: var(--text2); }

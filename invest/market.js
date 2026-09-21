@@ -27,7 +27,8 @@ var Market = {
   book:    function (code) { return marketApi('/api/book', { code: code }); },
   ohlc:    function (code, tf) { return marketApi('/api/ohlc', { code: code, tf: tf || 'D' }); },
   index:   function () { return marketApi('/api/index'); },
-  search:  function (q) { return marketApi('/api/search', { q: q }); },
+  // 서버 자동완성(앞부분 일치) + 종목 마스터의 초성·키워드 검색을 합친다 — 아래 searchStocks 참조
+  search:  function (q) { return searchStocks(q); },
   rank:    function (type, market) { return marketApi('/api/rank', { type: type || 'up', market: market || 'KOSPI' }); },
   sectors: function (kind, no) {
     var p = { kind: kind || 'theme' };
@@ -40,6 +41,80 @@ var Market = {
   // 투자자별 매매동향 (개인·외국인·기관) — 최근 5거래일
   trend:   function (code) { return marketApi('/api/trend', { code: code }); }
 };
+
+/* ===== 종목 검색 =====
+ * 네이버 자동완성은 이름의 앞부분만 맞춘다. 초성도 그래서 "SKㅎㅇㄴㅅ"은 되고 "ㅎㅇㄴㅅ"은 안 되며,
+ * "레버리지"·"인버스" 같은 중간 단어로는 ETF 가 나오지 않는다.
+ * 전 종목 목록(stock-master.json — scripts/build-stock-master.mjs 로 생성, 시가총액 순)을 처음 검색할 때
+ * 한 번 받아 두고 화면에서 직접 찾는다. 마스터에 아직 없는 신규 상장 종목은 서버 결과로 메운다.
+ */
+var MASTER_VER = '20260921';
+var _master = null, _masterLoading = null;
+var CHO = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+
+/** "SK하이닉스" → "skㅎㅇㄴㅅ" (한글은 초성만, 나머지는 소문자 그대로, 공백 제거) */
+function chosungOf(s) {
+  var out = '';
+  for (var i = 0; i < s.length; i++) {
+    var c = s.charCodeAt(i);
+    if (c >= 0xAC00 && c <= 0xD7A3) out += CHO[Math.floor((c - 0xAC00) / 588)];
+    else if (s[i] !== ' ') out += s[i].toLowerCase();
+  }
+  return out;
+}
+
+function loadMaster() {
+  if (_master) return Promise.resolve(_master);
+  if (_masterLoading) return _masterLoading;
+  _masterLoading = fetch('stock-master.json?v=' + MASTER_VER)
+    .then(function (r) { if (!r.ok) throw new Error('master ' + r.status); return r.json(); })
+    .then(function (d) {
+      _master = (d.items || []).map(function (x) {
+        var key = String(x[1]).toLowerCase().replace(/\s+/g, '');
+        return { code: x[0], name: x[1], market: x[2], key: key, cho: chosungOf(String(x[1])) };
+      });
+      return _master;
+    })
+    .catch(function () { _masterLoading = null; return []; });
+  return _masterLoading;
+}
+
+function localSearch(list, q) {
+  var key = q.toLowerCase().replace(/\s+/g, '');
+  if (!key) return [];
+  var byCho = /[ㄱ-ㅎ]/.test(key);
+  var needle = byCho ? chosungOf(key) : key;
+  var head = [], rest = [];
+  for (var i = 0; i < list.length && head.length < 20; i++) {
+    var it = list[i];
+    var at = byCho ? it.cho.indexOf(needle) : it.key.indexOf(needle);
+    if (at === -1 && !byCho && it.code.toLowerCase().indexOf(key) === 0) at = 0;
+    if (at === 0) head.push(it);
+    else if (at > 0 && rest.length < 20) rest.push(it);
+  }
+  // 앞부분이 맞는 종목 먼저, 그 안에서는 마스터 순서(시가총액 순)
+  return head.concat(rest).slice(0, 20);
+}
+
+async function searchStocks(q) {
+  var term = (q || '').trim();
+  if (!term) return { items: [] };
+  var res = await Promise.all([
+    marketApi('/api/search', { q: term }).catch(function () { return null; }),
+    loadMaster().then(function (m) { return localSearch(m, term); })
+  ]);
+  var server = (res[0] && res[0].items) || [], local = res[1] || [];
+  if (!res[0] && !local.length) throw new Error('검색하지 못했습니다. 잠시 후 다시 시도해 주세요');
+  // 초성 검색은 네이버가 앞부분만 맞추므로 자체 결과를 앞에, 그 밖에는 서버 결과를 앞에 둔다
+  var first = /[ㄱ-ㅎ]/.test(term) ? local : server, second = first === local ? server : local;
+  var seen = {}, items = [];
+  first.concat(second).forEach(function (i) {
+    if (seen[i.code] || items.length >= 20) return;
+    seen[i.code] = true;
+    items.push({ code: i.code, name: i.name, market: i.market });
+  });
+  return { query: term, items: items };
+}
 
 /* ===== 장 운영시간 (KRX 정규장 09:00~15:30 · NXT/KRX 애프터마켓 ~20:00) ===== */
 /* 네이버가 내려주는 종목의 marketStatus 를 우선 신뢰한다.

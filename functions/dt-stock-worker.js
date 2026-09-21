@@ -122,7 +122,9 @@ export default {
           probe('naver.book',  () => naver.getOrderBook('005930')),
           probe('naver.index', () => naver.getIndex()),
           probe('daum.quote',  () => daum.getQuote('005930')),
-          probe('yahoo.quote', () => yahoo.getQuote('005930', 'KOSPI'))
+          probe('yahoo.quote', () => yahoo.getQuote('005930', 'KOSPI')),
+          // ETF 목록은 EUC-KR 디코딩이 필요하다 — 런타임에서 되는지 여기서 확인된다
+          probe('naver.etfList', async () => { const l = await naver.getEtfList(); if (l.length < 500) throw new Error('etf list too short: ' + l.length); })
         ]))
       }));
       const primaryOk = results['naver.quote'].ok && results['naver.book'].ok;
@@ -332,5 +334,26 @@ async function handleSearch(env, term) {
   if (t.length < 1) return { items: [] };
   // 한 글자 검색어는 입력 도중에 스쳐 가는 값이라 KV 에 하루씩 남길 이유가 없다 (쓰기 한도 절약)
   if (t.length < 2) return memo(`s:${t}`, 300, async () => ({ query: t, items: await naver.search(t) }));
-  return cached(env, `s:${t}`, TTL.search, async () => ({ query: t, items: await naver.search(t) }));
+  return cached(env, `s2:${t}`, TTL.search, async () => {
+    const items = await naver.search(t).catch(() => []);
+    // 네이버 자동완성은 이름 앞부분만 맞춘다 — ETF 는 전체 목록에서 키워드(중간 단어)로도 찾아 덧붙인다
+    const seen = new Set(items.map((i) => i.code));
+    const key = t.toLowerCase().replace(/\s+/g, '');
+    const etfs = await etfList(env).catch(() => []);
+    for (const e of etfs) {
+      if (items.length >= 20) break;
+      if (seen.has(e.code)) continue;
+      if (e.name.toLowerCase().replace(/\s+/g, '').includes(key) || e.code === t.toUpperCase()) {
+        items.push({ code: e.code, name: e.name, market: 'ETF' });
+        seen.add(e.code);
+      }
+    }
+    return { query: t, items };
+  });
 }
+
+/** ETF 전체 목록 — 하루 두 번만 받아 KV 에 둔다 */
+function etfList(env) {
+  return cached(env, 'etf:list:v1', 43200, async () => ({ items: await naver.getEtfList() })).then((d) => d.items || []);
+}
+

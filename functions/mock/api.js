@@ -57,15 +57,17 @@ async function todayBars(code, now) {
 }
 
 /**
- * 평가가 — 장중(09:00~15:36)에는 KRX 현재가, 그 밖에는 저장해 둔 15:30 종가.
- * 네이버 현재가는 16시 이후 애프터마켓 체결가로 바뀌므로 장외 평가에 쓰면 순위가 밤새 흔들린다.
+ * 평가가
+ *  - 평소: 시세 탭에 보이는 것과 같은 현재가 (프리·애프터마켓에는 그 시장의 가격). 시간외에도 거래할 수 있으므로
+ *    평가도 시간외 가격을 따라간다. 20:00 이후에는 마지막 시간외 가격에서 멈춘다.
+ *  - official: 저장해 둔 15:30 종가 — 일일 스냅샷과 시즌 최종 순위는 KRX 정규장 종가로 확정한다.
  */
-async function pricer(db, codes, now) {
+async function pricer(db, codes, now, official) {
   const t = E.kstNow(now);
-  const live = t.dow >= 1 && t.dow <= 5 && t.hm >= E.OPEN_AT && t.hm < E.FILL_TO;
+  const live = !official && t.dow >= 1 && t.dow <= 5 && t.hm >= E.PRE_FROM && t.hm < E.AFTER_TO;
   const quotes = codes.length ? await quotesFor(codes) : {};
   const closes = {};
-  if (!live && codes.length) {
+  if (official && codes.length) {
     const rows = (await db.prepare(
       `SELECT c.code, c.close FROM closes c
        JOIN (SELECT code, MAX(date) AS d FROM closes GROUP BY code) m ON m.code = c.code AND m.d = c.date`
@@ -75,9 +77,10 @@ async function pricer(db, codes, now) {
   return {
     live, quotes,
     priceOf: (code) => {
-      if (!live && closes[code] != null) return closes[code];
+      if (official && closes[code] != null) return closes[code];
       const q = quotes[code];
-      return q && q.krx ? q.krx.price : null;
+      if (!q) return null;
+      return q.price != null ? q.price : (q.krx ? q.krx.price : null);
     }
   };
 }
@@ -85,10 +88,17 @@ async function pricer(db, codes, now) {
 function sessionInfo(now) {
   const t = E.kstNow(now);
   const weekday = t.dow >= 1 && t.dow <= 5;
-  const canOrder = weekday && t.hm >= E.ACCEPT_FROM && t.hm < E.ACCEPT_TO;
   let phase = 'closed';
-  if (canOrder) phase = t.hm < E.OPEN_AT ? 'pre_open' : (t.hm < 15 * 60 + 20 ? 'continuous' : 'close_auction');
-  return { canOrder, phase, serverTime: now };
+  if (weekday) {
+    if (t.hm >= E.PRE_FROM && t.hm < E.ACCEPT_FROM) phase = 'pre_market';          // NXT 프리마켓 (지정가만)
+    else if (t.hm >= E.ACCEPT_FROM && t.hm < E.OPEN_AT) phase = 'pre_open';         // 정규장 장전 → 시가
+    else if (t.hm >= E.OPEN_AT && t.hm < 15 * 60 + 20) phase = 'continuous';
+    else if (t.hm >= 15 * 60 + 20 && t.hm < E.ACCEPT_TO) phase = 'close_auction';   // → 종가
+    else if (t.hm >= E.ACCEPT_TO && t.hm < E.AFTER_FROM) phase = 'break';           // 15:30~15:40
+    else if (t.hm >= E.AFTER_FROM && t.hm < E.AFTER_TO) phase = 'after_market';     // NXT·KRX 애프터마켓 (지정가만)
+  }
+  const canOrder = phase !== 'closed' && phase !== 'break';
+  return { canOrder, phase, limitOnly: phase === 'pre_market' || phase === 'after_market', serverTime: now };
 }
 
 const publicOrder = (o) => o && ({
@@ -203,7 +213,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     if (order.status === 'open' || order.status === 'partial') {
       // 화면이 주문 상태를 물어볼 때마다 체결을 시도한다 (크론을 기다리지 않고 바로 체결되도록)
       const quote = await naver.getQuote(order.code).catch(() => null);
-      const needBars = order.type === 'limit' || order.pre_open;
+      const needBars = (order.type === 'limit' || order.pre_open) && order.session !== 'pre';   // NXT 프리마켓은 분봉이 없다
       const bars = needBars ? await todayBars(order.code, now) : null;
       fill = await E.tryFill(db, season, order, { quote, bars }, now);
       if (fill) { mem.delete(`lb:${season.id}`); order = await db.prepare(`SELECT * FROM orders WHERE id=?`).bind(m[1]).first(); }
@@ -259,13 +269,13 @@ async function accountView(db, season, account, now) {
   };
 }
 
-async function leaderboard(db, season, now) {
+async function leaderboard(db, season, now, official) {
   const [accRes, posRes] = await Promise.all([
     db.prepare(`SELECT uid, nickname, cash, fills, joined_at FROM accounts WHERE season_id=? AND status='active'`).bind(season.id).all(),
     db.prepare(`SELECT uid, code, qty, cost FROM positions WHERE season_id=?`).bind(season.id).all()
   ]);
   const positions = posRes.results || [];
-  const px = await pricer(db, positions.map((p) => p.code), now);
+  const px = await pricer(db, positions.map((p) => p.code), now, official);
   return { rows: E.valuate(accRes.results || [], positions, px.priceOf), asOf: now, live: px.live };
 }
 
@@ -326,7 +336,7 @@ export function mockErrorResponse(e, json) {
   return json({ error: '처리 중 문제가 생겼습니다. 잠시 후 다시 시도해 주세요' }, 500);
 }
 
-// ── 크론 (평일 09:00~15:59 KST 매분) ──────────────────────────
+// ── 크론 (평일 08:00~19:59 KST 매분) ──────────────────────────
 // 무료 요금제는 호출당 외부 요청이 50건이라 한 번에 처리하는 종목 수를 제한한다.
 const MAX_CODES_PER_RUN = 20;
 
@@ -339,8 +349,9 @@ export async function runCron(env, now = Date.now()) {
   await E.expireStale(db, now);
   if (!season) return;
 
-  if (t.hm >= E.OPEN_AT && t.hm < E.FILL_TO) await fillOpenOrders(db, season, now);
-  if (t.hm >= 15 * 60 + 40) await closeOfDay(db, season, now);
+  if (t.hm >= E.PRE_FROM && t.hm < E.AFTER_TO) await fillOpenOrders(db, season, now);
+  // 종가 저장·스냅샷은 한 번 끝나면 다시 하지 않는다 (16:30 까지 시도)
+  if (t.hm >= 15 * 60 + 40 && t.hm < 16 * 60 + 30) await closeOfDay(db, season, now);
 }
 
 async function fillOpenOrders(db, season, now) {
@@ -351,7 +362,8 @@ async function fillOpenOrders(db, season, now) {
   const codes = Array.from(new Set(orders.map((o) => o.code))).slice(0, MAX_CODES_PER_RUN * 2);
   const quotes = await quotesFor(codes);
   // 지정가·장전 주문이 걸린 종목만 분봉을 받는다 (종목당 외부 요청 1건)
-  const needBars = Array.from(new Set(orders.filter((o) => o.type === 'limit' || o.pre_open).map((o) => o.code))).slice(0, MAX_CODES_PER_RUN);
+  // 프리마켓 주문은 NXT 라 분봉이 없다 — 시세 폴링만으로 판정한다
+  const needBars = Array.from(new Set(orders.filter((o) => (o.type === 'limit' || o.pre_open) && o.session !== 'pre').map((o) => o.code))).slice(0, MAX_CODES_PER_RUN);
   const bars = {};
   await Promise.all(needBars.map(async (c) => { bars[c] = await todayBars(c, now); }));
   let filled = 0;
@@ -391,7 +403,7 @@ async function closeOfDay(db, season, now) {
   // 거래정지 등으로 오늘 봉이 없는 종목은 직전 종가로 평가되므로 기다리지 않는다. 남은 종목이 있으면 다음 분에 이어서.
   if (held.filter((c) => !have.has(c)).length > 0 && todo.length === MAX_CODES_PER_RUN) return;
 
-  const board = await leaderboard(db, season, now);
+  const board = await leaderboard(db, season, now, true);      // 15:30 종가 기준
   const stmts = board.rows.map((r) => db.prepare(
     `INSERT OR REPLACE INTO daily_snapshots (season_id, uid, date, equity, cash, rank) VALUES (?,?,?,?,?,?)`
   ).bind(season.id, r.uid, t.ymd, r.equity, r.cash, r.rank));

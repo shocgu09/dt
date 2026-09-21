@@ -119,7 +119,7 @@ var Mock = (function () {
   }
   function refreshAccountOrSeason() { return (season && season.joined) ? refreshAccount() : refreshSeason(); }
 
-  /* ===== 내 계좌 ===== */
+  /* ===== 계좌 ===== */
   function renderAccount(errMsg) {
     var el = document.getElementById('tab-account');
     if (!el) return;
@@ -152,7 +152,8 @@ var Mock = (function () {
       +   cell('평가손익', '<span class="' + signClass(evalPnl) + '">' + (evalPnl > 0 ? '+' : '') + fmtNum(evalPnl) + '</span>')
       +   cell('실현손익', '<span class="' + signClass(a.realizedPnl) + '">' + (a.realizedPnl > 0 ? '+' : '') + fmtNum(a.realizedPnl) + '</span>')
       + '</div>'
-      + '<div class="mk-note">' + (a.live ? '장중 — 실시간 KRX 가격으로 평가' : '장외 — 마지막 거래일 15:30 종가로 평가') + '</div>'
+      + '<div class="mk-note">' + (a.live ? '08:00~20:00 실시간 평가 — 프리·애프터마켓 가격 포함' : '장 마감 — 마지막 체결가로 평가')
+      +   ' · 순위 확정은 15:30 종가 기준</div>'
       + '</div>';
 
     h += '<section class="m-section"><div class="m-head"><h3>📦 보유 종목</h3><span class="m-hint">' + a.positions.length + '종목</span></div>';
@@ -203,7 +204,7 @@ var Mock = (function () {
       +   escapeHtml(s.endDate) + ' 종가 기준 <b>최종 자산</b>으로 순위를 가립니다.</p>'
       + '<ul class="mk-rules">'
       +   '<li>국내 상장 종목 전부 (ETF·레버리지·인버스 포함)</li>'
-      +   '<li>평일 08:30~15:30 주문 · 지정가 / 시장가</li>'
+      +   '<li>정규장 08:30~15:30 지정가 / 시장가 · 시간외 08:00~08:30, 15:40~20:00 지정가</li>'
       +   '<li>수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2) + '% (ETF·ETN 면제) — 실전과 동일</li>'
       +   '<li>주문 뒤에 실제로 거래된 가격으로 체결됩니다</li>'
       +   '<li>참가자 ' + fmtNum(season.participants) + '명 · 분기마다 초기화</li>'
@@ -334,14 +335,16 @@ var Mock = (function () {
   async function openSheet(side) {
     if (!curStock) return;
     var q = (typeof _lastQuote !== 'undefined' && _lastQuote && _lastQuote.code === curStock.code) ? _lastQuote : null;
-    var px = q ? ((q.krx && q.krx.price) || q.price) : 0;
+    // 시간외에는 화면에 보이는 그 시장의 가격(q.price), 정규장에는 KRX 가격을 기본값으로
+    var px = q ? (phaseInfo().limitOnly ? (q.price || (q.krx && q.krx.price)) : ((q.krx && q.krx.price) || q.price)) : 0;
     sheet = { code: curStock.code, name: curStock.name, side: side, type: 'limit', price: px, qty: '', taxFree: false, busy: false };
     renderSheet();
+    // 장 구간(정규장·시간외)이 바뀌었을 수 있으니 열 때마다 최신 상태를 받아 다시 그린다
+    refreshAccount().then(function () { if (sheet && !sheet.busy) renderSheet(); });
     try {
       var k = await api('/kind?code=' + encodeURIComponent(sheet.code));
       if (sheet && sheet.code === k.code) { sheet.taxFree = k.taxFree; renderSheet(); }
     } catch (e) { /* 호가단위는 서버가 다시 확인한다 */ }
-    if (!account) refreshAccount();
   }
 
   function closeSheet() {
@@ -351,12 +354,20 @@ var Mock = (function () {
     document.body.classList.remove('mk-noscroll');
   }
 
+  /** 지금이 어느 구간인지 — 계좌 응답이 더 최신이면 그쪽을 쓴다 */
+  function phaseInfo() {
+    var src = (account && account.phase) ? account : (season || {});
+    return { phase: src.phase || 'closed', canOrder: !!src.canOrder, limitOnly: !!src.limitOnly };
+  }
+
   function sessionNote() {
-    if (!season) return '';
-    if (!season.canOrder && !(account && account.canOrder)) return '<div class="mk-warn">지금은 주문할 수 없습니다 — 평일 08:30~15:30</div>';
-    var ph = (account && account.phase) || season.phase;
-    if (ph === 'pre_open') return '<div class="mk-info">장 시작 전입니다 — 09:00 <b>시가</b>에 체결됩니다</div>';
-    if (ph === 'close_auction') return '<div class="mk-info">장 마감 동시호가입니다 — 15:30 <b>종가</b>에 체결됩니다</div>';
+    var p = phaseInfo();
+    if (p.phase === 'break') return '<div class="mk-warn">15:30~15:40 에는 주문을 받지 않습니다 — 15:40 부터 애프터마켓</div>';
+    if (!p.canOrder) return '<div class="mk-warn">지금은 주문할 수 없습니다 — 평일 08:00~20:00</div>';
+    if (p.phase === 'pre_market') return '<div class="mk-info"><b>프리마켓(NXT)</b> — 지정가만 가능 · 08:50 까지 체결되지 않으면 취소됩니다</div>';
+    if (p.phase === 'after_market') return '<div class="mk-info"><b>애프터마켓</b> — 지정가만 가능 · 20:00 까지 체결되지 않으면 취소됩니다. ETF·ETN 은 대상이 아닙니다</div>';
+    if (p.phase === 'pre_open') return '<div class="mk-info">장 시작 전입니다 — 09:00 <b>시가</b>에 체결됩니다</div>';
+    if (p.phase === 'close_auction') return '<div class="mk-info">장 마감 동시호가입니다 — 15:30 <b>종가</b>에 체결됩니다</div>';
     return '';
   }
 
@@ -386,6 +397,8 @@ var Mock = (function () {
       document.body.classList.add('mk-noscroll');
     }
     var isBuy = s.side === 'buy';
+    var limitOnly = phaseInfo().limitOnly;
+    if (limitOnly) s.type = 'limit';            // 시간외에는 실전과 같이 지정가만
     el.innerHTML = '<div class="mk-sheet-dim" onclick="Mock.closeSheet()"></div>'
       + '<div class="mk-sheet ' + s.side + '" role="dialog" aria-modal="true" aria-label="주문">'
       + '<div class="mk-sheet-head"><span class="mk-sheet-title">' + escapeHtml(s.name) + ' <i>' + escapeHtml(s.code) + '</i></span>'
@@ -396,7 +409,7 @@ var Mock = (function () {
       + '</div>'
       + '<div class="seg-row sub mk-seg2">'
       +   '<button class="seg' + (s.type === 'limit' ? ' on' : '') + '" onclick="Mock.setSheet(\'type\',\'limit\')">지정가</button>'
-      +   '<button class="seg' + (s.type === 'market' ? ' on' : '') + '" onclick="Mock.setSheet(\'type\',\'market\')">시장가</button>'
+      +   '<button class="seg' + (s.type === 'market' ? ' on' : '') + '" onclick="Mock.setSheet(\'type\',\'market\')"' + (limitOnly ? ' disabled' : '') + '>시장가</button>'
       + '</div>'
       + sessionNote()
       + '<label class="mk-field"><span>가격</span>'
@@ -511,7 +524,7 @@ var Mock = (function () {
         if (o.filledQty > 0) msg(fmtNum(o.filledQty) + '/' + fmtNum(o.qty) + '주 체결 — 나머지는 거래가 생기는 대로 체결됩니다', 'ok');
         if (tries >= 30 || !sheet) {
           await refreshAccount();
-          if (sheet) { closeSheet(); toast('주문이 대기 중입니다 — 내 계좌의 미체결 주문에서 확인하세요', ''); }
+          if (sheet) { closeSheet(); toast('주문이 대기 중입니다 — 계좌 탭의 미체결 주문에서 확인하세요', ''); }
           return;
         }
         watchOrder(id, tries + 1);

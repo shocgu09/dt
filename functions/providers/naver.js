@@ -76,6 +76,16 @@ function mapQuote(s) {
       })(),
       tradedAt: s.localTradedAt || null         // 주의: 마지막 체결 시각이 아니라 시세 스냅샷 시각에 가깝다 (실측)
     },
+    // 넥스트레이드(NXT) 프리·애프터마켓 값. NXT 대상이 아닌 종목(ETF 등)은 null.
+    // KRX 애프터마켓(16:00~20:00)은 NXT 와 별개의 시장이고 그 값은 위 krx 에 들어온다.
+    nxt: over ? {
+      price: num(over.overPrice),
+      volume: num(over.accumulatedTradingVolumeRaw) ?? num(over.accumulatedTradingVolume),
+      session: over.tradingSessionType || null,          // PRE_MARKET | AFTER_MARKET
+      open: over.overMarketStatus === 'OPEN',
+      limitState: (function (c) { return c === '1' ? 'upper' : (c === '4' ? 'lower' : null); })(
+        over.compareToPreviousPrice && over.compareToPreviousPrice.code)
+    } : null,
     delayed: !(s.stockExchangeType && s.stockExchangeType.delayTime === 0),
     asOf: px.localTradedAt || s.localTradedAt || new Date().toISOString(),
     source: 'naver'
@@ -91,6 +101,20 @@ export const naver = {
     const s = d && d.datas && d.datas[0];
     if (!s) throw new Error('naver: quote empty');
     return mapQuote(s);
+  },
+
+  /**
+   * 상장 ETF 전체 목록 [{code, name}] — 키워드 검색 보강용.
+   * 네이버 자동완성은 이름의 앞부분만 맞춰 주기 때문에 "레버리지"·"인버스"·"반도체" 같은 중간 단어로는
+   * ETF 가 하나도 안 나온다. 목록은 EUC-KR 로 온다.
+   */
+  async getEtfList() {
+    const r = await fetch('https://finance.naver.com/api/sise/etfItemList.nhn', { headers: HEADERS });
+    if (!r.ok) throw new Error(`naver etf list ${r.status}`);
+    const d = JSON.parse(new TextDecoder('euc-kr').decode(await r.arrayBuffer()));
+    return ((d.result && d.result.etfItemList) || [])
+      .filter((x) => /^[0-9A-Z]{6}$/.test(x.itemcode))
+      .map((x) => ({ code: x.itemcode, name: x.itemname }));
   },
 
   // 종목 종류 — 'stock' | 'etf' | 'etn' … (ETF·ETN 은 매도 시 거래세가 없다)

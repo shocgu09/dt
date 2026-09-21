@@ -25,7 +25,7 @@
       <a href="/" class="back-btn">← 홈</a>
       <h1>💰 재테크</h1>
       <div class="header-actions">
-        <!-- 모의투자 모드 — 켜면 내 계좌·랭킹·매수/매도가 생긴다. 회원 확인 뒤에만 보인다 -->
+        <!-- 모의투자 모드 — 켜면 계좌·랭킹·매수/매도가 생긴다. 회원 확인 뒤에만 보인다 -->
         <button id="mockToggle" onclick="toggleMockMode()" class="mock-btn" aria-pressed="false" style="display:none"><span class="dot"></span>모의투자</button>
         <button id="themeToggle" onclick="toggleTheme()" class="theme-btn" aria-label="테마 변경">🌙</button>
       </div>
@@ -53,7 +53,7 @@
       <div class="tab-bar">
         <button class="tab-btn active" data-tab="briefing" onclick="switchTab('briefing')">📋 시황</button>
         <button class="tab-btn" data-tab="market" onclick="switchTab('market')">📈 시세</button>
-        <button class="tab-btn" data-tab="account" onclick="switchTab('account')" id="tabAccount" style="display:none">💼 내 계좌</button>
+        <button class="tab-btn" data-tab="account" onclick="switchTab('account')" id="tabAccount" style="display:none">💼 계좌</button>
         <button class="tab-btn" data-tab="ranking" onclick="switchTab('ranking')" id="tabRanking" style="display:none">🏆 랭킹</button>
         <button class="tab-btn" data-tab="admin" onclick="switchTab('admin')" id="tabAdmin" style="display:none">⚙️ 관리</button>
       </div>
@@ -217,8 +217,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="market.js?v=15"></script>
+  <script src="market.js?v=16"></script>
   <script src="market-ui.js?v=21"></script>
-  <script src="app.js?v=15"></script>
+  <script src="app.js?v=17"></script>
 </body>
 </html>
