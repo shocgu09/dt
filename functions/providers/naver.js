@@ -138,6 +138,42 @@ export const naver = {
     }));
   },
 
+  /**
+   * 거래대금 상위 — 네이버에 전용 랭킹 API가 없다.
+   * 시총상위 + 상승상위 + 하락상위(각 100)를 합쳐 거래대금으로 재정렬한다.
+   * 거래대금 상위는 대형주 아니면 급등락주라 이 셋의 합집합이면 실무적으로 충분하다.
+   * (완전한 전수 랭킹은 아니므로 화면에 "근사" 표기를 남긴다)
+   */
+  async getTopValue(market = 'KOSPI', size = 20) {
+    const lists = await Promise.all(['marketValue', 'up', 'down'].map((t) =>
+      getJson(`https://m.stock.naver.com/api/stocks/${t}/${market}?page=1&pageSize=100`)
+        .then((d) => d.stocks || [])
+        .catch(() => [])
+    ));
+    const seen = new Map();
+    for (const arr of lists) {
+      for (const s of arr) {
+        if (seen.has(s.itemCode)) continue;
+        const tv = num(s.accumulatedTradingValueRaw) ?? num(s.accumulatedTradingValue);
+        seen.set(s.itemCode, {
+          code: s.itemCode,
+          name: s.stockName,
+          price: num(s.closePrice),
+          changeRate: Number(s.fluctuationsRatio),
+          change: signOf(s.compareToPreviousPrice && s.compareToPreviousPrice.code)
+                  * Math.abs(num(s.compareToPreviousClosePrice) || 0),
+          volume: num(s.accumulatedTradingVolume),
+          tradingValue: tv,
+          tradingValueText: s.accumulatedTradingValueKrwHangeul || null
+        });
+      }
+    }
+    return Array.from(seen.values())
+      .filter((x) => x.tradingValue != null)
+      .sort((a, b) => b.tradingValue - a.tradingValue)
+      .slice(0, size);
+  },
+
   /** 업종 / 테마 — 토스 "지금 뜨는 산업" 대응 */
   async getSectors(kind = 'theme', size = 20) {
     const path = kind === 'industry' ? 'industry' : 'theme';

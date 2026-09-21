@@ -9,7 +9,7 @@ var curTf = 'D';
 var bookOpen = false;
 var chartHandle = null;
 var searchTimer = null;
-var rankType = 'up';
+var rankType = 'value';
 var rankMarket = 'KOSPI';
 var watchView = 'card';          // 'card' | 'list'
 var chartMode = 'simple';        // 'simple' | 'detail'
@@ -303,17 +303,56 @@ async function loadRank() {
   el.innerHTML = '<div class="loading">불러오는 중...</div>';
   try {
     var d = await Market.rank(rankType, rankMarket);
-    el.innerHTML = (d.items || []).slice(0, 15).map(function (s, i) {
+    var items = (d.items || []).slice(0, 15);
+    if (!items.length) { el.innerHTML = '<div class="empty">데이터가 없습니다</div>'; return; }
+
+    el.innerHTML = items.map(function (s, i) {
       var c = signClass(s.changeRate);
-      return '<button class="q-row" onclick="openStock(\'' + s.code + '\',\'' + escapeAttr(s.name) + '\')">'
-        + '<span class="q-rank">' + (i + 1) + '</span>'
-        + '<span class="q-name">' + escapeHtml(s.name) + '</span>'
-        + '<span class="q-price">' + fmtNum(s.price) + '</span>'
-        + '<span class="q-chg ' + c + '">' + fmtRate(s.changeRate) + '</span>'
-        + '</button>';
-    }).join('') || '<div class="empty">데이터가 없습니다</div>';
+      var watched = watchlist.indexOf(s.code) !== -1;
+      return '<div class="q-row rank-row">'
+        + '<button class="rank-main" onclick="openStock(\'' + s.code + '\',\'' + escapeAttr(s.name) + '\')">'
+        +   '<span class="q-rank">' + (i + 1) + '</span>'
+        +   '<span class="rank-names">'
+        +     '<span class="q-name">' + escapeHtml(s.name) + '</span>'
+        +     '<span class="rank-code">' + s.code + '</span>'
+        +   '</span>'
+        +   '<span class="rank-nums">'
+        +     '<span class="q-price">' + fmtNum(s.price) + '</span>'
+        +     '<span class="q-chg ' + c + '">' + fmtRate(s.changeRate) + '</span>'
+        +   '</span>'
+        +   (s.tradingValueText || s.tradingValue != null
+              ? '<span class="rank-tv">' + escapeHtml(s.tradingValueText || fmtCompact(s.tradingValue)) + '</span>'
+              : '')
+        + '</button>'
+        + '<button class="fav-btn' + (watched ? ' on' : '') + '" id="fav-' + s.code + '"'
+        +   ' onclick="onFavToggle(\'' + s.code + '\')" aria-label="관심종목">'
+        +   (watched ? '♥' : '♡') + '</button>'
+        + '</div>';
+    }).join('')
+    + (d.approx ? '<div class="rank-note">거래대금 순위는 시총·급등락 상위 300종목을 합쳐 계산한 근사치입니다</div>' : '');
   } catch (e) {
     el.innerHTML = '<div class="empty">랭킹을 불러오지 못했습니다</div>';
+  }
+}
+
+/** 랭킹 목록에서 바로 관심종목 토글 */
+async function onFavToggle(code) {
+  var btn = document.getElementById('fav-' + code);
+  if (!btn) return;
+  btn.disabled = true;
+  try {
+    var on = await toggleWatch(code);
+    btn.classList.toggle('on', on);
+    btn.textContent = on ? '♥' : '♡';
+    // 관심종목 섹션도 다시 그린다 (뼈대 재생성 강제)
+    var wl = document.getElementById('watchList');
+    if (wl) { wl.dataset.key = ''; wl.dataset.built = ''; }
+    loadWatchQuotes();
+    startHomePolling();
+  } catch (e) {
+    alert('관심종목 저장에 실패했습니다.');
+  } finally {
+    btn.disabled = false;
   }
 }
 

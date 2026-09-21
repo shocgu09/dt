@@ -279,8 +279,14 @@ async function handleSpark(env, code) {
 
 /** 급상승·급하락·시총 랭킹 (토스 "실시간 차트") */
 async function handleRank(env, type, market) {
-  const t = ['up', 'down', 'marketValue'].includes(type) ? type : 'up';
+  const t = ['up', 'down', 'marketValue', 'value'].includes(type) ? type : 'up';
   const m = market === 'KOSDAQ' ? 'KOSDAQ' : 'KOSPI';
+  if (t === 'value') {
+    return cached(env, `r:value:${m}`, TTL.rank, async () => ({
+      type: 'value', market: m, approx: true,
+      items: await naver.getTopValue(m, 20), source: 'naver'
+    }));
+  }
   return cached(env, `r:${t}:${m}`, TTL.rank, async () => ({
     type: t, market: m, items: await naver.getRanking(t, m, 20), source: 'naver'
   }));

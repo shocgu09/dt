@@ -16,7 +16,7 @@
   <meta property="og:locale" content="ko_KR" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="stylesheet" href="style.css?v=9">
   <link rel="icon" href="../icon-192.png">
 </head>
 <body>
@@ -118,7 +118,8 @@
           <section class="m-section">
             <div class="m-head"><h3>📊 오늘의 등락</h3></div>
             <div class="seg-row">
-              <button class="seg on" data-rank="up" onclick="setRank('up')">급상승</button>
+              <button class="seg on" data-rank="value" onclick="setRank('value')">거래대금</button>
+              <button class="seg" data-rank="up" onclick="setRank('up')">급상승</button>
               <button class="seg" data-rank="down" onclick="setRank('down')">급하락</button>
               <button class="seg" data-rank="marketValue" onclick="setRank('marketValue')">시총</button>
             </div>
@@ -203,8 +204,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="market.js?v=8"></script>
-  <script src="market-ui.js?v=8"></script>
+  <script src="market.js?v=9"></script>
+  <script src="market-ui.js?v=9"></script>
   <script src="app.js?v=8"></script>
 </body>
 </html>
