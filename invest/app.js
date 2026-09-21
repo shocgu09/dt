@@ -22,6 +22,8 @@ function toggleTheme() {
   document.documentElement.setAttribute('data-theme', next);
   localStorage.setItem('dt-theme', next);
   document.getElementById('themeToggle').textContent = next === 'light' ? '☀️' : '🌙';
+  // 차트(canvas)는 CSS 변수를 따라가지 못한다 — 그릴 때 읽은 색이 굳어 있으므로 다시 그리게 한다
+  if (typeof onThemeChanged === 'function') onThemeChanged();
 }
 (function() {
   var saved = localStorage.getItem('dt-theme') || 'dark';

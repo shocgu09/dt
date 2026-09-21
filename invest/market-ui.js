@@ -655,6 +655,31 @@ function toggleChartMode() {
 })();
 
 var _chartSeq = 0;
+var _chartBars = null;      // 마지막으로 그린 봉 — 테마 전환 시 재요청 없이 다시 그리는 데 쓴다
+
+/**
+ * 주간/야간 전환 — 차트는 canvas 라 CSS 변수를 따라가지 못하고, 그릴 때 읽은 색이 굳어 있다.
+ * 배경·격자·글자뿐 아니라 상승/하락 색도 테마마다 달라서 옵션만 바꾸지 않고 통째로 다시 그린다.
+ */
+async function onThemeChanged() {
+  if (!curStock || !chartHandle || !_chartBars) return;
+  var box = document.getElementById('chartBox');
+  if (!box) return;
+  var seq = ++_chartSeq;
+  chartHandle.dispose(); chartHandle = null;
+  try {
+    var handle = await renderChart(box, _chartBars, curTf, chartMode);
+    if (seq !== _chartSeq) { handle.dispose(); return; }
+    chartHandle = handle;
+    updateHiLoLabel();
+    // 다시 그린 봉의 끝점을 현재가에 맞춘다 (다음 시세 폴링까지 어긋나 보이지 않게)
+    if (_lastQuote) {
+      var isMin = (curTf === 'm' || curTf === 'm5');
+      chartHandle.updateLast(_lastQuote.price, currentBucketTime(), _lastQuote.volume, isMin && isMarketOpen());
+    }
+  } catch (e) { if (seq === _chartSeq) loadStockChart(); }
+}
+
 async function loadStockChart() {
   if (!curStock) return;
   var box = document.getElementById('chartBox');
@@ -682,6 +707,7 @@ async function loadStockChart() {
     var handle = await renderChart(box, use, curTf, chartMode);
     if (seq !== _chartSeq) { handle.dispose(); return; }
     chartHandle = handle;
+    _chartBars = use;
 
     // 기간 최고/최저를 차트 위에 텍스트로 — 가장자리 마커가 잘려도 값은 보인다
     updateHiLoLabel();
@@ -723,6 +749,7 @@ async function refreshChartBars() {
     else if (curTf === 'D') use = bars.slice(-120);
 
     chartHandle.replaceData(use);
+    _chartBars = use;
     updateHiLoLabel();
     if (_lastQuote) renderRange(_lastQuote);
   } catch (e) { /* 다음 주기에 재시도 */ }

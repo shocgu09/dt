@@ -306,7 +306,8 @@ async function renderChart(container, bars, tf, mode) {
     handleScale: { axisPressedMouseMove: false },
     localization: {
       locale: 'ko-KR',
-      priceFormatter: function (p) { return Math.round(p).toLocaleString('ko-KR'); }
+      // 여백 때문에 축이 0 아래로 내려가도 음수 가격은 찍지 않는다 (주가에 음수는 없다)
+      priceFormatter: function (p) { return p < 0 ? '' : Math.round(p).toLocaleString('ko-KR'); }
     }
   });
 
