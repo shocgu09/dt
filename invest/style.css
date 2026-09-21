@@ -241,11 +241,19 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 
 /* 지수 스트립 */
 .index-strip {
-  display: flex; gap: 10px; align-items: stretch; overflow-x: auto;
+  display: flex; gap: 10px; align-items: stretch;
   background: var(--bg2); border: 1px solid var(--border); border-left: 3px solid var(--primary);
-  padding: 10px 12px; margin-bottom: 12px; -webkit-overflow-scrolling: touch;
+  padding: 10px 12px; margin-bottom: 12px;
 }
-.index-strip::-webkit-scrollbar { display: none; }
+/* 지수 5개 — 좁은 화면에서는 이 안에서만 가로로 밀린다. 오른쪽 끝을 흐려 더 있다는 걸 알린다 */
+.idx-scroll {
+  flex: 1; min-width: 0; display: flex; gap: 10px; overflow-x: auto;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
+          mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
+}
+.idx-scroll::-webkit-scrollbar { display: none; }
+.idx-scroll::after { content: ''; flex: 0 0 10px; }   /* 끝까지 밀었을 때 마지막 지수가 흐려지지 않게 */
 .idx-cell { flex: 0 0 auto; min-width: 96px; }
 .idx-name { font-size: .7rem; color: var(--text3); font-weight: 700; }
 .idx-price { font-size: 1rem; font-weight: 800; margin-top: 2px; letter-spacing: -.3px; }

@@ -52,6 +52,9 @@ function startHomePolling() {
 }
 
 /* ===== 지수 스트립 ===== */
+// 표시 순서 — 워커가 내려준 것만 그린다 (구버전 캐시 응답에는 뒤의 셋이 없을 수 있다)
+var INDEX_KEYS = ['kospi', 'kosdaq', 'kpi200', 'fut', 'kq150'];
+
 async function loadIndex() {
   var el = document.getElementById('indexStrip');
   if (!el) return;
@@ -60,9 +63,11 @@ async function loadIndex() {
     if (d.kospi && d.kospi.marketStatus) setMarketStatus(d.kospi.marketStatus);
     var st = marketStateLabel();
 
-    // 최초 1회만 뼈대를 만들고 이후엔 값만 갈아끼운다 (플래시 애니메이션 유지)
-    if (!el.dataset.built) {
-      el.innerHTML = ['kospi', 'kosdaq'].map(function (k) {
+    // 뼈대는 구성이 바뀔 때만 다시 만들고 평소엔 값만 갈아끼운다 (플래시 애니메이션 유지)
+    var have = INDEX_KEYS.filter(function (k) { return d[k]; });
+    if (el.dataset.built !== have.join(',')) {
+      // 지수 셀만 가로로 밀리고(idx-scroll) 상태 배지는 그 밖에 고정 — 좁은 화면에서 배지가 숫자를 가리지 않는다
+      el.innerHTML = '<div class="idx-scroll">' + have.map(function (k) {
         var x = d[k];
         if (!x) return '';
         return '<div class="idx-cell">'
@@ -70,18 +75,20 @@ async function loadIndex() {
           + '<div class="idx-price" id="ixp-' + k + '"></div>'
           + '<div class="idx-chg" id="ixc-' + k + '"></div>'
           + '</div>';
-      }).join('') + '<div class="idx-state" id="ixState"></div>';
-      el.dataset.built = '1';
+      }).join('') + '</div><div class="idx-state" id="ixState"></div>';
+      el.dataset.built = have.join(',');
     }
 
-    ['kospi', 'kosdaq'].forEach(function (k) {
+    have.forEach(function (k) {
       var x = d[k];
-      if (!x) return;
       var pEl = document.getElementById('ixp-' + k);
       var cEl = document.getElementById('ixc-' + k);
       if (!pEl || !cEl) return;
       var cls = signClass(x.change);
-      setTextFlash(pEl, fmtNum(Math.round(x.price * 100) / 100), dirOf('ix:' + k, x.price));
+      // 지수는 항상 소수 둘째 자리까지 (1,115.10 이 1,115.1 로 찍히지 않게)
+      var pTxt = x.price == null ? '-'
+        : Number(x.price).toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      setTextFlash(pEl, pTxt, dirOf('ix:' + k, x.price));
       pEl.className = 'idx-price ' + cls;
       cEl.textContent = signMark(x.change) + ' ' + fmtRate(x.changeRate);
       cEl.className = 'idx-chg ' + cls;

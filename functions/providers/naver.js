@@ -109,22 +109,25 @@ export const naver = {
     }));
   },
 
-  // 지수 — KOSPI / KOSDAQ
+  // 지수 — 코드 여러 개를 쉼표로 묶어 한 번에 받는다 (네이버 모바일이 쓰는 방식)
+  //   KOSPI / KOSDAQ / KPI200(코스피 200) / FUT(코스피 200 선물) / KQI150(코스닥 150)
   async getIndex() {
-    const one = async (key) => {
-      const d = await getJson(`https://polling.finance.naver.com/api/realtime/domestic/index/${key}`);
-      const s = d && d.datas && d.datas[0];
-      if (!s) return null;
-      const sign = signOf(s.compareToPreviousPrice && s.compareToPreviousPrice.code);
-      return {
-        code: key, name: s.stockName,
-        price: num(s.closePrice),
-        change: sign * Math.abs(num(s.compareToPreviousClosePrice) || 0),
-        changeRate: Number(s.fluctuationsRatio)
+    const KEYS = { KOSPI: 'kospi', KOSDAQ: 'kosdaq', KPI200: 'kpi200', FUT: 'fut', KQI150: 'kq150' };
+    const d = await getJson(`https://polling.finance.naver.com/api/realtime/domestic/index/${Object.keys(KEYS).join(',')}`);
+    const out = { source: 'naver' };
+    for (const x of (d && d.datas) || []) {
+      const key = KEYS[x.itemCode];
+      if (!key) continue;
+      const sign = signOf(x.compareToPreviousPrice && x.compareToPreviousPrice.code);
+      out[key] = {
+        code: x.itemCode, name: x.stockName,
+        price: num(x.closePrice),
+        change: sign * Math.abs(num(x.compareToPreviousClosePrice) || 0),
+        changeRate: Number(x.fluctuationsRatio)
       };
-    };
-    const [kospi, kosdaq] = await Promise.all([one('KOSPI'), one('KOSDAQ')]);
-    return { kospi, kosdaq, source: 'naver' };
+    }
+    if (!out.kospi && !out.kosdaq) throw new Error('naver: index empty');
+    return out;
   },
 
   // 종목 검색 — 초성 검색 지원 (ㅅㅅㅈㅈ → 삼성전자)
