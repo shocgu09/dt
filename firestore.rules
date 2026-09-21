@@ -339,11 +339,19 @@ service cloud.firestore {
           && request.resource.data.body is string
           && request.resource.data.body.size() > 0
           && request.resource.data.body.size() <= 1000;
-        // 본인 댓글은 자유 수정, 남의 댓글은 좋아요 필드만
+        // 본인 댓글은 본문만 수정 가능 (authorUid·isAdmin 등을 못 바꾸게 화이트리스트),
+        // 그 외에는 좋아요 필드만 — 본인이 자기 댓글에 좋아요를 누르는 것도 이 경로
         allow update: if isRealUser()
-          && (resource.data.authorUid == request.auth.uid
-              || request.resource.data.diff(resource.data)
-                   .affectedKeys().hasOnly(['likes', 'likedBy']));
+          && (
+               (resource.data.authorUid == request.auth.uid
+                && request.resource.data.diff(resource.data)
+                     .affectedKeys().hasOnly(['body', 'editedAt'])
+                && request.resource.data.body is string
+                && request.resource.data.body.size() > 0
+                && request.resource.data.body.size() <= 1000)
+               || request.resource.data.diff(resource.data)
+                    .affectedKeys().hasOnly(['likes', 'likedBy'])
+             );
         allow delete: if isAdmin()
           || (isRealUser() && resource.data.authorUid == request.auth.uid);
       }
@@ -372,10 +380,19 @@ service cloud.firestore {
           && request.resource.data.body is string
           && request.resource.data.body.size() > 0
           && request.resource.data.body.size() <= 1000;
+        // 본인 댓글은 본문만 수정 가능 (authorUid·isAdmin 등을 못 바꾸게 화이트리스트),
+        // 그 외에는 좋아요 필드만 — 본인이 자기 댓글에 좋아요를 누르는 것도 이 경로
         allow update: if isRealUser()
-          && (resource.data.authorUid == request.auth.uid
-              || request.resource.data.diff(resource.data)
-                   .affectedKeys().hasOnly(['likes', 'likedBy']));
+          && (
+               (resource.data.authorUid == request.auth.uid
+                && request.resource.data.diff(resource.data)
+                     .affectedKeys().hasOnly(['body', 'editedAt'])
+                && request.resource.data.body is string
+                && request.resource.data.body.size() > 0
+                && request.resource.data.body.size() <= 1000)
+               || request.resource.data.diff(resource.data)
+                    .affectedKeys().hasOnly(['likes', 'likedBy'])
+             );
         allow delete: if isAdmin()
           || (isRealUser() && resource.data.authorUid == request.auth.uid);
       }

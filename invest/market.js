@@ -292,19 +292,24 @@ async function renderChart(container, bars, tf, mode) {
     });
     mainSeries.setData(bars.map(function (b) { return { time: b._t, value: b.c }; }));
 
-    // 최고·최저 지점 표시 (토스 차용)
+    // 최고·최저 지점 표시 (토스 차용) — 고가/저가가 발생한 봉에 찍고 그 값을 쓴다.
+    // 마커의 Y위치는 종가 선 위지만, 표시 숫자는 실제 고가/저가여야 상단 라벨과 일치한다.
     var hiIdx = 0, loIdx = 0;
     bars.forEach(function (b, i) {
-      if (b.c > bars[hiIdx].c) hiIdx = i;
-      if (b.c < bars[loIdx].c) loIdx = i;
+      if (b.h > bars[hiIdx].h) hiIdx = i;
+      if (b.l < bars[loIdx].l) loIdx = i;
     });
     if (bars.length > 2 && hiIdx !== loIdx) {
       mainSeries.setMarkers([
         { time: bars[hiIdx]._t, position: 'aboveBar', color: up, shape: 'circle',
-          text: '최고 ' + Math.round(bars[hiIdx].c).toLocaleString('ko-KR') },
+          text: '최고 ' + Math.round(bars[hiIdx].h).toLocaleString('ko-KR') },
         { time: bars[loIdx]._t, position: 'belowBar', color: down, shape: 'circle',
-          text: '최저 ' + Math.round(bars[loIdx].c).toLocaleString('ko-KR') }
-      ].sort(function (a, b) { return (a.time.day ? 0 : a.time) - (b.time.day ? 0 : b.time); }));
+          text: '최저 ' + Math.round(bars[loIdx].l).toLocaleString('ko-KR') }
+      ].sort(function (a, b) {
+        var av = (a.time && a.time.day) ? Date.UTC(a.time.year, a.time.month - 1, a.time.day) / 1000 : a.time;
+        var bv = (b.time && b.time.day) ? Date.UTC(b.time.year, b.time.month - 1, b.time.day) / 1000 : b.time;
+        return av - bv;
+      }));
     }
   } else {
     mainSeries = chart.addCandlestickSeries({
@@ -339,10 +344,11 @@ async function renderChart(container, bars, tf, mode) {
   var onResize = function () { chart.applyOptions({ width: container.clientWidth }); };
   window.addEventListener('resize', onResize);
 
-  // 화면에 그려진 것과 같은 기준으로 계산한다.
-  // 간단 보기는 종가 선을 그리므로 종가 기준, 자세히 보기는 캔들이라 고가/저가 기준.
-  var periodHigh = bars.length ? Math.max.apply(null, bars.map(function (b) { return mode === 'simple' ? b.c : b.h; })) : null;
-  var periodLow = bars.length ? Math.min.apply(null, bars.map(function (b) { return mode === 'simple' ? b.c : b.l; })) : null;
+  // 최고/최저는 언제나 고가·저가 기준.
+  // 종가 기준으로 잡으면 주봉·월봉에서 주/월 마지막 종가만 남아 중간 고점이 사라지고,
+  // 기간을 넓혔는데 최고가가 내려가는 모순이 생긴다.
+  var periodHigh = bars.length ? Math.max.apply(null, bars.map(function (b) { return b.h; })) : null;
+  var periodLow = bars.length ? Math.min.apply(null, bars.map(function (b) { return b.l; })) : null;
 
   var lastBar = last ? { time: last._t, open: last.o, high: last.h, low: last.l, close: last.c } : null;
   var lastVolV = last ? (last.v || 0) : 0;

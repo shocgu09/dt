@@ -16,7 +16,7 @@
   <meta property="og:locale" content="ko_KR" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="style.css?v=6">
   <link rel="icon" href="../icon-192.png">
 </head>
 <body>
@@ -93,14 +93,6 @@
               <button class="mini-btn" onclick="onClearRecent()">지우기</button>
             </div>
             <div class="chip-row" id="recentList"></div>
-          </section>
-
-          <section class="m-section" id="repSection" style="display:none">
-            <div class="m-head">
-              <h3>📌 대표 종목</h3>
-              <span class="m-hint">운영진이 고른 종목</span>
-            </div>
-            <div id="repList"></div>
           </section>
 
           <section class="m-section">
@@ -190,15 +182,8 @@
         </div>
 
         <div class="admin-section">
-          <h3>📌 대표 종목 <span style="font-size:.74rem;color:var(--text3);font-weight:600">(시세 탭 상단에 항상 노출)</span></h3>
+          <h3>📢 재테크 공지</h3>
           <div class="form-grid">
-            <div class="ticker-picker">
-              <input type="text" id="cfgTickerInput" class="f-input" autocomplete="off"
-                     placeholder="종목명으로 검색 (예: 삼성전자, ㅅㅅㅈㅈ)"
-                     oninput="onRepSearch(this.value)">
-              <div class="ticker-results" id="cfgTickerResults" style="display:none"></div>
-            </div>
-            <div class="chip-list" id="cfgTickerList"></div>
             <div class="f-label">재테크 공지 (비우면 미표시)</div>
             <input type="text" id="cfgNotice" class="f-input" placeholder="예: 이번 주 브리핑은 목요일에 올라갑니다">
             <button class="btn-submit" onclick="saveConfig()">설정 저장</button>
@@ -217,8 +202,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="market.js?v=4"></script>
-  <script src="market-ui.js?v=4"></script>
-  <script src="app.js?v=6"></script>
+  <script src="market.js?v=5"></script>
+  <script src="market-ui.js?v=5"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>

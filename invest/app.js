@@ -14,7 +14,6 @@ var commentError = {};     // briefingId -> true (로드 실패)
 var editingId = null;      // 수정 중인 브리핑 id
 var formSentiment = 'neutral';
 var formTickers = [];
-var cfgAlwaysOn = [];
 
 /* ===== 테마 ===== */
 function toggleTheme() {
@@ -280,11 +279,15 @@ function commentHtml(briefingId, c, isReply) {
   if (c.isAdmin) h += '<span class="admin-tag">운영진</span>';
   h += '<span class="comment-time">' + timeAgo(c.createdAt) + '</span>';
   h += '</div>';
-  h += '<div class="comment-body">' + linkifyBody(escapeHtml(c.body || '')) + '</div>';
-  h += '<div class="comment-actions">';
+  h += '<div class="comment-body" id="cb-' + c.id + '">' + linkifyBody(escapeHtml(c.body || ''))
+     + (c.editedAt ? ' <span class="edited-mark">(수정됨)</span>' : '') + '</div>';
+  h += '<div class="comment-edit" id="ce-' + c.id + '" style="display:none"></div>';
+  h += '<div class="comment-actions" id="ca-' + c.id + '">';
   h += '<button class="comment-action' + (liked ? ' liked' : '') + '" onclick="toggleLike(\'' + briefingId + '\',\'' + c.id + '\')">'
      + (liked ? '❤️' : '🤍') + ' ' + (c.likes || 0) + '</button>';
   if (!isReply) h += '<button class="comment-action" onclick="showReplyForm(\'' + briefingId + '\',\'' + c.id + '\')">답글</button>';
+  // 내용 수정은 작성자 본인만 (관리자는 삭제만 — 남의 말을 고치면 안 된다)
+  if (mine) h += '<button class="comment-action" onclick="startEditComment(\'' + briefingId + '\',\'' + c.id + '\')">수정</button>';
   if (mine || isAdmin) h += '<button class="comment-action danger" onclick="deleteComment(\'' + briefingId + '\',\'' + c.id + '\')">삭제</button>';
   h += '</div></div>';
   return h;
@@ -338,6 +341,71 @@ async function submitComment(briefingId, parentId, btn) {
   } finally {
     btn.disabled = false;
     btn.textContent = label;
+  }
+}
+
+function startEditComment(briefingId, commentId) {
+  var list = commentCache[briefingId] || [];
+  var c = list.filter(function(x) { return x.id === commentId; })[0];
+  if (!c) return;
+
+  var bodyEl = document.getElementById('cb-' + commentId);
+  var editEl = document.getElementById('ce-' + commentId);
+  var actEl = document.getElementById('ca-' + commentId);
+  if (!bodyEl || !editEl || !actEl) return;
+
+  bodyEl.style.display = 'none';
+  actEl.style.display = 'none';
+  editEl.style.display = '';
+  editEl.innerHTML =
+      '<textarea class="comment-input" id="ci-edit-' + commentId + '" maxlength="1000"></textarea>'
+    + '<div class="comment-submit-row" style="margin-top:8px">'
+    +   '<button class="btn-ghost" onclick="cancelEditComment(\'' + commentId + '\')">취소</button>'
+    +   '<button class="btn-submit" onclick="saveEditComment(\'' + briefingId + '\',\'' + commentId + '\', this)">저장</button>'
+    + '</div>';
+
+  var ta = document.getElementById('ci-edit-' + commentId);
+  ta.value = c.body || '';
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+}
+
+function cancelEditComment(commentId) {
+  var bodyEl = document.getElementById('cb-' + commentId);
+  var editEl = document.getElementById('ce-' + commentId);
+  var actEl = document.getElementById('ca-' + commentId);
+  if (editEl) { editEl.style.display = 'none'; editEl.innerHTML = ''; }
+  if (bodyEl) bodyEl.style.display = '';
+  if (actEl) actEl.style.display = '';
+}
+
+async function saveEditComment(briefingId, commentId, btn) {
+  if (!db || !currentUser) return;
+  var ta = document.getElementById('ci-edit-' + commentId);
+  if (!ta) return;
+  var body = ta.value.trim();
+  if (!body) { alert('내용을 입력해 주세요.'); return; }
+  if (body.length > 1000) { alert('댓글은 1000자를 넘을 수 없습니다.'); return; }
+
+  var list = commentCache[briefingId] || [];
+  var c = list.filter(function(x) { return x.id === commentId; })[0];
+  if (c && c.body === body) { cancelEditComment(commentId); return; }
+
+  btn.disabled = true;
+  btn.textContent = '저장 중...';
+  try {
+    await db.collection('invest_briefings').doc(briefingId)
+      .collection('comments').doc(commentId).update({
+        body: body,
+        editedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    if (c) { c.body = body; c.editedAt = { seconds: Math.floor(Date.now() / 1000) }; }
+    cancelEditComment(commentId);
+    renderComments(briefingId);
+  } catch (e) {
+    alert('수정에 실패했습니다.');
+    btn.disabled = false;
+    btn.textContent = '저장';
   }
 }
 
@@ -595,79 +663,9 @@ async function loadConfig() {
   try {
     var doc = await db.collection('invest_config').doc('settings').get();
     var d = doc.exists ? doc.data() : {};
-    cfgAlwaysOn = Array.isArray(d.alwaysOn) ? d.alwaysOn.map(normalizeTicker) : [];
-    // 구버전(코드만 저장)은 종목명을 조회해 채운 뒤 다시 그린다
-    var legacyRep = cfgAlwaysOn.filter(function (t) { return t.name === t.code; }).map(function (t) { return t.code; });
-    if (legacyRep.length) {
-      resolveTickerNames(legacyRep).then(function (found) {
-        if (!found) return;
-        cfgAlwaysOn = cfgAlwaysOn.map(function (t) {
-          return { code: t.code, name: _tickerNameCache[t.code] || t.name };
-        });
-        renderCfgTickers();
-      });
-    }
     var notice = document.getElementById('cfgNotice');
     if (notice) notice.value = d.notice || '';
-    renderCfgTickers();
   } catch (e) { /* 설정 없음 — 기본값 사용 */ }
-}
-
-var _repSearchTimer = null;
-
-function onRepSearch(v) {
-  clearTimeout(_repSearchTimer);
-  var q = (v || '').trim();
-  var box = document.getElementById('cfgTickerResults');
-  if (!q) { box.innerHTML = ''; box.style.display = 'none'; return; }
-  _repSearchTimer = setTimeout(function () { runRepSearch(q); }, 250);
-}
-
-async function runRepSearch(q) {
-  var box = document.getElementById('cfgTickerResults');
-  box.style.display = '';
-  box.innerHTML = '<div class="tr-empty">검색 중...</div>';
-  try {
-    var d = await Market.search(q);
-    if (!d.items || !d.items.length) { box.innerHTML = '<div class="tr-empty">검색 결과가 없습니다</div>'; return; }
-    box.innerHTML = d.items.map(function (i) {
-      return '<button type="button" class="tr-item" onclick="pickRep(\'' + i.code + '\',\'' + escapeAttr(i.name) + '\')">'
-        + '<span class="tr-name">' + escapeHtml(i.name) + '</span>'
-        + '<span class="tr-meta">' + escapeHtml(i.market || '') + ' · ' + i.code + '</span>'
-        + '</button>';
-    }).join('');
-  } catch (e) {
-    box.innerHTML = '<div class="tr-empty">' + escapeHtml(e.message) + '</div>';
-  }
-}
-
-function pickRep(code, name) {
-  _tickerNameCache[code] = name;
-  if (cfgAlwaysOn.length >= 8) { alert('대표 종목은 최대 8개까지입니다.'); return; }
-  if (!cfgAlwaysOn.some(function (t) { return normalizeTicker(t).code === code; })) {
-    cfgAlwaysOn.push({ code: code, name: name });
-  }
-  document.getElementById('cfgTickerInput').value = '';
-  var box = document.getElementById('cfgTickerResults');
-  box.innerHTML = ''; box.style.display = 'none';
-  renderCfgTickers();
-}
-
-function removeAlwaysOn(code) {
-  cfgAlwaysOn = cfgAlwaysOn.filter(function (t) { return normalizeTicker(t).code !== code; });
-  renderCfgTickers();
-}
-
-function renderCfgTickers() {
-  var el = document.getElementById('cfgTickerList');
-  if (!el) return;
-  el.innerHTML = cfgAlwaysOn.map(function (t) {
-    var n = normalizeTicker(t);
-    return '<button type="button" class="chip-del" onclick="removeAlwaysOn(\'' + n.code + '\')">'
-      + escapeHtml(n.name) + ' ✕</button>';
-  }).join('')
-  + '<span style="font-size:.72rem;color:var(--text3);align-self:center;margin-left:4px">'
-  + cfgAlwaysOn.length + '/8</span>';
 }
 
 async function saveConfig() {
@@ -675,7 +673,6 @@ async function saveConfig() {
   var status = document.getElementById('cfgStatus');
   try {
     await db.collection('invest_config').doc('settings').set({
-      alwaysOn: cfgAlwaysOn.map(normalizeTicker),
       notice: document.getElementById('cfgNotice').value.trim(),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });

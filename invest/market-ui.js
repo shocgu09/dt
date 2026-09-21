@@ -38,7 +38,6 @@ function leaveMarketTab() {
 function startHomePolling() {
   Poller.stopAll();
   Poller.add('index', loadIndex, isMarketOpen() ? 15000 : 600000);
-  Poller.add('rep', loadRepStocks, isMarketOpen() ? 7000 : 600000);
   if (watchlist.length) {
     Poller.add('watch', loadWatchQuotes, isMarketOpen() ? 5000 : 600000);
   } else {
@@ -227,48 +226,6 @@ async function loadWatchQuotes() {
   } catch (e) {
     if (!el.dataset.built) el.innerHTML = '<div class="empty">시세를 불러오지 못했습니다</div>';
   }
-}
-
-/* ===== 대표 종목 (운영진 큐레이션) ===== */
-async function loadRepStocks() {
-  var wrap = document.getElementById('repSection');
-  var el = document.getElementById('repList');
-  if (!wrap || !el || !db) return;
-  try {
-    var doc = await db.collection('invest_config').doc('settings').get();
-    var raw = (doc.exists && Array.isArray(doc.data().alwaysOn)) ? doc.data().alwaysOn : [];
-    var list = raw.map(function (t) {
-      return (t && typeof t === 'object') ? { code: t.code, name: t.name || t.code } : { code: String(t), name: String(t) };
-    }).filter(function (t) { return /^\d{6}$/.test(t.code); });
-
-    if (!list.length) { wrap.style.display = 'none'; return; }
-    wrap.style.display = '';
-
-    var quotes = (await Promise.all(list.map(function (t) {
-      return Market.quote(t.code).catch(function () { return null; });
-    }))).filter(Boolean);
-    if (!quotes.length) { wrap.style.display = 'none'; return; }
-
-    var key = quotes.map(function (q) { return q.code; }).join(',');
-    if (el.dataset.key !== key) {
-      el.innerHTML = quotes.map(function (q) {
-        return '<button class="q-row" onclick="openStock(\'' + q.code + '\',\'' + escapeAttr(q.name) + '\')">'
-          + '<span class="q-name">' + escapeHtml(q.name) + '</span>'
-          + '<span class="q-price" id="rqp-' + q.code + '"></span>'
-          + '<span class="q-chg" id="rqc-' + q.code + '"></span>'
-          + '</button>';
-      }).join('');
-      el.dataset.key = key;
-    }
-    quotes.forEach(function (q) {
-      var pEl = document.getElementById('rqp-' + q.code);
-      var cEl = document.getElementById('rqc-' + q.code);
-      if (!pEl || !cEl) return;
-      setTextFlash(pEl, fmtNum(q.price), dirOf('r:' + q.code, q.price));
-      cEl.textContent = signMark(q.change) + ' ' + fmtRate(q.changeRate);
-      cEl.className = 'q-chg ' + signClass(q.change);
-    });
-  } catch (e) { wrap.style.display = 'none'; }
 }
 
 /* ===== 최근 본 종목 ===== */
