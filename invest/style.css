@@ -590,8 +590,12 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 .rank-nums .q-chg { flex: none; font-size: .74rem; }
 .rank-tv {
   flex: 0 0 auto; width: 84px; text-align: right;
-  font-size: .68rem; color: var(--text3); font-weight: 700;
+  display: flex; flex-direction: column; gap: 1px;
+  font-size: .68rem; color: var(--text2); font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
+/* 보조 지표 (거래대금 탭에선 거래량, 거래량 탭에선 거래대금) */
+.rank-tv-sub { font-size: .62rem; color: var(--text3); font-weight: 600; }
 .fav-btn {
   flex: 0 0 auto; background: none; border: none; border-left: 1px solid var(--border);
   color: var(--text3); font-size: 1.05rem; padding: 10px 13px; cursor: pointer; line-height: 1;

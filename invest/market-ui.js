@@ -324,6 +324,11 @@ async function loadRank() {
     el.innerHTML = items.map(function (s, i) {
       var c = signClass(s.changeRate);
       var watched = watchlist.indexOf(s.code) !== -1;
+      // 거래대금·거래량을 함께 보여주되, 거래량 탭에서는 거래량을 위(주 지표)로 올린다
+      var tvTxt = s.tradingValueText || (s.tradingValue != null ? fmtCompact(s.tradingValue) + '원' : '');
+      var volTxt = s.volume != null ? fmtCompact(s.volume) + '주' : '';
+      var main = rankType === 'volume' ? volTxt : tvTxt;
+      var sub = rankType === 'volume' ? tvTxt : volTxt;
       return '<div class="q-row rank-row">'
         + '<button class="rank-main" onclick="openStock(\'' + s.code + '\',\'' + escapeJsArg(s.name) + '\')">'
         +   '<span class="q-rank">' + (i + 1) + '</span>'
@@ -335,8 +340,9 @@ async function loadRank() {
         +     '<span class="q-price">' + fmtNum(s.price) + '</span>'
         +     '<span class="q-chg ' + c + '">' + fmtRate(s.changeRate) + '</span>'
         +   '</span>'
-        +   (s.tradingValueText || s.tradingValue != null
-              ? '<span class="rank-tv">' + escapeHtml(s.tradingValueText || fmtCompact(s.tradingValue)) + '</span>'
+        +   (main || sub
+              ? '<span class="rank-tv"><span>' + escapeHtml(main || sub) + '</span>'
+                + (main && sub ? '<span class="rank-tv-sub">' + escapeHtml(sub) + '</span>' : '') + '</span>'
               : '')
         + '</button>'
         + '<button class="fav-btn' + (watched ? ' on' : '') + '" id="fav-' + s.code + '"'

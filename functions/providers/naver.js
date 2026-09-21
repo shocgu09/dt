@@ -122,10 +122,12 @@ export const naver = {
 
   /**
    * 랭킹 — 토스 "실시간 차트" 대응
-   * @param type 'up' | 'down' | 'marketValue'
+   * @param type 'up' | 'down' | 'marketValue' | 'volume'
+   *   'volume' 은 네이버의 "거래상위"(quantTop) — 거래량 순, ETF 포함
    */
   async getRanking(type = 'up', market = 'KOSPI', size = 20) {
-    const d = await getJson(`https://m.stock.naver.com/api/stocks/${type}/${market}?page=1&pageSize=${size}`);
+    const path = type === 'volume' ? 'quantTop' : type;
+    const d = await getJson(`https://m.stock.naver.com/api/stocks/${path}/${market}?page=1&pageSize=${size}`);
     return (d.stocks || []).map((s) => ({
       code: s.itemCode,
       name: s.stockName,
@@ -133,8 +135,10 @@ export const naver = {
       changeRate: Number(s.fluctuationsRatio),
       change: signOf(s.compareToPreviousPrice && s.compareToPreviousPrice.code)
               * Math.abs(num(s.compareToPreviousClosePrice) || 0),
-      volume: num(s.accumulatedTradingVolume),
-      tradingValue: num(s.accumulatedTradingValue)
+      volume: num(s.accumulatedTradingVolumeRaw) ?? num(s.accumulatedTradingVolume),
+      // accumulatedTradingValue 는 백만원 단위라 그대로 쓰면 "659억"이 "7만"으로 찍힌다 — 원 단위(Raw)를 쓴다
+      tradingValue: num(s.accumulatedTradingValueRaw),
+      tradingValueText: s.accumulatedTradingValueKrwHangeul || null
     }));
   },
 

@@ -292,9 +292,9 @@ async function handleSpark(env, code) {
   });
 }
 
-/** 급상승·급하락·시총 랭킹 (토스 "실시간 차트") */
+/** 거래대금·거래량·급상승·급하락·시총 랭킹 (토스 "실시간 차트") */
 async function handleRank(env, type, market) {
-  const t = ['up', 'down', 'marketValue', 'value'].includes(type) ? type : 'up';
+  const t = ['up', 'down', 'marketValue', 'value', 'volume'].includes(type) ? type : 'up';
   const m = market === 'KOSDAQ' ? 'KOSDAQ' : 'KOSPI';
   if (t === 'value') {
     return cached(env, `r:value:${m}`, TTL.rank, async () => ({
