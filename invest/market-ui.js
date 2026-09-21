@@ -136,17 +136,13 @@ function setWatchView(v) {
   try { watchView = localStorage.getItem('dt-invest-watchview') || 'card'; } catch (e) {}
 })();
 
-/** 스파크라인용 당일 분봉 — 5초마다 부를 필요가 없어 60초 캐시 */
+/** 스파크라인 — 전용 경량 엔드포인트(40포인트). 장 시작 전에는 워커가 일봉으로 대체해 준다. */
 async function ensureSparkline(code) {
   var hit = sparkCache[code];
   if (hit && Date.now() - hit.at < 60000) return hit.values;
   try {
-    var d = await Market.ohlc(code, '1m');
-    var bars = d.bars || [];
-    // 포인트가 너무 많으면 균등 샘플링 (SVG 경로 길이 절약)
-    var step = Math.max(1, Math.ceil(bars.length / 48));
-    var vals = bars.filter(function (_, i) { return i % step === 0; }).map(function (b) { return b.c; });
-    if (bars.length && vals[vals.length - 1] !== bars[bars.length - 1].c) vals.push(bars[bars.length - 1].c);
+    var d = await Market.spark(code);
+    var vals = Array.isArray(d.points) ? d.points : [];
     sparkCache[code] = { values: vals, at: Date.now() };
     return vals;
   } catch (e) {

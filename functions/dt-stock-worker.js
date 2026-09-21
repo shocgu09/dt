@@ -14,7 +14,7 @@ const CORS = {
 
 // 캐시 TTL(초) — 네이버 권장 폴링이 7초라 그보다 짧게 잡을 이유가 없다
 const TTL = { quote: 3, book: 3, index: 15, ohlcIntra: 60, ohlcDay: 43200, search: 86400,
-              rank: 60, sectors: 120, news: 300 };
+              rank: 60, sectors: 120, news: 300, spark: 60 };
 
 function json(data, status = 200, extra) {
   return new Response(JSON.stringify(data), { status, headers: { ...CORS, ...(extra || {}) } });
@@ -184,6 +184,7 @@ export default {
       if (path === '/api/rank')    return json(await handleRank(env, q.get('type'), q.get('market')));
       if (path === '/api/sectors') return json(await handleSectors(env, q.get('kind'), q.get('no')));
       if (path === '/api/news')    return json(await handleNews(env, q.get('code')));
+      if (path === '/api/spark')   return json(await handleSpark(env, q.get('code')));
     } catch (e) {
       return fail(e.message || '시세 조회 실패');
     }
@@ -230,6 +231,42 @@ async function handleOhlc(env, code, tf) {
 
 async function handleIndex(env) {
   return memo('idx', TTL.index, () => naver.getIndex());
+}
+
+/**
+ * 스파크라인용 초경량 종가 배열.
+ * 관심종목 카드마다 ohlc 전체(수십 KB)를 받으면 모바일에서 감당이 안 되므로
+ * 종가만 뽑아 40포인트로 다운샘플링해 내려보낸다.
+ */
+async function handleSpark(env, code) {
+  if (!isCode(code)) return { error: '종목코드는 6자리 숫자입니다' };
+  const st = kstStamp();
+  return memo(`sp:${code}:${st.ymd}:${marketOpen() ? Math.floor(Date.now() / 60000) : 'c'}`, TTL.spark, async () => {
+    let bars = [];
+    let span = 'intraday';
+    try {
+      bars = await naver.getOhlc(code, '1m', { start: `${st.ymd}0900`, end: st.full });
+    } catch (e) { bars = []; }
+
+    // 장 시작 전이거나 분봉이 없으면 최근 일봉으로 대체
+    if (bars.length < 3) {
+      span = 'daily';
+      const startY = String(Number(st.ymd.slice(0, 4)) - 1) + '0101';
+      const daily = await naver.getOhlc(code, 'D', { start: `${startY}0000`, end: `${st.ymd}0000` });
+      bars = daily.slice(-60);
+    }
+
+    const closes = bars.map((b) => b.c).filter((c) => typeof c === 'number');
+    const MAX = 40;
+    let pts = closes;
+    if (closes.length > MAX) {
+      const step = closes.length / MAX;
+      pts = [];
+      for (let i = 0; i < MAX; i++) pts.push(closes[Math.min(closes.length - 1, Math.floor(i * step))]);
+      pts[MAX - 1] = closes[closes.length - 1];   // 마지막 값은 항상 실제 최신가
+    }
+    return { code, span, points: pts, source: 'naver' };
+  });
 }
 
 /** 급상승·급하락·시총 랭킹 (토스 "실시간 차트") */

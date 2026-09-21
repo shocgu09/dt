@@ -32,7 +32,9 @@ var Market = {
     if (no) p.no = no;
     return marketApi('/api/sectors', p);
   },
-  news:    function (code) { return marketApi('/api/news', { code: code }); }
+  news:    function (code) { return marketApi('/api/news', { code: code }); },
+  // 스파크라인 전용 경량 엔드포인트 — 분봉 전체 대신 40포인트만 내려온다
+  spark:   function (code) { return marketApi('/api/spark', { code: code }); }
 };
 
 /* ===== 장 운영시간 (KST 평일 09:00~15:30, 시간외 16:00까지) ===== */
