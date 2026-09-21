@@ -63,11 +63,18 @@ function mapQuote(s) {
       s.compareToPreviousPrice && s.compareToPreviousPrice.code),
     marketCap: num(s.marketValueFullRaw),
     // KRX 기준 값 — NXT 값이 섞이지 않는다. 단 16:00~20:00 에는 KRX 애프터마켓 체결가가 들어오므로
-  // (2026-09-14 개설, 실측) 공식 종가가 필요하면 일봉을 쓴다.
+    // (2026-09-14 개설, 실측) 공식 종가가 필요하면 15:30 분봉의 종가를 쓴다 — 당일 일봉도 애프터마켓을 따라 움직인다.
     krx: {
       price: num(s.closePrice),
       volume: num(s.accumulatedTradingVolume),
-      tradedAt: s.localTradedAt || null
+      open: num(s.openPrice),                   // KRX 시가 (바깥의 open 은 NXT 프리마켓이 섞인 통합 값)
+      // 전일 종가 = 현재가 − 전일대비 (지정가의 상·하한가 범위 확인용)
+      prevClose: (function () {
+        const c = num(s.closePrice), d = num(s.compareToPreviousClosePrice);
+        if (c == null || d == null) return null;
+        return c - signOf(s.compareToPreviousPrice && s.compareToPreviousPrice.code) * Math.abs(d);
+      })(),
+      tradedAt: s.localTradedAt || null         // 주의: 마지막 체결 시각이 아니라 시세 스냅샷 시각에 가깝다 (실측)
     },
     delayed: !(s.stockExchangeType && s.stockExchangeType.delayTime === 0),
     asOf: px.localTradedAt || s.localTradedAt || new Date().toISOString(),
@@ -84,6 +91,12 @@ export const naver = {
     const s = d && d.datas && d.datas[0];
     if (!s) throw new Error('naver: quote empty');
     return mapQuote(s);
+  },
+
+  // 종목 종류 — 'stock' | 'etf' | 'etn' … (ETF·ETN 은 매도 시 거래세가 없다)
+  async getKind(code) {
+    const d = await getJson(`https://m.stock.naver.com/api/stock/${code}/basic`);
+    return (d && d.stockEndType) || 'stock';
   },
 
   // 여러 종목 현재가를 한 번에 — polling API 는 코드를 콤마로 이어 받는다.
