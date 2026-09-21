@@ -335,7 +335,9 @@ async function submitComment(briefingId, parentId, btn) {
   btn.textContent = '등록 중...';
   try {
     var ref = db.collection('invest_briefings').doc(briefingId);
-    await ref.collection('comments').add({
+    // 댓글과 댓글 수를 한 배치로 쓴다 — 하나만 성공해 숫자가 어긋나는 일을 막는다
+    var batch = db.batch();
+    batch.set(ref.collection('comments').doc(), {
       authorUid: currentUser.uid,
       authorName: myName,
       isAdmin: isAdmin,
@@ -345,7 +347,8 @@ async function submitComment(briefingId, parentId, btn) {
       likedBy: [],
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
-    await ref.update({ commentCount: firebase.firestore.FieldValue.increment(1) });
+    batch.update(ref, { commentCount: firebase.firestore.FieldValue.increment(1) });
+    await batch.commit();
     input.value = '';
     var slot = parentId && document.getElementById('rf-' + parentId);
     if (slot) slot.innerHTML = '';
@@ -428,8 +431,10 @@ async function deleteComment(briefingId, commentId) {
   if (!db || !confirm('이 댓글을 삭제할까요?')) return;
   try {
     var ref = db.collection('invest_briefings').doc(briefingId);
-    await ref.collection('comments').doc(commentId).delete();
-    await ref.update({ commentCount: firebase.firestore.FieldValue.increment(-1) });
+    var batch = db.batch();
+    batch.delete(ref.collection('comments').doc(commentId));
+    batch.update(ref, { commentCount: firebase.firestore.FieldValue.increment(-1) });
+    await batch.commit();
     bumpCommentCount(briefingId, -1);
     await loadComments(briefingId);
   } catch (e) {
@@ -732,15 +737,17 @@ function plainPreview(body, len) {
 }
 
 function linkifyBody(escaped) {
-  var result = escaped.replace(
-    /\[([^\]]+)\]\((https?:\/\/[^\s<>"'）\)]+)\)/g,
-    '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:var(--primary-light);text-decoration:underline">$1</a>'
+  // 마크다운 링크와 맨 URL 을 한 번에 훑는다. 두 번에 나눠 돌리면 이미 만든 <a href> 안의 주소를
+  // 다시 잡지 않으려고 lookbehind 가 필요한데, iOS 16.3 이하 사파리는 lookbehind 를 파싱하지 못해
+  // 이 파일 전체가 SyntaxError 로 죽는다.
+  var A = '<a target="_blank" rel="noopener noreferrer" style="color:var(--primary-light);text-decoration:underline';
+  return escaped.replace(
+    /\[([^\]]+)\]\((https?:\/\/[^\s<>"'）\)]+)\)|\b(https?:\/\/[^\s<>"'，）\)]+)/g,
+    function (m, label, mdUrl, bareUrl) {
+      if (mdUrl) return A + '" href="' + mdUrl + '">' + label + '</a>';
+      return A + ';word-break:break-all" href="' + bareUrl + '">' + bareUrl + '</a>';
+    }
   );
-  result = result.replace(
-    /(?<!\bhref=["'])(?<!\])\b(https?:\/\/[^\s<>"'，）\)]+)/g,
-    '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:var(--primary-light);text-decoration:underline;word-break:break-all">$1</a>'
-  );
-  return result;
 }
 
 function todayStr() {

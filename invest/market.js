@@ -22,6 +22,8 @@ async function marketApi(path, params) {
 
 var Market = {
   quote:   function (code) { return marketApi('/api/quote', { code: code }); },
+  // 여러 종목을 한 번에 (최대 50) — 관심종목을 종목 수만큼 따로 부르지 않는다
+  quotes:  function (codes) { return marketApi('/api/quotes', { codes: codes.join(',') }); },
   book:    function (code) { return marketApi('/api/book', { code: code }); },
   ohlc:    function (code, tf) { return marketApi('/api/ohlc', { code: code, tf: tf || 'D' }); },
   index:   function () { return marketApi('/api/index'); },
@@ -39,10 +41,10 @@ var Market = {
   trend:   function (code) { return marketApi('/api/trend', { code: code }); }
 };
 
-/* ===== 장 운영시간 (KST 평일 09:00~15:30, 시간외 16:00까지) ===== */
-/* 네이버가 내려주는 marketStatus 를 우선 신뢰한다.
- * 시계로만 판단하면 시간외 단일가(16:00~18:00)를 "장 마감"으로 잘못 보고
- * 폴링이 10분으로 늘어져 시세가 멈춘 것처럼 보인다. */
+/* ===== 장 운영시간 (KRX 정규장 09:00~15:30 · NXT/KRX 애프터마켓 ~20:00) ===== */
+/* 네이버가 내려주는 종목의 marketStatus 를 우선 신뢰한다.
+ * 시계로만 판단하면 휴장일을 "실시간"으로, 애프터마켓을 "장 마감"으로 잘못 본다.
+ * (지수의 marketStatus 는 15:30 에 CLOSE 가 되므로 쓰지 않는다 — 워커가 종목 기준 값을 실어 준다) */
 var _serverMarketStatus = null;   // 'OPEN' | 'CLOSE' | null(모름)
 var _serverStatusAt = 0;
 
@@ -90,7 +92,9 @@ var Poller = (function () {
       .then(job.fn)
       .catch(function () { /* 개별 실패는 무시 — 다음 주기에 재시도 */ })
       .then(function () {
-        if (jobs[key] && !paused) job.timer = setTimeout(function () { run(key); }, job.ms);
+        // 주기는 매번 다시 계산한다 — 개장 전에 들어온 화면이 개장 후에도 느린 주기로 남지 않게
+        var ms = typeof job.ms === 'function' ? job.ms() : job.ms;
+        if (jobs[key] && !paused) job.timer = setTimeout(function () { run(key); }, ms);
       });
   }
 
@@ -119,6 +123,11 @@ var Poller = (function () {
     activeKeys: function () { return Object.keys(jobs); }
   };
 })();
+
+/** 장중/장외에 따라 달라지는 폴링 주기 — Poller.add 의 ms 자리에 넘긴다 */
+function pollMs(openMs, closedMs) {
+  return function () { return isMarketOpen() ? openMs : closedMs; };
+}
 
 document.addEventListener('visibilitychange', function () {
   if (document.hidden) Poller.pause();

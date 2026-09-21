@@ -4,6 +4,7 @@
 // KV: STOCK_KV
 
 import { naver, daum, yahoo } from './providers/naver.js';
+import { verifyIdToken, bearerToken } from './lib/verify-id-token.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -16,18 +17,24 @@ const CORS = {
 const TTL = { quote: 3, book: 3, index: 15, ohlcIntra: 30, ohlcDay: 43200, search: 86400,
               rank: 60, sectors: 120, news: 300, spark: 60, trend: 600 };
 
+const KV_MIN_TTL = 600;
+const MAX_BATCH = 50;
+
 function json(data, status = 200, extra) {
   return new Response(JSON.stringify(data), { status, headers: { ...CORS, ...(extra || {}) } });
 }
 function fail(msg, status = 502) { return json({ error: msg }, status); }
 
-const isCode = (c) => /^\d{6}$/.test(c || '');
+const isCode = (c) => /^[0-9A-Z]{6}$/.test(c || '');
 
 // ── KV 캐시 래퍼 ───────────────────────────────────────────────
 // KV 는 어디까지나 캐시다 — 읽기/쓰기가 실패해도(일일 쓰기 한도 초과 등) 요청은 살린다.
 // KV 가 죽으면 워커 메모리 캐시로 떨어져 네이버 호출이 폭증하지 않게 한다.
 async function cached(env, key, ttl, produce) {
   if (key.length > 200) return produce();          // KV 키 한도(512B) — 비정상적으로 긴 입력은 캐시하지 않는다
+  // 10분 미만짜리(랭킹·테마·뉴스·장중 일봉)는 워커 메모리 캐시로만 돌린다.
+  // KV 무료 쓰기 한도가 하루 1,000건이라, 분 단위 캐시를 KV 에 쓰면 오전 중에 소진된다.
+  if (ttl < KV_MIN_TTL) return memo(`kv:${key}`, ttl, produce);
   if (env.STOCK_KV) {
     try {
       const hit = await env.STOCK_KV.get(key, 'json');
@@ -48,21 +55,30 @@ async function cached(env, key, ttl, produce) {
 
 // TTL이 60초 미만인 항목은 KV 대신 워커 인스턴스 메모리로 처리
 const mem = new Map();
+const inflight = new Map();
 async function memo(key, ttlSec, produce) {
   const now = Date.now();
   const hit = mem.get(key);
   if (hit && now - hit.at < ttlSec * 1000) return { ...hit.v, cached: true };
-  const v = await produce();
-  mem.set(key, { at: now, v });
-  if (mem.size > 500) mem.delete(mem.keys().next().value);
-  return v;
+  if (inflight.has(key)) return inflight.get(key);
+  const p = (async () => {
+    try {
+      const v = await produce();
+      mem.set(key, { at: Date.now(), v });
+      if (mem.size > 500) mem.delete(mem.keys().next().value);
+      return v;
+    } finally { inflight.delete(key); }
+  })();
+  inflight.set(key, p);
+  return p;
 }
 
-// ── 장 운영시간 (KST 08:30~16:00 평일) ─────────────────────────
+// ── 거래가 도는 시간대 (KST 08:00~20:10 평일) ──────────────────
 /* 거래가 일어나는 시간대 — 캐시 TTL 을 여기서 가른다.
  * 넥스트레이드(NXT) 출범으로 국내 거래시간이 08:00~20:00 으로 연장됐다.
  *   프리마켓 08:00~08:50 / 메인마켓 09:00~15:20 / 애프터마켓 15:40~20:00
- *   KRX 정규장은 09:00~15:30 유지.
+ *   KRX 정규장은 09:00~15:30 유지. KRX 도 2026-09-14 부터 애프터마켓(16:00~20:00)을 열었고
+ *   기존 시간외 단일가(16:00~18:00)는 폐지됐다.
  * 정규장만 잡으면 애프터마켓 동안 캐시가 얼어붙어 시세가 멈춘 것처럼 보인다. */
 function marketOpen(d = new Date()) {
   const kst = new Date(d.getTime() + 9 * 3600 * 1000);
@@ -79,74 +95,6 @@ function kstStamp(d = new Date()) {
     ymd: `${k.getUTCFullYear()}${p(k.getUTCMonth() + 1)}${p(k.getUTCDate())}`,
     full: `${k.getUTCFullYear()}${p(k.getUTCMonth() + 1)}${p(k.getUTCDate())}${p(k.getUTCHours())}${p(k.getUTCMinutes())}`
   };
-}
-
-// ── Firebase ID 토큰 검증 (폐쇄형 게이트) ──────────────────────
-// securetoken 공개키를 JWK로 받아 RS256 서명을 직접 검증한다.
-// (x509 PEM은 WebCrypto가 직접 import하지 못하므로 JWK 엔드포인트를 쓴다)
-const JWK_URL = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
-let _jwks = { at: 0, byKid: null };
-
-async function jwkFor(kid) {
-  // 구글이 서명 키를 교체하면 캐시에 없는 kid 가 온다 — 그때는 1시간을 기다리지 않고 다시 받는다.
-  // (엉터리 kid 로 재요청을 유발하지 못하도록 재조회는 1분에 한 번으로 제한)
-  const stale = !_jwks.byKid || Date.now() - _jwks.at > 3600e3;
-  const rotated = _jwks.byKid && !_jwks.byKid[kid] && Date.now() - _jwks.at > 60e3;
-  if (stale || rotated) {
-    const r = await fetch(JWK_URL);
-    if (!r.ok) throw new Error('jwk fetch failed');
-    const d = await r.json();
-    const byKid = {};
-    for (const k of d.keys || []) byKid[k.kid] = k;
-    _jwks = { at: Date.now(), byKid };
-  }
-  return _jwks.byKid[kid] || null;
-}
-
-function b64urlToBytes(s) {
-  const t = s.replace(/-/g, '+').replace(/_/g, '/');
-  const bin = atob(t + '='.repeat((4 - (t.length % 4)) % 4));
-  return Uint8Array.from(bin, (c) => c.charCodeAt(0));
-}
-
-async function verifyIdToken(token, projectId) {
-  const parts = (token || '').split('.');
-  if (parts.length !== 3) return null;
-
-  let header, payload;
-  try {
-    header  = JSON.parse(new TextDecoder().decode(b64urlToBytes(parts[0])));
-    payload = JSON.parse(new TextDecoder().decode(b64urlToBytes(parts[1])));
-  } catch { return null; }
-
-  // 1) 클레임 검증
-  const now = Math.floor(Date.now() / 1000);
-  if (header.alg !== 'RS256' || !header.kid) return null;
-  if (!payload.exp || payload.exp <= now) return null;
-  if (payload.iat && payload.iat > now + 300) return null;      // 시계 오차 5분 허용
-  if (payload.aud !== projectId) return null;
-  if (payload.iss !== `https://securetoken.google.com/${projectId}`) return null;
-  if (!payload.sub) return null;
-  // 게스트(익명 로그인) 차단 — 폐쇄형 동호회 전제
-  if (payload.firebase && payload.firebase.sign_in_provider === 'anonymous') return null;
-
-  // 2) 서명 검증
-  const jwk = await jwkFor(header.kid);
-  if (!jwk) return null;
-  const key = await crypto.subtle.importKey(
-    'jwk',
-    { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: 'RS256', ext: true },
-    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-    false,
-    ['verify']
-  );
-  const ok = await crypto.subtle.verify(
-    'RSASSA-PKCS1-v1_5',
-    key,
-    b64urlToBytes(parts[2]),
-    new TextEncoder().encode(`${parts[0]}.${parts[1]}`)
-  );
-  return ok ? payload : null;
 }
 
 // ── 라우팅 ────────────────────────────────────────────────────
@@ -166,13 +114,16 @@ export default {
         try { await fn(); return [name, { ok: true, ms: Date.now() - t0 }]; }
         catch (e) { return [name, { ok: false, ms: Date.now() - t0, error: String((e && e.message) || e).slice(0, 120) }]; }
       };
-      const results = Object.fromEntries(await Promise.all([
-        probe('naver.quote', () => naver.getQuote('005930')),
-        probe('naver.book',  () => naver.getOrderBook('005930')),
-        probe('naver.index', () => naver.getIndex()),
-        probe('daum.quote',  () => daum.getQuote('005930')),
-        probe('yahoo.quote', () => yahoo.getQuote('005930', 'KOSPI'))
-      ]));
+      // 결과를 60초 공유한다 — 무인증이라 누가 반복 호출해도 외부 호출은 분당 5건을 넘지 않는다
+      const { results } = await memo('health', 60, async () => ({
+        results: Object.fromEntries(await Promise.all([
+          probe('naver.quote', () => naver.getQuote('005930')),
+          probe('naver.book',  () => naver.getOrderBook('005930')),
+          probe('naver.index', () => naver.getIndex()),
+          probe('daum.quote',  () => daum.getQuote('005930')),
+          probe('yahoo.quote', () => yahoo.getQuote('005930', 'KOSPI'))
+        ]))
+      }));
       const primaryOk = results['naver.quote'].ok && results['naver.book'].ok;
       return json({
         status: primaryOk ? 'ok' : 'degraded',
@@ -187,15 +138,14 @@ export default {
 
     // 회원 전용 게이트 — health 제외한 모든 엔드포인트
     if (env.REQUIRE_AUTH !== 'false') {
-      const auth = request.headers.get('Authorization') || '';
-      // 토큰은 헤더로만 받는다 — 쿼리스트링은 접속 로그·히스토리에 남는다
-      const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
-      const user = await verifyIdToken(token, env.FIREBASE_PROJECT_ID);
+      // 게스트(익명 로그인)는 공용 모듈에서 걸러진다 — 폐쇄형 동호회 전제
+      const user = await verifyIdToken(bearerToken(request), env.FIREBASE_PROJECT_ID);
       if (!user) return json({ error: '회원 전용입니다' }, 401);
     }
 
     try {
       if (path === '/api/quote')  return json(await handleQuote(env, q.get('code')));
+      if (path === '/api/quotes') return json(await handleQuotes(env, q.get('codes')));
       if (path === '/api/book')   return json(await handleBook(env, q.get('code')));
       if (path === '/api/ohlc')   return json(await handleOhlc(env, q.get('code'), q.get('tf') || 'D'));
       if (path === '/api/index')  return json(await handleIndex(env));
@@ -226,6 +176,23 @@ async function handleQuote(env, code) {
   });
 }
 
+/**
+ * 여러 종목 현재가 — 관심종목·보유종목을 종목 수만큼 따로 부르지 않도록 한 번에 내려준다.
+ * 네이버 호출도 1회다 (polling API 가 콤마로 이은 코드를 받는다).
+ */
+async function handleQuotes(env, codes) {
+  const list = Array.from(new Set(String(codes || '').split(',').map((c) => c.trim()).filter(isCode)))
+    .slice(0, MAX_BATCH).sort();
+  if (!list.length) return { items: [] };
+  return memo(`qs:${list.join(',')}`, TTL.quote, async () => {
+    const items = await naver.getQuotes(list);
+    // 단건 캐시도 채워 둔다 — 목록에서 종목 상세로 들어갈 때 바로 쓴다
+    const now = Date.now();
+    for (const it of items) mem.set(`q:${it.code}`, { at: now, v: it });
+    return { items };
+  });
+}
+
 async function handleBook(env, code) {
   if (!isCode(code)) return { error: '종목코드는 6자리 숫자입니다' };
   // 호가는 네이버에만 있다 — 실패하면 폴백 없이 명시적으로 알린다
@@ -253,7 +220,16 @@ async function handleOhlc(env, code, tf) {
 }
 
 async function handleIndex(env) {
-  return memo('idx', TTL.index, () => naver.getIndex());
+  return memo('idx', TTL.index, async () => {
+    // 지수의 marketStatus 는 15:30 에 CLOSE 가 되지만 종목은 애프터마켓 동안 OPEN 이다(실측).
+    // 화면의 "실시간 / 장 마감"은 종목 기준이 맞으므로 대표 종목의 상태를 함께 싣는다.
+    // 휴장일에는 CLOSE 가 와서 시계만 보고 "실시간"이라 표시하던 문제도 없어진다.
+    const [idx, ref] = await Promise.all([
+      naver.getIndex(),
+      naver.getQuote('005930').catch(() => null)
+    ]);
+    return { ...idx, marketStatus: ref ? ref.marketStatus : null, sessionType: ref ? ref.sessionType : null };
+  });
 }
 
 /**
@@ -339,5 +315,7 @@ async function handleNews(env, code) {
 async function handleSearch(env, term) {
   const t = (term || '').trim();
   if (t.length < 1) return { items: [] };
+  // 한 글자 검색어는 입력 도중에 스쳐 가는 값이라 KV 에 하루씩 남길 이유가 없다 (쓰기 한도 절약)
+  if (t.length < 2) return memo(`s:${t}`, 300, async () => ({ query: t, items: await naver.search(t) }));
   return cached(env, `s:${t}`, TTL.search, async () => ({ query: t, items: await naver.search(t) }));
 }

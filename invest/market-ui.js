@@ -43,9 +43,9 @@ function leaveMarketTab() {
 
 function startHomePolling() {
   Poller.stopAll();
-  Poller.add('index', loadIndex, isMarketOpen() ? 15000 : 120000);
+  Poller.add('index', loadIndex, pollMs(15000, 120000));
   if (watchlist.length) {
-    Poller.add('watch', loadWatchQuotes, isMarketOpen() ? 5000 : 120000);
+    Poller.add('watch', loadWatchQuotes, pollMs(5000, 120000));
   } else {
     loadWatchQuotes();       // 비어 있어도 1회는 그려야 "불러오는 중"이 안 남는다
   }
@@ -60,7 +60,7 @@ async function loadIndex() {
   if (!el) return;
   try {
     var d = await Market.index();
-    if (d.kospi && d.kospi.marketStatus) setMarketStatus(d.kospi.marketStatus);
+    if (d.marketStatus) setMarketStatus(d.marketStatus);   // 워커가 대표 종목 기준으로 실어 준다
     var st = marketStateLabel();
 
     // 뼈대는 구성이 바뀔 때만 다시 만들고 평소엔 값만 갈아끼운다 (플래시 애니메이션 유지)
@@ -180,9 +180,17 @@ async function loadWatchQuotes() {
     return;
   }
   try {
-    var rows = (await Promise.all(watchlist.map(function (c) {
-      return Market.quote(c).catch(function () { return null; });
-    }))).filter(Boolean);
+    // 종목마다 따로 부르지 않고 50개씩 묶어 한 번에 받는다 (워커·네이버 호출 1회)
+    var chunks = [];
+    for (var ci = 0; ci < watchlist.length; ci += 50) chunks.push(watchlist.slice(ci, ci + 50));
+    var byCode = {};
+    (await Promise.all(chunks.map(function (c) {
+      return Market.quotes(c).catch(function () { return { items: [] }; });
+    }))).forEach(function (d) {
+      (d.items || []).forEach(function (q) { byCode[q.code] = q; });
+    });
+    var rows = watchlist.map(function (c) { return byCode[c]; }).filter(Boolean);
+    if (rows.length) setMarketStatus(rows[0].marketStatus);
 
     if (!rows.length) {
       if (!el.dataset.built) el.innerHTML = '<div class="empty">시세를 불러오지 못했습니다</div>';
@@ -434,9 +442,9 @@ async function openStock(code, name) {
 
 /** 종목 상세 폴링 시작/재개 (즉시 1회 실행됨) */
 function startStockPolling() {
-  Poller.add('quote', loadStockQuote, isMarketOpen() ? 3000 : 60000);
+  Poller.add('quote', loadStockQuote, pollMs(3000, 60000));
   Poller.add('bars', refreshChartBars, 60000);
-  if (bookOpen) Poller.add('book', loadBook, isMarketOpen() ? 3000 : 60000);
+  if (bookOpen) Poller.add('book', loadBook, pollMs(3000, 60000));
 }
 
 function backToMarket() {
@@ -575,7 +583,8 @@ async function loadStockQuote() {
       + '<span class="state-dot ' + st.cls + '">' + st.text + '</span>';
 
     document.getElementById('sdSub').textContent =
-      q.code + ' · ' + (q.market || '') + (q.tradeHalted ? ' · 거래정지' : '');
+      q.code + ' · ' + (q.market || '') + (q.halted ? ' · 거래정지' : '')
+      + (q.limitState === 'upper' ? ' · 상한가' : (q.limitState === 'lower' ? ' · 하한가' : ''));
 
     document.getElementById('sdStats').innerHTML = [
       [q.integrated ? '거래량(통합)' : '거래량', fmtCompact(q.volume)],
@@ -798,7 +807,7 @@ function toggleBook() {
   btn.textContent = bookOpen ? '▴ 호가 접기' : '▾ 호가 보기 (20분 지연)';
   if (bookOpen) {
     loadBook();
-    Poller.add('book', loadBook, isMarketOpen() ? 3000 : 60000);
+    Poller.add('book', loadBook, pollMs(3000, 60000));
   } else {
     Poller.remove('book');
   }

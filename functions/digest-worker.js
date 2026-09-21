@@ -82,7 +82,7 @@ export default {
           .map((t) => (t && typeof t === 'object')
             ? { code: String(t.code || ''), name: String(t.name || t.code || '') }
             : { code: String(t), name: String(t) })
-          .filter((t) => /^\d{6}$/.test(t.code))
+          .filter((t) => /^[0-9A-Z]{6}$/.test(t.code))
           .slice(0, 10);
 
         const accessToken = await getServiceAccountToken(env.FIREBASE_CLIENT_EMAIL, env.FIREBASE_PRIVATE_KEY);

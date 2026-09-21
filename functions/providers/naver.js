@@ -25,6 +25,56 @@ async function getJson(url) {
   return r.json();
 }
 
+// polling API 의 종목 1건 → 공통 시세 형태
+function mapQuote(s) {
+  const code = s.itemCode;
+  // 최상위 필드는 KRX 기준이다. 넥스트레이드(NXT) 값은 overMarketPriceInfo 에,
+  // KRX+NXT 합산은 integratedPriceInfo 에 따로 온다 (NXT 비대상 종목에는 둘 다 없다).
+  //  - 프리/애프터마켓에는 KRX 가 닫혀 있으므로 살아 있는 NXT 가격을 현재가로 쓴다.
+  //    (안 그러면 증권사 앱·분봉 차트와 현재가가 어긋난다)
+  //  - 거래량·시가·고가·저가는 증권사 앱과 같게 통합 기준을 쓴다.
+  const over = s.overMarketPriceInfo;
+  const integ = s.integratedPriceInfo;
+  const session = over && over.overMarketStatus === 'OPEN'
+    && (over.tradingSessionType === 'PRE_MARKET' || over.tradingSessionType === 'AFTER_MARKET')
+    && num(over.overPrice) != null
+    ? over.tradingSessionType : null;
+  const px = session ? over : s;
+
+  const sign = signOf(px.compareToPreviousPrice && px.compareToPreviousPrice.code);
+  return {
+    code,
+    name: s.stockName,
+    market: (s.stockExchangeType && s.stockExchangeType.nameKor) || null,
+    price: num(session ? over.overPrice : s.closePrice),
+    change: sign * Math.abs(num(px.compareToPreviousClosePrice) || 0),
+    changeRate: Number(px.fluctuationsRatio),
+    open: num((integ || s).openPrice), high: num((integ || s).highPrice), low: num((integ || s).lowPrice),
+    volume: num((integ || s).accumulatedTradingVolume),
+    session,                               // 'PRE_MARKET' | 'AFTER_MARKET' | null(정규장·장외)
+    integrated: !!integ,                   // 거래량 등이 KRX+NXT 통합 기준인지
+    marketStatus: s.marketStatus,          // OPEN / CLOSE ...
+    sessionType: s.marketSessionType || null,   // 네이버 원문 (정규장·프리·애프터 구분)
+    // 거래정지 — tradeStopType 이 TRADING 이 아니거나 tradableStatus 가 tradable 이 아니면 정지로 본다
+    halted: !!((s.tradeStopType && s.tradeStopType.name && s.tradeStopType.name !== 'TRADING')
+      || (s.tradableStatus && s.tradableStatus !== 'tradable')),
+    // 상·하한가 (KRX 기준 부호코드 1 상한 / 4 하한)
+    limitState: (function (c) { return c === '1' ? 'upper' : (c === '4' ? 'lower' : null); })(
+      s.compareToPreviousPrice && s.compareToPreviousPrice.code),
+    marketCap: num(s.marketValueFullRaw),
+    // KRX 기준 값 — NXT 값이 섞이지 않는다. 단 16:00~20:00 에는 KRX 애프터마켓 체결가가 들어오므로
+  // (2026-09-14 개설, 실측) 공식 종가가 필요하면 일봉을 쓴다.
+    krx: {
+      price: num(s.closePrice),
+      volume: num(s.accumulatedTradingVolume),
+      tradedAt: s.localTradedAt || null
+    },
+    delayed: !(s.stockExchangeType && s.stockExchangeType.delayTime === 0),
+    asOf: px.localTradedAt || s.localTradedAt || new Date().toISOString(),
+    source: 'naver'
+  };
+}
+
 export const naver = {
   name: 'naver',
 
@@ -33,36 +83,14 @@ export const naver = {
     const d = await getJson(`https://polling.finance.naver.com/api/realtime/domestic/stock/${code}`);
     const s = d && d.datas && d.datas[0];
     if (!s) throw new Error('naver: quote empty');
-    // 최상위 필드는 KRX 기준이다. 넥스트레이드(NXT) 값은 overMarketPriceInfo 에,
-    // KRX+NXT 합산은 integratedPriceInfo 에 따로 온다 (NXT 비대상 종목에는 둘 다 없다).
-    //  - 프리/애프터마켓에는 KRX 가 닫혀 있으므로 살아 있는 NXT 가격을 현재가로 쓴다.
-    //    (안 그러면 증권사 앱·분봉 차트와 현재가가 어긋난다)
-    //  - 거래량·시가·고가·저가는 증권사 앱과 같게 통합 기준을 쓴다.
-    const over = s.overMarketPriceInfo;
-    const integ = s.integratedPriceInfo;
-    const session = over && over.overMarketStatus === 'OPEN'
-      && (over.tradingSessionType === 'PRE_MARKET' || over.tradingSessionType === 'AFTER_MARKET')
-      && num(over.overPrice) != null
-      ? over.tradingSessionType : null;
-    const px = session ? over : s;
+    return mapQuote(s);
+  },
 
-    const sign = signOf(px.compareToPreviousPrice && px.compareToPreviousPrice.code);
-    return {
-      code,
-      name: s.stockName,
-      market: (s.stockExchangeType && s.stockExchangeType.nameKor) || null,
-      price: num(session ? over.overPrice : s.closePrice),
-      change: sign * Math.abs(num(px.compareToPreviousClosePrice) || 0),
-      changeRate: Number(px.fluctuationsRatio),
-      open: num((integ || s).openPrice), high: num((integ || s).highPrice), low: num((integ || s).lowPrice),
-      volume: num((integ || s).accumulatedTradingVolume),
-      session,                               // 'PRE_MARKET' | 'AFTER_MARKET' | null(정규장·장외)
-      integrated: !!integ,                   // 거래량 등이 KRX+NXT 통합 기준인지
-      marketStatus: s.marketStatus,          // OPEN / CLOSE ...
-      delayed: !(s.stockExchangeType && s.stockExchangeType.delayTime === 0),
-      asOf: px.localTradedAt || s.localTradedAt || new Date().toISOString(),
-      source: 'naver'
-    };
+  // 여러 종목 현재가를 한 번에 — polling API 는 코드를 콤마로 이어 받는다.
+  // 관심종목·보유종목을 종목 수만큼 따로 부르지 않기 위한 것 (네이버 호출 1회).
+  async getQuotes(codes) {
+    const d = await getJson(`https://polling.finance.naver.com/api/realtime/domestic/stock/${codes.join(',')}`);
+    return ((d && d.datas) || []).map(mapQuote);
   },
 
   // 호가 — 매도 5 + 매수 5단계. rate(0~100)는 잔량 비율 바에 그대로 사용
@@ -134,7 +162,7 @@ export const naver = {
   async search(q) {
     const d = await getJson(`https://ac.stock.naver.com/ac?q=${encodeURIComponent(q)}&target=stock`);
     return (d.items || [])
-      .filter((i) => i.nationCode === 'KOR' && /^\d{6}$/.test(i.code))
+      .filter((i) => i.nationCode === 'KOR' && /^[0-9A-Z]{6}$/.test(i.code))
       .map((i) => ({ code: i.code, name: i.name, market: i.typeName }));
   },
 
