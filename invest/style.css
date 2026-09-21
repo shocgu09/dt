@@ -344,11 +344,13 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 /* ── 종목 상세 ── */
 .sd-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
 .sd-title { font-size: 1.05rem; font-weight: 800; letter-spacing: -.3px; }
-.star-btn {
-  margin-left: auto; background: var(--bg2); border: 1px solid var(--border);
-  color: var(--text3); font-size: 1.05rem; padding: 5px 11px; cursor: pointer; line-height: 1;
+/* 종목 상세 하트 — 랭킹·관심종목과 동일한 fav-btn 을 쓰되 테두리만 준다 */
+.fav-btn.sd-fav {
+  margin-left: auto; background: var(--bg2);
+  border: 1px solid var(--border); border-left: 1px solid var(--border);
+  padding: 5px 12px; font-size: 1.05rem;
 }
-.star-btn.on { color: #fbbf24; border-color: #fbbf24; }
+.fav-btn.sd-fav.on { border-color: var(--stock-up); }
 .sd-sub { font-size: .76rem; color: var(--text3); font-weight: 600; margin-bottom: 12px; }
 
 .sd-price-block { margin-bottom: 14px; }
@@ -604,3 +606,18 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
   .rank-tv { width: 68px; font-size: .64rem; }
   .rank-main { padding-left: 10px; gap: 6px; }
 }
+
+/* 관심종목 카드 — 본문 버튼 + 우상단 하트 */
+.w-card { position: relative; padding: 0; }
+.w-card-main {
+  width: 100%; background: none; border: none; color: var(--text);
+  padding: 11px 12px 6px; text-align: left; cursor: pointer;
+  display: flex; flex-direction: column; gap: 5px;
+}
+.w-card .fav-btn {
+  position: absolute; top: 4px; right: 4px;
+  border: none; padding: 5px 7px; font-size: .95rem; line-height: 1;
+  background: none;
+}
+/* 하트가 종목명을 가리지 않도록 코드 자리를 비워둔다 */
+.w-card-code { margin-right: 22px; }

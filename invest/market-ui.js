@@ -179,24 +179,33 @@ async function loadWatchQuotes() {
     if (el.dataset.key !== key) {
       el.className = watchView === 'card' ? 'watch-cards' : '';
       el.innerHTML = rows.map(function (q) {
+        var open = 'openStock(\'' + q.code + '\',\'' + escapeAttr(q.name) + '\')';
+        // 관심종목에서 바로 뺄 수 있도록 하트를 단다 (전역 동일한 fav-btn)
+        var fav = '<button class="fav-btn on" id="fav-' + q.code + '"'
+                + ' onclick="onFavToggle(\'' + q.code + '\')" aria-label="관심종목에서 빼기">♥</button>';
+
         if (watchView === 'list') {
-          return '<button class="q-row" onclick="openStock(\'' + q.code + '\',\'' + escapeAttr(q.name) + '\')">'
-            + '<span class="q-name">' + escapeHtml(q.name) + '</span>'
-            + '<span class="q-price" id="wqp-' + q.code + '"></span>'
-            + '<span class="q-chg" id="wqc-' + q.code + '"></span>'
-            + '</button>';
+          return '<div class="q-row rank-row">'
+            + '<button class="rank-main" onclick="' + open + '">'
+            +   '<span class="q-name">' + escapeHtml(q.name) + '</span>'
+            +   '<span class="rank-nums">'
+            +     '<span class="q-price" id="wqp-' + q.code + '"></span>'
+            +     '<span class="q-chg" id="wqc-' + q.code + '"></span>'
+            +   '</span>'
+            + '</button>' + fav + '</div>';
         }
-        return '<button class="w-card" onclick="openStock(\'' + q.code + '\',\'' + escapeAttr(q.name) + '\')">'
-          + '<div class="w-card-head">'
-          +   '<span class="w-card-name">' + escapeHtml(q.name) + '</span>'
-          +   '<span class="w-card-code">' + q.code + '</span>'
-          + '</div>'
-          + '<div class="w-card-row">'
-          +   '<span class="q-price" id="wqp-' + q.code + '"></span>'
-          +   '<span class="q-chg" id="wqc-' + q.code + '"></span>'
-          + '</div>'
-          + '<div class="w-card-spark" id="wqs-' + q.code + '"></div>'
-          + '</button>';
+        return '<div class="w-card">'
+          + '<button class="w-card-main" onclick="' + open + '">'
+          +   '<div class="w-card-head">'
+          +     '<span class="w-card-name">' + escapeHtml(q.name) + '</span>'
+          +     '<span class="w-card-code">' + q.code + '</span>'
+          +   '</div>'
+          +   '<div class="w-card-row">'
+          +     '<span class="q-price" id="wqp-' + q.code + '"></span>'
+          +     '<span class="q-chg" id="wqc-' + q.code + '"></span>'
+          +   '</div>'
+          +   '<div class="w-card-spark" id="wqs-' + q.code + '"></div>'
+          + '</button>' + fav + '</div>';
       }).join('');
       el.dataset.key = key;
       el.dataset.built = '1';
@@ -344,6 +353,12 @@ async function onFavToggle(code) {
     var on = await toggleWatch(code);
     btn.classList.toggle('on', on);
     btn.textContent = on ? '♥' : '♡';
+    // 종목 상세를 보고 있는 중이면 그쪽 하트도 맞춘다
+    var sd = document.getElementById('starBtn');
+    if (sd && curStock && curStock.code === code) {
+      sd.classList.toggle('on', on);
+      sd.textContent = on ? '♥' : '♡';
+    }
     // 관심종목 섹션도 다시 그린다 (뼈대 재생성 강제)
     var wl = document.getElementById('watchList');
     if (wl) { wl.dataset.key = ''; wl.dataset.built = ''; }
@@ -400,8 +415,8 @@ function stockShellHtml(code, name) {
     + '<div class="sd-head">'
     +   '<button class="mini-btn" onclick="backToMarket()">← 시세</button>'
     +   '<span class="sd-title">' + escapeHtml(name) + '</span>'
-    +   '<button class="star-btn' + (watched ? ' on' : '') + '" id="starBtn" onclick="onToggleWatch()">'
-    +     (watched ? '★' : '☆') + '</button>'
+    +   '<button class="fav-btn sd-fav' + (watched ? ' on' : '') + '" id="starBtn" onclick="onToggleWatch()"'
+    +     ' aria-label="관심종목">' + (watched ? '♥' : '♡') + '</button>'
     + '</div>'
     + '<div class="sd-sub" id="sdSub">' + code + '</div>'
     + '<div class="sd-price-block" id="sdPrice"><div class="loading">시세 불러오는 중...</div></div>'
@@ -451,7 +466,7 @@ async function onToggleWatch() {
   try {
     var on = await toggleWatch(curStock.code);
     btn.classList.toggle('on', on);
-    btn.textContent = on ? '★' : '☆';
+    btn.textContent = on ? '♥' : '♡';
   } catch (e) {
     alert('관심종목 저장에 실패했습니다.');
   } finally {
