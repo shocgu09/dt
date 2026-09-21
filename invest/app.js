@@ -173,19 +173,11 @@ function briefingCardHtml(p) {
     h += '</div>';
   }
 
+  // 작성자 표기·수정·고정·삭제는 카드에 두지 않는다 — ai-trend / car-trend 처럼 관리 탭에서만 다룬다
   h += '<div class="briefing-footer">';
-  h += '<span class="briefing-meta">' + escapeHtml(p.authorName || '운영진') + '</span>';
   h += '<button class="comment-toggle" onclick="toggleComments(\'' + p.id + '\')">💬 댓글 '
      + (p.commentCount || 0) + ' <span id="ct-' + p.id + '">▾</span></button>';
   h += '</div>';
-
-  if (isAdmin) {
-    h += '<div class="admin-actions">';
-    h += '<button class="mini-btn" onclick="editBriefing(\'' + p.id + '\')">✏️ 수정</button>';
-    h += '<button class="mini-btn" onclick="togglePin(\'' + p.id + '\')">' + (p.pinned ? '📌 고정 해제' : '📌 고정') + '</button>';
-    h += '<button class="mini-btn danger" onclick="deleteBriefing(\'' + p.id + '\')">🗑️ 삭제</button>';
-    h += '</div>';
-  }
 
   h += '<div class="comment-section" id="cs-' + p.id + '" style="display:none"></div>';
   h += '</div>';
@@ -556,14 +548,15 @@ async function submitBriefing() {
     var payload = {
       date: date, title: title, body: body, market: market,
       sentiment: formSentiment, tickers: formTickers.map(normalizeTicker), pinned: pinned,
-      authorName: myName || '운영진',
-      generatedBy: 'admin',
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     if (editingId) {
+      // 출처(generatedBy·authorName)는 건드리지 않는다 — AI 브리핑의 오탈자를 고쳐도 🤖 배지가 유지되도록
       await db.collection('invest_briefings').doc(editingId).update(payload);
       status.innerHTML = '<span class="ok">✅ 브리핑이 수정되었습니다.</span>';
     } else {
+      payload.authorName = myName || '운영진';
+      payload.generatedBy = 'admin';
       payload.commentCount = 0;
       payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
       await db.collection('invest_briefings').add(payload);
@@ -589,7 +582,9 @@ function resetBriefingForm() {
   document.getElementById('bMarket').value = 'all';
   document.getElementById('bPinned').checked = false;
   document.getElementById('bTickerInput').value = '';
-  document.getElementById('briefingFormTitle').textContent = '📋 시황 브리핑 작성';
+  // index.html 의 초기 제목과 동일하게 되돌린다
+  document.getElementById('briefingFormTitle').innerHTML = '✍️ 시황 브리핑 직접 작성 '
+    + '<span style="font-size:.74rem;color:var(--text3);font-weight:600">(AI 브리핑 보완용)</span>';
   document.getElementById('bSubmitBtn').textContent = '📋 브리핑 게시';
   document.getElementById('bCancelBtn').style.display = 'none';
   setSentiment('neutral');
@@ -658,6 +653,7 @@ function renderAdminBriefingList() {
       + '<div class="admin-list-sub">' + escapeHtml(p.date || '') + ' · 댓글 ' + (p.commentCount || 0) + '</div>'
       + '</div>'
       + '<button class="mini-btn" onclick="editBriefing(\'' + p.id + '\')">수정</button>'
+      + '<button class="mini-btn" onclick="togglePin(\'' + p.id + '\')">' + (p.pinned ? '고정 해제' : '고정') + '</button>'
       + '<button class="mini-btn danger" onclick="deleteBriefing(\'' + p.id + '\')">삭제</button>'
       + '</div>';
   }).join('');

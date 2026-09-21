@@ -1,17 +1,18 @@
 :root {
-  --bg: #12151c; --bg2: #191d27; --bg3: #222735;
-  --text: #e8ecf0; --text2: #9aa5b8; --text3: #667085;
-  --primary: #0d9488; --primary-light: #14b8a6;
-  --border: #2b3242; --accent: #e74c5a;
-  --stock-up: #f0616d; --stock-down: #4d8bff; --stock-flat: #9aa5b8;
+  /* 팔레트는 ai-trend / car-trend 와 동일하게 유지한다 (시세 색만 재테크 전용) */
+  --bg: #1a1a2e; --bg2: #22223a; --bg3: #2a2a45;
+  --text: #e8e8f0; --text2: #a0a0b8; --text3: #6b6b85;
+  --primary: #d97706; --primary-light: #f59e0b;
+  --border: #333355; --accent: #e74c5a;
+  --stock-up: #f0616d; --stock-down: #4d8bff; --stock-flat: #a0a0b8;
   --bull-bg: rgba(240,97,109,.14); --bear-bg: rgba(77,139,255,.14);
 }
 [data-theme="light"] {
-  --bg: #f4f6f8; --bg2: #fff; --bg3: #eceff3;
-  --text: #12151c; --text2: #52606d; --text3: #97a0ab;
-  --primary: #0f766e; --primary-light: #0d9488;
-  --border: #dde2e8; --accent: #d94452;
-  --stock-up: #e0424f; --stock-down: #2f6fe0; --stock-flat: #97a0ab;
+  --bg: #f5f5fa; --bg2: #fff; --bg3: #eee;
+  --text: #1a1a2e; --text2: #555; --text3: #999;
+  --primary: #b45309; --primary-light: #d97706;
+  --border: #ddd; --accent: #e74c5a;
+  --stock-up: #e0424f; --stock-down: #2f6fe0; --stock-flat: #999;
   --bull-bg: rgba(224,66,79,.10); --bear-bg: rgba(47,111,224,.10);
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -58,7 +59,7 @@ body {
 
 /* 소개 */
 .intro-card {
-  background: linear-gradient(135deg, rgba(13,148,136,.12), rgba(124,111,255,.03));
+  background: linear-gradient(135deg, rgba(217,119,6,.1), rgba(124,111,255,.03));
   border: 1px solid var(--border); border-left: 3px solid var(--primary);
   padding: 14px 18px; margin-bottom: 16px; font-size: .86rem; color: var(--text2); line-height: 1.65;
 }
@@ -104,12 +105,10 @@ body {
 
 /* 브리핑 푸터 */
 .briefing-footer { display: flex; align-items: center; gap: 14px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
-.briefing-meta { font-size: .75rem; color: var(--text3); font-weight: 600; }
 .comment-toggle {
   background: none; border: none; color: var(--primary-light); font-size: .8rem;
   font-weight: 700; cursor: pointer; padding: 0; margin-left: auto;
 }
-.admin-actions { display: flex; gap: 6px; margin-top: 10px; }
 .mini-btn {
   background: var(--bg3); border: 1px solid var(--border); color: var(--text2);
   padding: 4px 10px; font-size: .74rem; font-weight: 600; cursor: pointer;
@@ -215,6 +214,7 @@ body {
   display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border);
 }
 .admin-list-item:last-child { border-bottom: none; }
+.admin-list-item .mini-btn { flex: 0 0 auto; white-space: nowrap; }
 .admin-list-info { flex: 1; min-width: 0; }
 .admin-list-title { font-size: .86rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .admin-list-sub { font-size: .73rem; color: var(--text3); margin-top: 2px; }

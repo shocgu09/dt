@@ -164,6 +164,13 @@ function purgeLegacyRecent() {
 
 /* ===== 관심종목 (Firestore stock_watchlist/{uid}) ===== */
 var watchlist = [];
+var _watchlistReady = null;
+
+/** 관심종목을 1회만 불러온다 — 시세 홈을 거치지 않고 종목 상세로 바로 들어와도 하트가 맞도록 */
+function ensureWatchlist() {
+  if (!_watchlistReady) _watchlistReady = loadWatchlist();
+  return _watchlistReady;
+}
 
 async function loadWatchlist() {
   if (!db || !currentUser) return [];
@@ -176,11 +183,15 @@ async function loadWatchlist() {
 
 async function toggleWatch(code) {
   if (!db || !currentUser) return false;
+  await ensureWatchlist();
   var on = watchlist.indexOf(code) === -1;
   watchlist = on ? watchlist.concat([code]) : watchlist.filter(function (c) { return c !== code; });
+  var FV = firebase.firestore.FieldValue;
   try {
+    // 배열을 통째로 덮어쓰지 않는다 — 로컬 목록이 비어 있거나(로드 실패) 다른 기기에서
+    // 바뀐 상태여도 서버의 기존 관심종목이 날아가지 않게 원소 단위로만 넣고 뺀다.
     await db.collection('stock_watchlist').doc(currentUser.uid).set({
-      codes: watchlist,
+      codes: on ? FV.arrayUnion(code) : FV.arrayRemove(code),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
   } catch (e) {
@@ -277,9 +288,9 @@ async function renderChart(container, bars, tf, mode) {
 
   var up = cssVar('--stock-up') || '#f0616d';
   var down = cssVar('--stock-down') || '#4d8bff';
-  var text = cssVar('--text2') || '#9aa5b8';
-  var grid = cssVar('--border') || '#2b3242';
-  var bg = cssVar('--bg') || '#12151c';
+  var text = cssVar('--text2') || '#a0a0b8';
+  var grid = cssVar('--border') || '#333355';
+  var bg = cssVar('--bg') || '#1a1a2e';
 
   var chart = LightweightCharts.createChart(container, {
     width: container.clientWidth,

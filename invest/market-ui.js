@@ -17,18 +17,24 @@ var sparkCache = {};             // code -> { values, at }
 
 /* ===== 시세 탭 진입 ===== */
 async function enterMarketTab() {
-  if (curStock) return;                     // 종목 상세 보는 중이면 유지
+  // 종목 상세 보는 중이면 화면은 유지하되, 탭을 떠날 때 멈춘 폴링은 다시 돌린다
+  if (curStock) { startStockPolling(); return; }
   document.getElementById('stockDetail').style.display = 'none';
   document.getElementById('marketHome').style.display = '';
 
-  if (!marketLoaded) {
-    marketLoaded = true;
-    await loadWatchlist();
-    renderRecent();
-    loadSectors();
-    loadRank();
-  }
+  await initMarketHome();
+  if (curStock || currentTab !== 'market') return;   // 기다리는 사이 화면이 바뀌었으면 중단
   startHomePolling();
+}
+
+/** 시세 홈 1회 초기화 — 브리핑 종목 칩으로 상세에 먼저 들어온 경우 '← 시세'에서도 불린다 */
+async function initMarketHome() {
+  if (marketLoaded) return;
+  marketLoaded = true;
+  await ensureWatchlist();
+  renderRecent();
+  loadSectors();
+  loadRank();
 }
 
 function leaveMarketTab() {
@@ -380,11 +386,13 @@ async function openStock(code, name) {
   resetDirs('px:');
   resetDirs('bk:');
   _trendLoadedFor = null;
+  // 이전 종목의 시세·일봉이 남아 있으면 범위 바가 잠깐 엉뚱한 값으로 그려진다
+  _dayBars = null;
+  _lastQuote = null;
 
   Poller.stopAll();
   if (chartHandle) { chartHandle.dispose(); chartHandle = null; }
 
-  switchTab('market');
   document.getElementById('marketHome').style.display = 'none';
   var el = document.getElementById('stockDetail');
   el.style.display = '';
@@ -392,10 +400,25 @@ async function openStock(code, name) {
   window.scrollTo(0, 0);
   clearSearch();
 
-  loadStockQuote();
+  // 뼈대를 그린 뒤에 탭을 전환한다 — enterMarketTab 이 startStockPolling 을 돌린다
+  switchTab('market');
   loadStockChart();
+
+  // 시세 홈을 거치지 않고(브리핑 종목 칩) 들어오면 관심종목이 아직 없다 — 불러온 뒤 하트를 맞춘다
+  ensureWatchlist().then(function () {
+    var btn = document.getElementById('starBtn');
+    if (!btn || !curStock || curStock.code !== code) return;
+    var on = watchlist.indexOf(code) !== -1;
+    btn.classList.toggle('on', on);
+    btn.textContent = on ? '♥' : '♡';
+  });
+}
+
+/** 종목 상세 폴링 시작/재개 (즉시 1회 실행됨) */
+function startStockPolling() {
   Poller.add('quote', loadStockQuote, isMarketOpen() ? 3000 : 60000);
   Poller.add('bars', refreshChartBars, 60000);
+  if (bookOpen) Poller.add('book', loadBook, isMarketOpen() ? 3000 : 60000);
 }
 
 function backToMarket() {
@@ -404,10 +427,12 @@ function backToMarket() {
   if (chartHandle) { chartHandle.dispose(); chartHandle = null; }
   document.getElementById('stockDetail').style.display = 'none';
   document.getElementById('marketHome').style.display = '';
-  renderRecent();
-  loadWatchQuotes();
-  startHomePolling();
   window.scrollTo(0, 0);
+  initMarketHome().then(function () {
+    if (curStock || currentTab !== 'market') return;
+    renderRecent();
+    startHomePolling();
+  });
 }
 
 function stockShellHtml(code, name) {
@@ -496,8 +521,13 @@ async function loadStockQuote() {
   if (!curStock) return;
   var box = document.getElementById('sdPrice');
   if (!box) return;
+  var code = curStock.code;
   try {
-    var q = await Market.quote(curStock.code);
+    var q = await Market.quote(code);
+    // 기다리는 사이 다른 종목으로 넘어갔으면 늦게 온 응답은 버린다
+    if (!curStock || curStock.code !== code) return;
+    box = document.getElementById('sdPrice');
+    if (!box) return;
     setMarketStatus(q.marketStatus);        // 시계 대신 서버 상태를 신뢰
     var cls = signClass(q.change);
     var st = marketStateLabel();
@@ -610,16 +640,20 @@ function toggleChartMode() {
   try { chartMode = localStorage.getItem('dt-invest-chartmode') || 'simple'; } catch (e) {}
 })();
 
+var _chartSeq = 0;
 async function loadStockChart() {
   if (!curStock) return;
   var box = document.getElementById('chartBox');
   if (!box) return;
+  // 기간 버튼 연타·종목 전환 시 마지막 요청만 그린다 (차트가 겹쳐 생성·누수되는 것 방지)
+  var seq = ++_chartSeq;
   syncChartModeBtn();
   box.innerHTML = '<div class="loading">차트 불러오는 중...</div>';
   if (chartHandle) { chartHandle.dispose(); chartHandle = null; }
   try {
     var isMin = (curTf === 'm' || curTf === 'm5');
     var d = await Market.ohlc(curStock.code, isMin ? '1m' : 'D');
+    if (seq !== _chartSeq) return;
     var bars = d.bars || d.candles || [];
     if (!bars.length) { box.innerHTML = '<div class="empty">차트 데이터가 없습니다</div>'; return; }
 
@@ -631,7 +665,9 @@ async function loadStockChart() {
     else if (curTf === 'M') use = aggregateCandles(bars, 'M');
     else if (curTf === 'D') use = bars.slice(-120);
 
-    chartHandle = await renderChart(box, use, curTf, chartMode);
+    var handle = await renderChart(box, use, curTf, chartMode);
+    if (seq !== _chartSeq) { handle.dispose(); return; }
+    chartHandle = handle;
 
     // 기간 최고/최저를 차트 위에 텍스트로 — 가장자리 마커가 잘려도 값은 보인다
     updateHiLoLabel();
@@ -648,6 +684,7 @@ async function loadStockChart() {
       }
     }
   } catch (e) {
+    if (seq !== _chartSeq) return;
     box.innerHTML = '<div class="empty">' + escapeHtml(e.message) + '</div>';
   }
 }
@@ -657,7 +694,10 @@ async function refreshChartBars() {
   if (!curStock || !chartHandle || !chartHandle.replaceData) return;
   try {
     var isMin = (curTf === 'm' || curTf === 'm5');
+    var seq = _chartSeq, handle = chartHandle;
     var d = await Market.ohlc(curStock.code, isMin ? '1m' : 'D');
+    // 받는 사이 종목·기간·차트가 바뀌었으면 버린다
+    if (seq !== _chartSeq || handle !== chartHandle) return;
     var bars = d.bars || d.candles || [];
     if (!bars.length) return;
     if (!isMin) _dayBars = bars;
@@ -721,7 +761,17 @@ async function loadBook() {
   var wrap = document.getElementById('bookWrap');
   if (!wrap) return;
   try {
-    var b = await Market.book(curStock.code);
+    var code = curStock.code;
+    var b = await Market.book(code);
+    if (!curStock || curStock.code !== code || !bookOpen) return;
+    wrap = document.getElementById('bookWrap');
+    if (!wrap) return;
+    // 워커는 네이버 호가가 막히면 에러 대신 unavailable 을 내려준다
+    if (b.unavailable) {
+      wrap.dataset.built = '';
+      wrap.innerHTML = '<div class="empty">' + escapeHtml(b.reason || '호가를 불러오지 못했습니다') + '</div>';
+      return;
+    }
     var ask = b.ask || [], bid = b.bid || [];
     var qtyOf = function (a) { return (a.count !== undefined && a.count !== null) ? a.count : a.qty; };
     var total = (b.askTotal || 0) + (b.bidTotal || 0);
