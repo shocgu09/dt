@@ -13,7 +13,7 @@ const CORS = {
 };
 
 // 캐시 TTL(초) — 네이버 권장 폴링이 7초라 그보다 짧게 잡을 이유가 없다
-const TTL = { quote: 5, book: 3, index: 30, ohlcIntra: 60, ohlcDay: 43200, search: 86400,
+const TTL = { quote: 3, book: 3, index: 15, ohlcIntra: 60, ohlcDay: 43200, search: 86400,
               rank: 60, sectors: 120, news: 300 };
 
 function json(data, status = 200, extra) {

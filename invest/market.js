@@ -263,9 +263,39 @@ async function renderChart(container, bars, tf) {
   var onResize = function () { chart.applyOptions({ width: container.clientWidth }); };
   window.addEventListener('resize', onResize);
 
-  return function dispose() {
-    window.removeEventListener('resize', onResize);
-    try { chart.remove(); } catch (e) {}
+  var lastBar = candles.length ? Object.assign({}, candles[candles.length - 1]) : null;
+  var lastVol = vols.length ? Object.assign({}, vols[vols.length - 1]) : null;
+
+  return {
+    dispose: function () {
+      window.removeEventListener('resize', onResize);
+      try { chart.remove(); } catch (e) {}
+    },
+    /**
+     * 틱이 올 때마다 마지막 봉만 갱신한다 (O(1)).
+     * bucketTime이 마지막 봉과 다르면 새 봉을 만든다.
+     * @param price 현재가
+     * @param bucketTime 이 틱이 속한 봉의 시간값 (toChartTime 결과)
+     * @param volume 누적 거래량 (선택)
+     */
+    updateLast: function (price, bucketTime, volume) {
+      if (price == null || !isFinite(price)) return;
+      var sameBucket = lastBar && JSON.stringify(lastBar.time) === JSON.stringify(bucketTime);
+      if (!lastBar || !sameBucket) {
+        lastBar = { time: bucketTime, open: price, high: price, low: price, close: price };
+        lastVol = { time: bucketTime, value: volume || 0, color: up + '55' };
+      } else {
+        lastBar.high = Math.max(lastBar.high, price);
+        lastBar.low = Math.min(lastBar.low, price);
+        lastBar.close = price;
+        if (volume != null) lastVol.value = volume;
+        lastVol.color = (lastBar.close >= lastBar.open ? up : down) + '55';
+      }
+      try {
+        candleSeries.update(lastBar);
+        volSeries.update(lastVol);
+      } catch (e) { /* 시간 역행 등은 무시 */ }
+    }
   };
 }
 
@@ -299,4 +329,35 @@ function signMark(v) {
   if (v > 0) return '▲';
   if (v < 0) return '▼';
   return '–';
+}
+
+/* ===== 값 변동 플래시 =====
+ * innerHTML을 통째로 갈아끼우면 애니메이션이 끊기므로,
+ * 텍스트만 바꾸고 이 함수로 배경을 짧게 번쩍인다.
+ */
+function setTextFlash(el, text, dir) {
+  if (!el) return;
+  var prev = el.textContent;
+  if (prev === text) return;
+  el.textContent = text;
+  if (!dir) return;
+  el.classList.remove('flash-up', 'flash-down');
+  // 리플로우를 강제해야 같은 클래스를 연속으로 줘도 애니메이션이 다시 돈다
+  void el.offsetWidth;
+  el.classList.add(dir > 0 ? 'flash-up' : 'flash-down');
+}
+
+/** 이전 값과 비교해 방향을 낸다 (+1 상승 / -1 하락 / 0 변화없음) */
+var _prevVals = {};
+function dirOf(key, v) {
+  var p = _prevVals[key];
+  _prevVals[key] = v;
+  if (p === undefined || p === v || v == null) return 0;
+  return v > p ? 1 : -1;
+}
+
+function resetDirs(prefix) {
+  Object.keys(_prevVals).forEach(function (k) {
+    if (!prefix || k.indexOf(prefix) === 0) delete _prevVals[k];
+  });
 }

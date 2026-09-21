@@ -45,16 +45,6 @@ body {
 }
 .gate a:hover { background: var(--primary-light); }
 
-/* 자산군 탭 */
-.asset-bar { display: flex; gap: 6px; margin-bottom: 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.asset-bar::-webkit-scrollbar { display: none; }
-.asset-btn {
-  flex: 0 0 auto; padding: 7px 16px; background: var(--bg2); border: 1px solid var(--border);
-  color: var(--text2); font-size: .84rem; font-weight: 700; cursor: pointer; white-space: nowrap;
-}
-.asset-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; }
-.asset-btn:disabled { opacity: .45; cursor: not-allowed; }
-
 /* 서브 탭 */
 .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; background: var(--bg2); padding: 4px; border: 1px solid var(--border); }
 .tab-btn {
@@ -452,4 +442,24 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 @media (max-width: 480px) {
   .sd-price { font-size: 1.6rem; }
   .q-chg { flex-basis: 64px; }
+}
+
+/* ── 실시간 값 변동 플래시 ──
+   innerHTML을 통째로 갈아끼우지 않고 텍스트만 바꾼 뒤 이 애니메이션을 준다. */
+@keyframes dtFlashUp {
+  0%   { background: var(--stock-up); color: #fff; }
+  100% { background: transparent; }
+}
+@keyframes dtFlashDown {
+  0%   { background: var(--stock-down); color: #fff; }
+  100% { background: transparent; }
+}
+.flash-up { animation: dtFlashUp .55s ease-out; }
+.flash-down { animation: dtFlashDown .55s ease-out; }
+
+/* 숫자가 바뀔 때 폭이 흔들리지 않도록 */
+.sd-price, .idx-price, .q-price, .bk-qty b { font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: reduce) {
+  .flash-up, .flash-down { animation: none; }
 }

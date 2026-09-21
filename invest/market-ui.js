@@ -7,7 +7,7 @@ var marketLoaded = false;
 var curStock = null;        // { code, name }
 var curTf = 'D';
 var bookOpen = false;
-var chartDispose = null;
+var chartHandle = null;
 var searchTimer = null;
 var rankType = 'up';
 var rankMarket = 'KOSPI';
@@ -34,9 +34,9 @@ function leaveMarketTab() {
 
 function startHomePolling() {
   Poller.stopAll();
-  Poller.add('index', loadIndex, isMarketOpen() ? 30000 : 600000);
+  Poller.add('index', loadIndex, isMarketOpen() ? 15000 : 600000);
   if (watchlist.length) {
-    Poller.add('watch', loadWatchQuotes, isMarketOpen() ? 7000 : 600000);
+    Poller.add('watch', loadWatchQuotes, isMarketOpen() ? 5000 : 600000);
   } else {
     loadWatchQuotes();       // 비어 있어도 1회는 그려야 "불러오는 중"이 안 남는다
   }
@@ -49,19 +49,38 @@ async function loadIndex() {
   try {
     var d = await Market.index();
     var st = marketStateLabel();
-    var cells = ['kospi', 'kosdaq'].map(function (k) {
+
+    // 최초 1회만 뼈대를 만들고 이후엔 값만 갈아끼운다 (플래시 애니메이션 유지)
+    if (!el.dataset.built) {
+      el.innerHTML = ['kospi', 'kosdaq'].map(function (k) {
+        var x = d[k];
+        if (!x) return '';
+        return '<div class="idx-cell">'
+          + '<div class="idx-name">' + escapeHtml(x.name) + '</div>'
+          + '<div class="idx-price" id="ixp-' + k + '"></div>'
+          + '<div class="idx-chg" id="ixc-' + k + '"></div>'
+          + '</div>';
+      }).join('') + '<div class="idx-state" id="ixState"></div>';
+      el.dataset.built = '1';
+    }
+
+    ['kospi', 'kosdaq'].forEach(function (k) {
       var x = d[k];
-      if (!x) return '';
-      var c = signClass(x.change);
-      return '<div class="idx-cell">'
-        + '<div class="idx-name">' + escapeHtml(x.name) + '</div>'
-        + '<div class="idx-price ' + c + '">' + fmtNum(Math.round(x.price * 100) / 100) + '</div>'
-        + '<div class="idx-chg ' + c + '">' + signMark(x.change) + ' ' + fmtRate(x.changeRate) + '</div>'
-        + '</div>';
-    }).join('');
-    el.innerHTML = cells + '<div class="idx-state ' + st.cls + '">' + st.text + '</div>';
+      if (!x) return;
+      var pEl = document.getElementById('ixp-' + k);
+      var cEl = document.getElementById('ixc-' + k);
+      if (!pEl || !cEl) return;
+      var cls = signClass(x.change);
+      setTextFlash(pEl, fmtNum(Math.round(x.price * 100) / 100), dirOf('ix:' + k, x.price));
+      pEl.className = 'idx-price ' + cls;
+      cEl.textContent = signMark(x.change) + ' ' + fmtRate(x.changeRate);
+      cEl.className = 'idx-chg ' + cls;
+    });
+
+    var sEl = document.getElementById('ixState');
+    if (sEl) { sEl.textContent = st.text; sEl.className = 'idx-state ' + st.cls; }
   } catch (e) {
-    el.innerHTML = '<div class="idx-err">지수를 불러오지 못했습니다</div>';
+    if (!el.dataset.built) el.innerHTML = '<div class="idx-err">지수를 불러오지 못했습니다</div>';
   }
 }
 
@@ -103,27 +122,46 @@ async function loadWatchQuotes() {
   var el = document.getElementById('watchList');
   if (!el) return;
   if (!watchlist.length) {
+    el.dataset.built = '';
+    el.dataset.key = '';
     el.innerHTML = '<div class="empty">관심종목이 없습니다.<br>종목을 검색해 ⭐를 눌러보세요.</div>';
     return;
   }
   try {
-    var rows = await Promise.all(watchlist.map(function (c) {
+    var rows = (await Promise.all(watchlist.map(function (c) {
       return Market.quote(c).catch(function () { return null; });
-    }));
-    el.innerHTML = rows.filter(Boolean).map(quoteRowHtml).join('')
-      || '<div class="empty">시세를 불러오지 못했습니다</div>';
-  } catch (e) {
-    el.innerHTML = '<div class="empty">시세를 불러오지 못했습니다</div>';
-  }
-}
+    }))).filter(Boolean);
 
-function quoteRowHtml(q) {
-  var c = signClass(q.change);
-  return '<button class="q-row" onclick="openStock(\'' + q.code + '\',\'' + escapeAttr(q.name) + '\')">'
-    + '<span class="q-name">' + escapeHtml(q.name) + '</span>'
-    + '<span class="q-price">' + fmtNum(q.price) + '</span>'
-    + '<span class="q-chg ' + c + '">' + signMark(q.change) + ' ' + fmtRate(q.changeRate) + '</span>'
-    + '</button>';
+    if (!rows.length) {
+      if (!el.dataset.built) el.innerHTML = '<div class="empty">시세를 불러오지 못했습니다</div>';
+      return;
+    }
+
+    // 종목 구성이 바뀐 경우에만 뼈대를 다시 만든다
+    var key = rows.map(function (q) { return q.code; }).join(',');
+    if (el.dataset.key !== key) {
+      el.innerHTML = rows.map(function (q) {
+        return '<button class="q-row" onclick="openStock(\'' + q.code + '\',\'' + escapeAttr(q.name) + '\')">'
+          + '<span class="q-name">' + escapeHtml(q.name) + '</span>'
+          + '<span class="q-price" id="wqp-' + q.code + '"></span>'
+          + '<span class="q-chg" id="wqc-' + q.code + '"></span>'
+          + '</button>';
+      }).join('');
+      el.dataset.key = key;
+      el.dataset.built = '1';
+    }
+
+    rows.forEach(function (q) {
+      var pEl = document.getElementById('wqp-' + q.code);
+      var cEl = document.getElementById('wqc-' + q.code);
+      if (!pEl || !cEl) return;
+      setTextFlash(pEl, fmtNum(q.price), dirOf('w:' + q.code, q.price));
+      cEl.textContent = signMark(q.change) + ' ' + fmtRate(q.changeRate);
+      cEl.className = 'q-chg ' + signClass(q.change);
+    });
+  } catch (e) {
+    if (!el.dataset.built) el.innerHTML = '<div class="empty">시세를 불러오지 못했습니다</div>';
+  }
 }
 
 /* ===== 최근 본 종목 ===== */
@@ -224,9 +262,11 @@ async function openStock(code, name) {
   curTf = 'D';
   bookOpen = false;
   pushRecent(code, name);
+  resetDirs('px:');
+  resetDirs('bk:');
 
   Poller.stopAll();
-  if (chartDispose) { chartDispose(); chartDispose = null; }
+  if (chartHandle) { chartHandle.dispose(); chartHandle = null; }
 
   switchTab('market');
   document.getElementById('marketHome').style.display = 'none';
@@ -238,13 +278,13 @@ async function openStock(code, name) {
 
   loadStockQuote();
   loadStockChart();
-  Poller.add('quote', loadStockQuote, isMarketOpen() ? 5000 : 600000);
+  Poller.add('quote', loadStockQuote, isMarketOpen() ? 3000 : 600000);
 }
 
 function backToMarket() {
   curStock = null;
   Poller.stopAll();
-  if (chartDispose) { chartDispose(); chartDispose = null; }
+  if (chartHandle) { chartHandle.dispose(); chartHandle = null; }
   document.getElementById('stockDetail').style.display = 'none';
   document.getElementById('marketHome').style.display = '';
   renderRecent();
@@ -313,20 +353,51 @@ async function onToggleWatch() {
   }
 }
 
+/** 지금 시각이 속한 봉의 시간값 (차트 마지막 봉 갱신용) */
+function currentBucketTime() {
+  var now = new Date();
+  var kst = new Date(now.getTime() + now.getTimezoneOffset() * 60000 + 9 * 3600000);
+  if (curTf === 'm' || curTf === 'm5') {
+    var step = curTf === 'm5' ? 5 : 1;
+    var mins = Math.floor(kst.getMinutes() / step) * step;
+    return Math.floor(Date.UTC(kst.getFullYear(), kst.getMonth(), kst.getDate(), kst.getHours(), mins) / 1000);
+  }
+  // 일·주·월봉은 "오늘"이 마지막 봉이므로 오늘 날짜로 갱신한다
+  return { year: kst.getFullYear(), month: kst.getMonth() + 1, day: kst.getDate() };
+}
+
 async function loadStockQuote() {
   if (!curStock) return;
+  var box = document.getElementById('sdPrice');
+  if (!box) return;
   try {
     var q = await Market.quote(curStock.code);
-    var c = signClass(q.change);
+    var cls = signClass(q.change);
     var st = marketStateLabel();
+
+    // 뼈대는 1회만 — 이후엔 텍스트만 갈아끼워야 플래시 애니메이션이 산다
+    if (!box.dataset.built) {
+      box.innerHTML =
+          '<div class="sd-price" id="pxVal"></div>'
+        + '<div class="sd-chg" id="pxChg"></div>'
+        + '<div class="sd-asof" id="pxAsOf"></div>';
+      box.dataset.built = '1';
+    }
+
+    var vEl = document.getElementById('pxVal');
+    var cEl = document.getElementById('pxChg');
+    var aEl = document.getElementById('pxAsOf');
+
+    setTextFlash(vEl, fmtNum(q.price), dirOf('px:' + q.code, q.price));
+    vEl.className = 'sd-price ' + cls;
+    cEl.innerHTML = signMark(q.change) + ' ' + fmtNum(Math.abs(q.change))
+      + ' (' + fmtRate(q.changeRate) + ') <span class="vs">어제보다</span>';
+    cEl.className = 'sd-chg ' + cls;
+    aEl.innerHTML = escapeHtml(shortTime(q.asOf)) + ' 기준 · 네이버 '
+      + '<span class="state-dot ' + st.cls + '">' + st.text + '</span>';
+
     document.getElementById('sdSub').textContent =
       q.code + ' · ' + (q.market || '') + (q.tradeHalted ? ' · 거래정지' : '');
-    document.getElementById('sdPrice').innerHTML =
-        '<div class="sd-price ' + c + '">' + fmtNum(q.price) + ' <span class="won">원</span></div>'
-      + '<div class="sd-chg ' + c + '">' + signMark(q.change) + ' ' + fmtNum(Math.abs(q.change))
-      + ' (' + fmtRate(q.changeRate) + ') <span class="vs">어제보다</span></div>'
-      + '<div class="sd-asof">' + escapeHtml(shortTime(q.asOf)) + ' 기준 · 네이버 '
-      + '<span class="state-dot ' + st.cls + '">' + st.text + '</span></div>';
 
     document.getElementById('sdStats').innerHTML = [
       ['거래량', fmtCompact(q.volume)],
@@ -338,9 +409,13 @@ async function loadStockQuote() {
     }).join('');
 
     renderRange(q);
+
+    // ★ 차트 마지막 봉을 새로고침 없이 갱신
+    if (chartHandle && isMarketOpen()) {
+      chartHandle.updateLast(q.price, currentBucketTime(), q.volume);
+    }
   } catch (e) {
-    var el = document.getElementById('sdPrice');
-    if (el) el.innerHTML = '<div class="empty">' + escapeHtml(e.message) + '</div>';
+    if (!box.dataset.built) box.innerHTML = '<div class="empty">' + escapeHtml(e.message) + '</div>';
   }
 }
 
@@ -388,7 +463,7 @@ async function loadStockChart() {
   var box = document.getElementById('chartBox');
   if (!box) return;
   box.innerHTML = '<div class="loading">차트 불러오는 중...</div>';
-  if (chartDispose) { chartDispose(); chartDispose = null; }
+  if (chartHandle) { chartHandle.dispose(); chartHandle = null; }
   try {
     var isMin = (curTf === 'm' || curTf === 'm5');
     var d = await Market.ohlc(curStock.code, isMin ? '1m' : 'D');
@@ -403,7 +478,7 @@ async function loadStockChart() {
     else if (curTf === 'M') use = aggregateCandles(bars, 'M');
     else if (curTf === 'D') use = bars.slice(-120);
 
-    chartDispose = await renderChart(box, use, curTf);
+    chartHandle = await renderChart(box, use, curTf);
   } catch (e) {
     box.innerHTML = '<div class="empty">' + escapeHtml(e.message) + '</div>';
   }
@@ -430,6 +505,7 @@ function toggleBook() {
   var wrap = document.getElementById('bookWrap');
   var btn = document.getElementById('bookToggle');
   wrap.style.display = bookOpen ? '' : 'none';
+  if (!bookOpen) { wrap.dataset.built = ''; resetDirs('bk:'); }
   btn.textContent = bookOpen ? '▴ 호가 접기' : '▾ 호가 보기';
   if (bookOpen) {
     loadBook();
@@ -446,32 +522,58 @@ async function loadBook() {
   try {
     var b = await Market.book(curStock.code);
     var ask = b.ask || [], bid = b.bid || [];
+    var qtyOf = function (a) { return (a.count !== undefined && a.count !== null) ? a.count : a.qty; };
     var total = (b.askTotal || 0) + (b.bidTotal || 0);
     var askPct = total ? Math.round((b.askTotal / total) * 100) : 50;
 
-    var qtyOf = function (a) { return (a.count !== undefined && a.count !== null) ? a.count : a.qty; };
-    var rows = ask.map(function (a) {
-      return '<div class="bk-row">'
-        + '<span class="bk-qty ask"><i style="width:' + (a.rate || 0) + '%"></i><b>' + fmtNum(qtyOf(a)) + '</b></span>'
-        + '<span class="bk-price">' + fmtNum(a.price) + '</span>'
-        + '<span class="bk-qty"></span></div>';
-    }).join('');
-    rows += '<div class="bk-mid">매도 ' + fmtNum(b.askTotal) + ' · 매수 ' + fmtNum(b.bidTotal) + '</div>';
-    rows += bid.map(function (a) {
-      return '<div class="bk-row">'
-        + '<span class="bk-qty"></span>'
-        + '<span class="bk-price">' + fmtNum(a.price) + '</span>'
-        + '<span class="bk-qty bid"><i style="width:' + (a.rate || 0) + '%"></i><b>' + fmtNum(qtyOf(a)) + '</b></span></div>';
-    }).join('');
+    // 뼈대는 1회만 (5단계 고정이라 구조가 바뀌지 않는다)
+    if (!wrap.dataset.built) {
+      var h = '<div class="bk-head"><span>매도잔량</span><span>호가</span><span>매수잔량</span></div>';
+      h += ask.map(function (a, i) {
+        return '<div class="bk-row">'
+          + '<span class="bk-qty ask"><i id="bka-bar-' + i + '"></i><b id="bka-q-' + i + '"></b></span>'
+          + '<span class="bk-price" id="bka-p-' + i + '"></span>'
+          + '<span class="bk-qty"></span></div>';
+      }).join('');
+      h += '<div class="bk-mid" id="bkMid"></div>';
+      h += bid.map(function (a, i) {
+        return '<div class="bk-row">'
+          + '<span class="bk-qty"></span>'
+          + '<span class="bk-price" id="bkb-p-' + i + '"></span>'
+          + '<span class="bk-qty bid"><i id="bkb-bar-' + i + '"></i><b id="bkb-q-' + i + '"></b></span></div>';
+      }).join('');
+      h += '<div class="bk-ratio"><span class="bk-ratio-bar"><i id="bkRatio"></i></span>'
+         + '<span class="bk-ratio-txt" id="bkRatioTxt"></span></div>'
+         + '<div class="bk-note">5단계 · 현재가와 1~2초 차이가 있을 수 있습니다</div>';
+      wrap.innerHTML = h;
+      wrap.dataset.built = '1';
+    }
 
-    wrap.innerHTML = '<div class="bk-head"><span>매도잔량</span><span>호가</span><span>매수잔량</span></div>'
-      + rows
-      + '<div class="bk-ratio"><span class="bk-ratio-bar"><i style="width:' + askPct + '%"></i></span>'
-      + '<span class="bk-ratio-txt">매도 ' + askPct + '% : 매수 ' + (100 - askPct) + '%</span></div>'
-      + '<div class="bk-note">5단계 · 현재가와 1~2초 차이가 있을 수 있습니다</div>';
+    var paint = function (side, arr) {
+      arr.forEach(function (a, i) {
+        var qEl = document.getElementById('bk' + side + '-q-' + i);
+        var pEl = document.getElementById('bk' + side + '-p-' + i);
+        var bar = document.getElementById('bk' + side + '-bar-' + i);
+        if (!qEl || !pEl || !bar) return;
+        var qty = qtyOf(a);
+        setTextFlash(qEl, fmtNum(qty), dirOf('bk:' + side + i, qty));
+        pEl.textContent = fmtNum(a.price);
+        bar.style.width = (a.rate || 0) + '%';
+      });
+    };
+    paint('a', ask);
+    paint('b', bid);
+
+    document.getElementById('bkMid').textContent =
+      '매도 ' + fmtNum(b.askTotal) + ' · 매수 ' + fmtNum(b.bidTotal);
+    document.getElementById('bkRatio').style.width = askPct + '%';
+    document.getElementById('bkRatioTxt').textContent =
+      '매도 ' + askPct + '% : 매수 ' + (100 - askPct) + '%';
   } catch (e) {
-    wrap.innerHTML = '<div class="empty">호가를 불러오지 못했습니다<br><span style="font-size:.74rem">'
-      + escapeHtml(e.message) + '</span></div>';
+    if (!wrap.dataset.built) {
+      wrap.innerHTML = '<div class="empty">호가를 불러오지 못했습니다<br><span style="font-size:.74rem">'
+        + escapeHtml(e.message) + '</span></div>';
+    }
   }
 }
 
