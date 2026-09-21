@@ -479,7 +479,7 @@ function stockShellHtml(code, name) {
     +   '<div class="chart-hilo" id="chartHiLo" style="display:none"></div>'
     +   '<div class="ma-legend" id="maLegend" style="display:none"></div>'
     +   '<div class="chart-box" id="chartBox"><div class="loading">차트 불러오는 중...</div></div>'
-    +   '<button class="book-toggle" id="bookToggle" onclick="toggleBook()">▾ 호가 보기</button>'
+    +   '<button class="book-toggle" id="bookToggle" onclick="toggleBook()">▾ 호가 보기 (20분 지연)</button>'
     +   '<div class="book-wrap" id="bookWrap" style="display:none"></div>'
     +   '<a class="ext-link" href="https://m.stock.naver.com/domestic/stock/' + code + '/total" target="_blank" rel="noopener noreferrer">네이버 증권에서 보기 →</a>'
     + '</div>'
@@ -562,14 +562,16 @@ async function loadStockQuote() {
     cEl.innerHTML = signMark(q.change) + ' ' + fmtNum(Math.abs(q.change))
       + ' (' + fmtRate(q.changeRate) + ') <span class="vs">어제보다</span>';
     cEl.className = 'sd-chg ' + cls;
-    aEl.innerHTML = escapeHtml(shortTime(q.asOf)) + ' 기준 · 네이버 '
+    // 프리/애프터마켓에는 KRX 가 닫혀 있어 넥스트레이드(NXT) 체결가를 보여준다 — 어느 시장 값인지 밝힌다
+    var sess = q.session === 'AFTER_MARKET' ? '애프터마켓(NXT)' : (q.session === 'PRE_MARKET' ? '프리마켓(NXT)' : '');
+    aEl.innerHTML = escapeHtml(shortTime(q.asOf)) + ' 기준 · 네이버 ' + (sess ? '· ' + sess + ' ' : '')
       + '<span class="state-dot ' + st.cls + '">' + st.text + '</span>';
 
     document.getElementById('sdSub').textContent =
       q.code + ' · ' + (q.market || '') + (q.tradeHalted ? ' · 거래정지' : '');
 
     document.getElementById('sdStats').innerHTML = [
-      ['거래량', fmtCompact(q.volume)],
+      [q.integrated ? '거래량(통합)' : '거래량', fmtCompact(q.volume)],
       ['시가', fmtNum(q.open)],
       ['고가', fmtNum(q.high)],
       ['저가', fmtNum(q.low)]
@@ -759,7 +761,7 @@ function toggleBook() {
   var btn = document.getElementById('bookToggle');
   wrap.style.display = bookOpen ? '' : 'none';
   if (!bookOpen) { wrap.dataset.built = ''; resetDirs('bk:'); }
-  btn.textContent = bookOpen ? '▴ 호가 접기' : '▾ 호가 보기';
+  btn.textContent = bookOpen ? '▴ 호가 접기' : '▾ 호가 보기 (20분 지연)';
   if (bookOpen) {
     loadBook();
     Poller.add('book', loadBook, isMarketOpen() ? 3000 : 60000);
@@ -807,7 +809,8 @@ async function loadBook() {
       }).join('');
       h += '<div class="bk-ratio"><span class="bk-ratio-bar"><i id="bkRatio"></i></span>'
          + '<span class="bk-ratio-txt" id="bkRatioTxt"></span></div>'
-         + '<div class="bk-note">5단계 · 현재가와 1~2초 차이가 있을 수 있습니다</div>';
+         + '<div class="bk-note">5단계 · <b>20분 지연</b> — 네이버가 제공하는 호가는 실시간이 아닙니다 (현재가는 실시간).<br>'
+         + '실시간 10단계 호가는 증권사 앱에서 확인하세요</div>';
       wrap.innerHTML = h;
       wrap.dataset.built = '1';
     }

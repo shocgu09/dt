@@ -33,19 +33,34 @@ export const naver = {
     const d = await getJson(`https://polling.finance.naver.com/api/realtime/domestic/stock/${code}`);
     const s = d && d.datas && d.datas[0];
     if (!s) throw new Error('naver: quote empty');
-    const sign = signOf(s.compareToPreviousPrice && s.compareToPreviousPrice.code);
+    // 최상위 필드는 KRX 기준이다. 넥스트레이드(NXT) 값은 overMarketPriceInfo 에,
+    // KRX+NXT 합산은 integratedPriceInfo 에 따로 온다 (NXT 비대상 종목에는 둘 다 없다).
+    //  - 프리/애프터마켓에는 KRX 가 닫혀 있으므로 살아 있는 NXT 가격을 현재가로 쓴다.
+    //    (안 그러면 증권사 앱·분봉 차트와 현재가가 어긋난다)
+    //  - 거래량·시가·고가·저가는 증권사 앱과 같게 통합 기준을 쓴다.
+    const over = s.overMarketPriceInfo;
+    const integ = s.integratedPriceInfo;
+    const session = over && over.overMarketStatus === 'OPEN'
+      && (over.tradingSessionType === 'PRE_MARKET' || over.tradingSessionType === 'AFTER_MARKET')
+      && num(over.overPrice) != null
+      ? over.tradingSessionType : null;
+    const px = session ? over : s;
+
+    const sign = signOf(px.compareToPreviousPrice && px.compareToPreviousPrice.code);
     return {
       code,
       name: s.stockName,
       market: (s.stockExchangeType && s.stockExchangeType.nameKor) || null,
-      price: num(s.closePrice),
-      change: sign * Math.abs(num(s.compareToPreviousClosePrice) || 0),
-      changeRate: Number(s.fluctuationsRatio),
-      open: num(s.openPrice), high: num(s.highPrice), low: num(s.lowPrice),
-      volume: num(s.accumulatedTradingVolume),
+      price: num(session ? over.overPrice : s.closePrice),
+      change: sign * Math.abs(num(px.compareToPreviousClosePrice) || 0),
+      changeRate: Number(px.fluctuationsRatio),
+      open: num((integ || s).openPrice), high: num((integ || s).highPrice), low: num((integ || s).lowPrice),
+      volume: num((integ || s).accumulatedTradingVolume),
+      session,                               // 'PRE_MARKET' | 'AFTER_MARKET' | null(정규장·장외)
+      integrated: !!integ,                   // 거래량 등이 KRX+NXT 통합 기준인지
       marketStatus: s.marketStatus,          // OPEN / CLOSE ...
       delayed: !(s.stockExchangeType && s.stockExchangeType.delayTime === 0),
-      asOf: s.localTradedAt || new Date().toISOString(),
+      asOf: px.localTradedAt || s.localTradedAt || new Date().toISOString(),
       source: 'naver'
     };
   },
