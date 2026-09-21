@@ -59,6 +59,78 @@ export default {
       }
     }
 
+    // POST /api/invest-digest — 재테크 시황 브리핑 저장 (AI 에이전트용)
+    // ai_trend_posts 와 달리 invest_briefings 는 스키마가 넓다
+    //   market / sentiment / tickers[{code,name}] / pinned / commentCount
+    if (url.pathname === '/api/invest-digest' && request.method === 'POST') {
+      const secret = request.headers.get('X-Digest-Secret');
+      if (!secret || secret !== env.DIGEST_SECRET) {
+        return new Response(JSON.stringify({ error: '인증 실패' }), { status: 401, headers: jsonHeaders });
+      }
+      try {
+        const b = await request.json();
+        const { date, title, body: content } = b;
+        if (!date || !title || !content) {
+          return new Response(JSON.stringify({ error: 'date, title, body 필수' }), { status: 400, headers: jsonHeaders });
+        }
+
+        const market = ['all', 'kospi', 'kosdaq'].includes(b.market) ? b.market : 'all';
+        const sentiment = ['bull', 'bear', 'neutral'].includes(b.sentiment) ? b.sentiment : 'neutral';
+
+        // tickers: ["005930"] 또는 [{code,name}] 둘 다 받는다
+        const tickers = (Array.isArray(b.tickers) ? b.tickers : [])
+          .map((t) => (t && typeof t === 'object')
+            ? { code: String(t.code || ''), name: String(t.name || t.code || '') }
+            : { code: String(t), name: String(t) })
+          .filter((t) => /^\d{6}$/.test(t.code))
+          .slice(0, 10);
+
+        const accessToken = await getServiceAccountToken(env.FIREBASE_CLIENT_EMAIL, env.FIREBASE_PRIVATE_KEY);
+        const projectId = 'dt-club';
+        const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/invest_briefings`;
+
+        const docData = {
+          fields: {
+            date: { stringValue: date },
+            title: { stringValue: title },
+            body: { stringValue: content },
+            market: { stringValue: market },
+            sentiment: { stringValue: sentiment },
+            tickers: {
+              arrayValue: {
+                values: tickers.map((t) => ({
+                  mapValue: { fields: {
+                    code: { stringValue: t.code },
+                    name: { stringValue: t.name }
+                  } }
+                }))
+              }
+            },
+            authorName: { stringValue: b.authorName || 'AI 애널리스트' },
+            generatedBy: { stringValue: 'ai' },
+            pinned: { booleanValue: !!b.pinned },
+            commentCount: { integerValue: '0' },
+            createdAt: { timestampValue: new Date().toISOString() },
+            updatedAt: { timestampValue: new Date().toISOString() }
+          }
+        };
+
+        const fsResp = await fetch(firestoreUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
+          body: JSON.stringify(docData)
+        });
+        if (!fsResp.ok) {
+          const err = await fsResp.text();
+          return new Response(JSON.stringify({ error: 'Firestore 저장 실패', detail: err }), { status: 500, headers: jsonHeaders });
+        }
+        const result = await fsResp.json();
+        return new Response(JSON.stringify({ success: true, docId: result.name?.split('/').pop(), tickers }), { headers: jsonHeaders });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: jsonHeaders });
+      }
+    }
+
     // GET /api/links — ai_trend_links 목록 조회 (공개)
     if (url.pathname === '/api/links' && request.method === 'GET') {
       const projectId = 'dt-club';

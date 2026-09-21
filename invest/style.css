@@ -621,3 +621,31 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 }
 /* 하트가 종목명을 가리지 않도록 코드 자리를 비워둔다 */
 .w-card-code { margin-right: 22px; }
+
+/* 투자자별 매매동향 */
+.dt-head, .dt-row { display: grid; grid-template-columns: 46px 1fr 1fr 1fr; align-items: center; }
+.dt-head {
+  background: var(--bg3); font-size: .68rem; color: var(--text3); font-weight: 700;
+  border: 1px solid var(--border); border-bottom: none;
+}
+.dt-head span { padding: 6px 8px; text-align: right; }
+.dt-head span:first-child { text-align: left; }
+.dt-row {
+  border: 1px solid var(--border); border-bottom: none; background: var(--bg2);
+}
+.dt-row:last-of-type { border-bottom: 1px solid var(--border); }
+.dt-date { padding: 8px; font-size: .72rem; color: var(--text3); font-weight: 700; }
+.dt-cell { position: relative; padding: 8px; text-align: right; overflow: hidden; }
+.dt-bar { position: absolute; right: 0; top: 4px; bottom: 4px; opacity: .18; }
+.dt-bar.up { background: var(--stock-up); }
+.dt-bar.down { background: var(--stock-down); }
+.dt-v { position: relative; font-size: .74rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.dt-foot, .dt-note {
+  background: var(--bg2); border: 1px solid var(--border); border-top: none;
+  padding: 7px 10px; text-align: center;
+}
+.dt-foot { font-size: .74rem; color: var(--text2); font-weight: 700; }
+.dt-note { font-size: .66rem; color: var(--text3); }
+
+/* AI 생성 브리핑 배지 */
+.briefing-badge.ai { background: var(--primary-light); color: #0b1013; }

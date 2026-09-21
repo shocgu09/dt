@@ -379,6 +379,7 @@ async function openStock(code, name) {
   pushRecent(code, name);
   resetDirs('px:');
   resetDirs('bk:');
+  _trendLoadedFor = null;
 
   Poller.stopAll();
   if (chartHandle) { chartHandle.dispose(); chartHandle = null; }
@@ -424,6 +425,7 @@ function stockShellHtml(code, name) {
     + '<div class="sd-stats" id="sdStats"></div>'
     + '<div class="sd-tabs">'
     +   '<button class="sd-tab on" data-sdtab="chart" onclick="sdSwitch(\'chart\')">차트</button>'
+    +   '<button class="sd-tab" data-sdtab="trend" onclick="sdSwitch(\'trend\')">수급</button>'
     +   '<button class="sd-tab" data-sdtab="news" onclick="sdSwitch(\'news\')">뉴스</button>'
     +   '<button class="sd-tab" data-sdtab="community" onclick="sdSwitch(\'community\')">커뮤니티</button>'
     + '</div>'
@@ -444,6 +446,7 @@ function stockShellHtml(code, name) {
     +   '<div class="book-wrap" id="bookWrap" style="display:none"></div>'
     +   '<a class="ext-link" href="https://m.stock.naver.com/domestic/stock/' + code + '/total" target="_blank" rel="noopener noreferrer">네이버 증권에서 보기 →</a>'
     + '</div>'
+    + '<div class="sd-panel" id="sdTrend" style="display:none"></div>'
     + '<div class="sd-panel" id="sdNews" style="display:none"></div>'
     + '<div class="sd-panel" id="sdCommunity" style="display:none">'
     +   '<div class="empty">종목별 커뮤니티는 준비 중입니다.<br>지금은 <b>시황 탭</b>의 브리핑 댓글을 이용해 주세요.</div>'
@@ -454,8 +457,10 @@ function stockShellHtml(code, name) {
 function sdSwitch(tab) {
   document.querySelectorAll('.sd-tab').forEach(function (b) { b.classList.toggle('on', b.dataset.sdtab === tab); });
   document.getElementById('sdChart').style.display = tab === 'chart' ? '' : 'none';
+  document.getElementById('sdTrend').style.display = tab === 'trend' ? '' : 'none';
   document.getElementById('sdNews').style.display = tab === 'news' ? '' : 'none';
   document.getElementById('sdCommunity').style.display = tab === 'community' ? '' : 'none';
+  if (tab === 'trend') loadDealTrend();
   if (tab === 'news') loadStockNews();
 }
 
@@ -770,6 +775,54 @@ async function loadBook() {
       wrap.innerHTML = '<div class="empty">호가를 불러오지 못했습니다<br><span style="font-size:.74rem">'
         + escapeHtml(e.message) + '</span></div>';
     }
+  }
+}
+
+/* ===== 투자자별 매매동향 ===== */
+var _trendLoadedFor = null;
+
+async function loadDealTrend() {
+  if (!curStock) return;
+  var el = document.getElementById('sdTrend');
+  if (!el) return;
+  if (_trendLoadedFor === curStock.code && el.innerHTML) return;
+  el.innerHTML = '<div class="loading">매매동향 불러오는 중...</div>';
+  try {
+    var d = await Market.trend(curStock.code);
+    var rows = d.rows || [];
+    if (!rows.length) { el.innerHTML = '<div class="empty">매매동향 데이터가 없습니다</div>'; return; }
+
+    // 순매수 절대값 최대치를 기준으로 막대 길이를 잡는다
+    var maxAbs = 1;
+    rows.forEach(function (r) {
+      ['individual', 'foreign', 'organ'].forEach(function (k) {
+        if (r[k] != null) maxAbs = Math.max(maxAbs, Math.abs(r[k]));
+      });
+    });
+
+    var cell = function (v) {
+      if (v == null) return '<span class="dt-v">-</span>';
+      var cls = v > 0 ? 'up' : (v < 0 ? 'down' : 'flat');
+      var w = Math.round(Math.abs(v) / maxAbs * 100);
+      return '<span class="dt-cell"><i class="dt-bar ' + cls + '" style="width:' + w + '%"></i>'
+        + '<b class="dt-v ' + cls + '">' + (v > 0 ? '+' : '') + fmtCompact(v) + '</b></span>';
+    };
+
+    el.innerHTML =
+        '<div class="dt-head"><span>일자</span><span>개인</span><span>외국인</span><span>기관</span></div>'
+      + rows.map(function (r) {
+          return '<div class="dt-row">'
+            + '<span class="dt-date">' + r.date.slice(4, 6) + '.' + r.date.slice(6, 8) + '</span>'
+            + cell(r.individual) + cell(r.foreign) + cell(r.organ)
+            + '</div>';
+        }).join('')
+      + (rows[0].foreignHoldRate
+          ? '<div class="dt-foot">외국인 보유율 ' + escapeHtml(rows[0].foreignHoldRate) + '</div>'
+          : '')
+      + '<div class="dt-note">순매수 수량(주) 기준 · 최근 5거래일 · 출처 네이버</div>';
+    _trendLoadedFor = curStock.code;
+  } catch (e) {
+    el.innerHTML = '<div class="empty">매매동향을 불러오지 못했습니다</div>';
   }
 }
 

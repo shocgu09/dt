@@ -14,7 +14,7 @@ const CORS = {
 
 // 캐시 TTL(초) — 네이버 권장 폴링이 7초라 그보다 짧게 잡을 이유가 없다
 const TTL = { quote: 3, book: 3, index: 15, ohlcIntra: 30, ohlcDay: 43200, search: 86400,
-              rank: 60, sectors: 120, news: 300, spark: 60 };
+              rank: 60, sectors: 120, news: 300, spark: 60, trend: 600 };
 
 function json(data, status = 200, extra) {
   return new Response(JSON.stringify(data), { status, headers: { ...CORS, ...(extra || {}) } });
@@ -189,6 +189,7 @@ export default {
       if (path === '/api/rank')    return json(await handleRank(env, q.get('type'), q.get('market')));
       if (path === '/api/sectors') return json(await handleSectors(env, q.get('kind'), q.get('no')));
       if (path === '/api/news')    return json(await handleNews(env, q.get('code')));
+      if (path === '/api/trend')   return json(await handleTrend(env, q.get('code')));
       if (path === '/api/spark')   return json(await handleSpark(env, q.get('code')));
     } catch (e) {
       return fail(e.message || '시세 조회 실패');
@@ -302,6 +303,14 @@ async function handleSectors(env, kind, no) {
   }
   return cached(env, `sc:${k}`, TTL.sectors, async () => ({
     kind: k, groups: await naver.getSectors(k, 20), source: 'naver'
+  }));
+}
+
+/** 투자자별 매매동향 (개인·외국인·기관) */
+async function handleTrend(env, code) {
+  if (!isCode(code)) return { error: '종목코드는 6자리 숫자입니다' };
+  return cached(env, `dt:${code}:${kstStamp().ymd}`, TTL.trend, async () => ({
+    code, rows: await naver.getDealTrend(code), source: 'naver'
   }));
 }
 

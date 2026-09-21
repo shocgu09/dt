@@ -109,7 +109,8 @@ function renderBriefings() {
   var el = document.getElementById('briefingList');
   if (!briefings.length) {
     el.innerHTML = '<div class="empty">아직 등록된 시황 브리핑이 없습니다.'
-      + (isAdmin ? '<br>관리 탭에서 첫 브리핑을 작성해 보세요.' : '<br>운영진의 첫 브리핑을 기다려 주세요.') + '</div>';
+      + '<br>AI 에이전트의 첫 브리핑을 기다려 주세요.'
+      + (isAdmin ? '<br><span style="font-size:.78rem">관리 탭에서 직접 작성할 수도 있습니다.</span>' : '') + '</div>';
     return;
   }
   el.innerHTML = briefings.map(briefingCardHtml).join('');
@@ -143,7 +144,11 @@ function briefingCardHtml(p) {
 
   var h = '<div class="briefing-card' + (p.pinned ? ' pinned' : '') + '" id="bc-' + p.id + '">';
   h += '<div class="briefing-card-header">';
-  h += p.pinned ? '<span class="briefing-badge pin">📌 고정</span>' : '<span class="briefing-badge">📋 시황</span>';
+  var byAi = p.generatedBy === 'ai';
+  h += p.pinned ? '<span class="briefing-badge pin">📌 고정</span>' : '';
+  h += byAi
+    ? '<span class="briefing-badge ai">🤖 AI 시황</span>'
+    : (p.pinned ? '' : '<span class="briefing-badge">📋 시황</span>');
   h += '<span class="sentiment-badge sentiment-' + sent + '">' + SENT_LABEL[sent] + '</span>';
   if (p.market && p.market !== 'all') h += '<span class="sentiment-badge sentiment-neutral">' + MARKET_LABEL[p.market] + '</span>';
   h += '<span class="briefing-date">' + escapeHtml(p.date || '') + '</span>';
@@ -552,6 +557,7 @@ async function submitBriefing() {
       date: date, title: title, body: body, market: market,
       sentiment: formSentiment, tickers: formTickers.map(normalizeTicker), pinned: pinned,
       authorName: myName || '운영진',
+      generatedBy: 'admin',
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     if (editingId) {

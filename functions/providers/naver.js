@@ -201,6 +201,30 @@ export const naver = {
     }));
   },
 
+  /**
+   * 투자자별 매매동향 (개인·외국인·기관 순매수) — 최근 5거래일
+   * integration 응답의 dealTrendInfos 에 들어 있다. 별도 엔드포인트는 없다.
+   */
+  async getDealTrend(code) {
+    const d = await getJson(`https://m.stock.naver.com/api/stock/${code}/integration`);
+    const rows = Array.isArray(d.dealTrendInfos) ? d.dealTrendInfos : [];
+    return rows.map((r) => ({
+      date: r.bizdate,
+      individual: num(r.individualPureBuyQuant),
+      foreign: num(r.foreignerPureBuyQuant),
+      organ: num(r.organPureBuyQuant),
+      foreignHoldRate: r.foreignerHoldRatio || null,
+      close: num(r.closePrice),
+      changeRate: (function () {
+        const c = num(r.closePrice);
+        const diff = num(r.compareToPreviousClosePrice);
+        const sign = signOf(r.compareToPreviousPrice && r.compareToPreviousPrice.code);
+        if (c == null || diff == null || c === diff) return null;
+        return Math.round((sign * Math.abs(diff)) / (c - sign * Math.abs(diff)) * 10000) / 100;
+      })()
+    }));
+  },
+
   /** 종목 뉴스 */
   async getNews(code, size = 10) {
     const d = await getJson(`https://m.stock.naver.com/api/news/stock/${code}?pageSize=${size}&page=1`);
