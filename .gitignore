@@ -1,1 +1,7 @@
 openai-config.js
+
+# wrangler 로컬 개발 상태 (miniflare 캐시·KV 등)
+.wrangler/
+
+# macOS
+.DS_Store
