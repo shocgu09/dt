@@ -127,7 +127,7 @@ var Mock = (function () {
   function renderAccount(errMsg) {
     var el = document.getElementById('tab-account');
     if (!el) return;
-    if (!season) { el.innerHTML = '<div class="loading">불러오는 중...</div>'; return; }
+    if (!season) { el.innerHTML = '<div class="loading">불러오는 중</div>'; return; }
     if (season.error) { el.innerHTML = '<div class="empty">' + escapeHtml(season.error) + '</div>'; return; }
 
     if (!season.season) {
@@ -141,7 +141,7 @@ var Mock = (function () {
     }
 
     if (!season.joined) { el.innerHTML = joinHtml() + adminHtml(); return; }
-    if (!account) { el.innerHTML = '<div class="empty">' + escapeHtml(errMsg || '계좌를 불러오는 중...') + '</div>'; return; }
+    if (!account) { el.innerHTML = '<div class="empty">' + escapeHtml(errMsg || '계좌 정보를 불러오는 중') + '</div>'; return; }
 
     var a = account, s = a.season;
     var evalPnl = a.positions.reduce(function (t, p) { return t + p.pnl; }, 0);
@@ -156,7 +156,7 @@ var Mock = (function () {
       +   cell('평가손익', '<span class="' + signClass(evalPnl) + '">' + (evalPnl > 0 ? '+' : '') + fmtNum(evalPnl) + '</span>')
       +   cell('실현손익', '<span class="' + signClass(a.realizedPnl) + '">' + (a.realizedPnl > 0 ? '+' : '') + fmtNum(a.realizedPnl) + '</span>')
       + '</div>'
-      + '<div class="mk-note">' + (a.live ? '08:00~20:00 실시간 평가 — 프리·애프터마켓 가격 포함' : '장 마감 — 마지막 체결가로 평가')
+      + '<div class="mk-note">' + (a.live ? '실시간 평가 (08:00~20:00, 시간외 포함)' : '장 마감 · 최종 체결가 기준 평가')
       +   ' · 순위 확정은 15:30 종가 기준</div>'
       + '</div>';
 
@@ -169,7 +169,7 @@ var Mock = (function () {
         + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(p.value) + '</span>'
         +   '<span class="mk-pos-pnl ' + signClass(p.pnl) + '">' + (p.pnl > 0 ? '+' : '') + fmtNum(p.pnl) + ' (' + fmtRate(p.pnlRate) + ')</span></span>'
         + '</button>';
-    }).join('') : '<div class="empty">아직 보유한 종목이 없습니다.<br><b>시세</b> 탭에서 종목을 골라 매수해 보세요.</div>';
+    }).join('') : '<div class="empty">보유 종목이 없습니다.<br>시세 탭에서 종목을 선택해 매수할 수 있습니다.</div>';
     h += '</section>';
 
     if (a.openOrders.length) {
@@ -288,13 +288,13 @@ var Mock = (function () {
     joinShell(
         '<div class="mk-jf-done">🎉</div>'
       + '<h3 class="mk-jf-title" style="text-align:center">시드머니 ' + fmtCompact(cash) + '원이<br>지급됐습니다</h3>'
-      + '<p class="mk-jf-lead" style="text-align:center">시세 탭에서 종목을 고르면 아래에 <b>매수 · 매도</b> 버튼이 나옵니다.</p>'
+      + '<p class="mk-jf-lead" style="text-align:center">시세 탭에서 종목을 선택하면 <b>매수 · 매도</b> 주문을 할 수 있습니다.</p>'
       + '<div class="mk-jf-btns"><button class="btn-ghost" onclick="Mock.closeJoin()">계좌 보기</button>'
       + '<button class="btn-submit" onclick="Mock.closeJoin(); switchTab(\'market\')">종목 보러 가기</button></div>');
   }
 
   async function join(btn) {
-    btn.disabled = true; btn.textContent = '참가 중...';
+    btn.disabled = true; btn.textContent = '처리 중';
     try {
       var r = await api('/join', 'POST');
       await refreshSeason();
@@ -313,7 +313,7 @@ var Mock = (function () {
   async function loadHistory(reset) {
     var el = document.getElementById('mkHistory');
     if (!el) return;
-    if (reset) { histNext = null; el.innerHTML = '<div class="loading">불러오는 중...</div>'; }
+    if (reset) { histNext = null; el.innerHTML = '<div class="loading">불러오는 중</div>'; }
     try {
       var d = await api('/history' + (histNext ? '?before=' + histNext : ''));
       var rows = d.items.map(function (f) {
@@ -328,7 +328,7 @@ var Mock = (function () {
           +   '<span class="mk-pos-sub">비용 ' + fmtNum(f.fee + f.tax) + '</span></span>'
           + '</div>';
       }).join('');
-      if (reset) el.innerHTML = rows || '<div class="empty">아직 체결된 주문이 없습니다.</div>';
+      if (reset) el.innerHTML = rows || '<div class="empty">체결 내역이 없습니다.</div>';
       else { var more = el.querySelector('.mk-more'); if (more) more.remove(); el.insertAdjacentHTML('beforeend', rows); }
       histNext = d.next;
       if (histNext) el.insertAdjacentHTML('beforeend', '<button class="mini-btn mk-more" onclick="Mock.loadHistory(false)">더 보기</button>');
@@ -344,7 +344,7 @@ var Mock = (function () {
     var el = document.getElementById('tab-ranking');
     if (!el) return;
     // 갱신할 때마다 "불러오는 중"으로 깜빡이지 않게 첫 번만 표시한다
-    if (!_rankBuilt) el.innerHTML = '<div class="loading">순위를 불러오는 중...</div>';
+    if (!_rankBuilt) el.innerHTML = '<div class="loading">순위를 불러오는 중</div>';
     var h = '';
     try {
       var d = await api('/leaderboard');
@@ -364,8 +364,8 @@ var Mock = (function () {
           + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(r.equity) + '</span>'
           +   '<span class="mk-pos-pnl ' + signClass(rr) + '">' + fmtRate(rr) + '</span></span>'
           + '</div>';
-      }).join('') : '<div class="empty">아직 참가자가 없습니다.</div>';
-      h += '<div class="mk-note">실시간 순위입니다 — 장중 10초마다 다시 매깁니다. 최종 순위는 ' + escapeHtml(d.season.endDate) + ' KRX 정규장 종가 기준 총자산으로 확정됩니다.</div></section>';
+      }).join('') : '<div class="empty">참가자가 없습니다.</div>';
+      h += '<div class="mk-note">실시간 순위 (10초 간격 갱신) · 최종 순위는 ' + escapeHtml(d.season.endDate) + ' KRX 정규장 종가 기준 총자산으로 확정됩니다.</div></section>';
     } catch (e) {
       if (e.code !== 'no_season') h += '<div class="empty">' + escapeHtml(e.message) + '</div>';
       else h += '<div class="mk-card"><h3>지금은 진행 중인 시즌이 없습니다</h3></div>';
@@ -451,12 +451,12 @@ var Mock = (function () {
 
   function sessionNote() {
     var p = phaseInfo();
-    if (p.phase === 'break') return '<div class="mk-warn">15:30~15:40 에는 주문을 받지 않습니다 — 15:40 부터 애프터마켓</div>';
-    if (!p.canOrder) return '<div class="mk-warn">지금은 주문할 수 없습니다 — 평일 08:00~20:00</div>';
-    if (p.phase === 'pre_market') return '<div class="mk-info"><b>프리마켓(NXT)</b> — 지정가만 가능 · 08:50 까지 체결되지 않으면 취소됩니다</div>';
-    if (p.phase === 'after_market') return '<div class="mk-info"><b>애프터마켓</b> — 지정가만 가능 · 20:00 까지 체결되지 않으면 취소됩니다. ETF·ETN 은 대상이 아닙니다</div>';
-    if (p.phase === 'pre_open') return '<div class="mk-info">장 시작 전입니다 — 09:00 <b>시가</b>에 체결됩니다</div>';
-    if (p.phase === 'close_auction') return '<div class="mk-info">장 마감 동시호가입니다 — 15:30 <b>종가</b>에 체결됩니다</div>';
+    if (p.phase === 'break') return '<div class="mk-warn">15:30~15:40 은 주문 접수 시간이 아닙니다. 15:40 부터 애프터마켓 주문이 가능합니다</div>';
+    if (!p.canOrder) return '<div class="mk-warn">주문 가능 시간이 아닙니다 (평일 08:00~20:00)</div>';
+    if (p.phase === 'pre_market') return '<div class="mk-info"><b>프리마켓(NXT)</b> · 지정가 주문만 가능 · 08:50 까지 미체결 시 자동 취소</div>';
+    if (p.phase === 'after_market') return '<div class="mk-info"><b>애프터마켓</b> · 지정가 주문만 가능 · 20:00 까지 미체결 시 자동 취소 · ETF·ETN 제외</div>';
+    if (p.phase === 'pre_open') return '<div class="mk-info">장전 주문 · 09:00 <b>시가</b>로 체결됩니다</div>';
+    if (p.phase === 'close_auction') return '<div class="mk-info">장 마감 동시호가 · 15:30 <b>종가</b>로 체결됩니다</div>';
     return '';
   }
 
@@ -503,7 +503,7 @@ var Mock = (function () {
       + sessionNote()
       + '<label class="mk-field"><span>가격</span>'
       + (s.type === 'market'
-          ? '<div class="mk-market">시장가 — 주문 뒤 실제로 거래되는 가격에 체결</div>'
+          ? '<div class="mk-market">시장가 · 접수 후 실제 체결가로 체결됩니다</div>'
           : '<div class="mk-stepper"><button onclick="Mock.step(-1)" aria-label="한 호가 내리기">−</button>'
             + '<input id="mkPrice" type="text" inputmode="numeric" value="' + (n.price ? fmtNum(n.price) : '') + '" oninput="Mock.input(\'price\', this)">'
             + '<button onclick="Mock.step(1)" aria-label="한 호가 올리기">+</button></div>')
@@ -572,11 +572,11 @@ var Mock = (function () {
   async function submit() {
     if (!sheet || sheet.busy) return;
     var n = sheetNumbers();
-    if (n.qty <= 0) { msg('수량을 입력해 주세요', 'err'); return; }
-    if (sheet.type === 'limit' && n.price <= 0) { msg('가격을 입력해 주세요', 'err'); return; }
+    if (n.qty <= 0) { msg('수량을 입력하세요', 'err'); return; }
+    if (sheet.type === 'limit' && n.price <= 0) { msg('주문 가격을 입력하세요', 'err'); return; }
     sheet.busy = true;
     var btn = document.getElementById('mkSubmit');
-    if (btn) { btn.disabled = true; btn.textContent = '주문 접수 중...'; }
+    if (btn) { btn.disabled = true; btn.textContent = '주문 접수 중'; }
     // 같은 주문이 두 번 들어가지 않도록 주문마다 고유값을 붙인다 (서버가 재전송을 같은 주문으로 본다)
     var cid = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2);
     try {
@@ -584,14 +584,32 @@ var Mock = (function () {
         clientOrderId: cid, code: sheet.code, side: sheet.side, type: sheet.type, qty: n.qty,
         limitPrice: sheet.type === 'limit' ? n.price : undefined
       });
-      msg('주문을 접수했습니다. 실제 거래가 발생하면 체결됩니다…', 'ok');
-      if (btn) btn.textContent = '체결 대기 중...';
+      showPending(d.order);
       watchOrder(d.order.id, 0);
     } catch (e) {
       sheet.busy = false;
       msg(e.message, 'err');
       if (btn) { btn.disabled = false; btn.textContent = (sheet.side === 'buy' ? '매수' : '매도') + ' 주문'; }
     }
+  }
+
+  /** 접수 직후 주문창 하단을 체결 대기 패널로 바꾼다 */
+  function showPending(o, filledQty) {
+    var el = document.getElementById('mkSubmit') || document.getElementById('mkPending');
+    if (!el) return;
+    var wrap = document.createElement('div');
+    wrap.id = 'mkPending';
+    wrap.className = 'mk-pending';
+    var sideTxt = o.side === 'buy' ? '매수' : '매도';
+    var typeTxt = o.type === 'market' ? '시장가' : '지정가 ' + fmtNum(o.limitPrice) + '원';
+    wrap.innerHTML = '<div class="mk-pending-head"><span class="mk-spin" aria-hidden="true"></span>'
+      + '<b>' + (filledQty ? '일부 체결 · 잔량 대기' : '주문 접수 완료 · 체결 대기') + '</b></div>'
+      + '<div class="mk-pending-body">' + escapeHtml(o.name) + ' ' + sideTxt + ' ' + fmtNum(o.qty) + '주 · ' + typeTxt
+      + (filledQty ? '<br>체결 ' + fmtNum(filledQty) + '주 / 미체결 ' + fmtNum(o.qty - filledQty) + '주' : '') + '</div>'
+      + '<div class="mk-pending-note">창을 닫아도 주문은 유지되며, 계좌 탭의 미체결 주문에서 확인할 수 있습니다.</div>'
+      + '<button class="btn-ghost mk-pending-close" onclick="Mock.closeSheet()">닫기</button>';
+    el.replaceWith(wrap);
+    msg('');
   }
 
   /** 주문 직후 2초마다 상태를 물어본다 — 물어볼 때 서버가 체결을 시도한다. 1분 넘으면 크론에 맡긴다 */
@@ -604,16 +622,16 @@ var Mock = (function () {
         if (o.status === 'filled' || o.status === 'cancelled' || o.status === 'expired' || o.status === 'rejected') {
           await refreshAccount();
           var done = o.filledQty > 0
-            ? (o.name + ' ' + fmtNum(o.filledQty) + '주 ' + (o.side === 'buy' ? '매수' : '매도') + ' 체결' + (d.fill ? ' @ ' + fmtNum(d.fill.price) : ''))
-            : ('주문이 ' + (o.status === 'cancelled' ? '취소' : '만료') + '됐습니다' + (o.reason ? ' — ' + o.reason : ''));
+            ? (o.name + ' ' + (o.side === 'buy' ? '매수' : '매도') + ' 체결 · ' + fmtNum(o.filledQty) + '주' + (d.fill ? ' · ' + fmtNum(d.fill.price) + '원' : ''))
+            : (o.name + ' 주문이 ' + (o.status === 'cancelled' ? '취소' : '만료') + '되었습니다' + (o.reason ? ' (' + o.reason + ')' : ''));
           closeSheet();
           toast(done, o.filledQty > 0 ? o.side : '');
           return;
         }
-        if (o.filledQty > 0) msg(fmtNum(o.filledQty) + '/' + fmtNum(o.qty) + '주 체결 — 나머지는 거래가 생기는 대로 체결됩니다', 'ok');
+        if (o.filledQty > 0) showPending(o, o.filledQty);
         if (tries >= 30 || !sheet) {
           await refreshAccount();
-          if (sheet) { closeSheet(); toast('주문이 대기 중입니다 — 계좌 탭의 미체결 주문에서 확인하세요', ''); }
+          if (sheet) { closeSheet(); toast(o.name + ' 주문 대기 중 · 계좌 탭에서 확인할 수 있습니다', ''); }
           return;
         }
         watchOrder(id, tries + 1);

@@ -179,7 +179,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
   }
 
   const account = await E.getAccount(db, season.id, uid);
-  if (!account) throw new HttpError(409, '먼저 시즌에 참가해 주세요', 'not_joined');
+  if (!account) throw new HttpError(409, '시즌 참가 후 이용할 수 있습니다', 'not_joined');
   if (account.status !== 'active') throw new HttpError(403, '이용이 제한된 계정입니다');
   // 개명했으면 순위표 이름도 맞춘다
   if (profile.name && profile.name !== account.nickname) {
@@ -226,7 +226,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
   }
   if (m && method === 'DELETE') {
     const ok = await E.cancelOrder(db, uid, m[1], now);
-    if (!ok) throw new HttpError(409, '이미 체결됐거나 취소된 주문입니다');
+    if (!ok) throw new HttpError(409, '이미 체결되었거나 취소된 주문입니다');
     return { cancelled: true };
   }
 
@@ -343,7 +343,7 @@ async function handleAdmin(db, actor, path, method, body, now) {
 export function mockErrorResponse(e, json) {
   if (e instanceof HttpError) return json({ error: e.message, code: e.code || null }, e.status);
   console.error('mock error', e && e.stack || e);
-  return json({ error: '처리 중 문제가 생겼습니다. 잠시 후 다시 시도해 주세요' }, 500);
+  return json({ error: '요청을 처리하지 못했습니다. 잠시 후 다시 시도하세요' }, 500);
 }
 
 // ── 크론 (평일 08:00~19:59 KST 매분) ──────────────────────────

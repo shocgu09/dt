@@ -153,6 +153,15 @@
 @keyframes mk-mv-up { from { background: var(--bull-bg); } }
 @keyframes mk-mv-down { from { background: var(--bear-bg); } }
 
+/* 주문 접수 후 체결 대기 패널 */
+.mk-pending { border: 1px solid var(--border); border-left: 3px solid var(--primary); padding: 12px 14px; background: var(--bg); }
+.mk-pending-head { display: flex; align-items: center; gap: 8px; font-size: .9rem; margin-bottom: 6px; }
+.mk-spin { width: 10px; height: 10px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: mk-spin .8s linear infinite; flex-shrink: 0; }
+@keyframes mk-spin { to { transform: rotate(360deg); } }
+.mk-pending-body { font-size: .84rem; color: var(--text2); line-height: 1.6; font-variant-numeric: tabular-nums; }
+.mk-pending-note { font-size: .74rem; color: var(--text3); margin-top: 8px; line-height: 1.5; }
+.mk-pending-close { width: 100%; margin-top: 10px; padding: 11px; }
+
 /* 체결 알림 */
 .mk-toast {
   position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%);
@@ -171,6 +180,6 @@
 .mk-admin .form-grid { margin-top: 12px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .mk-sheet, .mk-rank.moved-up, .mk-rank.moved-down { animation: none; }
+  .mk-spin, .mk-sheet, .mk-rank.moved-up, .mk-rank.moved-down { animation: none; }
   .mk-toast { transition: none; }
 }

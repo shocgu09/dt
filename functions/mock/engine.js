@@ -104,37 +104,37 @@ const weekday = t.dow >= 1 && t.dow <= 5;
   if (weekday && t.hm >= PRE_FROM && t.hm < ACCEPT_FROM) session = 'pre';
   else if (weekday && t.hm >= ACCEPT_FROM && t.hm < ACCEPT_TO) session = 'regular';
   else if (weekday && t.hm >= AFTER_FROM && t.hm < AFTER_TO) session = 'after';
-  if (!session) throw new OrderError('주문은 평일 08:00~20:00 에 넣을 수 있습니다 (15:30~15:40 제외)', 'closed');
+  if (!session) throw new OrderError('주문 가능 시간이 아닙니다 (평일 08:00~20:00, 15:30~15:40 제외)', 'closed');
   if (!quote || quote.krx == null || quote.krx.price == null) throw new OrderError('시세를 확인할 수 없는 종목입니다');
   if (session !== 'regular') {
     // 시간외는 실전에서도 지정가만 받는다 (거래가 얇아 시장가는 위험하다)
-    if (type !== 'limit') throw new OrderError('시간외에는 지정가 주문만 가능합니다', 'limit_only');
+    if (type !== 'limit') throw new OrderError('시간외 거래는 지정가 주문만 가능합니다', 'limit_only');
     const nxtOk = !!(quote.nxt && quote.nxt.price != null);
-    if (session === 'pre' && !nxtOk) throw new OrderError('프리마켓(NXT) 거래 대상이 아닌 종목입니다. 08:30 부터 정규장 주문을 넣을 수 있습니다', 'venue');
+    if (session === 'pre' && !nxtOk) throw new OrderError('프리마켓(NXT) 거래 대상 종목이 아닙니다. 08:30 부터 정규장 주문이 가능합니다', 'venue');
     // 애프터마켓: NXT 대상이거나 KRX 애프터마켓 대상(ETF·ETN 제외)이어야 한다
-    if (session === 'after' && !nxtOk && taxFree) throw new OrderError('ETF·ETN 은 시간외 거래 대상이 아닙니다', 'venue');
+    if (session === 'after' && !nxtOk && taxFree) throw new OrderError('ETF·ETN 은 시간외 거래 대상 종목이 아닙니다', 'venue');
   }
   if (quote.halted) throw new OrderError('거래정지 종목입니다', 'halted');
   const blocked = await db.prepare(`SELECT 1 AS x FROM blocked_codes WHERE code=?`).bind(quote.code).first();
-  if (blocked) throw new OrderError('일시적으로 주문을 받지 않는 종목입니다', 'blocked');
+  if (blocked) throw new OrderError('현재 주문이 제한된 종목입니다', 'blocked');
 
   // 기준가 — 시간외에는 지금 거래가 도는 시장의 가격
   const cur = (session !== 'regular' && quote.nxt && quote.nxt.open && quote.nxt.price != null) ? quote.nxt.price : quote.krx.price;
   let limit = null;
   if (type === 'limit') {
     limit = Number(input.limitPrice);
-    if (!Number.isInteger(limit) || limit <= 0) throw new OrderError('지정가를 입력해 주세요');
+    if (!Number.isInteger(limit) || limit <= 0) throw new OrderError('주문 가격을 입력하세요');
     if (limit % tickSize(limit, taxFree) !== 0) {
       throw new OrderError(`호가단위(${tickSize(limit, taxFree)}원)에 맞지 않는 가격입니다`, 'tick');
     }
     const prev = quote.krx.prevClose;
-    if (prev && (limit > prev * 1.3 || limit < prev * 0.7)) throw new OrderError('상·하한가를 벗어난 가격입니다', 'range');
+    if (prev && (limit > prev * 1.3 || limit < prev * 0.7)) throw new OrderError('가격제한폭(±30%)을 벗어난 가격입니다', 'range');
   }
 
   // 미체결 주문 수 제한은 매매 제약이 아니라 서버 보호용
   const recent = await db.prepare(`SELECT COUNT(*) AS n FROM orders WHERE uid=? AND accepted_at > ?`)
     .bind(account.uid, now - 60000).first();
-  if (recent && recent.n >= 30) throw new OrderError('주문이 너무 잦습니다. 잠시 후 다시 시도해 주세요', 'rate');
+  if (recent && recent.n >= 30) throw new OrderError('주문 요청이 너무 많습니다. 잠시 후 다시 시도하세요', 'rate');
 
   let reserved = 0;
   if (side === 'buy') {
@@ -309,7 +309,7 @@ export async function tryFill(db, season, order, ctx, now = Date.now()) {
   const lock = await db.prepare(
     `UPDATE orders SET filled_qty=?, reserved=?, status=?, reason=?, updated_at=?
      WHERE id=? AND status IN ('open','partial') AND filled_qty=?`
-  ).bind(newFilled, newReserved, status, cancelRest ? '가격 상승으로 일부만 체결' : null, now, order.id, order.filled_qty).run();
+  ).bind(newFilled, newReserved, status, cancelRest ? '주문 가능 금액 초과로 일부 체결' : null, now, order.id, order.filled_qty).run();
   if (!lock.meta.changes) return null;
 
   // 2) 잔고·보유·체결 기록은 한 트랜잭션. CHECK(cash>=0, qty>=0) 위반이면 통째로 롤백된다.
