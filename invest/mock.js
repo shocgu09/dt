@@ -208,11 +208,12 @@ var Mock = (function () {
       + '<p class="mk-join-lead">가상 <b>' + fmtCompact(s.seed) + '원</b>으로 실제 주가에 맞춰 매매하고,<br>'
       +   escapeHtml(s.endDate) + ' 종가 기준 <b>최종 자산</b>으로 순위를 가립니다.</p>'
       + '<ul class="mk-rules">'
-      +   '<li>국내 상장 종목 전부 (ETF·레버리지·인버스 포함)</li>'
-      +   '<li>정규장 08:30~15:30 지정가 / 시장가 · 시간외 08:00~08:30, 15:40~20:00 지정가</li>'
-      +   '<li>수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2) + '% (ETF·ETN 면제) — 실전과 동일</li>'
-      +   '<li>주문 뒤에 실제로 거래된 가격으로 체결됩니다</li>'
-      +   '<li>참가자 ' + fmtNum(season.participants) + '명 · 분기마다 초기화</li>'
+      +   '<li>국내 상장 종목 — 주식 · ETF(레버리지 · 인버스 포함) · ETN. 거래정지 · 운영진 제한 종목 제외</li>'
+      +   '<li>정규장 08:30~15:30 지정가 · 시장가 / 시간외 08:00~08:30 · 15:40~20:00 지정가만 (ETF · ETN 은 시간외 불가)</li>'
+      +   '<li>체결가는 네이버 증권 시세 기준 — 정규장은 KRX, 시간외는 NXT · KRX 시간외 가격</li>'
+      +   '<li>수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2) + '% (ETF · ETN 면제)</li>'
+      +   '<li>주문 뒤에 실제로 거래된 가격 · 수량 안에서만 체결됩니다</li>'
+      +   '<li>참가자 ' + fmtNum(season.participants) + '명 · 시즌마다 초기화 · 최종 순위는 ' + escapeHtml(s.endDate) + ' 15:30 종가 기준</li>'
       + '</ul>'
       + '<button class="btn-submit mk-join-btn" onclick="Mock.openJoinFlow()">시즌 참여하기</button>'
       + '<p class="mk-note">가상의 자금이며 실제 돈과 무관합니다. 어떤 것으로도 교환되지 않습니다.</p>'
@@ -245,8 +246,8 @@ var Mock = (function () {
     joinShell(
         '<div class="mk-jf-step">1 / 2</div>'
       + '<h3 class="mk-jf-title">🏁 ' + escapeHtml(s.name) + '에<br>참여하시겠습니까?</h3>'
-      + '<p class="mk-jf-lead">가상 시드머니 <b>' + fmtCompact(s.seed) + '원</b>으로 실제 주가에 맞춰 매매하고, '
-      +   '<b>' + escapeHtml(s.endDate) + '</b> 종가 기준 최종 자산으로 순위를 가립니다.</p>'
+      + '<p class="mk-jf-lead">가상 시드머니 <b>' + fmtCompact(s.seed) + '원</b>으로 실제 시세에 맞춰 매매하고, '
+      +   '<b>' + escapeHtml(s.endDate) + '</b> 15:30 종가 기준 최종 자산으로 순위를 가립니다.</p>'
       + '<div class="mk-grid">'
       +   cell('기간', escapeHtml(s.startDate) + ' ~ ' + escapeHtml(s.endDate))
       +   cell('현재 참가자', fmtNum(season.participants) + '명')
@@ -267,18 +268,22 @@ var Mock = (function () {
       + li([
           '<b>가상의 자금</b>입니다. 실제 돈과 무관하며 현금·포인트·상품 등 어떤 것으로도 교환되지 않습니다.',
           '실제 매매·투자 권유가 아닙니다. 모의 결과는 실제 투자 성과와 다를 수 있습니다.',
-          '시세는 네이버 증권 기준이며 지연·오류가 있을 수 있습니다. 시세 오류로 생긴 체결은 운영진이 바로잡을 수 있습니다.',
+          '시세는 네이버 증권 기준입니다. 정규장은 KRX 가격, 프리 · 애프터마켓은 NXT · KRX 시간외 가격을 따르며 지연 · 오류가 있을 수 있습니다. 시세 오류로 생긴 체결은 운영진이 바로잡을 수 있습니다.',
+          '휴장일에는 체결이 일어나지 않습니다. 배당 · 액면분할 · 증자 등 권리 변동과 상장폐지는 반영되지 않습니다.',
           '순위표에 <b>이름 · 총자산 · 수익률 · 체결 건수</b>가 회원들에게 공개됩니다. 보유 종목은 공개되지 않습니다.',
           '1인 1계정입니다. 부정한 방법이 확인되면 순위에서 제외됩니다.'
         ])
       + '<div class="mk-jf-h">📌 매매 규칙</div>'
       + li([
-          '시드머니 <b>' + fmtCompact(s.seed) + '원</b> · 분기마다 초기화 · 순위는 <b>실시간</b>, 최종 순위는 ' + escapeHtml(s.endDate) + ' 15:30 종가 기준',
-          '국내 상장 <b>전 종목</b> — 주식 · ETF(레버리지 · 인버스 포함) · ETN',
-          '정규장 08:30~15:30 지정가 / 시장가 · 시간외 08:00~08:30, 15:40~20:00 지정가만',
-          '수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2) + '% (ETF · ETN 면제) — 실전과 동일',
-          '주문 뒤에 <b>실제로 거래된 가격과 수량</b>으로 체결됩니다. 거래가 적은 종목은 여러 번에 나눠 체결될 수 있습니다.',
-          '신용 · 미수 · 공매도는 없고, 배당은 반영되지 않습니다.'
+          '시드머니 <b>' + fmtCompact(s.seed) + '원</b> · 시즌마다 초기화 · 순위는 <b>실시간</b>(시간외 가격 포함), 일일 기록과 최종 순위는 ' + escapeHtml(s.endDate) + ' 15:30 <b>KRX 종가</b> 기준',
+          '국내 상장 종목 — 주식 · ETF(레버리지 · 인버스 포함) · ETN. 거래정지 · 운영진 제한 종목은 주문할 수 없습니다.',
+          '정규장 08:30~15:30 지정가 · 시장가. 09:00 전 접수분은 <b>시가</b>, 15:20~15:30 접수분은 <b>종가</b>로 체결되고, 미체결은 장 마감 시 만료됩니다.',
+          '시간외 08:00~08:30 프리마켓(NXT · 08:50 까지 체결) / 15:40~20:00 애프터마켓(NXT · KRX) — <b>지정가만</b>, ETF · ETN 은 불가, 미체결은 08:50 · 20:00 에 자동 취소됩니다.',
+          '지정가는 전일 종가 ±30% 안에서 호가단위에 맞게 입력합니다.',
+          '수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2) + '% (ETF · ETN 면제) — 실전과 같은 수준',
+          '주문 뒤에 <b>실제로 거래된 가격과 수량</b> 안에서만 체결됩니다. 거래가 적은 종목은 여러 번에 나눠 체결되거나 체결되지 않을 수 있습니다.',
+          '시장가 매수는 현재가 기준으로 주문 가능 금액을 잡습니다. 체결가가 올라 금액이 모자라면 살 수 있는 수량까지만 체결되고 나머지는 취소됩니다.',
+          '신용 · 미수 · 공매도는 없습니다.'
         ])
       + '<label class="mk-jf-check"><input type="checkbox" id="mkAgree" onchange="document.getElementById(\'mkJoinGo\').disabled = !this.checked"> 위 내용을 확인했습니다</label>'
       + '<div class="mk-jf-btns"><button class="btn-ghost" onclick="Mock.closeJoin()">취소</button>'
@@ -289,7 +294,7 @@ var Mock = (function () {
     joinShell(
         '<div class="mk-jf-done">🎉</div>'
       + '<h3 class="mk-jf-title" style="text-align:center">시드머니 ' + fmtCompact(cash) + '원이<br>지급됐습니다</h3>'
-      + '<p class="mk-jf-lead" style="text-align:center">시세 탭에서 종목을 선택하면 <b>매수 · 매도</b> 주문을 할 수 있습니다.</p>'
+      + '<p class="mk-jf-lead" style="text-align:center">시세 탭에서 종목을 선택하면 <b>매수 · 매도</b> 주문을 할 수 있습니다.<br>주문 가능 시간은 평일 08:00~20:00 (15:30~15:40 제외)입니다.</p>'
       + '<div class="mk-jf-btns"><button class="btn-ghost" onclick="Mock.closeJoin()">계좌 보기</button>'
       + '<button class="btn-submit" onclick="Mock.closeJoin(); switchTab(\'market\')">종목 보러 가기</button></div>');
   }
@@ -454,7 +459,7 @@ var Mock = (function () {
     var p = phaseInfo();
     if (p.phase === 'break') return '<div class="mk-warn">15:30~15:40 은 주문 접수 시간이 아닙니다. 15:40 부터 애프터마켓 주문이 가능합니다</div>';
     if (!p.canOrder) return '<div class="mk-warn">주문 가능 시간이 아닙니다 (평일 08:00~20:00)</div>';
-    if (p.phase === 'pre_market') return '<div class="mk-info"><b>프리마켓(NXT)</b> · 지정가 주문만 가능 · 08:50 까지 미체결 시 자동 취소</div>';
+    if (p.phase === 'pre_market') return '<div class="mk-info"><b>프리마켓(NXT)</b> · 지정가 주문만 가능 · 08:30 접수 마감 · 08:50 까지 미체결 시 자동 취소</div>';
     if (p.phase === 'after_market') return '<div class="mk-info"><b>애프터마켓</b> · 지정가 주문만 가능 · 20:00 까지 미체결 시 자동 취소 · ETF·ETN 제외</div>';
     if (p.phase === 'pre_open') return '<div class="mk-info">장전 주문 · 09:00 <b>시가</b>로 체결됩니다</div>';
     if (p.phase === 'close_auction') return '<div class="mk-info">장 마감 동시호가 · 15:30 <b>종가</b>로 체결됩니다</div>';
