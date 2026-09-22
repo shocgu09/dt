@@ -8,6 +8,10 @@ const BLOCKED = [
   /^\/firebase\.json$/i,
   /^\/\.impeccable\.md$/i,
   /^\/(CLAUDE|README)\.md$/i,
+  /^\/scripts(\/|$)/i,          // 빌드 스크립트
+  /^\/\.gitignore$/i,
+  /^\/\.claude(\/|$)/i,          // 로컬 개발 설정
+  /^\/_routes\.json$/i,
 ];
 
 export async function onRequest(context) {

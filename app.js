@@ -313,8 +313,9 @@ async function signup(name, email, password) {
   state.isSigningUp = true;
   try {
     // 블랙리스트 체크
-    const blackSnap = await state.db.collection('blacklist').where('email', '==', email.toLowerCase()).limit(1).get();
-    if (!blackSnap.empty) throw Object.assign(new Error('가입이 제한된 이메일입니다. 운영진에게 문의하세요.'), { code: 'auth/blacklisted' });
+    // 규칙상 읽기가 막히면(게스트 세션 없음) 건너뛴다 — 사전 안내용일 뿐, 실제 차단은 규칙·관리자 강퇴로
+    const blackSnap = await state.db.collection('blacklist').where('email', '==', email.toLowerCase()).limit(1).get().catch(() => null);
+    if (blackSnap && !blackSnap.empty) throw Object.assign(new Error('가입이 제한된 이메일입니다. 운영진에게 문의하세요.'), { code: 'auth/blacklisted' });
     const cred = await state.auth.createUserWithEmailAndPassword(email, password);
     await cred.user.updateProfile({ displayName: name });
     // 최초 가입자(admin) 판별: 읽기 실패 시 member로 폴백

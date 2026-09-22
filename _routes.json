@@ -7,7 +7,11 @@
     "/firebase.json",
     "/.impeccable.md",
     "/CLAUDE.md",
-    "/README.md"
+    "/README.md",
+    "/scripts/*",
+    "/.gitignore",
+    "/.claude/*",
+    "/_routes.json"
   ],
   "exclude": []
 }

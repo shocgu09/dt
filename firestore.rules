@@ -12,15 +12,55 @@ service cloud.firestore {
       return isAuth() && request.auth.token.firebase.sign_in_provider != 'anonymous';
     }
 
+    // 호출자의 users 문서 role (문서가 없으면 '') — get() 은 규칙 평가당 1회만
+    function myRole() {
+      return isRealUser()
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '')
+        : '';
+    }
+
     function isAdmin() {
-      return isRealUser() && (
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin'
-      );
+      return myRole() in ['admin', 'superadmin'];
+    }
+
+    // 역할·칭호 변경, 관리자 계정 삭제 등은 슈퍼관리자만
+    function isSuperAdmin() {
+      return myRole() == 'superadmin';
     }
 
     function isOwner(uid) {
       return isRealUser() && request.auth.uid == uid;
+    }
+
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    // 배열에서 추가·제거된 원소가 본인 uid 뿐인지 (타인 투표 삭제·대리 투표 차단)
+    function onlyMeChanged(before, after) {
+      return after.toSet().difference(before.toSet()).hasOnly([request.auth.uid])
+        && before.toSet().difference(after.toSet()).hasOnly([request.auth.uid]);
+    }
+
+    // 이벤트 투표/퀴즈/반응 — 회원은 자기 uid 에 관한 항목만 넣고 뺄 수 있다
+    function validOwnVote() {
+      let bv = resource.data.get('votes', {});
+      let av = request.resource.data.get('votes', {});
+      return av.diff(bv).affectedKeys().hasOnly(['attending', 'maybe', 'absent'])
+        && onlyMeChanged(bv.get('attending', []), av.get('attending', []))
+        && onlyMeChanged(bv.get('maybe', []), av.get('maybe', []))
+        && onlyMeChanged(bv.get('absent', []), av.get('absent', []))
+        && request.resource.data.get('quizAnswers', {}).diff(resource.data.get('quizAnswers', {}))
+             .affectedKeys().hasOnly([request.auth.uid])
+        && request.resource.data.get('reactions', {}).diff(resource.data.get('reactions', {}))
+             .affectedKeys().hasOnly([request.auth.uid]);
+    }
+
+    // 댓글 수 ±1 만 허용
+    function validCountStep(field) {
+      return changedKeys().hasOnly([field])
+        && (request.resource.data[field] == resource.data.get(field, 0) + 1
+            || request.resource.data[field] == resource.data.get(field, 0) - 1);
     }
 
     // 재테크 댓글 작성 — 본인 명의 + 본문 길이 + 좋아요 0에서 시작.
@@ -63,13 +103,27 @@ service cloud.firestore {
     // - 삭제는 본인(탈퇴) 또는 관리자(강퇴)
     match /users/{uid} {
       allow read: if isAuth();
-      allow create: if isOwner(uid)
-        && request.resource.data.role == 'member';
-      allow update: if isAdmin()
-        || (isOwner(uid)
-            && request.resource.data.diff(resource.data)
-                .affectedKeys().hasOnly(['name', 'lastSeen', 'lastLocation']));
-      allow delete: if isOwner(uid) || isAdmin();
+      // 본인 가입: role 은 member, 이메일은 로그인 토큰과 일치, 칭호(title) 등 다른 필드 금지
+      allow create: if (isOwner(uid)
+          && request.resource.data.role == 'member'
+          && request.resource.data.keys().hasOnly(['name', 'email', 'role', 'createdAt'])
+          && request.resource.data.email is string
+          && request.resource.data.email.lower() == request.auth.token.email.lower())
+        // 관리자가 만드는 계정(createAccount): admin 부여는 슈퍼관리자만
+        || (isAdmin()
+          && (request.resource.data.role == 'member'
+              || (isSuperAdmin() && request.resource.data.role == 'admin')));
+      allow update: if
+        // 슈퍼관리자: 전부 가능. 단 자기 role 은 못 바꿈(실수로 마지막 슈퍼관리자가 사라지는 것 방지)
+        (isSuperAdmin() && !(request.auth.uid == uid && changedKeys().hasAny(['role'])))
+        // 일반 관리자: role·title 은 못 건드리고, 슈퍼관리자 문서는 수정 불가 (스스로 승격·슈퍼관리자 강등 차단)
+        || (isAdmin() && resource.data.get('role', '') != 'superadmin'
+            && !changedKeys().hasAny(['role', 'title']))
+        || (isOwner(uid) && changedKeys().hasOnly(['name', 'lastSeen', 'lastLocation']));
+      // 삭제: 본인(탈퇴) / 슈퍼관리자(자기 자신 제외) / 일반 관리자는 member 만 강퇴
+      allow delete: if isOwner(uid)
+        || (isSuperAdmin() && request.auth.uid != uid)
+        || (isAdmin() && resource.data.get('role', '') == 'member');
     }
 
     // ── members 컬렉션 ──────────────────────────────────────
@@ -82,7 +136,8 @@ service cloud.firestore {
       allow create: if isRealUser()
         && request.resource.data.createdBy == request.auth.uid;
       allow update: if isAdmin()
-        || (isRealUser() && resource.data.createdBy == request.auth.uid);
+        || (isRealUser() && resource.data.createdBy == request.auth.uid
+            && !changedKeys().hasAny(['createdBy']));
       allow delete: if isAdmin()
         || (isRealUser() && resource.data.createdBy == request.auth.uid);
     }
@@ -99,8 +154,8 @@ service cloud.firestore {
       allow update: if isAdmin()
         || (isRealUser() && resource.data.createdBy == request.auth.uid)
         || (isRealUser()
-            && request.resource.data.diff(resource.data)
-                .affectedKeys().hasOnly(['votes', 'quizAnswers', 'reactions']));
+            && changedKeys().hasOnly(['votes', 'quizAnswers', 'reactions'])
+            && validOwnVote());
       allow delete: if isAdmin()
         || (isRealUser() && resource.data.createdBy == request.auth.uid);
 
@@ -155,8 +210,10 @@ service cloud.firestore {
       allow create: if isRealUser()
         && request.auth.uid in request.resource.data.participants
         && request.resource.data.participants.size() >= 2;
+      // 참여자 목록은 생성 후 불변 (제3자 끼워넣기 차단)
       allow update: if isRealUser()
-        && request.auth.uid in resource.data.participants;
+        && request.auth.uid in resource.data.participants
+        && request.resource.data.participants == resource.data.participants;
       allow delete: if isRealUser()
         && request.auth.uid in resource.data.participants;
 
@@ -168,9 +225,9 @@ service cloud.firestore {
           && request.resource.data.senderId == request.auth.uid
           && request.auth.uid in
             get(/databases/$(database)/documents/dms/$(convId)).data.participants;
+        // 메시지 삭제는 보낸 사람 본인 또는 관리자만 (상대 메시지 삭제 차단)
         allow delete: if isRealUser()
-          && request.auth.uid in
-            get(/databases/$(database)/documents/dms/$(convId)).data.participants;
+          && (resource.data.senderId == request.auth.uid || isAdmin());
       }
     }
 
@@ -183,34 +240,52 @@ service cloud.firestore {
       allow create: if isRealUser()
         && request.resource.data.createdBy == request.auth.uid;
       allow update: if isAdmin()
-        || (isRealUser() && resource.data.createdBy == request.auth.uid)
-        || (isRealUser() && request.resource.data.diff(resource.data)
-              .affectedKeys().hasOnly(['likes', 'likedBy', 'commentCount']));
-      allow delete: if isAdmin();
+        // 작성자: 본문·제목·사진 등은 수정 가능, 작성자·좋아요·댓글수·작성일은 못 건드림
+        || (isRealUser() && resource.data.createdBy == request.auth.uid
+            && !changedKeys().hasAny(['createdBy', 'likes', 'likedBy', 'commentCount', 'createdAt']))
+        // 좋아요: 본인 uid 하나만 넣고/빼고 likes 는 정확히 ±1
+        || validLikeToggle()
+        // 댓글 수: ±1 만
+        || (isRealUser() && validCountStep('commentCount'));
+      // 삭제: 관리자 또는 작성자 본인 (UI 의 삭제 버튼과 일치)
+      allow delete: if isAdmin()
+        || (isRealUser() && resource.data.createdBy == request.auth.uid);
 
       match /comments/{commentId} {
         allow read: if isRealUser();
         allow create: if isRealUser()
           && request.resource.data.createdBy == request.auth.uid;
-        allow delete: if isAdmin();
+        // 삭제: 관리자 / 댓글 작성자 / 글 작성자(글 삭제 시 댓글 일괄 정리)
+        allow delete: if isAdmin()
+          || (isRealUser() && resource.data.createdBy == request.auth.uid)
+          || (isRealUser()
+              && get(/databases/$(database)/documents/anon_posts/$(postId)).data.createdBy == request.auth.uid);
       }
     }
 
     // ── blacklist 컬렉션 ─────────────────────────────────────
-    // - 회원가입 시 이메일 체크는 비인증 상태에서도 필요하므로 read는 전체 허용
+    // - 가입 화면은 자동 게스트(익명) 세션 위에서 동작하므로 인증 세션이면 읽기 허용
+    //   (완전 비인증 크롤러가 강퇴 이메일 목록을 긁어가는 것 차단)
     // - 쓰기(추가·삭제)는 관리자만
     match /blacklist/{docId} {
-      allow read: if true;
+      allow read: if isAuth();
       allow write: if isAdmin();
     }
 
     // ── game_scores 컬렉션 (미니게임 랭킹) ──────────────────
     // - 모든 사용자 읽기 가능 (랭킹 조회)
-    // - 실제 회원만 자기 점수 생성/수정
+    // - 실제 회원만 자기 점수 생성/수정, 점수는 0~1,000,000 정수·이름 30자 이내
+    function validGameScore() {
+      return request.resource.data.score is int
+        && request.resource.data.score >= 0
+        && request.resource.data.score <= 1000000
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 30;
+    }
     match /game_scores/{uid} {
       allow read: if true;
-      allow create: if isRealUser() && request.auth.uid == uid;
-      allow update: if isRealUser() && request.auth.uid == uid;
+      allow create: if isRealUser() && request.auth.uid == uid && validGameScore();
+      allow update: if isRealUser() && request.auth.uid == uid && validGameScore();
     }
 
     // ── config 컬렉션 (사이트 설정) ────────────────────────────

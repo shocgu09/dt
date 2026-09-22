@@ -1,0 +1,9 @@
+# Cloudflare Pages 응답 헤더 — 보안 기본값
+# CSP 는 inline onclick/스크립트가 많아 우선 초안만 보고서에 두고, 정리 후 도입한다.
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(self), camera=(), microphone=(), payment=(), usb=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
