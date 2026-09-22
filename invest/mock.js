@@ -180,8 +180,9 @@ var Mock = (function () {
     h += '<section class="m-section"><div class="m-head"><h3>🧾 체결 내역</h3>'
       + '<button class="mini-btn" onclick="Mock.loadHistory(true)">불러오기</button></div>'
       + '<div id="mkHistory"></div></section>'
-      + '<div class="disclaimer">⚠️ 가상의 자금으로 하는 모의투자이며 실제 매매·투자 권유가 아닙니다. 모의 체결가는 KRX 정규시장 가격 기준이고 '
-      + 'NXT·애프터마켓 가격은 반영하지 않습니다. 수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2)
+      + '<div class="disclaimer">⚠️ 가상의 자금으로 하는 모의투자이며 실제 매매·투자 권유가 아닙니다. 모의 체결가는 네이버 증권 시세 기준으로, 정규장(09:00~15:30)은 KRX 가격, '
+      + '프리·애프터마켓(08:00~08:30 · 15:40~20:00)은 NXT 및 KRX 시간외 가격을 따릅니다. 시간외 거래는 지정가만 가능하며, '
+      + '일일 기록과 시즌 최종 순위는 KRX 정규장 종가(15:30)로 확정합니다. 수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2)
       + '%(ETF·ETN 면제). 가상 자산은 어떤 것으로도 교환되지 않습니다.</div>'
       + adminHtml();
     el.innerHTML = h;
