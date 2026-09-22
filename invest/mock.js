@@ -244,7 +244,7 @@ var Mock = (function () {
       +   escapeHtml(s.endDate) + ' 종가 기준 <b>최종 자산</b>으로 순위를 가립니다.</p>'
       + '<ul class="mk-rules">'
       +   '<li>국내 상장 종목 — 주식 · ETF(레버리지 · 인버스 포함) · ETN. 거래정지 · 운영진 제한 종목 제외</li>'
-      +   '<li>정규장 08:30~15:30 지정가 · 시장가 / 시간외 08:00~08:30 · 15:40~20:00 지정가만 (ETF · ETN 은 NXT 거래 대상일 때만)</li>'
+      +   '<li>정규장 08:30~15:30 지정가 · 시장가 / 시간외 08:00~08:30 · 15:40~20:00 지정가만 (ETF · ETN 은 시간외 불가)</li>'
       +   '<li>체결가는 네이버 증권 시세 기준 — 정규장은 KRX, 시간외는 NXT · KRX 시간외 가격</li>'
       +   '<li>수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2) + '% (ETF · ETN 면제)</li>'
       +   '<li>주문 뒤에 실제로 거래된 가격 · 수량 안에서만 체결됩니다 (판정은 최대 1분 간격)</li>'
@@ -330,7 +330,7 @@ var Mock = (function () {
           '시드머니 <b>' + fmtCompact(s.seed) + '원</b> · 시즌마다 초기화 · 순위는 <b>실시간</b>(시간외 가격 포함), 일일 기록과 최종 순위는 ' + escapeHtml(s.endDate) + ' 15:30 <b>KRX 종가</b> 기준',
           '국내 상장 종목 — 주식 · ETF(레버리지 · 인버스 포함) · ETN. 거래정지 · 운영진 제한 종목은 주문할 수 없습니다.',
           '정규장 08:30~15:30 지정가 · 시장가. 09:00 전 접수분은 <b>시가</b>, 15:20~15:30 접수분은 <b>종가</b>로 체결되고, 미체결은 장 마감 시 만료됩니다.',
-          '시간외 08:00~08:30 프리마켓(NXT · 08:50 까지 체결) / 15:40~20:00 애프터마켓(NXT · KRX) — <b>지정가만</b>, ETF · ETN 은 NXT 거래 대상일 때만, 미체결은 08:50 · 20:00 에 자동 취소됩니다.',
+          '시간외 08:00~08:30 프리마켓(NXT · 08:50 까지 체결) / 15:40~20:00 애프터마켓(NXT · KRX) — <b>지정가만</b>, ETF · ETN 은 시간외 불가, 미체결은 08:50 · 20:00 에 자동 취소됩니다.',
           '지정가는 전일 종가 ±30% 안에서 호가단위에 맞게 입력합니다. 주문 <b>정정은 없고</b> 취소 후 다시 주문합니다.',
           '수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2) + '% (ETF · ETN 면제) — 실전과 같은 수준',
           '거래가 적은 종목은 여러 번에 나눠 체결되거나 체결되지 않을 수 있습니다.',
@@ -514,7 +514,7 @@ var Mock = (function () {
     if (p.holiday) return '<div class="mk-warn">오늘은 휴장일입니다. 다음 거래일 08:00 부터 주문할 수 있습니다</div>';
     if (!p.canOrder) return '<div class="mk-warn">주문 가능 시간이 아닙니다 (거래일 08:00~20:00)</div>';
     if (p.phase === 'pre_market') return '<div class="mk-info"><b>프리마켓(NXT)</b> · 지정가 주문만 가능 · 08:30 접수 마감 · 08:50 까지 미체결 시 자동 취소</div>';
-    if (p.phase === 'after_market') return '<div class="mk-info"><b>애프터마켓</b> · 지정가 주문만 가능 · 20:00 까지 미체결 시 자동 취소 · ETF·ETN 은 NXT 거래 대상일 때만</div>';
+    if (p.phase === 'after_market') return '<div class="mk-info"><b>애프터마켓</b> · 지정가 주문만 가능 · 20:00 까지 미체결 시 자동 취소 · ETF·ETN 제외</div>';
     if (p.phase === 'pre_open') return '<div class="mk-info">장전 주문 · 09:00 <b>시가</b>로 체결됩니다</div>';
     if (p.phase === 'close_auction') return '<div class="mk-info">장 마감 동시호가 · 15:30 <b>종가</b>로 체결됩니다</div>';
     return '';
