@@ -73,7 +73,7 @@ var Community = (function () {
       +   ' oninput="Community.count(this)"></textarea>'
       + '<div class="comment-submit-row"><span class="comment-count-hint" id="cmCount">0 / ' + fmtNum(BODY_MAX) + '</span>'
       + '<button class="btn-submit" onclick="Community.submitPost(this)">글 올리기</button></div>'
-      + '<div class="cm-guide">특정 종목의 매수·매도 권유, 리딩방 홍보, 근거 없는 루머는 신고 대상이며 운영진이 삭제할 수 있습니다.</div>'
+      + '<div class="cm-guide">매수·매도 권유, 리딩방 홍보, 근거 없는 루머는 신고 대상입니다.</div>'
       + '</div>';
 
     if (!posts.length) {
@@ -82,7 +82,7 @@ var Community = (function () {
       h += '<div class="cm-list">' + posts.map(postHtml).join('') + '</div>';
       if (hasMore) h += '<button class="mini-btn cm-more" onclick="Community.loadMore()">더 보기</button>';
     }
-    h += '<div class="cm-foot">회원이 작성한 글은 DT Club 의 입장과 무관하며 투자 권유가 아닙니다. 투자 판단과 결과의 책임은 본인에게 있습니다.</div>';
+    h += '<div class="cm-foot">회원 글은 DT Club 의 입장과 무관하며 투자 권유가 아닙니다.</div>';
     el.innerHTML = h;
     // 펼쳐 둔 댓글 복원
     Object.keys(openC).forEach(function (id) { if (openC[id]) renderComments(id); });
@@ -250,7 +250,7 @@ var Community = (function () {
       await batch.commit();
       p.reportCount = (p.reportCount || 0) + 1;
       render();
-      alert('신고가 접수되었습니다. 운영진이 확인합니다.');
+      alert('신고가 접수되었습니다.');
     } catch (e) {
       alert('이미 신고한 글이거나 처리에 실패했습니다.');
     }

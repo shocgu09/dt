@@ -213,11 +213,9 @@ var Mock = (function () {
     h += '<section class="m-section"><div class="m-head"><h3>🧾 체결 내역</h3>'
       + '<button class="mini-btn" onclick="Mock.loadHistory(true)">불러오기</button></div>'
       + '<div id="mkHistory"></div></section>'
-      + '<div class="disclaimer">⚠️ 가상의 자금으로 하는 모의투자이며 실제 매매·투자 권유가 아닙니다. 모의 체결가는 네이버 증권 시세 기준으로, 정규장(09:00~15:30)은 KRX 가격, '
-      + '프리·애프터마켓(08:00~08:30 · 15:40~20:00)은 NXT 및 KRX 시간외 가격을 따릅니다. 시간외 거래는 지정가만 가능하며, '
-      + '일일 기록과 시즌 최종 순위는 KRX 정규장 종가(15:30)로 확정합니다. 체결 판정은 최대 1분 간격으로 이루어져 실제보다 늦게 표시될 수 있고, '
-      + '시장가는 판정 시점의 현재가로 체결되어 호가 잔량·스프레드가 반영되지 않습니다. 수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2)
-      + '%(ETF·ETN 면제). 가상 자산은 어떤 것으로도 교환되지 않습니다.</div>'
+      + '<div class="disclaimer">⚠️ 가상 자금 모의투자이며 투자 권유가 아닙니다. 체결가는 네이버 증권 시세 기준(정규장 KRX · 시간외 NXT/KRX), '
+      + '체결 판정은 최대 1분 지연될 수 있습니다. 최종 순위는 15:30 KRX 종가 기준 · 수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2)
+      + '%(ETF·ETN 면제). 자세한 규칙은 참가 안내에 있습니다.</div>'
       + adminHtml();
     paint(el, h);
     if (season.isAdmin) fillAdminForm();
@@ -243,7 +241,7 @@ var Mock = (function () {
       + '<p class="mk-join-lead">가상 <b>' + fmtCompact(s.seed) + '원</b>으로 실제 주가에 맞춰 매매하고,<br>'
       +   escapeHtml(s.endDate) + ' 종가 기준 <b>최종 자산</b>으로 순위를 가립니다.</p>'
       + '<ul class="mk-rules">'
-      +   '<li>국내 상장 종목 — 주식 · ETF(레버리지 · 인버스 포함) · ETN. 거래정지 · 운영진 제한 종목 제외</li>'
+      +   '<li>국내 상장 종목 — 주식 · ETF(레버리지 · 인버스 포함) · ETN. 거래정지 · 제한 종목 제외</li>'
       +   '<li>정규장 08:30~15:30 지정가 · 시장가 / 시간외 08:00~08:30 · 15:40~20:00 지정가만 (ETF · ETN 은 시간외 불가)</li>'
       +   '<li>체결가는 네이버 증권 시세 기준 — 정규장은 KRX, 시간외는 NXT · KRX 시간외 가격</li>'
       +   '<li>수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2) + '% (ETF · ETN 면제)</li>'
@@ -328,7 +326,7 @@ var Mock = (function () {
       + '<div class="mk-jf-h">📌 매매 규칙</div>'
       + li([
           '시드머니 <b>' + fmtCompact(s.seed) + '원</b> · 시즌마다 초기화 · 순위는 <b>실시간</b>(시간외 가격 포함), 일일 기록과 최종 순위는 ' + escapeHtml(s.endDate) + ' 15:30 <b>KRX 종가</b> 기준',
-          '국내 상장 종목 — 주식 · ETF(레버리지 · 인버스 포함) · ETN. 거래정지 · 운영진 제한 종목은 주문할 수 없습니다.',
+          '국내 상장 종목 — 주식 · ETF(레버리지 · 인버스 포함) · ETN. 거래정지 · 제한 종목은 주문할 수 없습니다.',
           '정규장 08:30~15:30 지정가 · 시장가. 09:00 전 접수분은 <b>시가</b>, 15:20~15:30 접수분은 <b>종가</b>로 체결되고, 미체결은 장 마감 시 만료됩니다.',
           '시간외 08:00~08:30 프리마켓(NXT · 08:50 까지 체결) / 15:40~20:00 애프터마켓(NXT · KRX) — <b>지정가만</b>, ETF · ETN 은 시간외 불가, 미체결은 08:50 · 20:00 에 자동 취소됩니다.',
           '지정가는 전일 종가 ±30% 안에서 호가단위에 맞게 입력합니다. 주문 <b>정정은 없고</b> 취소 후 다시 주문합니다.',
@@ -716,7 +714,7 @@ var Mock = (function () {
       + '<b>' + (filledQty ? '일부 체결 · 잔량 대기' : '주문 접수 완료 · 체결 대기') + '</b></div>'
       + '<div class="mk-pending-body">' + escapeHtml(o.name) + ' ' + sideTxt + ' ' + fmtNum(o.qty) + '주 · ' + typeTxt
       + (filledQty ? '<br>체결 ' + fmtNum(filledQty) + '주 / 미체결 ' + fmtNum(o.qty - filledQty) + '주' : '') + '</div>'
-      + '<div class="mk-pending-note">창을 닫아도 주문은 유지되며, 계좌 탭의 미체결 주문에서 확인할 수 있습니다.</div>'
+      + '<div class="mk-pending-note">창을 닫아도 주문은 유지됩니다 · 계좌 탭 미체결 주문</div>'
       + '<button class="btn-ghost mk-pending-close" onclick="Mock.closeSheet()">닫기</button>';
     el.replaceWith(wrap);
     msg('');
