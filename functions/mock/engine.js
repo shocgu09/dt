@@ -18,6 +18,22 @@ export const OPEN_AT     = 9 * 60;        // 09:00
 export const ACCEPT_TO   = 15 * 60 + 30;  // 15:30 접수 마감
 export const FILL_TO     = 15 * 60 + 36;  // 종가 단일가 체결을 받아 줄 여유 (15:40 시간외 종가 전)
 
+// KRX 휴장일 (주말 제외, KST YYYYMMDD). 매년 12월 KRX "다음 해 휴장일" 공지로 갱신한다.
+//   2026: 추석 9/24·9/25 + 대체 9/28, 개천절 대체 10/5, 한글날 10/9, 성탄절 12/25, 연말 휴장 12/31
+//   2027: 신정 1/1, 설 2/5 + 대체 2/8·2/9, 삼일절 3/1, 어린이날 5/5, 부처님오신날 5/13, 광복절 대체 8/16,
+//         추석 9/14~9/16, 개천절 대체 10/4, 한글날 대체 10/11, 성탄절 대체 12/27, 연말 휴장 12/31
+//         (2027 은 공휴일법 기준 추정 — KRX 공지가 나오면 대조할 것)
+export const HOLIDAYS = new Set([
+  '20260924', '20260925', '20260928', '20261005', '20261009', '20261225', '20261231',
+  '20270101', '20270205', '20270208', '20270209', '20270301', '20270505', '20270513', '20270816',
+  '20270914', '20270915', '20270916', '20271004', '20271011', '20271227', '20271231'
+]);
+
+/** 거래일인가 — 평일이고 휴장일이 아닌 날 */
+export function isTradingDay(t) {
+  return t.dow >= 1 && t.dow <= 5 && !HOLIDAYS.has(t.ymd);
+}
+
 export function kstNow(now = Date.now()) {
   const k = new Date(now + 9 * 3600 * 1000);
   const p = (n) => String(n).padStart(2, '0');
@@ -99,12 +115,15 @@ export async function acceptOrder(db, season, account, input, quote, taxFree, no
     .bind(account.uid, String(input.clientOrderId)).first();
   if (dup) return dup;
 
-const weekday = t.dow >= 1 && t.dow <= 5;
+  const tradingDay = isTradingDay(t);
   let session = null;
-  if (weekday && t.hm >= PRE_FROM && t.hm < ACCEPT_FROM) session = 'pre';
-  else if (weekday && t.hm >= ACCEPT_FROM && t.hm < ACCEPT_TO) session = 'regular';
-  else if (weekday && t.hm >= AFTER_FROM && t.hm < AFTER_TO) session = 'after';
-  if (!session) throw new OrderError('주문 가능 시간이 아닙니다 (평일 08:00~20:00, 15:30~15:40 제외)', 'closed');
+  if (tradingDay && t.hm >= PRE_FROM && t.hm < ACCEPT_FROM) session = 'pre';
+  else if (tradingDay && t.hm >= ACCEPT_FROM && t.hm < ACCEPT_TO) session = 'regular';
+  else if (tradingDay && t.hm >= AFTER_FROM && t.hm < AFTER_TO) session = 'after';
+  if (!session) {
+    if (t.dow >= 1 && t.dow <= 5 && !tradingDay) throw new OrderError('오늘은 휴장일입니다. 다음 거래일 08:00 부터 주문할 수 있습니다', 'holiday');
+    throw new OrderError('주문 가능 시간이 아닙니다 (거래일 08:00~20:00, 15:30~15:40 제외)', 'closed');
+  }
   if (!quote || quote.krx == null || quote.krx.price == null) throw new OrderError('시세를 확인할 수 없는 종목입니다');
   if (session !== 'regular') {
     // 시간외는 실전에서도 지정가만 받는다 (거래가 얇아 시장가는 위험하다)
@@ -127,8 +146,16 @@ const weekday = t.dow >= 1 && t.dow <= 5;
     if (limit % tickSize(limit, taxFree) !== 0) {
       throw new OrderError(`호가단위(${tickSize(limit, taxFree)}원)에 맞지 않는 가격입니다`, 'tick');
     }
+    // 가격제한폭 — 실전처럼 상한가는 호가단위로 내림, 하한가는 올림한 값을 경계로 쓴다
     const prev = quote.krx.prevClose;
-    if (prev && (limit > prev * 1.3 || limit < prev * 0.7)) throw new OrderError('가격제한폭(±30%)을 벗어난 가격입니다', 'range');
+    if (prev) {
+      const upRaw = prev * 1.3, dnRaw = prev * 0.7;
+      const upper = Math.floor(upRaw / tickSize(upRaw, taxFree)) * tickSize(upRaw, taxFree);
+      const lower = Math.ceil(dnRaw / tickSize(dnRaw, taxFree)) * tickSize(dnRaw, taxFree);
+      if (limit > upper || limit < lower) {
+        throw new OrderError(`가격제한폭을 벗어난 가격입니다 (${lower.toLocaleString()}~${upper.toLocaleString()}원)`, 'range');
+      }
+    }
   }
 
   // 미체결 주문 수 제한은 매매 제약이 아니라 서버 보호용

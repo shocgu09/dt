@@ -64,7 +64,7 @@ async function todayBars(code, now) {
  */
 async function pricer(db, codes, now, official) {
   const t = E.kstNow(now);
-  const live = !official && t.dow >= 1 && t.dow <= 5 && t.hm >= E.PRE_FROM && t.hm < E.AFTER_TO;
+  const live = !official && E.isTradingDay(t) && t.hm >= E.PRE_FROM && t.hm < E.AFTER_TO;
   const quotes = codes.length ? await quotesFor(codes) : {};
   const closes = {};
   if (official && codes.length) {
@@ -88,8 +88,9 @@ async function pricer(db, codes, now, official) {
 function sessionInfo(now) {
   const t = E.kstNow(now);
   const weekday = t.dow >= 1 && t.dow <= 5;
+  const tradingDay = E.isTradingDay(t);
   let phase = 'closed';
-  if (weekday) {
+  if (tradingDay) {
     if (t.hm >= E.PRE_FROM && t.hm < E.ACCEPT_FROM) phase = 'pre_market';          // NXT 프리마켓 (지정가만)
     else if (t.hm >= E.ACCEPT_FROM && t.hm < E.OPEN_AT) phase = 'pre_open';         // 정규장 장전 → 시가
     else if (t.hm >= E.OPEN_AT && t.hm < 15 * 60 + 20) phase = 'continuous';
@@ -98,7 +99,7 @@ function sessionInfo(now) {
     else if (t.hm >= E.AFTER_FROM && t.hm < E.AFTER_TO) phase = 'after_market';     // NXT·KRX 애프터마켓 (지정가만)
   }
   const canOrder = phase !== 'closed' && phase !== 'break';
-  return { canOrder, phase, limitOnly: phase === 'pre_market' || phase === 'after_market', serverTime: now };
+  return { canOrder, phase, limitOnly: phase === 'pre_market' || phase === 'after_market', holiday: weekday && !tradingDay, serverTime: now };
 }
 
 const publicOrder = (o) => o && ({
@@ -354,7 +355,7 @@ export async function runCron(env, now = Date.now()) {
   const db = env.MOCK_DB;
   if (!db) return;
   const t = E.kstNow(now);
-  if (t.dow === 0 || t.dow === 6) return;
+  if (!E.isTradingDay(t)) return;
   const season = await E.activeSeason(db, now);
   await E.expireStale(db, now);
   if (!season) return;

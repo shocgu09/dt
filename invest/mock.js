@@ -268,8 +268,8 @@ var Mock = (function () {
       + li([
           '<b>가상의 자금</b>입니다. 실제 돈과 무관하며 현금·포인트·상품 등 어떤 것으로도 교환되지 않습니다.',
           '실제 매매·투자 권유가 아닙니다. 모의 결과는 실제 투자 성과와 다를 수 있습니다.',
-          '시세는 네이버 증권 기준입니다. 정규장은 KRX 가격, 프리 · 애프터마켓은 NXT · KRX 시간외 가격을 따르며 지연 · 오류가 있을 수 있습니다. 시세 오류로 생긴 체결은 운영진이 바로잡을 수 있습니다.',
-          '휴장일에는 체결이 일어나지 않습니다. 배당 · 액면분할 · 증자 등 권리 변동과 상장폐지는 반영되지 않습니다.',
+          '시세는 네이버 증권 기준입니다. 정규장은 KRX 가격, 프리 · 애프터마켓은 NXT · KRX 시간외 가격을 따르며 지연 · 오류가 있을 수 있습니다. 시세 제공 오류로 인한 체결은 확인 후 정정 또는 취소될 수 있습니다.',
+          '주문은 거래일(주말 · 휴장일 제외)에만 접수됩니다. 배당 · 액면분할 · 증자 등 권리 변동과 상장폐지는 반영되지 않습니다.',
           '순위표에 <b>이름 · 총자산 · 수익률 · 체결 건수</b>가 회원들에게 공개됩니다. 보유 종목은 공개되지 않습니다.',
           '1인 1계정입니다. 부정한 방법이 확인되면 순위에서 제외됩니다.'
         ])
@@ -294,7 +294,7 @@ var Mock = (function () {
     joinShell(
         '<div class="mk-jf-done">🎉</div>'
       + '<h3 class="mk-jf-title" style="text-align:center">시드머니 ' + fmtCompact(cash) + '원이<br>지급됐습니다</h3>'
-      + '<p class="mk-jf-lead" style="text-align:center">시세 탭에서 종목을 선택하면 <b>매수 · 매도</b> 주문을 할 수 있습니다.<br>주문 가능 시간은 평일 08:00~20:00 (15:30~15:40 제외)입니다.</p>'
+      + '<p class="mk-jf-lead" style="text-align:center">시세 탭에서 종목을 선택하면 <b>매수 · 매도</b> 주문을 할 수 있습니다.<br>주문 가능 시간은 거래일 08:00~20:00 (15:30~15:40 제외)입니다.</p>'
       + '<div class="mk-jf-btns"><button class="btn-ghost" onclick="Mock.closeJoin()">계좌 보기</button>'
       + '<button class="btn-submit" onclick="Mock.closeJoin(); switchTab(\'market\')">종목 보러 가기</button></div>');
   }
@@ -452,13 +452,14 @@ var Mock = (function () {
   /** 지금이 어느 구간인지 — 계좌 응답이 더 최신이면 그쪽을 쓴다 */
   function phaseInfo() {
     var src = (account && account.phase) ? account : (season || {});
-    return { phase: src.phase || 'closed', canOrder: !!src.canOrder, limitOnly: !!src.limitOnly };
+    return { phase: src.phase || 'closed', canOrder: !!src.canOrder, limitOnly: !!src.limitOnly, holiday: !!src.holiday };
   }
 
   function sessionNote() {
     var p = phaseInfo();
     if (p.phase === 'break') return '<div class="mk-warn">15:30~15:40 은 주문 접수 시간이 아닙니다. 15:40 부터 애프터마켓 주문이 가능합니다</div>';
-    if (!p.canOrder) return '<div class="mk-warn">주문 가능 시간이 아닙니다 (평일 08:00~20:00)</div>';
+    if (p.holiday) return '<div class="mk-warn">오늘은 휴장일입니다. 다음 거래일 08:00 부터 주문할 수 있습니다</div>';
+    if (!p.canOrder) return '<div class="mk-warn">주문 가능 시간이 아닙니다 (거래일 08:00~20:00)</div>';
     if (p.phase === 'pre_market') return '<div class="mk-info"><b>프리마켓(NXT)</b> · 지정가 주문만 가능 · 08:30 접수 마감 · 08:50 까지 미체결 시 자동 취소</div>';
     if (p.phase === 'after_market') return '<div class="mk-info"><b>애프터마켓</b> · 지정가 주문만 가능 · 20:00 까지 미체결 시 자동 취소 · ETF·ETN 제외</div>';
     if (p.phase === 'pre_open') return '<div class="mk-info">장전 주문 · 09:00 <b>시가</b>로 체결됩니다</div>';
