@@ -74,7 +74,7 @@ function showMain() {
 /* ===== 모의투자 모드 =====
  * 코드(mock.js · mock.css)는 모드를 켤 때 처음 불러온다 — 쓰지 않는 회원에게는 아무 변화가 없다.
  */
-var MOCK_VER = '9';
+var MOCK_VER = '10';
 var _mockLoading = null;
 
 function loadMockAssets() {
@@ -100,7 +100,8 @@ function initMockMode() {
   btn.style.display = '';
   var saved = null;
   try { saved = localStorage.getItem('dt-invest-mock:' + currentUser.uid); } catch (e) {}
-  if (saved === '1') loadMockAssets().then(function () { Mock.setMode(true); }).catch(function () {});
+  // 자동 복원은 조용히 — 방문할 때마다 계좌 탭으로 끌고 가거나 참가 창을 띄우지 않는다
+  if (saved === '1') loadMockAssets().then(function () { Mock.setMode(true, false); }).catch(function () {});
 }
 
 async function toggleMockMode() {
@@ -108,7 +109,7 @@ async function toggleMockMode() {
   btn.disabled = true;
   try {
     await loadMockAssets();
-    await Mock.setMode(!Mock.isOn());
+    await Mock.setMode(!Mock.isOn(), true);
   } catch (e) {
     alert(e.message);
   } finally {
@@ -133,8 +134,15 @@ function switchTab(tab) {
     var d = document.getElementById('bDate');
     if (d && !d.value) d.value = todayStr();
     renderAdminBriefingList();
+    if (window.Community && isAdmin) Community.loadReports();
   }
 }
+
+// 주문창·참가 절차 같은 모달이 열려 있으면 Esc 로 닫는다 (mock.js 가 핸들러를 등록한다)
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'Escape') return;
+  if (window.Mock && Mock.onEscape && Mock.onEscape()) e.preventDefault();
+});
 
 /* ===== 브리핑 로드 ===== */
 async function loadBriefings() {
@@ -215,8 +223,8 @@ function briefingCardHtml(p) {
 
   if (Array.isArray(p.tickers) && p.tickers.length) {
     h += '<div class="ticker-row">';
-    h += p.tickers.map(function(t) {
-      var n = normalizeTicker(t);
+    // 코드 형식이 맞는 것만 그린다 — onclick 인자로 들어가므로 저장된 값을 그대로 믿지 않는다
+    h += p.tickers.map(normalizeTicker).filter(function (n) { return /^[0-9A-Z]{6}$/.test(n.code); }).map(function(n) {
       return '<button type="button" class="ticker-chip" onclick="goStock(\'' + n.code + '\',\'' + escapeJsArg(n.name) + '\')">'
         + (typeof stockLogoHtml === 'function' ? stockLogoHtml(n.code, n.name, null, 'sm') : '📈 ')
         + escapeHtml(n.name) + ' <span class="code">' + escapeHtml(n.code) + '</span></button>';
@@ -587,18 +595,34 @@ function renderFormTickers() {
   }).join('');
 }
 
-/** 구버전 브리핑(코드만 저장)의 종목명을 채워 넣고 다시 그린다 */
+/** 구버전 브리핑(코드만 저장)의 종목명을 채워 넣고 다시 그린다.
+ * 종목 마스터(정적 파일)에서 먼저 찾고, 없는 것만 서버 검색을 부른다. 못 찾은 코드는 기록해 두어
+ * 렌더할 때마다 같은 검색을 되풀이하지 않는다. */
+var _tickerMiss = {};
 async function resolveTickerNames(codes) {
-  var todo = codes.filter(function (c) { return !_tickerNameCache[c]; });
+  var todo = codes.filter(function (c, i) { return /^[0-9A-Z]{6}$/.test(c) && !_tickerNameCache[c] && !_tickerMiss[c] && codes.indexOf(c) === i; });
   if (!todo.length || !currentUser) return false;
   var found = false;
-  await Promise.all(todo.map(async function (c) {
-    try {
-      var d = await Market.search(c);
-      var hit = (d.items || []).filter(function (i) { return i.code === c; })[0];
-      if (hit) { _tickerNameCache[c] = hit.name; found = true; }
-    } catch (e) { /* 실패하면 코드 그대로 표시 */ }
-  }));
+  if (typeof loadMaster === 'function') {
+    var master = await loadMaster();
+    var byCode = {};
+    (master || []).forEach(function (m) { byCode[m.code] = m.name; });
+    todo = todo.filter(function (c) {
+      if (byCode[c]) { _tickerNameCache[c] = byCode[c]; found = true; return false; }
+      return true;
+    });
+  }
+  // 남은 것은 서버 검색으로, 한 번에 4개씩만
+  for (var i = 0; i < todo.length; i += 4) {
+    await Promise.all(todo.slice(i, i + 4).map(async function (c) {
+      try {
+        var d = await Market.search(c);
+        var hit = (d.items || []).filter(function (x) { return x.code === c; })[0];
+        if (hit) { _tickerNameCache[c] = hit.name; found = true; }
+        else _tickerMiss[c] = true;
+      } catch (e) { /* 실패하면 코드 그대로 표시 — 다음 렌더에서 다시 시도 */ }
+    }));
+  }
   return found;
 }
 

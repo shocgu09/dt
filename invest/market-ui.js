@@ -110,22 +110,33 @@ function onSearchInput(v) {
   searchTimer = setTimeout(function () { doSearch(q); }, 250);
 }
 
+/** 서버·외부 응답의 종목코드는 화면에 넣기 전에 형식을 확인한다 (onclick 인자·속성에 그대로 들어간다) */
+function isStockCode(c) { return /^[0-9A-Z]{6}$/.test(String(c || '')); }
+
+var _searchSeq = 0;
 async function doSearch(q) {
   var box = document.getElementById('searchResults');
+  var seq = ++_searchSeq;             // 느린 이전 검색 응답이 최신 입력의 결과를 덮지 않게
   box.style.display = '';
   box.innerHTML = '<div class="sr-empty">검색 중...</div>';
+  box.setAttribute('aria-busy', 'true');
   try {
     var d = await Market.search(q);
-    if (!d.items || !d.items.length) { box.innerHTML = '<div class="sr-empty">검색 결과가 없습니다</div>'; return; }
-    box.innerHTML = d.items.map(function (i) {
-      return '<button class="sr-item" onclick="openStock(\'' + i.code + '\',\'' + escapeJsArg(i.name) + '\')">'
+    if (seq !== _searchSeq) return;
+    var items = (d.items || []).filter(function (i) { return isStockCode(i.code); });
+    if (!items.length) { box.innerHTML = '<div class="sr-empty">검색 결과가 없습니다</div>'; return; }
+    box.innerHTML = items.map(function (i) {
+      return '<button class="sr-item" role="option" onclick="openStock(\'' + i.code + '\',\'' + escapeJsArg(i.name) + '\')">'
         + stockLogoHtml(i.code, i.name, null, 'sm')
         + '<span class="sr-name">' + escapeHtml(i.name) + '</span>'
         + '<span class="sr-meta">' + escapeHtml(i.market || '') + ' · ' + i.code + '</span>'
         + '</button>';
     }).join('');
   } catch (e) {
+    if (seq !== _searchSeq) return;
     box.innerHTML = '<div class="sr-empty">' + escapeHtml(e.message) + '</div>';
+  } finally {
+    if (seq === _searchSeq) box.removeAttribute('aria-busy');
   }
 }
 
@@ -189,7 +200,7 @@ async function loadWatchQuotes() {
     }))).forEach(function (d) {
       (d.items || []).forEach(function (q) { byCode[q.code] = q; });
     });
-    var rows = watchlist.map(function (c) { return byCode[c]; }).filter(Boolean);
+    var rows = watchlist.map(function (c) { return byCode[c]; }).filter(function (q) { return q && isStockCode(q.code); });
     if (rows.length) setMarketStatus(rows[0].marketStatus);
 
     if (!rows.length) {
@@ -263,7 +274,7 @@ function renderRecent() {
   var el = document.getElementById('recentList');
   var wrap = document.getElementById('recentSection');
   if (!el || !wrap) return;
-  var list = getRecent();
+  var list = getRecent().filter(function (r) { return r && isStockCode(r.code); });
   wrap.style.display = list.length ? '' : 'none';
   el.innerHTML = list.map(function (r) {
     return '<button class="chip" onclick="openStock(\'' + r.code + '\',\'' + escapeJsArg(r.name) + '\')">'
@@ -282,12 +293,12 @@ async function loadSectors() {
   if (!el) return;
   try {
     var d = await Market.sectors('theme');
-    var top = (d.groups || []).slice(0, 8);
+    var top = (d.groups || []).filter(function (g) { return /^\d{1,8}$/.test(String(g.no)); }).slice(0, 8);
     el.innerHTML = top.map(function (g) {
       var c = signClass(g.changeRate);
-      return '<button class="theme-row" onclick="openSector(' + g.no + ',\'' + escapeJsArg(g.name) + '\')">'
+      return '<button class="theme-row" onclick="openSector(\'' + String(g.no) + '\',\'' + escapeJsArg(g.name) + '\')">'
         + '<span class="theme-name">' + escapeHtml(g.name) + '</span>'
-        + '<span class="theme-sub">↑' + g.rise + ' ↓' + g.fall + ' / ' + g.total + '</span>'
+        + '<span class="theme-sub">↑' + fmtNum(g.rise) + ' ↓' + fmtNum(g.fall) + ' / ' + fmtNum(g.total) + '</span>'
         + '<span class="theme-rate ' + c + '">' + fmtRate(g.changeRate) + '</span>'
         + '</button>';
     }).join('');
@@ -304,7 +315,7 @@ async function openSector(no, name) {
     el.innerHTML = '<div class="sector-head">'
       + '<strong>' + escapeHtml(name) + '</strong>'
       + '<button class="mini-btn" onclick="loadSectors()">← 테마 목록</button></div>'
-      + (d.items || []).map(function (s) {
+      + (d.items || []).filter(function (s) { return isStockCode(s.code); }).map(function (s) {
         var c = signClass(s.changeRate);
         return '<button class="q-row" onclick="openStock(\'' + s.code + '\',\'' + escapeJsArg(s.name) + '\')">'
           + stockLogoHtml(s.code, s.name, s.logo, 'sm')
@@ -337,7 +348,7 @@ async function loadRank() {
   el.innerHTML = '<div class="loading">불러오는 중...</div>';
   try {
     var d = await Market.rank(rankType, rankMarket);
-    var items = (d.items || []).slice(0, 15);
+    var items = (d.items || []).filter(function (s) { return isStockCode(s.code); }).slice(0, 15);
     if (!items.length) { el.innerHTML = '<div class="empty">데이터가 없습니다</div>'; return; }
 
     el.innerHTML = items.map(function (s, i) {
@@ -391,13 +402,13 @@ async function onFavToggle(code) {
       sd.classList.toggle('on', on);
       sd.textContent = on ? '♥' : '♡';
     }
-    // 관심종목 섹션도 다시 그린다 (뼈대 재생성 강제)
+    // 관심종목 섹션도 다시 그린다 (뼈대 재생성 강제) — 시세 홈에 있을 때만. 종목 상세를 보는 중이면
+    // 홈 폴링으로 갈아타 상세 시세가 멈춰 버린다
     var wl = document.getElementById('watchList');
     if (wl) { wl.dataset.key = ''; wl.dataset.built = ''; }
-    loadWatchQuotes();
-    startHomePolling();
+    if (!curStock && currentTab === 'market') { loadWatchQuotes(); startHomePolling(); }
   } catch (e) {
-    alert('관심종목 저장에 실패했습니다.');
+    alert(e && e.message ? e.message : '관심종목 저장에 실패했습니다.');
   } finally {
     btn.disabled = false;
   }
@@ -405,7 +416,10 @@ async function onFavToggle(code) {
 
 /* ===== 종목 상세 ===== */
 async function openStock(code, name) {
+  if (!isStockCode(code)) return;
+  name = String(name || code);
   curStock = { code: code, name: name };
+  if (window.Community) Community.reset();
   curTf = 'D';
   bookOpen = false;
   pushRecent(code, name);
@@ -444,8 +458,21 @@ async function openStock(code, name) {
 /** 종목 상세 폴링 시작/재개 (즉시 1회 실행됨) */
 function startStockPolling() {
   Poller.add('quote', loadStockQuote, pollMs(3000, 60000));
-  Poller.add('bars', refreshChartBars, 60000);
+  // 봉은 장외에는 바뀌지 않는다 — 10분에 한 번이면 충분하다 (워커·KV 호출 절약)
+  Poller.add('bars', refreshChartBars, pollMs(60000, 600000));
   if (bookOpen) Poller.add('book', loadBook, pollMs(3000, 60000));
+}
+
+/**
+ * 시세 틱으로 차트 마지막 봉을 갱신할 때 새 봉을 만들어도 되는가.
+ *  - 분봉: 장중에만 (장외에 '지금' 버킷으로 유령 봉이 생기지 않게)
+ *  - 일봉: 거래일 개장 직후 네이버 일봉에 오늘 봉이 아직 없을 때 전 거래일 봉을 오늘 값으로 덧씌우지 않도록 오늘 봉을 새로 연다
+ *  - 주봉·월봉: 버킷의 마지막 거래일이 오늘과 달라도 같은 주·달이면 그 봉을 갱신하는 게 맞으므로 새 봉은 만들지 않는다
+ */
+function allowNewBarNow() {
+  if (curTf === 'm' || curTf === 'm5') return isMarketOpen();
+  if (curTf === 'D') return isTradingDayKst() && isMarketOpen();
+  return false;
 }
 
 function backToMarket() {
@@ -501,9 +528,7 @@ function stockShellHtml(code, name) {
     + '</div>'
     + '<div class="sd-panel" id="sdTrend" style="display:none"></div>'
     + '<div class="sd-panel" id="sdNews" style="display:none"></div>'
-    + '<div class="sd-panel" id="sdCommunity" style="display:none">'
-    +   '<div class="empty">종목별 커뮤니티는 준비 중입니다.<br>지금은 <b>시황 탭</b>의 브리핑 댓글을 이용해 주세요.</div>'
-    + '</div>'
+    + '<div class="sd-panel" id="sdCommunity" style="display:none"><div class="loading">불러오는 중...</div></div>'
     + '<div class="disclaimer">⚠️ 시세는 참고용이며 지연·오류가 있을 수 있습니다. 실제 매매는 증권사 앱에서 확인하세요.</div>';
 }
 
@@ -515,6 +540,7 @@ function sdSwitch(tab) {
   document.getElementById('sdCommunity').style.display = tab === 'community' ? '' : 'none';
   if (tab === 'trend') loadDealTrend();
   if (tab === 'news') loadStockNews();
+  if (tab === 'community' && window.Community && curStock) Community.open(curStock.code, curStock.name);
 }
 
 async function onToggleWatch() {
@@ -526,7 +552,7 @@ async function onToggleWatch() {
     btn.classList.toggle('on', on);
     btn.textContent = on ? '♥' : '♡';
   } catch (e) {
-    alert('관심종목 저장에 실패했습니다.');
+    alert(e && e.message ? e.message : '관심종목 저장에 실패했습니다.');
   } finally {
     btn.disabled = false;
   }
@@ -600,10 +626,7 @@ async function loadStockQuote() {
 
     // ★ 차트 마지막 봉을 새로고침 없이 갱신.
     // 장 마감 후에도 한 번은 맞춰야 종가가 차트에 반영된다 (상단 시세와 끝점 불일치 방지).
-    if (chartHandle) {
-      var isMin = (curTf === 'm' || curTf === 'm5');
-      chartHandle.updateLast(q.price, currentBucketTime(), q.volume, isMin && isMarketOpen());
-    }
+    if (chartHandle) chartHandle.updateLast(q.price, currentBucketTime(), q.volume, allowNewBarNow());
   } catch (e) {
     if (!box.dataset.built) box.innerHTML = '<div class="empty">' + escapeHtml(e.message) + '</div>';
   }
@@ -632,12 +655,13 @@ function renderRange(q) {
 }
 
 function rangeRowHtml(label, lo, hi, cur) {
-  var pct = Math.max(0, Math.min(100, ((cur - lo) / (hi - lo)) * 100));
+  // 현재가가 없으면 마커를 찍지 않는다 (left:NaN% 방지)
+  var pct = (cur != null && isFinite(cur) && hi > lo) ? Math.max(0, Math.min(100, ((cur - lo) / (hi - lo)) * 100)) : null;
   return '<div class="range-row">'
     + '<div class="range-label">' + label + '</div>'
     + '<div class="range-bar-wrap">'
     +   '<span class="range-lo">' + fmtNum(lo) + '</span>'
-    +   '<span class="range-bar"><i style="left:' + pct.toFixed(1) + '%"></i></span>'
+    +   '<span class="range-bar">' + (pct == null ? '' : '<i style="left:' + pct.toFixed(1) + '%"></i>') + '</span>'
     +   '<span class="range-hi">' + fmtNum(hi) + '</span>'
     + '</div></div>';
 }
@@ -690,10 +714,7 @@ async function onThemeChanged() {
     chartHandle = handle;
     updateHiLoLabel();
     // 다시 그린 봉의 끝점을 현재가에 맞춘다 (다음 시세 폴링까지 어긋나 보이지 않게)
-    if (_lastQuote) {
-      var isMin = (curTf === 'm' || curTf === 'm5');
-      chartHandle.updateLast(_lastQuote.price, currentBucketTime(), _lastQuote.volume, isMin && isMarketOpen());
-    }
+    if (_lastQuote) chartHandle.updateLast(_lastQuote.price, currentBucketTime(), _lastQuote.volume, allowNewBarNow());
   } catch (e) { if (seq === _chartSeq) loadStockChart(); }
 }
 
@@ -768,7 +789,11 @@ async function refreshChartBars() {
     chartHandle.replaceData(use);
     _chartBars = use;
     updateHiLoLabel();
-    if (_lastQuote) renderRange(_lastQuote);
+    // 교체한 봉은 워커 캐시(최대 3분) 시점의 값이라 상단 현재가보다 늦다 — 끝점을 현재가에 다시 맞춘다
+    if (_lastQuote && _lastQuote.code === curStock.code) {
+      chartHandle.updateLast(_lastQuote.price, currentBucketTime(), _lastQuote.volume, allowNewBarNow());
+      renderRange(_lastQuote);
+    }
   } catch (e) { /* 다음 주기에 재시도 */ }
 }
 
@@ -783,16 +808,26 @@ function updateHiLoLabel() {
   } else hl.style.display = 'none';
 }
 
-/** 1분봉 → N분봉 */
+/**
+ * 1분봉 → N분봉. 개수가 아니라 시각으로 묶는다 — 거래가 없어 빠진 분이 있어도 09:00·09:05 … 경계가
+ * 유지되고, currentBucketTime() 이 만드는 버킷 시각과 같은 봉을 가리킨다.
+ * 봉의 t 는 버킷 시작 시각(HHMM 을 N 분 단위로 내림)으로 둔다.
+ */
 function groupMinutes(bars, n) {
-  var out = [], cur = null, cnt = 0;
+  var out = [], cur = null, curKey = null;
   bars.forEach(function (b) {
-    if (!cur) { cur = { t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v || 0 }; cnt = 1; }
-    else {
+    var s = String(b.t);
+    var hh = +s.slice(8, 10), mm = +s.slice(10, 12);
+    var bm = Math.floor(mm / n) * n;
+    var key = s.slice(0, 8) + String(hh).padStart(2, '0') + String(bm).padStart(2, '0') + '00';
+    if (key !== curKey) {
+      if (cur) out.push(cur);
+      cur = { t: key, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v || 0 };
+      curKey = key;
+    } else {
       cur.h = Math.max(cur.h, b.h); cur.l = Math.min(cur.l, b.l);
-      cur.c = b.c; cur.t = b.t; cur.v += (b.v || 0); cnt++;
+      cur.c = b.c; cur.v += (b.v || 0);
     }
-    if (cnt === n) { out.push(cur); cur = null; cnt = 0; }
   });
   if (cur) out.push(cur);
   return out;
@@ -979,12 +1014,18 @@ function safeUrl(u) {
   return /^https?:\/\//i.test(String(u || '')) ? String(u) : '#';
 }
 
+/** 시세 기준 시각 — 기기 시간대와 무관하게 KST 로 표시한다 (해외에서 보면 시각이 어긋났다) */
 function shortTime(iso) {
   if (!iso) return '';
   var d = new Date(iso);
   if (isNaN(d)) return String(iso).slice(0, 16).replace('T', ' ');
-  var p = function (n) { return String(n).padStart(2, '0'); };
-  return p(d.getHours()) + ':' + p(d.getMinutes());
+  try {
+    return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Seoul' });
+  } catch (e) {
+    var k = new Date(d.getTime() + d.getTimezoneOffset() * 60000 + 9 * 3600000);
+    var p = function (n) { return String(n).padStart(2, '0'); };
+    return p(k.getHours()) + ':' + p(k.getMinutes());
+  }
 }
 
 function newsTime(s) {

@@ -3,9 +3,17 @@
 // 장부(D1: env.MOCK_DB)는 여기서만 읽고 쓴다.
 
 import { naver } from '../providers/naver.js';
+import { profileOf } from '../lib/profile.js';
 import * as E from './engine.js';
 
 const isCode = (c) => /^[0-9A-Z]{6}$/.test(c || '');
+
+/** 순위표용 안정 키 — uid 를 내보내지 않으면서 같은 회원을 갱신 간에 이어 붙일 수 있게 (되돌릴 수 없는 짧은 해시) */
+function rowKey(uid) {
+  let h = 5381;
+  for (let i = 0; i < uid.length; i++) h = ((h * 33) ^ uid.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
 
 // ── 작은 메모리 캐시 (워커 인스턴스 단위) ─────────────────────
 const mem = new Map();
@@ -22,20 +30,7 @@ class HttpError extends Error {
   constructor(status, message, code) { super(message); this.status = status; this.code = code; }
 }
 
-// ── 회원 정보 (Firestore users/{uid}) ─────────────────────────
-// 서비스 계정 없이 회원 본인의 ID 토큰으로 본인 문서를 읽는다 (규칙상 본인 문서는 읽을 수 있다).
-// 닉네임을 클라이언트가 보내게 두면 남의 이름으로 순위표에 오를 수 있으므로 서버가 직접 읽는다.
-async function profileOf(env, uid, token) {
-  return memo(`prof:${uid}`, 600e3, async () => {
-    const r = await fetch(
-      `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/users/${uid}`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-    if (!r.ok) return { role: null, name: null };
-    const f = (await r.json()).fields || {};
-    return { role: f.role && f.role.stringValue, name: (f.name && f.name.stringValue) || null };
-  });
-}
+// ── 회원 정보는 lib/profile.js (시세 경로와 같은 캐시를 쓴다) ──
 
 // ── 시세 ──────────────────────────────────────────────────────
 async function quotesFor(codes) {
@@ -47,6 +42,38 @@ async function quotesFor(codes) {
     for (const q of items) out[q.code] = q;
   }
   return out;
+}
+
+/**
+ * 종목 종류 (stock | etf | etn) — 호가단위·거래세·시간외 가능 여부가 갈린다.
+ * 네이버 basic API 가 Cloudflare 에서 자주 시간 초과되는데(2026-09-22 실측), 그때 'stock' 으로 두면
+ * ETF 지정가가 "호가단위 불일치"로 거절되고 ETF 매도에 거래세가 붙는다. 실패하면 사이트의 종목 마스터
+ * (invest/stock-master.json, 시장 구분에 ETF·ETN 이 있다)로 판정하고, 그마저 없으면 이름으로 추정한다.
+ */
+const MASTER_URL = 'https://dt-1js.pages.dev/invest/stock-master.json';
+async function masterKinds() {
+  return memo('master:kinds', 12 * 3600e3, async () => {
+    const r = await fetch(MASTER_URL, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) throw new Error('master ' + r.status);
+    const d = await r.json();
+    const m = {};
+    for (const x of d.items || []) if (x[2] === 'ETF' || x[2] === 'ETN') m[x[0]] = x[2].toLowerCase();
+    return m;
+  });
+}
+const ETF_BRANDS = /^(KODEX|TIGER|ACE|RISE|SOL|KBSTAR|HANARO|ARIRANG|KOSEF|TIMEFOLIO|PLUS|WON|1Q|BNK|ITF|UNICORN|VITA|HK|KIWOOM|KoAct|마이티|에셋플러스|파워|FOCUS|TREX|WOORI|DAISHIN343)\s/i;
+async function kindOf(code, name) {
+  return memo(`kind:${code}`, 86400e3, async () => {
+    try { return await naver.getKind(code); }
+    catch (e) {
+      try { const m = await masterKinds(); if (m[code]) return m[code]; } catch (e2) { /* 마스터도 실패 */ }
+      const n = String(name || '');
+      if (/\sETN$/i.test(n)) return 'etn';
+      if (ETF_BRANDS.test(n)) return 'etf';
+      // 알 수 없으면 캐시하지 않는다 — 다음 주문 때 다시 확인한다
+      throw new Error('kind unknown');
+    }
+  }).catch(() => 'stock');
 }
 
 async function todayBars(code, now) {
@@ -121,6 +148,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
   const body = async () => { try { return await request.json(); } catch { throw new HttpError(400, '요청 형식이 올바르지 않습니다'); } };
 
   const profile = await profileOf(env, uid, token);
+  if (profile.transient) throw new HttpError(503, '회원 확인이 지연되고 있습니다. 잠시 후 다시 시도하세요');
   if (!profile.role) throw new HttpError(403, 'DT Club 회원만 이용할 수 있습니다');
   const isAdmin = profile.role === 'admin' || profile.role === 'superadmin';
 
@@ -134,7 +162,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
   if (path === '/kind' && method === 'GET') {
     const code = url.searchParams.get('code');
     if (!isCode(code)) throw new HttpError(400, '종목코드가 올바르지 않습니다');
-    const kind = await memo(`kind:${code}`, 86400e3, () => naver.getKind(code)).catch(() => 'stock');
+    const kind = await kindOf(code, url.searchParams.get('name'));
     return { code, kind, taxFree: kind === 'etf' || kind === 'etn' };
   }
 
@@ -148,6 +176,9 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
   }
 
   const season = await E.activeSeason(db, now);
+  // 장이 끝난 미체결 주문은 크론(08:00~20:10)이 만료시키지만, 크론이 놓친 뒤 화면을 열면 여기서 정리한다
+  // (안 그러면 '주문 가능 금액'이 밤새 묶인 채로 보인다). UPDATE 1건이라 비용은 없다.
+  if (method === 'GET' && (path === '/season' || path === '/account')) await E.expireStale(db, now);
   if (path === '/season' && method === 'GET') {
     const next = season ? null : await db.prepare(`SELECT id, name, start_date, end_date FROM seasons WHERE status='upcoming' ORDER BY start_date LIMIT 1`).first();
     const account = season ? await E.getAccount(db, season.id, uid) : null;
@@ -173,8 +204,8 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     return {
       season: { id: season.id, name: season.name, seed: season.seed, endDate: season.end_date },
       asOf: board.asOf, live: board.live,
-      // uid 는 내보내지 않는다 — 순위표에는 닉네임만
-      rows: board.rows.map((r) => ({ rank: r.rank, nickname: r.nickname, equity: r.equity, fills: r.fills, me: r.uid === uid })),
+      // uid 는 내보내지 않는다 — 순위표에는 닉네임만 (key 는 갱신 간 순위 변동 표시용 해시)
+      rows: board.rows.map((r) => ({ key: rowKey(r.uid), rank: r.rank, nickname: r.nickname, equity: r.equity, fills: r.fills, me: r.uid === uid })),
       me: me ? { rank: me.rank, equity: me.equity } : null
     };
   }
@@ -197,10 +228,8 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     const input = await body();
     if (!isCode(input.code)) throw new HttpError(400, '종목코드가 올바르지 않습니다');
     // 주문은 캐시가 아닌 방금 받은 시세로 검증한다
-    const [quote, kind] = await Promise.all([
-      naver.getQuote(input.code).catch(() => null),
-      memo(`kind:${input.code}`, 86400e3, () => naver.getKind(input.code)).catch(() => 'stock')
-    ]);
+    const quote = await naver.getQuote(input.code).catch(() => null);
+    const kind = await kindOf(input.code, quote && quote.name);
     try {
       const order = await E.acceptOrder(db, season, account, input, quote, kind === 'etf' || kind === 'etn', now);
       return { order: publicOrder(order) };
@@ -303,18 +332,38 @@ async function handleAdmin(db, actor, path, method, body, now) {
     if (!/^[0-9A-Za-z_-]{3,20}$/.test(b.id || '') || !b.name || !okDate(b.startDate) || !okDate(b.endDate) || b.endDate < b.startDate) {
       throw new HttpError(400, '시즌 ID·이름·시작일·종료일을 확인해 주세요');
     }
+    const existing = await db.prepare(`SELECT * FROM seasons WHERE id=?`).bind(b.id).first();
+    if (existing) {
+      // 이미 시작한 시즌은 이름·종료일·전달사항만 고칠 수 있다 — 시드·요율·시작일이 바뀌면 참가자 장부와 어긋난다
+      if (existing.status !== 'upcoming') {
+        if (b.startDate !== existing.start_date) throw new HttpError(409, '진행 중인 시즌의 시작일은 바꿀 수 없습니다');
+        if ((b.seed != null && Number(b.seed) !== existing.seed) || (b.feeRate != null && Number(b.feeRate) !== existing.fee_rate)
+            || (b.taxRate != null && Number(b.taxRate) !== existing.tax_rate)) {
+          throw new HttpError(409, '진행 중인 시즌의 시드·수수료·세율은 바꿀 수 없습니다');
+        }
+        if (existing.status === 'closed') throw new HttpError(409, '종료된 시즌은 수정할 수 없습니다');
+      }
+      // 보내지 않은 값은 기존 값을 유지한다 (화면 폼이 시드·요율을 안 보내도 기본값으로 덮이지 않게)
+      await db.prepare(
+        `UPDATE seasons SET name=?, start_date=?, end_date=?, seed=?, fee_rate=?, tax_rate=?, volume_fill=?, notice=? WHERE id=?`
+      ).bind(String(b.name).slice(0, 40), b.startDate, b.endDate,
+        b.seed != null ? Number(b.seed) : existing.seed,
+        b.feeRate != null ? Number(b.feeRate) : existing.fee_rate,
+        b.taxRate != null ? Number(b.taxRate) : existing.tax_rate,
+        b.volumeFill == null ? existing.volume_fill : (b.volumeFill === false ? 0 : 1),
+        b.notice != null ? (String(b.notice).slice(0, 1000) || null) : existing.notice, b.id).run();
+      await log('season.update', b);
+      return { ok: true, updated: true };
+    }
     // 기본값은 기획안 v2 — 시드 1억, 수수료 0.015%, 매도세 0.20%
     await db.prepare(
       `INSERT INTO seasons (id, name, start_date, end_date, seed, fee_rate, tax_rate, volume_fill, notice, status)
-       VALUES (?,?,?,?,?,?,?,?,?, 'upcoming')
-       ON CONFLICT (id) DO UPDATE SET name=excluded.name, start_date=excluded.start_date, end_date=excluded.end_date,
-         seed=excluded.seed, fee_rate=excluded.fee_rate, tax_rate=excluded.tax_rate, volume_fill=excluded.volume_fill,
-         notice=excluded.notice`
+       VALUES (?,?,?,?,?,?,?,?,?, 'upcoming')`
     ).bind(b.id, String(b.name).slice(0, 40), b.startDate, b.endDate, Number(b.seed) || 100000000,
       b.feeRate != null ? Number(b.feeRate) : 0.00015, b.taxRate != null ? Number(b.taxRate) : 0.002,
       b.volumeFill === false ? 0 : 1, String(b.notice || '').slice(0, 1000) || null).run();
-    await log('season.upsert', b);
-    return { ok: true };
+    await log('season.create', b);
+    return { ok: true, created: true };
   }
   if (path === '/admin/seasons/status' && method === 'POST') {
     const b = await body();
@@ -370,11 +419,17 @@ async function fillOpenOrders(db, season, now) {
     `SELECT * FROM orders WHERE season_id=? AND status IN ('open','partial') ORDER BY accepted_at LIMIT 200`
   ).bind(season.id).all()).results || [];
   if (!orders.length) return;
-  const codes = Array.from(new Set(orders.map((o) => o.code))).slice(0, MAX_CODES_PER_RUN * 2);
+  // 무료 요금제의 외부 요청 한도 때문에 한 번에 다루는 종목 수를 자르는데, 늘 앞에서만 자르면 뒤 종목의 주문이
+  // 영영 굶는다 — 분마다 시작 위치를 돌려 가며 모든 종목이 차례로 판정되게 한다
+  const allCodes = Array.from(new Set(orders.map((o) => o.code)));
+  const rot = allCodes.length ? Math.floor(now / 60000) % allCodes.length : 0;
+  const rotated = allCodes.slice(rot).concat(allCodes.slice(0, rot));
+  const codes = rotated.slice(0, MAX_CODES_PER_RUN * 2);
   const quotes = await quotesFor(codes);
   // 지정가·장전 주문이 걸린 종목만 분봉을 받는다 (종목당 외부 요청 1건)
   // 프리마켓 주문은 NXT 라 분봉이 없다 — 시세 폴링만으로 판정한다
-  const needBars = Array.from(new Set(orders.filter((o) => (o.type === 'limit' || o.pre_open) && o.session !== 'pre').map((o) => o.code))).slice(0, MAX_CODES_PER_RUN);
+  const needBarsSet = new Set(orders.filter((o) => (o.type === 'limit' || o.pre_open) && o.session !== 'pre').map((o) => o.code));
+  const needBars = codes.filter((c) => needBarsSet.has(c)).slice(0, MAX_CODES_PER_RUN);
   const bars = {};
   await Promise.all(needBars.map(async (c) => { bars[c] = await todayBars(c, now); }));
   let filled = 0;

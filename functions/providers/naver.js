@@ -365,13 +365,22 @@ export const daum = {
 export const yahoo = {
   name: 'yahoo',
   async getQuote(code, market) {
-    const suffix = market === 'KOSDAQ' ? 'KQ' : 'KS';
-    const r = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${code}.${suffix}?interval=1d&range=1d`,
-      withTimeout({ headers: { 'User-Agent': UA } })
-    );
-    if (!r.ok) throw new Error(`yahoo ${r.status}`);
-    const d = await r.json();
+    // 시장을 모르면 코스피(.KS) → 코스닥(.KQ) 순으로 시도한다 (코스닥 종목이 항상 실패하던 문제)
+    const order = market === 'KOSDAQ' ? ['KQ', 'KS'] : ['KS', 'KQ'];
+    let d = null, lastErr = null;
+    for (const suffix of order) {
+      try {
+        const r = await fetch(
+          `https://query1.finance.yahoo.com/v8/finance/chart/${code}.${suffix}?interval=1d&range=1d`,
+          withTimeout({ headers: { 'User-Agent': UA } })
+        );
+        if (!r.ok) throw new Error(`yahoo ${r.status}`);
+        const j = await r.json();
+        if (j && j.chart && j.chart.result && j.chart.result[0] && j.chart.result[0].meta) { d = j; break; }
+        throw new Error('yahoo: empty');
+      } catch (e) { lastErr = e; }
+    }
+    if (!d) throw lastErr || new Error('yahoo: not found');
     const m = d.chart.result[0].meta;
     const prev = m.chartPreviousClose || m.previousClose;
     return {

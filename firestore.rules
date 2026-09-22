@@ -503,10 +503,13 @@ service cloud.firestore {
                  .affectedKeys().hasOnly(['commentCount'])
             && (request.resource.data.commentCount == resource.data.get('commentCount', 0) + 1
                 || request.resource.data.commentCount == resource.data.get('commentCount', 0) - 1))
+        // 신고수 +1 은 같은 배치에서 stock_reports/{postId_uid} 를 새로 만들 때만 — 회원당 글 하나에 신고 한 번
         || (isRealUser()
             && request.resource.data.diff(resource.data)
                  .affectedKeys().hasOnly(['reportCount'])
-            && request.resource.data.reportCount == resource.data.get('reportCount', 0) + 1);
+            && request.resource.data.reportCount == resource.data.get('reportCount', 0) + 1
+            && !exists(/databases/$(database)/documents/stock_reports/$(postId + '_' + request.auth.uid))
+            && existsAfter(/databases/$(database)/documents/stock_reports/$(postId + '_' + request.auth.uid)));
       allow delete: if isAdmin()
         || (isRealUser() && resource.data.authorUid == request.auth.uid);
 
@@ -531,18 +534,25 @@ service cloud.firestore {
     }
 
     // ── stock_watchlist 컬렉션 (내 관심종목) ──────────────────
-    // - 본인 것만 읽기/쓰기 (관리자는 열람만)
+    // - 본인 것만 읽기/쓰기 (관리자는 열람만), 최대 50종목 (클라이언트 WATCHLIST_MAX 와 동일)
     match /stock_watchlist/{uid} {
       allow read: if isOwner(uid) || isAdmin();
-      allow write: if isOwner(uid);
+      allow write: if isOwner(uid)
+        && request.resource.data.get('codes', []) is list
+        && request.resource.data.get('codes', []).size() <= 50;
     }
 
     // ── stock_reports 컬렉션 (게시글 신고) ────────────────────
-    // - 접수는 실제 회원, 열람·처리는 관리자만
+    // - 접수는 실제 회원, 문서 ID 는 {postId}_{uid} 로 고정 → 같은 글을 두 번 신고할 수 없다
+    // - 열람·처리(status 변경)는 관리자만
     match /stock_reports/{reportId} {
       allow read: if isAdmin();
       allow create: if isRealUser()
-        && request.resource.data.reporterUid == request.auth.uid;
+        && request.resource.data.reporterUid == request.auth.uid
+        && request.resource.data.postId is string
+        && reportId == request.resource.data.postId + '_' + request.auth.uid
+        && request.resource.data.get('reason', '') is string
+        && request.resource.data.get('reason', '').size() <= 200;
       allow update, delete: if isAdmin();
     }
 

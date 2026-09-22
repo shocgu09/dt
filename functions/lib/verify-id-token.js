@@ -14,12 +14,18 @@ async function jwkFor(kid) {
   const stale = !_jwks.byKid || Date.now() - _jwks.at > 3600e3;
   const rotated = _jwks.byKid && !_jwks.byKid[kid] && Date.now() - _jwks.at > 60e3;
   if (stale || rotated) {
-    const r = await fetch(JWK_URL);
-    if (!r.ok) throw new Error('jwk fetch failed');
-    const d = await r.json();
-    const byKid = {};
-    for (const k of d.keys || []) byKid[k.kid] = k;
-    _jwks = { at: Date.now(), byKid };
+    try {
+      const r = await fetch(JWK_URL, { signal: AbortSignal.timeout(8000) });
+      if (!r.ok) throw new Error('jwk fetch failed');
+      const d = await r.json();
+      const byKid = {};
+      for (const k of d.keys || []) byKid[k.kid] = k;
+      _jwks = { at: Date.now(), byKid };
+    } catch (e) {
+      // 구글 일시 장애 — 이미 받아 둔 키가 있으면 그대로 쓰고 1분 뒤 다시 받는다 (전 회원 401 방지)
+      if (!_jwks.byKid) throw e;
+      _jwks.at = Date.now() - 3600e3 + 60e3;
+    }
   }
   return _jwks.byKid[kid] || null;
 }

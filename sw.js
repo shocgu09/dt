@@ -1,4 +1,4 @@
-const CACHE = 'dt-club-v11';
+const CACHE = 'dt-club-v12';
 const STATIC = [
   '/',
   '/index.html',

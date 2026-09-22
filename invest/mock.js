@@ -8,23 +8,32 @@ var Mock = (function () {
   var on = false;
   var season = null;        // /season 응답
   var account = null;       // /account 응답
-  var sheet = null;         // 열려 있는 주문창 상태 { code, name, side, type, price, qty, taxFree }
+  var sheet = null;         // 열려 있는 주문창 상태 { code, name, side, type, price, qty, taxFree, busy, orderId }
   var watchingOrder = null; // 체결을 기다리는 주문 폴링 타이머
   var histNext = null;
 
   /* ===== 워커 호출 ===== */
-  async function api(path, method, body) {
+  async function api(path, method, body, _retried) {
     if (!currentUser) throw new Error('로그인이 필요합니다');
-    var token = await currentUser.getIdToken();
-    var res = await fetch(MARKET_API + '/api/mock' + path, {
+    var token = await currentUser.getIdToken(!!_retried);     // 재시도 때는 토큰을 강제로 새로 받는다
+    var init = {
       method: method || 'GET',
       headers: body ? { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' } : { Authorization: 'Bearer ' + token },
       body: body ? JSON.stringify(body) : undefined
-    });
+    };
+    // 워커가 붙들면 주문창이 "접수 중"에 갇힌다 — 15초에 끊는다 (주문은 clientOrderId 로 중복 접수가 막혀 있어 재전송해도 안전)
+    if (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) init.signal = AbortSignal.timeout(15000);
+    var res;
+    try { res = await fetch(MARKET_API + '/api/mock' + path, init); }
+    catch (e) {
+      throw new Error(e && e.name === 'TimeoutError' ? '서버 응답이 늦습니다. 잠시 후 다시 시도하세요' : '네트워크 오류로 요청하지 못했습니다');
+    }
     var data = null;
     try { data = await res.json(); } catch (e) { /* 본문 없음 */ }
+    // 시계 오차·서명키 교체 직후에는 토큰이 거부될 수 있다 — 한 번은 새 토큰으로 다시 보낸다
+    if (res.status === 401 && !_retried) return api(path, method, body, true);
     if (!res.ok) {
-      var err = new Error((data && data.error) || '요청을 처리하지 못했습니다 (' + res.status + ')');
+      var err = new Error((data && data.error) || (res.status === 401 ? '로그인이 만료되었습니다. 새로고침해 주세요' : '요청을 처리하지 못했습니다 (' + res.status + ')'));
       err.code = data && data.code; err.status = res.status;
       throw err;
     }
@@ -34,6 +43,11 @@ var Mock = (function () {
   function modeKey() { return 'dt-invest-mock:' + (currentUser ? currentUser.uid : ''); }
   function won(n) { return fmtNum(Math.round(n)) + '원'; }
   function rateHtml(r) { return '<span class="' + signClass(r) + '">' + fmtRate(r) + '</span>'; }
+  function kstHM(ms) {
+    var d = new Date(ms);
+    try { return d.toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Seoul' }).replace(/\s/g, ' '); }
+    catch (e) { var p = function (n) { return String(n).padStart(2, '0'); }; return (d.getMonth() + 1) + '.' + d.getDate() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()); }
+  }
 
   /** KRX 호가단위 — 서버(engine.js)와 같은 표 */
   function tickSize(price, taxFree) {
@@ -47,8 +61,10 @@ var Mock = (function () {
     return 1000;
   }
 
-  /* ===== 모드 켜기/끄기 ===== */
-  async function setMode(next) {
+  /* ===== 모드 켜기/끄기 =====
+   * userInitiated: 버튼을 직접 눌렀을 때만 계좌 탭으로 옮기고 참가 창을 띄운다.
+   * 자동 복원(다시 방문)에서는 조용히 켜고, 미참가 회원에게는 계좌 탭 안의 참가 안내 카드만 남긴다. */
+  async function setMode(next, userInitiated) {
     on = !!next;
     try { localStorage.setItem(modeKey(), on ? '1' : '0'); } catch (e) {}
     document.body.classList.toggle('mock-on', on);
@@ -61,7 +77,9 @@ var Mock = (function () {
 
     if (!on) {
       closeSheet();
+      closeJoin();
       Poller.remove('mock-acc');
+      Poller.remove('mock-rank');
       document.getElementById('mockBar').style.display = 'none';
       renderTradeBar();
       if (currentTab === 'account' || currentTab === 'ranking') switchTab('market');
@@ -69,8 +87,7 @@ var Mock = (function () {
     }
     await refreshSeason();
     renderTradeBar();
-    // 아직 참가 전이면 참가 여부부터 묻는다 (닫아도 계좌 탭에 참가 안내가 남는다)
-    if (season && season.season && !season.joined) { switchTab('account'); openJoinFlow(); }
+    if (userInitiated && season && season.season && !season.joined) { switchTab('account'); openJoinFlow(); }
   }
 
   async function refreshSeason() {
@@ -177,8 +194,8 @@ var Mock = (function () {
       + '</div>';
 
     h += '<section class="m-section"><div class="m-head"><h3>📦 보유 종목</h3><span class="m-hint">' + a.positions.length + '종목</span></div>';
-    h += a.positions.length ? a.positions.map(function (p) {
-      return '<button class="mk-pos" onclick="openStock(\'' + escapeJsArg(p.code) + '\',\'' + escapeJsArg(p.name) + '\')">'
+    h += a.positions.length ? a.positions.filter(function (p) { return /^[0-9A-Z]{6}$/.test(p.code); }).map(function (p) {
+      return '<button class="mk-pos" onclick="openStock(\'' + p.code + '\',\'' + escapeJsArg(p.name) + '\')">'
         + stockLogoHtml(p.code, p.name, null, 'sm')
         + '<span class="mk-pos-main"><span class="mk-pos-name">' + escapeHtml(p.name) + (p.halted ? ' <i class="mk-tag">정지</i>' : '') + '</span>'
         +   '<span class="mk-pos-sub">' + fmtNum(p.qty) + '주 · 평단 ' + fmtNum(p.avgPrice) + '</span></span>'
@@ -189,7 +206,7 @@ var Mock = (function () {
     h += '</section>';
 
     if (a.openOrders.length) {
-      h += '<section class="m-section"><div class="m-head"><h3>⏳ 미체결 주문</h3></div>'
+      h += '<section class="m-section"><div class="m-head"><h3>⏳ 미체결 주문</h3><span class="m-hint">정정은 취소 후 다시 주문</span></div>'
         + a.openOrders.map(orderRowHtml).join('') + '</section>';
     }
 
@@ -198,10 +215,12 @@ var Mock = (function () {
       + '<div id="mkHistory"></div></section>'
       + '<div class="disclaimer">⚠️ 가상의 자금으로 하는 모의투자이며 실제 매매·투자 권유가 아닙니다. 모의 체결가는 네이버 증권 시세 기준으로, 정규장(09:00~15:30)은 KRX 가격, '
       + '프리·애프터마켓(08:00~08:30 · 15:40~20:00)은 NXT 및 KRX 시간외 가격을 따릅니다. 시간외 거래는 지정가만 가능하며, '
-      + '일일 기록과 시즌 최종 순위는 KRX 정규장 종가(15:30)로 확정합니다. 수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2)
+      + '일일 기록과 시즌 최종 순위는 KRX 정규장 종가(15:30)로 확정합니다. 체결 판정은 최대 1분 간격으로 이루어져 실제보다 늦게 표시될 수 있고, '
+      + '시장가는 판정 시점의 현재가로 체결되어 호가 잔량·스프레드가 반영되지 않습니다. 수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2)
       + '%(ETF·ETN 면제). 가상 자산은 어떤 것으로도 교환되지 않습니다.</div>'
       + adminHtml();
     paint(el, h);
+    if (season.isAdmin) fillAdminForm();
   }
 
   function cell(k, v) { return '<div class="mk-cell"><span class="mk-cell-k">' + k + '</span><span class="mk-cell-v">' + v + '</span></div>'; }
@@ -209,11 +228,11 @@ var Mock = (function () {
   function orderRowHtml(o) {
     var sideTxt = o.side === 'buy' ? '매수' : '매도';
     return '<div class="mk-ord">'
-      + '<span class="mk-side ' + o.side + '">' + sideTxt + '</span>'
+      + '<span class="mk-side ' + (o.side === 'buy' ? 'buy' : 'sell') + '">' + sideTxt + '</span>'
       + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(o.name) + '</span>'
       +   '<span class="mk-pos-sub">' + (o.type === 'market' ? '시장가' : '지정가 ' + fmtNum(o.limitPrice))
       +   ' · ' + fmtNum(o.filledQty) + '/' + fmtNum(o.qty) + '주</span></span>'
-      + '<button class="mini-btn danger" onclick="Mock.cancel(\'' + o.id + '\', this)">취소</button>'
+      + '<button class="mini-btn danger" onclick="Mock.cancel(\'' + escapeJsArg(o.id) + '\', this)">취소</button>'
       + '</div>';
   }
 
@@ -225,10 +244,10 @@ var Mock = (function () {
       +   escapeHtml(s.endDate) + ' 종가 기준 <b>최종 자산</b>으로 순위를 가립니다.</p>'
       + '<ul class="mk-rules">'
       +   '<li>국내 상장 종목 — 주식 · ETF(레버리지 · 인버스 포함) · ETN. 거래정지 · 운영진 제한 종목 제외</li>'
-      +   '<li>정규장 08:30~15:30 지정가 · 시장가 / 시간외 08:00~08:30 · 15:40~20:00 지정가만 (ETF · ETN 은 시간외 불가)</li>'
+      +   '<li>정규장 08:30~15:30 지정가 · 시장가 / 시간외 08:00~08:30 · 15:40~20:00 지정가만 (ETF · ETN 은 NXT 거래 대상일 때만)</li>'
       +   '<li>체결가는 네이버 증권 시세 기준 — 정규장은 KRX, 시간외는 NXT · KRX 시간외 가격</li>'
       +   '<li>수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2) + '% (ETF · ETN 면제)</li>'
-      +   '<li>주문 뒤에 실제로 거래된 가격 · 수량 안에서만 체결됩니다</li>'
+      +   '<li>주문 뒤에 실제로 거래된 가격 · 수량 안에서만 체결됩니다 (판정은 최대 1분 간격)</li>'
       +   '<li>참가자 ' + fmtNum(season.participants) + '명 · 시즌마다 초기화 · 최종 순위는 ' + escapeHtml(s.endDate) + ' 15:30 종가 기준</li>'
       + '</ul>'
       + '<button class="btn-submit mk-join-btn" onclick="Mock.openJoinFlow()">시즌 참여하기</button>'
@@ -247,13 +266,29 @@ var Mock = (function () {
       document.body.classList.add('mk-noscroll');
     }
     el.innerHTML = '<div class="mk-sheet-dim" onclick="Mock.closeJoin()"></div>'
-      + '<div class="mk-sheet mk-joinflow" role="dialog" aria-modal="true" aria-label="시즌 참가">' + inner + '</div>';
+      + '<div class="mk-sheet mk-joinflow" role="dialog" aria-modal="true" aria-label="시즌 참가" tabindex="-1">' + inner + '</div>';
+    focusDialog(el);
+  }
+
+  /** 다이얼로그가 열리면 첫 컨트롤(없으면 시트 자체)로 포커스를 옮긴다 — 키보드·스크린리더 사용자가 뒤 화면에 남지 않게 */
+  function focusDialog(wrap) {
+    var dlg = wrap.querySelector('[role="dialog"]');
+    if (!dlg) return;
+    var first = dlg.querySelector('input:not([disabled]), textarea, button:not([disabled]):not([aria-label="닫기"])');
+    try { (first || dlg).focus({ preventScroll: true }); } catch (e) {}
   }
 
   function closeJoin() {
     var el = document.getElementById('mkJoin');
     if (el) el.remove();
     if (!document.getElementById('mkSheet')) document.body.classList.remove('mk-noscroll');
+  }
+
+  /** Esc — 열려 있는 창을 하나 닫는다. 닫은 게 있으면 true (app.js 의 keydown 에서 부른다) */
+  function onEscape() {
+    if (document.getElementById('mkSheet')) { if (!sheet || !sheet.busy) closeSheet(); return true; }
+    if (document.getElementById('mkJoin')) { closeJoin(); return true; }
+    return false;
   }
 
   function openJoinFlow() {
@@ -285,6 +320,7 @@ var Mock = (function () {
           '<b>가상의 자금</b>입니다. 실제 돈과 무관하며 현금·포인트·상품 등 어떤 것으로도 교환되지 않습니다.',
           '실제 매매·투자 권유가 아닙니다. 모의 결과는 실제 투자 성과와 다를 수 있습니다.',
           '시세는 네이버 증권 기준입니다. 정규장은 KRX 가격, 프리 · 애프터마켓은 NXT · KRX 시간외 가격을 따르며 지연 · 오류가 있을 수 있습니다. 시세 제공 오류로 인한 체결은 확인 후 정정 또는 취소될 수 있습니다.',
+          '체결은 실제 호가창이 아니라 <b>주문 뒤에 실제로 거래된 가격 · 수량</b>으로 판정합니다. 판정은 최대 1분 간격이라 실제보다 늦게 체결이 표시될 수 있고, 시장가는 판정 시점의 현재가로 체결되어 호가 스프레드 · 잔량 · VI 는 반영되지 않습니다.',
           '주문은 거래일(주말 · 휴장일 제외)에만 접수됩니다. 배당 · 액면분할 · 증자 등 권리 변동과 상장폐지는 반영되지 않습니다.',
           '순위표에 <b>이름 · 총자산 · 수익률 · 체결 건수</b>가 회원들에게 공개됩니다. 보유 종목은 공개되지 않습니다.',
           '1인 1계정입니다. 부정한 방법이 확인되면 순위에서 제외됩니다.'
@@ -294,10 +330,10 @@ var Mock = (function () {
           '시드머니 <b>' + fmtCompact(s.seed) + '원</b> · 시즌마다 초기화 · 순위는 <b>실시간</b>(시간외 가격 포함), 일일 기록과 최종 순위는 ' + escapeHtml(s.endDate) + ' 15:30 <b>KRX 종가</b> 기준',
           '국내 상장 종목 — 주식 · ETF(레버리지 · 인버스 포함) · ETN. 거래정지 · 운영진 제한 종목은 주문할 수 없습니다.',
           '정규장 08:30~15:30 지정가 · 시장가. 09:00 전 접수분은 <b>시가</b>, 15:20~15:30 접수분은 <b>종가</b>로 체결되고, 미체결은 장 마감 시 만료됩니다.',
-          '시간외 08:00~08:30 프리마켓(NXT · 08:50 까지 체결) / 15:40~20:00 애프터마켓(NXT · KRX) — <b>지정가만</b>, ETF · ETN 은 불가, 미체결은 08:50 · 20:00 에 자동 취소됩니다.',
-          '지정가는 전일 종가 ±30% 안에서 호가단위에 맞게 입력합니다.',
+          '시간외 08:00~08:30 프리마켓(NXT · 08:50 까지 체결) / 15:40~20:00 애프터마켓(NXT · KRX) — <b>지정가만</b>, ETF · ETN 은 NXT 거래 대상일 때만, 미체결은 08:50 · 20:00 에 자동 취소됩니다.',
+          '지정가는 전일 종가 ±30% 안에서 호가단위에 맞게 입력합니다. 주문 <b>정정은 없고</b> 취소 후 다시 주문합니다.',
           '수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2) + '% (ETF · ETN 면제) — 실전과 같은 수준',
-          '주문 뒤에 <b>실제로 거래된 가격과 수량</b> 안에서만 체결됩니다. 거래가 적은 종목은 여러 번에 나눠 체결되거나 체결되지 않을 수 있습니다.',
+          '거래가 적은 종목은 여러 번에 나눠 체결되거나 체결되지 않을 수 있습니다.',
           '시장가 매수는 현재가 기준으로 주문 가능 금액을 잡습니다. 체결가가 올라 금액이 모자라면 살 수 있는 수량까지만 체결되고 나머지는 취소됩니다.',
           '신용 · 미수 · 공매도는 없습니다.'
         ])
@@ -327,7 +363,7 @@ var Mock = (function () {
 
   async function cancel(id, btn) {
     if (btn) btn.disabled = true;
-    try { await api('/orders/' + id, 'DELETE'); }
+    try { await api('/orders/' + encodeURIComponent(id), 'DELETE'); }
     catch (e) { alert(e.message); }
     await refreshAccount();
   }
@@ -339,13 +375,10 @@ var Mock = (function () {
     try {
       var d = await api('/history' + (histNext ? '?before=' + histNext : ''));
       var rows = d.items.map(function (f) {
-        var t = new Date(f.at);
-        var p = function (n) { return String(n).padStart(2, '0'); };
         return '<div class="mk-ord">'
-          + '<span class="mk-side ' + f.side + '">' + (f.side === 'buy' ? '매수' : '매도') + '</span>'
+          + '<span class="mk-side ' + (f.side === 'buy' ? 'buy' : 'sell') + '">' + (f.side === 'buy' ? '매수' : '매도') + '</span>'
           + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(f.name) + '</span>'
-          +   '<span class="mk-pos-sub">' + (t.getMonth() + 1) + '.' + t.getDate() + ' ' + p(t.getHours()) + ':' + p(t.getMinutes())
-          +   ' · ' + fmtNum(f.qty) + '주 × ' + fmtNum(f.price) + '</span></span>'
+          +   '<span class="mk-pos-sub">' + escapeHtml(kstHM(f.at)) + ' · ' + fmtNum(f.qty) + '주 × ' + fmtNum(f.price) + '</span></span>'
           + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(f.qty * f.price) + '</span>'
           +   '<span class="mk-pos-sub">비용 ' + fmtNum(f.fee + f.tax) + '</span></span>'
           + '</div>';
@@ -360,7 +393,7 @@ var Mock = (function () {
   }
 
   /* ===== 랭킹 ===== */
-  var _rankBuilt = false, _hallHtml = null, _prevRank = {};
+  var _rankBuilt = false, _hallHtml = null, _prevRank = {}, _prevSeasonId = null;
 
   async function loadRanking() {
     var el = document.getElementById('tab-ranking');
@@ -370,15 +403,17 @@ var Mock = (function () {
     var h = '';
     try {
       var d = await api('/leaderboard');
-      var t = new Date(d.asOf), p = function (n) { return String(n).padStart(2, '0'); };
+      // 시즌이 바뀌면 이전 시즌의 순위 기억을 버린다
+      if (_prevSeasonId !== d.season.id) { _prevRank = {}; _hallHtml = null; _prevSeasonId = d.season.id; }
       h += '<section class="m-section"><div class="m-head"><h3>🏆 ' + escapeHtml(d.season.name) + '</h3>'
-        + '<span class="m-hint">' + p(t.getHours()) + ':' + p(t.getMinutes()) + ' 기준 · ' + (d.live ? '장중' : '종가') + '</span></div>';
+        + '<span class="m-hint">' + escapeHtml(kstHM(d.asOf).split(' ').slice(-1)[0]) + ' 기준 · ' + (d.live ? '장중' : '종가') + '</span></div>';
       h += d.rows.length ? d.rows.map(function (r) {
         var rr = (r.equity - d.season.seed) / d.season.seed * 100;
         var medal = r.rank === 1 ? '🥇' : (r.rank === 2 ? '🥈' : (r.rank === 3 ? '🥉' : r.rank));
-        // 직전 갱신보다 순위가 오르내렸으면 잠깐 표시한다
-        var was = _prevRank[r.nickname], move = (was && was !== r.rank) ? (was > r.rank ? ' moved-up' : ' moved-down') : '';
-        _prevRank[r.nickname] = r.rank;
+        // 직전 갱신보다 순위가 오르내렸으면 잠깐 표시한다 (서버가 준 안정 키로 같은 회원을 잇는다)
+        var k = r.key || r.nickname;
+        var was = _prevRank[k], move = (was && was !== r.rank) ? (was > r.rank ? ' moved-up' : ' moved-down') : '';
+        _prevRank[k] = r.rank;
         return '<div class="mk-rank' + (r.me ? ' me' : '') + move + '">'
           + '<span class="mk-rank-no">' + medal + '</span>'
           + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(r.nickname) + (r.me ? ' <i class="mk-tag">나</i>' : '') + '</span>'
@@ -437,7 +472,7 @@ var Mock = (function () {
       + (season.joined
           ? '<button class="mk-buy" onclick="Mock.openSheet(\'buy\')">매수</button>'
             + '<button class="mk-sell" onclick="Mock.openSheet(\'sell\')"' + (pos ? '' : ' disabled') + '>매도</button>'
-          : '<button class="mk-buy" onclick="switchTab(\'account\')">모의투자 참가하고 매수하기</button>')
+          : '<button class="mk-buy" onclick="switchTab(\'account\'); Mock.openJoinFlow()">모의투자 참가하고 매수하기</button>')
       + '</div>';
     host.appendChild(bar);
   }
@@ -448,13 +483,15 @@ var Mock = (function () {
     var q = (typeof _lastQuote !== 'undefined' && _lastQuote && _lastQuote.code === curStock.code) ? _lastQuote : null;
     // 시간외에는 화면에 보이는 그 시장의 가격(q.price), 정규장에는 KRX 가격을 기본값으로
     var px = q ? (phaseInfo().limitOnly ? (q.price || (q.krx && q.krx.price)) : ((q.krx && q.krx.price) || q.price)) : 0;
-    sheet = { code: curStock.code, name: curStock.name, side: side, type: 'limit', price: px, qty: '', taxFree: false, busy: false };
+    sheet = { code: curStock.code, name: curStock.name, side: side, type: 'limit', price: px || 0, qty: '', taxFree: false, busy: false, orderId: null };
     renderSheet();
-    // 장 구간(정규장·시간외)이 바뀌었을 수 있으니 열 때마다 최신 상태를 받아 다시 그린다
-    refreshAccount().then(function () { if (sheet && !sheet.busy) renderSheet(); });
+    var mySheet = sheet;
+    // 장 구간(정규장·시간외)이 바뀌었을 수 있으니 열 때마다 최신 상태를 받는다 — 통째로 다시 그리지 않고 안내·계산 부분만 갱신
+    // (다시 그리면 입력 중인 포커스가 날아가고 모바일 키보드가 닫힌다)
+    refreshAccount().then(function () { if (sheet === mySheet && !sheet.busy) refreshSheetParts(); });
     try {
-      var k = await api('/kind?code=' + encodeURIComponent(sheet.code));
-      if (sheet && sheet.code === k.code) { sheet.taxFree = k.taxFree; renderSheet(); }
+      var k = await api('/kind?code=' + encodeURIComponent(sheet.code) + '&name=' + encodeURIComponent(sheet.name || ''));
+      if (sheet === mySheet && sheet.code === k.code && sheet.taxFree !== !!k.taxFree) { sheet.taxFree = !!k.taxFree; refreshSheetParts(); }
     } catch (e) { /* 호가단위는 서버가 다시 확인한다 */ }
   }
 
@@ -462,7 +499,7 @@ var Mock = (function () {
     sheet = null;
     var el = document.getElementById('mkSheet');
     if (el) el.remove();
-    document.body.classList.remove('mk-noscroll');
+    if (!document.getElementById('mkJoin')) document.body.classList.remove('mk-noscroll');
   }
 
   /** 지금이 어느 구간인지 — 계좌 응답이 더 최신이면 그쪽을 쓴다 */
@@ -477,7 +514,7 @@ var Mock = (function () {
     if (p.holiday) return '<div class="mk-warn">오늘은 휴장일입니다. 다음 거래일 08:00 부터 주문할 수 있습니다</div>';
     if (!p.canOrder) return '<div class="mk-warn">주문 가능 시간이 아닙니다 (거래일 08:00~20:00)</div>';
     if (p.phase === 'pre_market') return '<div class="mk-info"><b>프리마켓(NXT)</b> · 지정가 주문만 가능 · 08:30 접수 마감 · 08:50 까지 미체결 시 자동 취소</div>';
-    if (p.phase === 'after_market') return '<div class="mk-info"><b>애프터마켓</b> · 지정가 주문만 가능 · 20:00 까지 미체결 시 자동 취소 · ETF·ETN 제외</div>';
+    if (p.phase === 'after_market') return '<div class="mk-info"><b>애프터마켓</b> · 지정가 주문만 가능 · 20:00 까지 미체결 시 자동 취소 · ETF·ETN 은 NXT 거래 대상일 때만</div>';
     if (p.phase === 'pre_open') return '<div class="mk-info">장전 주문 · 09:00 <b>시가</b>로 체결됩니다</div>';
     if (p.phase === 'close_auction') return '<div class="mk-info">장 마감 동시호가 · 15:30 <b>종가</b>로 체결됩니다</div>';
     return '';
@@ -497,10 +534,18 @@ var Mock = (function () {
     return { price: price, qty: qty, amount: amount, fee: fee, tax: tax, maxQty: Math.max(0, maxQty) };
   }
 
+  function calcHtml(n) {
+    var isBuy = sheet.side === 'buy', a = account;
+    return row('주문 금액', won(n.amount))
+      + row('수수료' + (n.tax || !isBuy ? ' · 세금' : ''), won(n.fee + n.tax))
+      + (a ? row(isBuy ? '주문 후 주문 가능 금액' : '받을 금액', won(isBuy ? a.available - n.amount - n.fee : n.amount - n.fee - n.tax)) : '');
+  }
+
   function renderSheet() {
     if (!sheet) return;
-    var s = sheet, n = sheetNumbers(), a = account;
+    var s = sheet, n = sheetNumbers();
     var el = document.getElementById('mkSheet');
+    var fresh = !el;
     if (!el) {
       el = document.createElement('div');
       el.id = 'mkSheet';
@@ -512,42 +557,50 @@ var Mock = (function () {
     var limitOnly = phaseInfo().limitOnly;
     if (limitOnly) s.type = 'limit';            // 시간외에는 실전과 같이 지정가만
     el.innerHTML = '<div class="mk-sheet-dim" onclick="Mock.closeSheet()"></div>'
-      + '<div class="mk-sheet ' + s.side + '" role="dialog" aria-modal="true" aria-label="주문">'
+      + '<div class="mk-sheet ' + s.side + '" role="dialog" aria-modal="true" aria-label="주문" tabindex="-1">'
       + '<div class="mk-sheet-head"><span class="mk-sheet-title">' + escapeHtml(s.name) + ' <i>' + escapeHtml(s.code) + '</i></span>'
       +   '<button class="mini-btn" onclick="Mock.closeSheet()" aria-label="닫기">✕</button></div>'
-      + '<div class="seg-row mk-seg2">'
-      +   '<button class="seg' + (isBuy ? ' on buy' : '') + '" onclick="Mock.setSheet(\'side\',\'buy\')">매수</button>'
-      +   '<button class="seg' + (!isBuy ? ' on sell' : '') + '" onclick="Mock.setSheet(\'side\',\'sell\')">매도</button>'
+      + '<div class="seg-row mk-seg2" role="group" aria-label="매매 구분">'
+      +   '<button class="seg' + (isBuy ? ' on buy' : '') + '" aria-pressed="' + isBuy + '" onclick="Mock.setSheet(\'side\',\'buy\')">매수</button>'
+      +   '<button class="seg' + (!isBuy ? ' on sell' : '') + '" aria-pressed="' + !isBuy + '" onclick="Mock.setSheet(\'side\',\'sell\')">매도</button>'
       + '</div>'
-      + '<div class="seg-row sub mk-seg2">'
-      +   '<button class="seg' + (s.type === 'limit' ? ' on' : '') + '" onclick="Mock.setSheet(\'type\',\'limit\')">지정가</button>'
-      +   '<button class="seg' + (s.type === 'market' ? ' on' : '') + '" onclick="Mock.setSheet(\'type\',\'market\')"' + (limitOnly ? ' disabled' : '') + '>시장가</button>'
+      + '<div class="seg-row sub mk-seg2" role="group" aria-label="주문 종류">'
+      +   '<button class="seg' + (s.type === 'limit' ? ' on' : '') + '" aria-pressed="' + (s.type === 'limit') + '" onclick="Mock.setSheet(\'type\',\'limit\')">지정가</button>'
+      +   '<button class="seg' + (s.type === 'market' ? ' on' : '') + '" aria-pressed="' + (s.type === 'market') + '" onclick="Mock.setSheet(\'type\',\'market\')"' + (limitOnly ? ' disabled' : '') + '>시장가</button>'
       + '</div>'
-      + sessionNote()
-      + '<label class="mk-field"><span>가격</span>'
+      + '<div id="mkSessionNote">' + sessionNote() + '</div>'
+      + '<div class="mk-field"><span id="mkPriceLbl">가격</span>'
       + (s.type === 'market'
           ? '<div class="mk-market">시장가 · 접수 후 실제 체결가로 체결됩니다</div>'
-          : '<div class="mk-stepper"><button onclick="Mock.step(-1)" aria-label="한 호가 내리기">−</button>'
-            + '<input id="mkPrice" type="text" inputmode="numeric" value="' + (n.price ? fmtNum(n.price) : '') + '" oninput="Mock.input(\'price\', this)">'
-            + '<button onclick="Mock.step(1)" aria-label="한 호가 올리기">+</button></div>')
-      + '</label>'
-      + '<label class="mk-field"><span>수량</span>'
-      +   '<div class="mk-stepper"><input id="mkQty" type="text" inputmode="numeric" placeholder="0" value="' + (n.qty ? fmtNum(n.qty) : '') + '" oninput="Mock.input(\'qty\', this)"><em>주</em></div>'
-      + '</label>'
-      + '<div class="mk-pct">' + [10, 25, 50, 100].map(function (p) {
-          return '<button class="mini-btn" onclick="Mock.pct(' + p + ')">' + (p === 100 ? '최대' : p + '%') + '</button>';
-        }).join('') + '<span class="mk-dim">' + (isBuy ? '최대 ' : '보유 ') + fmtNum(n.maxQty) + '주</span></div>'
-      + '<div class="mk-calc">'
-      +   row('주문 금액', won(n.amount))
-      +   row('수수료' + (n.tax || !isBuy ? ' · 세금' : ''), won(n.fee + n.tax))
-      +   (a ? row(isBuy ? '주문 후 주문 가능 금액' : '받을 금액', won(isBuy ? a.available - n.amount - n.fee : n.amount - n.fee - n.tax)) : '')
+          : '<div class="mk-stepper"><button type="button" onclick="Mock.step(-1)" aria-label="한 호가 내리기">−</button>'
+            + '<input id="mkPrice" type="text" inputmode="numeric" aria-labelledby="mkPriceLbl" value="' + (n.price ? fmtNum(n.price) : '') + '" oninput="Mock.input(\'price\', this)">'
+            + '<button type="button" onclick="Mock.step(1)" aria-label="한 호가 올리기">+</button></div>')
       + '</div>'
-      + '<div class="mk-sheet-msg" id="mkMsg"></div>'
+      + '<div class="mk-field"><span id="mkQtyLbl">수량</span>'
+      +   '<div class="mk-stepper"><input id="mkQty" type="text" inputmode="numeric" aria-labelledby="mkQtyLbl" placeholder="0" value="' + (n.qty ? fmtNum(n.qty) : '') + '" oninput="Mock.input(\'qty\', this)"><em>주</em></div>'
+      + '</div>'
+      + '<div class="mk-pct">' + [10, 25, 50, 100].map(function (p) {
+          return '<button type="button" class="mini-btn" onclick="Mock.pct(' + p + ')">' + (p === 100 ? '최대' : p + '%') + '</button>';
+        }).join('') + '<span class="mk-dim" id="mkMaxQty">' + (isBuy ? '최대 ' : '보유 ') + fmtNum(n.maxQty) + '주</span></div>'
+      + '<div class="mk-calc">' + calcHtml(n) + '</div>'
+      + '<div class="mk-sheet-msg" id="mkMsg" role="alert"></div>'
       + '<button class="mk-submit ' + s.side + '" id="mkSubmit" onclick="Mock.submit()"' + (s.busy ? ' disabled' : '') + '>'
       +   (isBuy ? '매수' : '매도') + ' 주문</button>'
       + '</div>';
+    if (fresh) focusDialog(el);
   }
   function row(k, v) { return '<div class="mk-calc-row"><span>' + k + '</span><b>' + v + '</b></div>'; }
+
+  /** 입력 중에 바뀔 수 있는 부분만 갱신 — 안내문·최대 수량·계산 행 (포커스와 키보드는 그대로) */
+  function refreshSheetParts() {
+    if (!sheet || !document.getElementById('mkSheet')) return;
+    var limitOnly = phaseInfo().limitOnly;
+    if (limitOnly && sheet.type === 'market') { renderSheet(); return; }     // 구간이 바뀌어 시장가가 막히면 통째로
+    var n = sheetNumbers();
+    var note = document.getElementById('mkSessionNote'); if (note) note.innerHTML = sessionNote();
+    var mx = document.getElementById('mkMaxQty'); if (mx) mx.textContent = (sheet.side === 'buy' ? '최대 ' : '보유 ') + fmtNum(n.maxQty) + '주';
+    var calc = document.querySelector('#mkSheet .mk-calc'); if (calc) calc.innerHTML = calcHtml(n);
+  }
 
   function setSheet(key, val) {
     if (!sheet || sheet.busy) return;
@@ -562,13 +615,10 @@ var Mock = (function () {
     var v = Number(String(el.value).replace(/[^0-9]/g, '')) || 0;
     sheet[key] = v;
     el.value = v ? fmtNum(v) : '';
-    var n = sheetNumbers(), calc = document.querySelector('#mkSheet .mk-calc');
-    if (calc) {
-      var isBuy = sheet.side === 'buy', a = account;
-      calc.innerHTML = row('주문 금액', won(n.amount))
-        + row('수수료' + (n.tax || !isBuy ? ' · 세금' : ''), won(n.fee + n.tax))
-        + (a ? row(isBuy ? '주문 후 주문 가능 금액' : '받을 금액', won(isBuy ? a.available - n.amount - n.fee : n.amount - n.fee - n.tax)) : '');
-    }
+    msg('');
+    var n = sheetNumbers();
+    var mx = document.getElementById('mkMaxQty'); if (mx) mx.textContent = (sheet.side === 'buy' ? '최대 ' : '보유 ') + fmtNum(n.maxQty) + '주';
+    var calc = document.querySelector('#mkSheet .mk-calc'); if (calc) calc.innerHTML = calcHtml(n);
   }
 
   function step(dir) {
@@ -578,13 +628,17 @@ var Mock = (function () {
     var t = dir > 0 ? tickSize(p, sheet.taxFree) : tickSize(Math.max(1, p - 1), sheet.taxFree);
     var np = dir > 0 ? Math.floor(p / t) * t + t : Math.ceil(p / t) * t - t;
     sheet.price = Math.max(t, np);
-    renderSheet();
+    var inp = document.getElementById('mkPrice');
+    if (inp) { inp.value = fmtNum(sheet.price); input('price', inp); }
+    else renderSheet();
   }
 
   function pct(p) {
     if (!sheet || sheet.busy) return;
     sheet.qty = Math.floor(sheetNumbers().maxQty * p / 100);
-    renderSheet();
+    var inp = document.getElementById('mkQty');
+    if (inp) { inp.value = sheet.qty ? fmtNum(sheet.qty) : ''; input('qty', inp); }
+    else renderSheet();
   }
 
   function msg(text, cls) {
@@ -592,24 +646,57 @@ var Mock = (function () {
     if (el) { el.textContent = text || ''; el.className = 'mk-sheet-msg ' + (cls || ''); }
   }
 
+  /** 서버에 보내기 전에 걸러 낼 수 있는 것은 여기서 — 왕복 없이 바로 안내한다 (최종 판정은 서버) */
+  function validateBeforeSubmit(n) {
+    var p = phaseInfo();
+    if (!p.canOrder) return p.holiday ? '오늘은 휴장일입니다' : (p.phase === 'break' ? '15:30~15:40 은 주문 접수 시간이 아닙니다' : '주문 가능 시간이 아닙니다 (거래일 08:00~20:00)');
+    if (n.qty <= 0) return '수량을 입력하세요';
+    if (sheet.type === 'limit') {
+      if (n.price <= 0) return '주문 가격을 입력하세요';
+      var t = tickSize(n.price, sheet.taxFree);
+      if (n.price % t !== 0) {
+        // 가장 가까운 호가로 맞춰 주고 한 번 더 누르게 한다
+        sheet.price = Math.round(n.price / t) * t;
+        var inp = document.getElementById('mkPrice');
+        if (inp) { inp.value = fmtNum(sheet.price); input('price', inp); }
+        return '호가단위(' + t + '원)에 맞춰 ' + fmtNum(sheet.price) + '원으로 바꿨습니다. 확인 후 다시 눌러 주세요';
+      }
+      var q = (typeof _lastQuote !== 'undefined' && _lastQuote && _lastQuote.code === sheet.code) ? _lastQuote : null;
+      var prev = q && q.krx && q.krx.prevClose;
+      if (prev) {
+        var upRaw = prev * 1.3, dnRaw = prev * 0.7;
+        var upper = Math.floor(upRaw / tickSize(upRaw, sheet.taxFree)) * tickSize(upRaw, sheet.taxFree);
+        var lower = Math.ceil(dnRaw / tickSize(dnRaw, sheet.taxFree)) * tickSize(dnRaw, sheet.taxFree);
+        if (n.price > upper || n.price < lower) return '가격제한폭을 벗어났습니다 (' + fmtNum(lower) + '~' + fmtNum(upper) + '원)';
+      }
+    }
+    if (sheet.side === 'buy' && account && n.amount + n.fee > account.available) return '주문 가능 금액이 부족합니다';
+    if (sheet.side === 'sell' && n.qty > n.maxQty) return '매도 가능 수량이 부족합니다 (' + fmtNum(n.maxQty) + '주)';
+    return null;
+  }
+
   async function submit() {
     if (!sheet || sheet.busy) return;
     var n = sheetNumbers();
-    if (n.qty <= 0) { msg('수량을 입력하세요', 'err'); return; }
-    if (sheet.type === 'limit' && n.price <= 0) { msg('주문 가격을 입력하세요', 'err'); return; }
+    var bad = validateBeforeSubmit(n);
+    if (bad) { msg(bad, 'err'); return; }
     sheet.busy = true;
     var btn = document.getElementById('mkSubmit');
     if (btn) { btn.disabled = true; btn.textContent = '주문 접수 중'; }
     // 같은 주문이 두 번 들어가지 않도록 주문마다 고유값을 붙인다 (서버가 재전송을 같은 주문으로 본다)
     var cid = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2);
+    var mySheet = sheet;
     try {
       var d = await api('/orders', 'POST', {
         clientOrderId: cid, code: sheet.code, side: sheet.side, type: sheet.type, qty: n.qty,
         limitPrice: sheet.type === 'limit' ? n.price : undefined
       });
+      if (sheet !== mySheet) return;          // 기다리는 사이 창을 닫았으면 계좌 탭에서 확인하면 된다
+      sheet.orderId = d.order.id;
       showPending(d.order);
       watchOrder(d.order.id, 0);
     } catch (e) {
+      if (sheet !== mySheet) return;
       sheet.busy = false;
       msg(e.message, 'err');
       if (btn) { btn.disabled = false; btn.textContent = (sheet.side === 'buy' ? '매수' : '매도') + ' 주문'; }
@@ -635,30 +722,32 @@ var Mock = (function () {
     msg('');
   }
 
-  /** 주문 직후 2초마다 상태를 물어본다 — 물어볼 때 서버가 체결을 시도한다. 1분 넘으면 크론에 맡긴다 */
+  /** 주문 직후 2초마다 상태를 물어본다 — 물어볼 때 서버가 체결을 시도한다. 1분 넘으면 크론에 맡긴다.
+   *  창은 "이 주문을 접수한 그 창"일 때만 닫는다 — 다른 종목의 새 주문창을 끌어내리지 않게 */
   function watchOrder(id, tries) {
     clearTimeout(watchingOrder);
+    var mine = function () { return sheet && sheet.orderId === id; };
     watchingOrder = setTimeout(async function () {
       try {
-        var d = await api('/orders/' + id);
+        var d = await api('/orders/' + encodeURIComponent(id));
         var o = d.order;
         if (o.status === 'filled' || o.status === 'cancelled' || o.status === 'expired' || o.status === 'rejected') {
           await refreshAccount();
           var done = o.filledQty > 0
             ? (o.name + ' ' + (o.side === 'buy' ? '매수' : '매도') + ' 체결 · ' + fmtNum(o.filledQty) + '주' + (d.fill ? ' · ' + fmtNum(d.fill.price) + '원' : ''))
             : (o.name + ' 주문이 ' + (o.status === 'cancelled' ? '취소' : '만료') + '되었습니다' + (o.reason ? ' (' + o.reason + ')' : ''));
-          closeSheet();
+          if (mine()) closeSheet();
           toast(done, o.filledQty > 0 ? o.side : '');
           return;
         }
-        if (o.filledQty > 0) showPending(o, o.filledQty);
-        if (tries >= 30 || !sheet) {
+        if (o.filledQty > 0 && mine()) showPending(o, o.filledQty);
+        if (tries >= 30 || !mine()) {
           await refreshAccount();
-          if (sheet) { closeSheet(); toast(o.name + ' 주문 대기 중 · 계좌 탭에서 확인할 수 있습니다', ''); }
+          if (mine()) { closeSheet(); toast(o.name + ' 주문 대기 중 · 계좌 탭에서 확인할 수 있습니다', ''); }
           return;
         }
         watchOrder(id, tries + 1);
-      } catch (e) { if (tries < 30 && sheet) watchOrder(id, tries + 1); }
+      } catch (e) { if (tries < 30 && mine()) watchOrder(id, tries + 1); }
     }, 2000);
   }
 
@@ -674,20 +763,34 @@ var Mock = (function () {
     setTimeout(function () { el.classList.add('out'); setTimeout(function () { el.remove(); }, 400); }, 3600);
   }
 
-  /* ===== 관리자: 시즌 만들기 ===== */
+  /* ===== 관리자: 시즌 만들기·고치기 ===== */
   function adminHtml() {
     if (!season || !season.isAdmin) return '';
+    var cur = season.season || season.next;
     return '<details class="mk-admin"><summary>⚙️ 시즌 관리 (운영진)</summary>'
       + '<div class="form-grid">'
-      + '<input class="f-input" id="mkSid" placeholder="시즌 ID (예: 2026PRE, 2027Q1)">'
-      + '<input class="f-input" id="mkSname" placeholder="이름 (예: 프리시즌, 2027년 1분기)">'
+      + (cur ? '<p class="mk-note" style="margin-top:0">현재 시즌 <b>' + escapeHtml(cur.name) + '</b> (' + escapeHtml(cur.id) + ') 값이 채워져 있습니다. '
+          + (season.season ? '진행 중인 시즌은 이름 · 종료일 · 전달사항만 바꿀 수 있습니다.' : '시작 전이라 모든 값을 바꿀 수 있습니다.') + '</p>' : '')
+      + '<input class="f-input" id="mkSid" placeholder="시즌 ID (예: 2026PRE, 2027Q1)" aria-label="시즌 ID">'
+      + '<input class="f-input" id="mkSname" placeholder="이름 (예: 프리시즌, 2027년 1분기)" aria-label="시즌 이름">'
       + '<div class="form-row"><input type="date" class="f-input" id="mkSstart" aria-label="시작일">'
       + '<input type="date" class="f-input" id="mkSend" aria-label="종료일"></div>'
-      + '<textarea class="f-textarea" id="mkSnotice" maxlength="1000" placeholder="전달사항 (선택) — 참가 안내 창에 표시됩니다" style="min-height:80px"></textarea>'
+      + '<textarea class="f-textarea" id="mkSnotice" maxlength="1000" placeholder="전달사항 (선택) — 참가 안내 창에 표시됩니다" style="min-height:80px" aria-label="전달사항"></textarea>'
       + '<button class="btn-submit" onclick="Mock.saveSeason(this)">시즌 저장</button>'
       + '<div class="status-msg" id="mkSstatus"></div>'
-      + '<p class="mk-note">시드 1억원 · 수수료 0.015% · 매도세 0.20% 로 만들어집니다. 시작일이 되면 자동으로 열리고, 종료일 장 마감 후 최종 순위가 확정됩니다.</p>'
+      + '<p class="mk-note">새 시즌은 시드 1억원 · 수수료 0.015% · 매도세 0.20% 로 만들어집니다. 시작일이 되면 자동으로 열리고, 종료일 장 마감 후 최종 순위가 확정됩니다. '
+      + '같은 ID 로 저장하면 기존 시즌을 고칩니다 (시드·요율은 유지).</p>'
       + '</div></details>';
+  }
+
+  /** 시즌 관리 폼에 현재(또는 다음) 시즌 값을 채운다 — 비어 있을 때만 (입력 중인 글자를 덮지 않는다) */
+  function fillAdminForm() {
+    var cur = season && (season.season || season.next);
+    if (!cur) return;
+    var set = function (id, v) { var el = document.getElementById(id); if (el && !el.value && !el.dataset.touched) { el.value = v || ''; el.oninput = function () { el.dataset.touched = '1'; }; } };
+    set('mkSid', cur.id); set('mkSname', cur.name);
+    set('mkSstart', cur.startDate || cur.start_date); set('mkSend', cur.endDate || cur.end_date);
+    set('mkSnotice', cur.notice || '');
   }
 
   async function saveSeason(btn) {
@@ -695,8 +798,8 @@ var Mock = (function () {
     var v = function (id) { return document.getElementById(id).value.trim(); };
     btn.disabled = true;
     try {
-      await api('/admin/seasons', 'POST', { id: v('mkSid'), name: v('mkSname'), startDate: v('mkSstart'), endDate: v('mkSend'), notice: v('mkSnotice') });
-      st.innerHTML = '<span class="ok">✅ 저장했습니다.</span>';
+      var r = await api('/admin/seasons', 'POST', { id: v('mkSid'), name: v('mkSname'), startDate: v('mkSstart'), endDate: v('mkSend'), notice: v('mkSnotice') });
+      st.innerHTML = '<span class="ok">✅ ' + (r.updated ? '기존 시즌을 고쳤습니다.' : '새 시즌을 만들었습니다.') + '</span>';
       await refreshSeason();
       renderAccount();
     } catch (e) { st.innerHTML = '<span class="err">❌ ' + escapeHtml(e.message) + '</span>'; }
@@ -705,7 +808,7 @@ var Mock = (function () {
 
   return {
     isOn: function () { return on; },
-    setMode: setMode, onTab: onTab, renderTradeBar: renderTradeBar,
+    setMode: setMode, onTab: onTab, renderTradeBar: renderTradeBar, onEscape: onEscape,
     join: join, openJoinFlow: openJoinFlow, joinStep2: joinStep2, closeJoin: closeJoin, cancel: cancel, loadHistory: loadHistory,
     openSheet: openSheet, closeSheet: closeSheet, setSheet: setSheet, input: input, step: step, pct: pct, submit: submit,
     saveSeason: saveSeason

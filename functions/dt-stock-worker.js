@@ -5,6 +5,7 @@
 
 import { naver, daum, yahoo } from './providers/naver.js';
 import { verifyIdToken, bearerToken } from './lib/verify-id-token.js';
+import { profileOf } from './lib/profile.js';
 import { handleMock, mockErrorResponse, runCron } from './mock/api.js';
 
 const CORS = {
@@ -27,6 +28,8 @@ function json(data, status = 200, extra) {
 function fail(msg, status = 502) { return json({ error: msg }, status); }
 
 const isCode = (c) => /^[0-9A-Z]{6}$/.test(c || '');
+// 업종·테마 번호 — 네이버 URL 경로에 들어가므로 숫자만 통과시킨다
+const isGroupNo = (n) => /^\d{1,8}$/.test(n || '');
 
 // ── KV 캐시 래퍼 ───────────────────────────────────────────────
 // KV 는 어디까지나 캐시다 — 읽기/쓰기가 실패해도(일일 쓰기 한도 초과 등) 요청은 살린다.
@@ -145,6 +148,9 @@ export default {
       // 게스트(익명 로그인)는 공용 모듈에서 걸러진다 — 폐쇄형 동호회 전제
       user = await verifyIdToken(bearerToken(request), env.FIREBASE_PROJECT_ID);
       if (!user) return json({ error: '회원 전용입니다' }, 401);
+      // 토큰이 살아 있어도 users 문서에 role 이 없으면(강퇴·탈퇴) 회원이 아니다 — 시세도 막는다
+      const prof = await profileOf(env, user.sub, bearerToken(request));
+      if (!prof.role) return json({ error: 'DT Club 회원만 이용할 수 있습니다' }, 403);
     }
 
     // 모의투자 — 장부(D1)를 다루므로 인증을 끈 개발 모드에서는 열지 않는다
@@ -168,7 +174,10 @@ export default {
       if (path === '/api/trend')   return json(await handleTrend(env, q.get('code')));
       if (path === '/api/spark')   return json(await handleSpark(env, q.get('code')));
     } catch (e) {
-      return fail(e.message || '시세 조회 실패');
+      // 업스트림 URL·내부 예외 원문은 로그에만 남긴다 (회원에게 그대로 보이면 내부 구조가 드러난다)
+      console.warn('quote api failed', path, String((e && e.message) || e).slice(0, 200));
+      const timeout = e && (e.name === 'TimeoutError' || /abort/i.test(String(e.message)));
+      return fail(timeout ? '시세 서버 응답이 늦습니다. 잠시 후 다시 시도해 주세요' : '시세를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요');
     }
 
     return json({ error: 'Not Found' }, 404);
@@ -184,7 +193,7 @@ export default {
 async function handleQuote(env, code) {
   if (!isCode(code)) return { error: '종목코드는 6자리 숫자입니다' };
   return memo(`q:${code}`, TTL.quote, async () => {
-    // 폴백 체인: 네이버 → 다음 → 야후
+    // 폴백 체인: 네이버 → 다음 → 야후 (야후는 코스피/코스닥 접미사를 모두 시도한다)
     try { return await naver.getQuote(code); }
     catch (e1) {
       try { return await daum.getQuote(code); }
@@ -304,6 +313,7 @@ async function handleRank(env, type, market) {
 async function handleSectors(env, kind, no) {
   const k = kind === 'industry' ? 'industry' : 'theme';
   if (no) {
+    if (!isGroupNo(no)) return { error: '업종·테마 번호가 올바르지 않습니다' };
     return cached(env, `sg:${k}:${no}`, TTL.sectors, async () => ({
       kind: k, no, items: await naver.getSectorStocks(k, no, 20), source: 'naver'
     }));
@@ -330,15 +340,17 @@ async function handleNews(env, code) {
 }
 
 async function handleSearch(env, term) {
-  const t = (term || '').trim();
+  const t = (term || '').trim().slice(0, 40);
   if (t.length < 1) return { items: [] };
-  // 한 글자 검색어는 입력 도중에 스쳐 가는 값이라 KV 에 하루씩 남길 이유가 없다 (쓰기 한도 절약)
-  if (t.length < 2) return memo(`s:${t}`, 300, async () => ({ query: t, items: await naver.search(t) }));
-  return cached(env, `s2:${t}`, TTL.search, async () => {
+  // 검색어는 KV 에 쓰지 않는다 — 입력 도중 스쳐 가는 부분 문자열마다 KV 쓰기 1건이면
+  // 무료 일 1,000건 한도를 회원 타이핑만으로 소진한다. 인스턴스 메모리 캐시(5분)로 충분하다.
+  // (ETF 전체 목록만 KV 에 하루 두 번 둔다)
+  const key = t.toLowerCase().replace(/\s+/g, '');
+  if (t.length < 2) return memo(`s:${key}`, 300, async () => ({ query: t, items: await naver.search(t) }));
+  return memo(`s2:${key}`, 300, async () => {
     const items = await naver.search(t).catch(() => []);
     // 네이버 자동완성은 이름 앞부분만 맞춘다 — ETF 는 전체 목록에서 키워드(중간 단어)로도 찾아 덧붙인다
     const seen = new Set(items.map((i) => i.code));
-    const key = t.toLowerCase().replace(/\s+/g, '');
     const etfs = await etfList(env).catch(() => []);
     for (const e of etfs) {
       if (items.length >= 20) break;

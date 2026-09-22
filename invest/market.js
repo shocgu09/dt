@@ -128,6 +128,26 @@ async function searchStocks(q) {
 var _serverMarketStatus = null;   // 'OPEN' | 'CLOSE' | null(모름)
 var _serverStatusAt = 0;
 
+// KRX 휴장일 (주말 제외, KST YYYYMMDD) — functions/mock/engine.js 의 HOLIDAYS 와 같은 표. 둘을 함께 고친다.
+var KRX_HOLIDAYS = {
+  '20260924': 1, '20260925': 1, '20261005': 1, '20261009': 1, '20261225': 1, '20261231': 1,
+  '20270101': 1, '20270205': 1, '20270208': 1, '20270209': 1, '20270301': 1, '20270505': 1, '20270513': 1, '20270816': 1,
+  '20270914': 1, '20270915': 1, '20270916': 1, '20271004': 1, '20271011': 1, '20271227': 1, '20271231': 1
+};
+
+/** KST 기준 날짜·시각 분해 */
+function kstParts(d) {
+  var k = new Date((d || new Date()).getTime() + (d || new Date()).getTimezoneOffset() * 60000 + 9 * 3600000);
+  var p = function (n) { return String(n).padStart(2, '0'); };
+  return { ymd: '' + k.getFullYear() + p(k.getMonth() + 1) + p(k.getDate()), day: k.getDay(), hm: k.getHours() * 60 + k.getMinutes(), date: k };
+}
+
+/** 오늘(KST)이 거래일인가 — 평일이고 휴장일이 아닌 날 */
+function isTradingDayKst(d) {
+  var k = kstParts(d);
+  return k.day >= 1 && k.day <= 5 && !KRX_HOLIDAYS[k.ymd];
+}
+
 function setMarketStatus(st) {
   if (!st) return;
   _serverMarketStatus = st;
@@ -139,21 +159,23 @@ function isMarketOpen(now) {
   if (_serverMarketStatus && Date.now() - _serverStatusAt < 300000) {
     return _serverMarketStatus === 'OPEN';
   }
-  var d = now || new Date();
-  var kst = new Date(d.getTime() + (d.getTimezoneOffset() * 60000) + 9 * 3600000);
-  var day = kst.getDay();
-  if (day === 0 || day === 6) return false;
-  var m = kst.getHours() * 60 + kst.getMinutes();
+  var k = kstParts(now);
+  if (!isTradingDayKst(now)) return false;            // 주말·휴장일
   // 넥스트레이드(NXT) 출범으로 거래시간이 08:00~20:00 으로 연장됐다.
   //   프리마켓 08:00~08:50 / 메인마켓 09:00~15:20 / 애프터마켓 15:40~20:00
   //   (KRX 정규장은 09:00~15:30 그대로)
   // 어차피 네이버 marketStatus 가 우선이고 이건 폴백이므로 넉넉히 잡는다.
-  return m >= 8 * 60 && m <= 20 * 60 + 10;
+  return k.hm >= 8 * 60 && k.hm <= 20 * 60 + 10;
+}
+
+/** 서버 상태 없이 시계로만 판정 중인가 (배지 문구를 약하게 쓰기 위해) */
+function isMarketStateGuessed() {
+  return !(_serverMarketStatus && Date.now() - _serverStatusAt < 300000);
 }
 
 function marketStateLabel() {
   if (!isMarketOpen()) return { cls: 'closed', text: '장 마감' };
-  return { cls: 'live', text: '실시간' };
+  return { cls: 'live', text: isMarketStateGuessed() ? '장중(추정)' : '실시간' };
 }
 
 /* ===== 폴링 스케줄러 =====
@@ -172,9 +194,11 @@ var Poller = (function () {
       .then(job.fn)
       .catch(function () { /* 개별 실패는 무시 — 다음 주기에 재시도 */ })
       .then(function () {
+        // 실행 중에 같은 키로 remove+add 가 됐으면 이 체인은 옛것이다 — 여기서 끊어야 폴링이 2중·3중으로 늘지 않는다
+        if (jobs[key] !== job || paused) return;
         // 주기는 매번 다시 계산한다 — 개장 전에 들어온 화면이 개장 후에도 느린 주기로 남지 않게
         var ms = typeof job.ms === 'function' ? job.ms() : job.ms;
-        if (jobs[key] && !paused) job.timer = setTimeout(function () { run(key); }, ms);
+        job.timer = setTimeout(function () { run(key); }, ms);
       });
   }
 
@@ -198,7 +222,8 @@ var Poller = (function () {
     resume: function () {
       if (!paused) return;
       paused = false;
-      Object.keys(jobs).forEach(function (k) { run(k); });
+      // 멈춰 있던 동안 끝난 실행이 타이머를 다시 걸지 못하도록 여기서만 재개한다
+      Object.keys(jobs).forEach(function (k) { clearTimeout(jobs[k].timer); run(k); });
     },
     activeKeys: function () { return Object.keys(jobs); }
   };
@@ -270,10 +295,14 @@ async function loadWatchlist() {
   return watchlist;
 }
 
+var WATCHLIST_MAX = 50;      // firestore.rules 의 stock_watchlist 상한과 같다
+
 async function toggleWatch(code) {
   if (!db || !currentUser) return false;
+  if (!/^[0-9A-Z]{6}$/.test(String(code || ''))) throw new Error('종목코드가 올바르지 않습니다');
   await ensureWatchlist();
   var on = watchlist.indexOf(code) === -1;
+  if (on && watchlist.length >= WATCHLIST_MAX) throw new Error('관심종목은 ' + WATCHLIST_MAX + '개까지 담을 수 있습니다');
   watchlist = on ? watchlist.concat([code]) : watchlist.filter(function (c) { return c !== code; });
   var FV = firebase.firestore.FieldValue;
   try {
