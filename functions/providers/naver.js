@@ -19,8 +19,13 @@ function signOf(code) {
   return 0;
 }
 
+// 외부 호출 제한 시간. 네이버가 응답을 끊지 않고 붙들면 워커의 in-flight 캐시(memo)가 그 키를 기다리는
+// 모든 요청을 함께 멈춰 세운다(2026-09-22 health 가 120초 넘게 멈춘 실측). 8초면 끊고 다음 요청이 다시 시도한다.
+const FETCH_MS = 8000;
+const withTimeout = (init) => ({ ...(init || {}), signal: AbortSignal.timeout(FETCH_MS) });
+
 async function getJson(url) {
-  const r = await fetch(url, { headers: HEADERS });
+  const r = await fetch(url, withTimeout({ headers: HEADERS }));
   if (!r.ok) throw new Error(`naver ${r.status} ${url}`);
   return r.json();
 }
@@ -109,7 +114,7 @@ export const naver = {
    * ETF 가 하나도 안 나온다. 목록은 EUC-KR 로 온다.
    */
   async getEtfList() {
-    const r = await fetch('https://finance.naver.com/api/sise/etfItemList.nhn', { headers: HEADERS });
+    const r = await fetch('https://finance.naver.com/api/sise/etfItemList.nhn', withTimeout({ headers: HEADERS }));
     if (!r.ok) throw new Error(`naver etf list ${r.status}`);
     const d = JSON.parse(new TextDecoder('euc-kr').decode(await r.arrayBuffer()));
     return ((d.result && d.result.etfItemList) || [])
@@ -341,9 +346,9 @@ export const naver = {
 export const daum = {
   name: 'daum',
   async getQuote(code) {
-    const r = await fetch(`https://finance.daum.net/api/quotes/A${code}?summary=false&changeStatistics=true`, {
+    const r = await fetch(`https://finance.daum.net/api/quotes/A${code}?summary=false&changeStatistics=true`, withTimeout({
       headers: { 'User-Agent': UA, 'Referer': `https://finance.daum.net/quotes/A${code}` }
-    });
+    }));
     if (!r.ok) throw new Error(`daum ${r.status}`);
     const d = await r.json();
     return {
@@ -363,7 +368,7 @@ export const yahoo = {
     const suffix = market === 'KOSDAQ' ? 'KQ' : 'KS';
     const r = await fetch(
       `https://query1.finance.yahoo.com/v8/finance/chart/${code}.${suffix}?interval=1d&range=1d`,
-      { headers: { 'User-Agent': UA } }
+      withTimeout({ headers: { 'User-Agent': UA } })
     );
     if (!r.ok) throw new Error(`yahoo ${r.status}`);
     const d = await r.json();

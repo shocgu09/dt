@@ -12,7 +12,12 @@ async function marketApi(path, params) {
   var qs = new URLSearchParams(params || {}).toString();
   var url = MARKET_API + path + (qs ? '?' + qs : '');
 
-  var res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+  // 워커가 응답을 붙들면 화면이 "불러오는 중"에 갇힌다 — 15초에 끊어 오류로 돌리고 다음 폴링이 다시 부른다
+  var init = { headers: { Authorization: 'Bearer ' + token } };
+  if (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) init.signal = AbortSignal.timeout(15000);
+  var res;
+  try { res = await fetch(url, init); }
+  catch (e) { throw new Error(e && e.name === 'TimeoutError' ? '시세 서버 응답이 늦습니다. 잠시 후 다시 시도합니다' : '네트워크 오류로 시세를 가져오지 못했습니다'); }
   if (res.status === 401) throw new Error('인증이 만료되었습니다. 새로고침해 주세요');
   if (!res.ok) throw new Error('시세를 가져오지 못했습니다 (' + res.status + ')');
   var data = await res.json();
