@@ -124,24 +124,40 @@ var Mock = (function () {
   function refreshAccountOrSeason() { return (season && season.joined) ? refreshAccount() : refreshSeason(); }
 
   /* ===== 계좌 ===== */
+  /**
+   * 계좌 탭을 다시 그린다. 시세 폴링마다 불리므로, 사용자가 만든 상태가 있는 부분은 새로 만들지 않고
+   * 기존 노드를 그대로 옮겨 붙인다 — 안 그러면 폴링 때마다 날아간다.
+   *   - 시즌 관리 패널(details): 열림 상태와 입력 중인 글자
+   *   - 체결 내역(#mkHistory): "불러오기"로 받아 둔 목록
+   */
+  var KEEP_ON_REPAINT = ['details.mk-admin', '#mkHistory'];
+  function paint(el, html) {
+    var kept = KEEP_ON_REPAINT.map(function (sel) { return el.querySelector(sel); });
+    el.innerHTML = html;
+    KEEP_ON_REPAINT.forEach(function (sel, i) {
+      var old = kept[i], fresh = el.querySelector(sel);
+      if (old && fresh && old.innerHTML) fresh.replaceWith(old);
+    });
+  }
+
   function renderAccount(errMsg) {
     var el = document.getElementById('tab-account');
     if (!el) return;
-    if (!season) { el.innerHTML = '<div class="loading">불러오는 중</div>'; return; }
-    if (season.error) { el.innerHTML = '<div class="empty">' + escapeHtml(season.error) + '</div>'; return; }
+    if (!season) { paint(el, '<div class="loading">불러오는 중</div>'); return; }
+    if (season.error) { paint(el, '<div class="empty">' + escapeHtml(season.error) + '</div>'); return; }
 
     if (!season.season) {
-      el.innerHTML = '<div class="mk-card"><h3>지금은 진행 중인 시즌이 없습니다</h3>'
+      paint(el, '<div class="mk-card"><h3>지금은 진행 중인 시즌이 없습니다</h3>'
         + (season.next
             ? '<p>다음 시즌 <b>' + escapeHtml(season.next.name) + '</b> — ' + escapeHtml(season.next.start_date) + ' 시작</p>'
             : '<p>다음 시즌 일정이 정해지면 여기에 표시됩니다.</p>')
         + '<button class="mini-btn" onclick="switchTab(\'ranking\')">지난 시즌 결과 보기</button></div>'
-        + adminHtml();
+        + adminHtml());
       return;
     }
 
-    if (!season.joined) { el.innerHTML = joinHtml() + adminHtml(); return; }
-    if (!account) { el.innerHTML = '<div class="empty">' + escapeHtml(errMsg || '계좌 정보를 불러오는 중') + '</div>'; return; }
+    if (!season.joined) { paint(el, joinHtml() + adminHtml()); return; }
+    if (!account) { paint(el, '<div class="empty">' + escapeHtml(errMsg || '계좌 정보를 불러오는 중') + '</div>'); return; }
 
     var a = account, s = a.season;
     var evalPnl = a.positions.reduce(function (t, p) { return t + p.pnl; }, 0);
@@ -185,7 +201,7 @@ var Mock = (function () {
       + '일일 기록과 시즌 최종 순위는 KRX 정규장 종가(15:30)로 확정합니다. 수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2)
       + '%(ETF·ETN 면제). 가상 자산은 어떤 것으로도 교환되지 않습니다.</div>'
       + adminHtml();
-    el.innerHTML = h;
+    paint(el, h);
   }
 
   function cell(k, v) { return '<div class="mk-cell"><span class="mk-cell-k">' + k + '</span><span class="mk-cell-v">' + v + '</span></div>'; }
