@@ -33,7 +33,7 @@ var Market = {
   ohlc:    function (code, tf) { return marketApi('/api/ohlc', { code: code, tf: tf || 'D' }); },
   index:   function () { return marketApi('/api/index'); },
   // 서버 자동완성(앞부분 일치) + 종목 마스터의 초성·키워드 검색을 합친다 — 아래 searchStocks 참조
-  search:  function (q) { return searchStocks(q); },
+  search:  function (q, onUpdate) { return searchStocks(q, onUpdate); },
   rank:    function (type, market) { return marketApi('/api/rank', { type: type || 'up', market: market || 'KOSPI' }); },
   sectors: function (kind, no) {
     var p = { kind: kind || 'theme' };
@@ -101,24 +101,36 @@ function localSearch(list, q) {
   return head.concat(rest).slice(0, 20);
 }
 
-async function searchStocks(q) {
+/**
+ * 종목 검색. 종목 마스터에서 찾은 결과는 기다리지 않고 바로 돌려주고, 서버 자동완성(신규 상장 종목 보강)은
+ * 도착하면 onUpdate 로 다시 넘긴다 — 서버가 느린 콜로에 걸려도 화면은 즉시 뜬다.
+ * 마스터가 없거나(로드 실패) 마스터에서 못 찾았을 때만 서버를 기다린다 (최대 6초).
+ */
+async function searchStocks(q, onUpdate) {
   var term = (q || '').trim();
   if (!term) return { items: [] };
-  var res = await Promise.all([
-    marketApi('/api/search', { q: term }).catch(function () { return null; }),
-    loadMaster().then(function (m) { return localSearch(m, term); })
-  ]);
-  var server = (res[0] && res[0].items) || [], local = res[1] || [];
-  if (!res[0] && !local.length) throw new Error('검색하지 못했습니다. 잠시 후 다시 시도해 주세요');
-  // 초성 검색은 네이버가 앞부분만 맞추므로 자체 결과를 앞에, 그 밖에는 서버 결과를 앞에 둔다
-  var first = /[ㄱ-ㅎ]/.test(term) ? local : server, second = first === local ? server : local;
-  var seen = {}, items = [];
-  first.concat(second).forEach(function (i) {
-    if (seen[i.code] || items.length >= 20) return;
-    seen[i.code] = true;
-    items.push({ code: i.code, name: i.name, market: i.market });
-  });
-  return { query: term, items: items };
+  var merge = function (server, local) {
+    // 초성 검색은 네이버가 앞부분만 맞추므로 자체 결과를 앞에, 그 밖에는 서버 결과를 앞에 둔다
+    var first = /[ㄱ-ㅎ]/.test(term) ? local : server, second = first === local ? server : local;
+    var seen = {}, items = [];
+    first.concat(second).forEach(function (i) {
+      if (seen[i.code] || items.length >= 20) return;
+      seen[i.code] = true;
+      items.push({ code: i.code, name: i.name, market: i.market });
+    });
+    return { query: term, items: items };
+  };
+  var serverP = marketApi('/api/search', { q: term }).catch(function () { return null; });
+  var local = localSearch(await loadMaster(), term);
+  if (local.length) {
+    if (onUpdate) serverP.then(function (r) {
+      if (r && r.items && r.items.length) onUpdate(merge(r.items, local));
+    });
+    return merge([], local);
+  }
+  var r = await Promise.race([serverP, new Promise(function (res) { setTimeout(function () { res(null); }, 6000); })]);
+  if (!r) throw new Error('검색하지 못했습니다. 잠시 후 다시 시도해 주세요');
+  return merge(r.items || [], local);
 }
 
 /* ===== 장 운영시간 (KRX 정규장 09:00~15:30 · NXT/KRX 애프터마켓 ~20:00) ===== */

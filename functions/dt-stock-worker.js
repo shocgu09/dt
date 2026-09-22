@@ -347,21 +347,10 @@ async function handleSearch(env, term) {
   // (ETF 전체 목록만 KV 에 하루 두 번 둔다)
   const key = t.toLowerCase().replace(/\s+/g, '');
   if (t.length < 2) return memo(`s:${key}`, 300, async () => ({ query: t, items: await naver.search(t) }));
-  return memo(`s2:${key}`, 300, async () => {
-    const items = await naver.search(t).catch(() => []);
-    // 네이버 자동완성은 이름 앞부분만 맞춘다 — ETF 는 전체 목록에서 키워드(중간 단어)로도 찾아 덧붙인다
-    const seen = new Set(items.map((i) => i.code));
-    const etfs = await etfList(env).catch(() => []);
-    for (const e of etfs) {
-      if (items.length >= 20) break;
-      if (seen.has(e.code)) continue;
-      if (e.name.toLowerCase().replace(/\s+/g, '').includes(key) || e.code === t.toUpperCase()) {
-        items.push({ code: e.code, name: e.name, market: 'ETF' });
-        seen.add(e.code);
-      }
-    }
-    return { query: t, items };
-  });
+  // ETF 키워드 보강은 화면의 종목 마스터(invest/stock-master.json, ETF·ETN 포함)가 맡는다.
+  // 예전엔 여기서 finance.naver.com ETF 목록을 기다렸는데, 일부 콜로(HKG)에서 그 호출이 8초 타임아웃에
+  // 걸려 검색 한 번에 8초씩 걸렸다. 자동완성 한 번만 부른다.
+  return memo(`s2:${key}`, 300, async () => ({ query: t, items: await naver.search(t) }));
 }
 
 /** ETF 전체 목록 — 하루 두 번만 받아 KV 에 둔다 */

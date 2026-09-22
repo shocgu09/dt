@@ -69,6 +69,8 @@ function showMain() {
   loadBriefings();
   loadConfig();
   initMockMode();
+  // 종목 마스터(약 190KB)를 미리 받아 둔다 — 첫 검색이 파일 내려받기를 기다리지 않게
+  if (typeof loadMaster === 'function') setTimeout(loadMaster, 1200);
 }
 
 /* ===== 모의투자 모드 =====
@@ -538,6 +540,7 @@ function setSentiment(s) {
  * 저장 형식: [{ code, name }]  — 구버전은 ["005930"] 문자열 배열이라 양쪽 다 받는다.
  */
 var _tickerSearchTimer = null;
+var _tickerSeq = 0;
 var _tickerNameCache = {};     // code -> name (구버전 코드 표시용)
 
 function normalizeTicker(t) {
@@ -557,16 +560,22 @@ async function runTickerSearch(q) {
   var box = document.getElementById('bTickerResults');
   box.style.display = '';
   box.innerHTML = '<div class="tr-empty">검색 중...</div>';
-  try {
-    var d = await Market.search(q);
-    if (!d.items || !d.items.length) { box.innerHTML = '<div class="tr-empty">검색 결과가 없습니다</div>'; return; }
-    box.innerHTML = d.items.map(function (i) {
+  var seq = ++_tickerSeq;
+  var paint = function (d) {
+    if (seq !== _tickerSeq) return;
+    var items = (d.items || []).filter(function (i) { return /^[0-9A-Z]{6}$/.test(i.code); });
+    if (!items.length) { box.innerHTML = '<div class="tr-empty">검색 결과가 없습니다</div>'; return; }
+    box.innerHTML = items.map(function (i) {
       return '<button type="button" class="tr-item" onclick="pickTicker(\'' + i.code + '\',\'' + escapeJsArg(i.name) + '\')">'
         + '<span class="tr-name">' + escapeHtml(i.name) + '</span>'
         + '<span class="tr-meta">' + escapeHtml(i.market || '') + ' · ' + i.code + '</span>'
         + '</button>';
     }).join('');
+  };
+  try {
+    paint(await Market.search(q, paint));
   } catch (e) {
+    if (seq !== _tickerSeq) return;
     box.innerHTML = '<div class="tr-empty">' + escapeHtml(e.message) + '</div>';
   }
 }

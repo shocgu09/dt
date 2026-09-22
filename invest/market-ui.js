@@ -120,8 +120,7 @@ async function doSearch(q) {
   box.style.display = '';
   box.innerHTML = '<div class="sr-empty">검색 중...</div>';
   box.setAttribute('aria-busy', 'true');
-  try {
-    var d = await Market.search(q);
+  var paint = function (d) {
     if (seq !== _searchSeq) return;
     var items = (d.items || []).filter(function (i) { return isStockCode(i.code); });
     if (!items.length) { box.innerHTML = '<div class="sr-empty">검색 결과가 없습니다</div>'; return; }
@@ -132,6 +131,10 @@ async function doSearch(q) {
         + '<span class="sr-meta">' + escapeHtml(i.market || '') + ' · ' + i.code + '</span>'
         + '</button>';
     }).join('');
+  };
+  try {
+    // 마스터 결과는 즉시, 서버 보강 결과는 도착하면 다시 그린다
+    paint(await Market.search(q, paint));
   } catch (e) {
     if (seq !== _searchSeq) return;
     box.innerHTML = '<div class="sr-empty">' + escapeHtml(e.message) + '</div>';
