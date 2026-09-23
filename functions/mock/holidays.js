@@ -118,3 +118,25 @@ export async function syncTodayHoliday(db, t, now) {
   forgetHolidays();
   return true;
 }
+
+/**
+ * 방금 받은 시세로 오늘이 휴장일인지 잡는다 — 목록에 아직 없는 날을 그 자리에서 걸러 낸다.
+ *
+ * 정규장 한복판(09:05~15:15)에 거래정지가 아닌 종목이 CLOSE 면 휴장일로 본다.
+ * 프리·애프터마켓 구간은 쓰지 않는다 — NXT 비대상 종목은 정상 거래일에도 CLOSE 라 오판한다.
+ * 거래정지 종목도 뺀다 (그 종목만 CLOSE 인 것이지 시장이 닫힌 게 아니다).
+ *
+ * 크론의 09:35 확인을 기다리지 않고 주문·시세 조회 때 바로 반영된다.
+ */
+export async function catchHolidayFromQuote(db, quote, t, now) {
+  if (t.dow === 0 || t.dow === 6) return false;
+  if (t.hm < 9 * 60 + 5 || t.hm > 15 * 60 + 15) return false;
+  if (!quote || quote.halted || quote.marketStatus !== 'CLOSE') return false;
+  const set = await holidaySet(db);
+  if (set.has(t.ymd)) return false;
+  await db.prepare(
+    `INSERT OR IGNORE INTO holidays (ymd, name, source, added_at) VALUES (?, '휴장 (시세로 감지)', 'auto', ?)`
+  ).bind(t.ymd, now).run();
+  forgetHolidays();
+  return true;
+}

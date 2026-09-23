@@ -252,6 +252,10 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     if (!isCode(input.code)) throw new HttpError(400, '종목코드가 올바르지 않습니다');
     // 주문은 캐시가 아닌 방금 받은 시세로 검증한다
     const quote = await naver.getQuote(input.code).catch(() => null);
+    // 목록에 아직 없는 휴장일이면 여기서 잡는다 — 그래야 아래 acceptOrder 가 '휴장일' 로 막는다
+    if (await H.catchHolidayFromQuote(db, quote, E.kstNow(now), now).catch(() => false)) {
+      E.setHolidays(await H.holidaySet(db));
+    }
     const kind = await kindOf(input.code, quote && quote.name);
     try {
       const order = await E.acceptOrder(db, season, account, input, quote, kind === 'etf' || kind === 'etn', now);
