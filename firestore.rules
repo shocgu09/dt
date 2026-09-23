@@ -63,17 +63,40 @@ service cloud.firestore {
             || request.resource.data[field] == resource.data.get(field, 0) - 1);
     }
 
+    // Firestore 자동 ID(.add() / .doc()) 형식 — 문서 ID 가 화면의 id·onclick 속성에 들어가므로
+    // 따옴표·꺾쇠가 섞인 ID 로 문서를 만들지 못하게 막는다 (저장형 XSS 차단)
+    function isAutoId(id) {
+      return id is string && id.matches('^[A-Za-z0-9]{20}$');
+    }
+
+    // 작성자 표시 이름 — users/{uid}.name 과 같아야 한다 (남의 이름으로 글 쓰기 차단).
+    // 화면은 name → displayName → 로그인 이름 → '회원' 순으로 쓰므로 name 이 비어 있을 때만 나머지를 받는다.
+    // users 문서 get() 은 myRole() 과 같은 문서라 한 번만 센다.
+    function validAuthorName(n) {
+      let u = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      let nm = u.get('name', '');
+      return n is string && n.size() > 0
+        && ((nm is string && nm != '')
+              ? n == nm
+              : n in [u.get('displayName', ''), request.auth.token.get('name', ''), '회원']);
+    }
+
     // 재테크 댓글 작성 — 본인 명의 + 본문 길이 + 좋아요 0에서 시작.
     // isAdmin(운영진 배지)은 실제 관리자만 true 로 쓸 수 있다 (배지 위조 차단)
-    function validInvestCommentCreate() {
+    function validInvestCommentCreate(commentId) {
       let d = request.resource.data;
       return isRealUser()
+        && isAutoId(commentId)
+        && d.keys().hasOnly(['authorUid', 'authorName', 'isAdmin', 'body', 'parentId', 'likes', 'likedBy', 'createdAt'])
         && d.authorUid == request.auth.uid
+        && validAuthorName(d.get('authorName', ''))
         && d.body is string
         && d.body.size() > 0
         && d.body.size() <= 1000
         && d.get('likes', 0) == 0
         && d.get('likedBy', []).size() == 0
+        && (d.get('parentId', null) == null || isAutoId(d.get('parentId', null)))
+        && d.createdAt == request.time
         && (d.get('isAdmin', false) == false || isAdmin());
     }
 
@@ -456,7 +479,7 @@ service cloud.firestore {
       // 브리핑 댓글 (1단계 대댓글 지원)
       match /comments/{commentId} {
         allow read: if isRealUser();
-        allow create: if validInvestCommentCreate();
+        allow create: if validInvestCommentCreate(commentId);
         // 본인 댓글은 본문만 수정 가능 (authorUid·isAdmin 등을 못 바꾸게 화이트리스트),
         // 그 외에는 좋아요 토글만 — 본인이 자기 댓글에 좋아요를 누르는 것도 이 경로
         allow update: if isRealUser()
@@ -480,8 +503,18 @@ service cloud.firestore {
     // - 남의 글은 좋아요 토글, 댓글수·신고수 ±1 만 가능 (임의 값으로 덮어쓰기 차단)
     match /stock_boards/{code}/posts/{postId} {
       allow read: if isRealUser();
+      // 필드는 community.js submitPost 가 쓰는 것만 — 작성 시각은 서버 시각, 작성자 이름은 users 문서와 같아야 한다
       allow create: if isRealUser()
+        && isAutoId(postId)
+        && code.matches('^[0-9A-Z]{6}$')
+        && request.resource.data.keys().hasOnly(['code', 'stockName', 'authorUid', 'authorName', 'isAdmin', 'body',
+             'likes', 'likedBy', 'commentCount', 'reportCount', 'bragId', 'createdAt'])
+        && request.resource.data.get('code', '') == code
+        && request.resource.data.get('stockName', '') is string
+        && request.resource.data.get('stockName', '').size() <= 100
+        && request.resource.data.createdAt == request.time
         && request.resource.data.authorUid == request.auth.uid
+        && validAuthorName(request.resource.data.get('authorName', ''))
         && request.resource.data.body is string
         && request.resource.data.body.size() > 0
         && request.resource.data.body.size() <= 3000
@@ -517,7 +550,7 @@ service cloud.firestore {
 
       match /comments/{commentId} {
         allow read: if isRealUser();
-        allow create: if validInvestCommentCreate();
+        allow create: if validInvestCommentCreate(commentId);
         // 본인 댓글은 본문만 수정 가능 (authorUid·isAdmin 등을 못 바꾸게 화이트리스트),
         // 그 외에는 좋아요 토글만 — 본인이 자기 댓글에 좋아요를 누르는 것도 이 경로
         allow update: if isRealUser()
@@ -530,8 +563,11 @@ service cloud.firestore {
                 && request.resource.data.body.size() <= 1000)
                || validLikeToggle()
              );
+        // 삭제: 관리자 / 댓글 작성자 / 글 작성자(글을 지울 때 남의 댓글까지 함께 정리해야 한다)
         allow delete: if isAdmin()
-          || (isRealUser() && resource.data.authorUid == request.auth.uid);
+          || (isRealUser() && resource.data.authorUid == request.auth.uid)
+          || (isRealUser()
+              && get(/databases/$(database)/documents/stock_boards/$(code)/posts/$(postId)).data.authorUid == request.auth.uid);
       }
     }
 
@@ -549,10 +585,25 @@ service cloud.firestore {
     // - 열람·처리(status 변경)는 관리자만
     match /stock_reports/{reportId} {
       allow read: if isAdmin();
+      // 필드·형식을 community.js report() 가 쓰는 것으로 묶는다 — postId·code 는 관리 탭의 onclick 인자로 쓰인다
       allow create: if isRealUser()
+        && request.resource.data.keys().hasOnly(['postId', 'code', 'stockName', 'authorUid', 'reporterUid',
+             'reporterName', 'reason', 'status', 'excerpt', 'createdAt'])
         && request.resource.data.reporterUid == request.auth.uid
-        && request.resource.data.postId is string
+        && isAutoId(request.resource.data.postId)
         && reportId == request.resource.data.postId + '_' + request.auth.uid
+        && request.resource.data.code is string
+        && request.resource.data.code.matches('^[0-9A-Z]{6}$')
+        && exists(/databases/$(database)/documents/stock_boards/$(request.resource.data.code)/posts/$(request.resource.data.postId))
+        && request.resource.data.get('stockName', '') is string
+        && request.resource.data.get('stockName', '').size() <= 100
+        && request.resource.data.get('excerpt', '') is string
+        && request.resource.data.get('excerpt', '').size() <= 200
+        && request.resource.data.get('reporterName', '') is string
+        && request.resource.data.get('reporterName', '').size() <= 100
+        && (request.resource.data.get('authorUid', null) == null || request.resource.data.get('authorUid', null) is string)
+        && request.resource.data.get('status', 'open') == 'open'
+        && request.resource.data.createdAt == request.time
         && request.resource.data.get('reason', '') is string
         && request.resource.data.get('reason', '').size() <= 200;
       allow update, delete: if isAdmin();

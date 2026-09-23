@@ -59,7 +59,9 @@ var Community = (function () {
       if (more && lastDoc) q = q.startAfter(lastDoc);
       var snap = await q.get();
       if (seq !== _seq || forCode !== code) return;
-      var rows = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      // 문서 ID 는 id·onclick 속성에 그대로 들어간다 — 자동 ID 형식이 아니면 그리지 않는다
+      var rows = snap.docs.filter(function (d) { return isDocId(d.id); })
+        .map(function (d) { return Object.assign({ id: d.id }, d.data()); });
       posts = more ? posts.concat(rows) : rows;
       lastDoc = snap.docs.length ? snap.docs[snap.docs.length - 1] : lastDoc;
       hasMore = snap.docs.length === PAGE;
@@ -77,15 +79,17 @@ var Community = (function () {
   function render() {
     var el = panel();
     if (!el || !code) return;
+    // 좋아요·더보기·그래도 보기도 목록을 다시 그린다 — 쓰던 글(글쓰기·댓글 칸)은 챙겨 두었다가 돌려놓는다
+    var drafts = saveDrafts(el);
     var h = '<div class="cm-write">'
-      + '<textarea class="comment-input cm-input" id="cmBody" maxlength="' + BODY_MAX + '" placeholder="' + escapeHtml(name || '') + ' 에 대한 생각을 남겨 보세요 (투자 판단은 각자의 몫입니다)"'
+      + '<textarea class="comment-input cm-input" id="cmBody" maxlength="' + BODY_MAX + '" placeholder="' + escapeAttr((name || '') + ' 에 대한 생각을 남겨 보세요 · $종목명으로 종목을 연결할 수 있습니다') + '"'
       +   ' oninput="Community.count(this)"></textarea>'
       + '<div id="cmBragSlot">' + pendingBragHtml() + '</div>'
       + '<div class="comment-submit-row"><span class="comment-count-hint" id="cmCount">0 / ' + fmtNum(BODY_MAX) + '</span>'
       + (window.Mock && Mock.isOn() && !pendingBrag
           ? '<button class="mini-btn cm-brag-btn" onclick="Community.attachBrag(this)">📊 내 수익률</button>' : '')
       + '<button class="btn-submit" onclick="Community.submitPost(this)">글 올리기</button></div>'
-      + '<div class="cm-guide">매수·매도 권유, 리딩방 홍보, 근거 없는 루머는 신고 대상입니다.</div>'
+      + '<div class="cm-guide">회원 글은 투자 권유가 아닙니다 · 매수·매도 권유, 리딩방 홍보, 근거 없는 루머는 신고 대상</div>'
       + '</div>';
 
     if (!posts.length) {
@@ -94,14 +98,40 @@ var Community = (function () {
       h += '<div class="cm-list">' + posts.map(postHtml).join('') + '</div>';
       if (hasMore) h += '<button class="mini-btn cm-more" onclick="Community.loadMore()">더 보기</button>';
     }
-    h += '<div class="cm-foot">회원 글은 DT Club 의 입장과 무관하며 투자 권유가 아닙니다.</div>';
     el.innerHTML = h;
     // 펼쳐 둔 댓글 복원
     Object.keys(openC).forEach(function (id) { if (openC[id]) renderComments(id); });
+    restoreDrafts(drafts);
     fillBrags();
   }
 
+  /** 다시 그리기 전에 입력 중인 글을 챙겨 둔다 (id 가 있는 textarea — 글쓰기·댓글 칸) */
+  function saveDrafts(root) {
+    var out = {};
+    if (!root) return out;
+    [].slice.call(root.querySelectorAll('textarea[id]')).forEach(function (ta) {
+      if (!ta.value) return;
+      out[ta.id] = { v: ta.value, s: ta.selectionStart, e: ta.selectionEnd, f: document.activeElement === ta };
+    });
+    return out;
+  }
+
+  /** 다시 그린 칸에 쓰던 글·커서를 돌려놓는다 (포커스가 있던 칸만 다시 포커스 — 키보드가 괜히 올라오지 않게) */
+  function restoreDrafts(d) {
+    Object.keys(d).forEach(function (id) {
+      var ta = document.getElementById(id);
+      if (!ta || ta.value) return;
+      ta.value = d[id].v;
+      if (d[id].f) {
+        ta.focus();
+        try { ta.setSelectionRange(d[id].s, d[id].e); } catch (e) {}
+      }
+      if (id === 'cmBody') count(ta);
+    });
+  }
+
   function postHtml(p) {
+    if (!isDocId(p.id)) return '';        // id·onclick 속성에 들어간다 — 형식이 다른 ID 는 그리지 않는다
     var blinded = (p.reportCount || 0) >= BLIND_AT && !isAdmin && !mine(p) && !shown[p.id];
     var h = '<div class="cm-post" id="cp-' + p.id + '">';
     h += '<div class="comment-head">'
@@ -114,9 +144,8 @@ var Community = (function () {
       h += '</div>';
       return h;
     }
-    var body = String(p.body || '');
-    var long = body.length > 300 && !expanded[p.id];
-    h += '<div class="comment-body cm-body" id="cpb-' + p.id + '">' + linkifyBody(escapeHtml(long ? body.slice(0, 300) + '…' : body)) + '</div>';
+    var long = String(p.body || '').length > 300 && !expanded[p.id];
+    h += '<div class="comment-body cm-body" id="cpb-' + p.id + '">' + postBodyHtml(p) + '</div>';
     if (long) h += '<button class="comment-action" onclick="Community.expand(\'' + p.id + '\')">더보기 ▾</button>';
     if (p.bragId) h += '<div class="brag-slot" id="bg-' + p.id + '">' + bragCardHtml(bragCache[p.bragId]) + '</div>';
     h += '<div class="comment-edit" id="cpe-' + p.id + '" style="display:none"></div>';
@@ -132,6 +161,85 @@ var Community = (function () {
     h += '<div class="comment-section cm-comments" id="cpcs-' + p.id + '" style="' + (openC[p.id] ? '' : 'display:none') + '"></div>';
     h += '</div>';
     return h;
+  }
+
+  /** 글 본문 — 긴 글은 300자까지만 (더보기로 펼친다) */
+  function postBodyHtml(p) {
+    var body = String(p.body || '');
+    var long = body.length > 300 && !expanded[p.id];
+    return bodyHtml(long ? body.slice(0, 300) + '…' : body);
+  }
+
+  /** 글·댓글 본문 공통 — escape → 링크 → $종목 태그 순서 (태그는 escape 된 글에서만 바꾼다) */
+  function bodyHtml(text) {
+    needTags(text);
+    return tagify(linkifyBody(escapeHtml(text)));
+  }
+
+  /* ===== $종목 태그 =====
+   * 본문의 $삼성전자 · $005930 을 누르면 그 종목 상세로 가는 칩으로 바꾼다.
+   * 종목 마스터(stock-master.json)에 있는 이름(정확히 일치)·코드만 태그로 인정한다. 마스터가 아직 없으면 글자 그대로 두고,
+   * 받은 뒤 칩으로 바꾼다. 속성(onclick)에는 검증한 코드와 마스터의 종목명만 들어가고 회원이 쓴 글자는 들어가지 않는다.
+   */
+  var TAG_MAX = 10;                 // 글 하나에 칩은 10개까지 — 태그로 도배해도 화면이 버튼 밭이 되지 않게
+  var _tagIndex = null, _tagLoading = false;
+
+  function tagIndex() {
+    if (_tagIndex) return _tagIndex;
+    if (typeof _master === 'undefined' || !_master || !_master.length) return null;
+    var byName = {}, byCode = {};
+    _master.forEach(function (m) {
+      if (!isCode(m.code)) return;
+      byCode[m.code] = m;
+      if (!byName[m.name]) byName[m.name] = m;       // 이름이 겹치면 마스터 순서(시가총액 순) 앞의 것
+    });
+    _tagIndex = { byName: byName, byCode: byCode };
+    return _tagIndex;
+  }
+
+  /** 글에 $ 가 있는데 마스터가 아직 없으면 받아 두고, 받은 뒤 화면의 본문만 다시 그린다 */
+  function needTags(text) {
+    if (_tagLoading || String(text).indexOf('$') === -1 || tagIndex() || typeof loadMaster !== 'function') return;
+    _tagLoading = true;
+    loadMaster().then(function () {
+      _tagLoading = false;
+      if (tagIndex()) upgradeTags();
+    });
+  }
+
+  function upgradeTags() {
+    if (!code) return;
+    posts.forEach(function (p) {
+      var el = document.getElementById('cpb-' + p.id);
+      if (el && String(p.body || '').indexOf('$') !== -1) el.innerHTML = postBodyHtml(p);
+    });
+    Object.keys(openC).forEach(function (id) { if (openC[id]) renderComments(id); });
+  }
+
+  /** escape·링크 처리를 마친 HTML 에서 태그(<a>…</a> 포함) 바깥 글자만 훑어 $종목을 칩으로 바꾼다 */
+  function tagify(html) {
+    var idx = tagIndex();
+    if (!idx || html.indexOf('$') === -1) return html;
+    var n = 0;
+    return html.split(/(<a\b[^>]*>[\s\S]*?<\/a>|<[^>]+>)/).map(function (part, i) {
+      if (i % 2) return part;
+      return part.replace(/\$((?:[0-9A-Za-z가-힣.\-]|&amp;)+)/g, function (m, cand) {
+        if (n >= TAG_MAX) return m;
+        var raw = cand.replace(/&amp;/g, '&'), hit = null, used = '';
+        if (/^[0-9A-Z]{6}/.test(raw) && idx.byCode[raw.slice(0, 6)]) { hit = idx.byCode[raw.slice(0, 6)]; used = raw.slice(0, 6); }
+        else {
+          // "$삼성전자가" 처럼 조사가 붙어도 — 가장 길게 맞는 종목명까지만 태그로
+          for (var k = raw.length; k >= 2 && !hit; k--) {
+            if (idx.byName[raw.slice(0, k)]) { hit = idx.byName[raw.slice(0, k)]; used = raw.slice(0, k); }
+          }
+        }
+        if (!hit || !isCode(hit.code)) return m;
+        n++;
+        var usedEsc = used.replace(/&/g, '&amp;');
+        return '<button type="button" class="stock-tag" onclick="goStock(\'' + hit.code + '\',\'' + escapeJsArg(hit.name) + '\')">$'
+          + usedEsc + '</button>' + cand.slice(usedEsc.length);
+      });
+    }).join('');
   }
 
   /** 글쓰기 칸에 붙여 둔 스냅샷 미리보기 */
@@ -368,14 +476,16 @@ var Community = (function () {
   async function loadComments(id) {
     try {
       var snap = await commentsRef(id).orderBy('createdAt', 'asc').limit(200).get();
-      cCache[id] = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      cCache[id] = snap.docs.filter(function (d) { return isDocId(d.id); })
+        .map(function (d) { return Object.assign({ id: d.id }, d.data()); });
     } catch (e) { cCache[id] = cCache[id] || []; }
     renderComments(id);
   }
 
   function renderComments(id) {
     var sec = document.getElementById('cpcs-' + id);
-    if (!sec) return;
+    if (!sec || !isDocId(id)) return;
+    var drafts = saveDrafts(sec);          // 댓글 좋아요로 다시 그려도 쓰던 댓글은 남긴다
     var list = cCache[id];
     var h = '<div class="comment-form">'
       + '<textarea class="comment-input" id="cci-' + id + '" maxlength="' + COMMENT_MAX + '" placeholder="댓글을 남겨 보세요"></textarea>'
@@ -385,14 +495,16 @@ var Community = (function () {
     else if (!list.length) h += '<div class="empty">첫 댓글을 남겨 보세요.</div>';
     else h += list.map(function (c) { return commentHtml(id, c); }).join('');
     sec.innerHTML = h;
+    restoreDrafts(drafts);
   }
 
   function commentHtml(postId, c) {
+    if (!isDocId(postId) || !isDocId(c.id)) return '';
     var liked = Array.isArray(c.likedBy) && currentUser && c.likedBy.indexOf(currentUser.uid) !== -1;
     return '<div class="comment-item">'
       + '<div class="comment-head"><span class="comment-author">' + escapeHtml(c.authorName || '회원') + '</span>'
       + '<span class="comment-time">' + timeAgo(c.createdAt) + '</span></div>'
-      + '<div class="comment-body">' + linkifyBody(escapeHtml(c.body || '')) + (c.editedAt ? ' <span class="edited-mark">(수정됨)</span>' : '') + '</div>'
+      + '<div class="comment-body">' + bodyHtml(String(c.body || '')) + (c.editedAt ? ' <span class="edited-mark">(수정됨)</span>' : '') + '</div>'
       + '<div class="comment-actions">'
       + '<button class="comment-action' + (liked ? ' liked' : '') + '" onclick="Community.likeComment(\'' + postId + '\',\'' + c.id + '\')">' + (liked ? '❤️' : '🤍') + ' ' + fmtNum(c.likes || 0) + '</button>'
       + (mine(c) || isAdmin ? '<button class="comment-action danger" onclick="Community.removeComment(\'' + postId + '\',\'' + c.id + '\')">삭제</button>' : '')
@@ -472,8 +584,9 @@ var Community = (function () {
       // status 조건과 정렬을 함께 걸면 복합 색인이 필요하다 — 최근 50건을 받아 화면에서 거른다
       var snap = await db.collection('stock_reports').orderBy('createdAt', 'desc').limit(50).get();
       if (seq !== _reportSeq) return;
+      // postId·code 는 아래 onclick 인자로 들어간다 — 형식이 맞지 않는 신고는 목록에 올리지 않는다
       var rows = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); })
-        .filter(function (r) { return (r.status || 'open') === 'open'; });
+        .filter(function (r) { return (r.status || 'open') === 'open' && isDocId(r.postId) && isCode(r.code); });
       if (!rows.length) { el.innerHTML = '<div class="empty">처리할 신고가 없습니다.</div>'; return; }
       // 같은 글에 대한 신고는 묶어서 보여 준다
       var byPost = {};
@@ -484,14 +597,14 @@ var Community = (function () {
       });
       el.innerHTML = Object.keys(byPost).map(function (k) {
         var g = byPost[k];
-        var ok = isCode(g.code) && /^[A-Za-z0-9_-]{1,64}$/.test(String(g.postId || ''));
+        if (!isCode(g.code) || !isDocId(g.postId)) return '';
         return '<div class="admin-list-item">'
           + '<div class="admin-list-info">'
           + '<div class="admin-list-title">' + escapeHtml(g.stockName || g.code || '') + ' · 신고 ' + g.ids.length + '건 — ' + escapeHtml((g.excerpt || '').slice(0, 60)) + '</div>'
           + '<div class="admin-list-sub">' + escapeHtml(g.reasons.slice(0, 3).join(' / ')) + ' · ' + timeAgo(g.at) + '</div>'
           + '</div>'
-          + (ok ? '<button class="mini-btn" onclick="Community.gotoPost(\'' + g.code + '\',\'' + escapeJsArg(g.stockName || g.code) + '\')">글 보기</button>'
-              + '<button class="mini-btn danger" onclick="Community.adminDelete(\'' + g.code + '\',\'' + g.postId + '\')">글 삭제</button>' : '')
+          + '<button class="mini-btn" onclick="Community.gotoPost(\'' + g.code + '\',\'' + escapeJsArg(g.stockName || g.code) + '\')">글 보기</button>'
+          + '<button class="mini-btn danger" onclick="Community.adminDelete(\'' + g.code + '\',\'' + g.postId + '\')">글 삭제</button>'
           + '<button class="mini-btn" onclick="Community.dismiss(\'' + g.postId + '\')">무시</button>'
           + '</div>';
       }).join('');

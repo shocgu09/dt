@@ -156,7 +156,7 @@ body {
 .comment-time { font-size: .72rem; color: var(--text3); margin-left: auto; }
 .comment-body { font-size: .86rem; color: var(--text2); line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
 .comment-body.deleted { color: var(--text3); font-style: italic; }
-.comment-actions { display: flex; gap: 12px; margin-top: 6px; }
+.comment-actions { display: flex; gap: 16px; margin-top: 6px; }
 .comment-action {
   background: none; border: none; color: var(--text3); font-size: .74rem;
   font-weight: 600; cursor: pointer; padding: 0;
@@ -316,6 +316,7 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 }
 .idx-state.live { background: rgba(74,222,128,.14); color: #4ade80; }
 .idx-state.closed { background: var(--bg3); color: var(--text3); }
+.idx-state.stale { background: rgba(251,191,36,.16); color: #fbbf24; }
 .idx-err { font-size: .8rem; color: var(--text3); }
 
 .up { color: var(--stock-up); }
@@ -425,6 +426,8 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 .state-dot { font-weight: 800; padding: 1px 6px; margin-left: 3px; }
 .state-dot.live { background: rgba(74,222,128,.14); color: #4ade80; }
 .state-dot.closed { background: var(--bg3); color: var(--text3); }
+/* 요청이 연달아 실패·오프라인 — 숫자가 멈춰 있음을 알린다 */
+.state-dot.stale { background: rgba(251,191,36,.16); color: #fbbf24; }
 
 /* 범위 바 */
 .range-row { margin-bottom: 9px; }
@@ -925,4 +928,71 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 .cm-rc { font-size: .72rem; color: var(--accent); font-weight: 700; margin-left: auto; }
 .cm-comments { margin-top: 10px; padding-left: 10px; border-left: 2px solid var(--border); }
 .cm-more { display: block; margin: 12px auto 0; }
-.cm-foot { margin-top: 16px; font-size: .72rem; color: var(--text3); line-height: 1.7; text-align: center; }
+
+
+/* ── 터치 영역 ──
+ * 보이는 크기는 그대로 두고 누르는 면적만 44px 이상으로 넓힌다 (투명한 ::before 가 버튼의 일부로 눌린다).
+ * 옆 버튼과 겹치지 않도록 가로는 간격의 절반까지만 넓힌다. */
+.comment-action, .sd-back, .vt-btn, .ix-gear, .share-btn { position: relative; }
+.comment-action::before, .sd-back::before, .vt-btn::before, .ix-gear::before, .share-btn::before {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 100%; height: max(100%, 44px); transform: translate(-50%, -50%);
+}
+.comment-action::before { width: max(calc(100% + 16px), 44px); }   /* 간격 16px 를 반씩 — 짧은 버튼(수정·삭제)도 44px */
+.sd-back::before, .ix-gear::before, .share-btn::before { width: max(100%, 44px); }
+.view-toggle { gap: 6px; }
+.vt-btn { min-width: 40px; }
+.vt-btn::before { width: calc(100% + 6px); }                   /* 두 버튼 사이 6px 를 반씩 나눠 44px */
+.sd-back { min-height: 32px; white-space: nowrap; }
+
+/* ── 공유 ── */
+.share-btn {
+  background: none; border: 1px solid var(--border); color: var(--text2);
+  font-size: .76rem; font-weight: 700; padding: 4px 10px; cursor: pointer; font-family: inherit;
+}
+.share-btn:hover { border-color: var(--primary); color: var(--text); }
+.share-btn.sd-share { margin-left: auto; background: var(--bg2); font-size: .95rem; padding: 5px 11px; line-height: 1; }
+.sd-share + .fav-btn.sd-fav { margin-left: 0; }
+.app-toast {
+  position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  z-index: 70; max-width: min(92vw, 560px); background: var(--bg3); color: var(--text);
+  border: 1px solid var(--border); border-left: 4px solid var(--primary);
+  padding: 11px 16px; font-size: .84rem; font-weight: 700; line-height: 1.5;
+  box-shadow: 4px 4px 0 rgba(0,0,0,.35); transition: opacity .35s, transform .35s;
+}
+.app-toast.out { opacity: 0; transform: translate(-50%, 8px); }
+
+/* 딥링크·"언급된 시황"으로 연 브리핑 — 잠깐 테두리로 짚어 준다 */
+.briefing-card.focus { animation: bcFocus 1.8s ease-out; }
+@keyframes bcFocus { 0%, 40% { box-shadow: 0 0 0 2px var(--primary-light); } 100% { box-shadow: 0 0 0 2px transparent; } }
+
+/* ── 종목 상세: 이 종목이 언급된 시황 ── */
+.sd-briefings { margin-top: 14px; border: 1px solid var(--border); border-left: 3px solid var(--primary); background: var(--bg2); }
+.sb-head { padding: 9px 13px 6px; font-size: .78rem; font-weight: 800; color: var(--text2); }
+.sb-item {
+  display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left;
+  background: none; border: none; border-top: 1px solid var(--border); color: var(--text);
+  padding: 11px 13px; cursor: pointer; font-family: inherit;
+}
+.sb-item:hover { background: var(--bg3); }
+.sb-title { flex: 1; min-width: 0; font-size: .84rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-date { flex: 0 0 auto; font-size: .7rem; color: var(--text3); font-weight: 600; }
+
+/* ── 커뮤니티 $종목 태그 ── */
+.stock-tag {
+  display: inline; background: none; border: none; padding: 0; margin: 0;
+  color: var(--primary-light); font: inherit; font-weight: 700; cursor: pointer;
+  text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px;
+}
+.stock-tag:hover { color: var(--text); }
+
+/* 목록 위 작은 안내 (일시적 갱신 실패 — 이전 목록은 그대로 둔다) */
+.list-note {
+  padding: 6px 12px; font-size: .7rem; color: var(--text3); font-weight: 600;
+  background: var(--bg3); border: 1px solid var(--border); border-bottom: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .briefing-card.focus { animation: none; box-shadow: 0 0 0 2px var(--primary-light); }
+  .app-toast { transition: none; }
+}

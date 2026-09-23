@@ -14,9 +14,12 @@
   <meta property="og:url" content="https://dt-1js.pages.dev/invest/" />
   <meta property="og:site_name" content="DT Club" />
   <meta property="og:locale" content="ko_KR" />
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-  <link rel="stylesheet" href="style.css?v=32">
+  <!-- 웹폰트는 jsDelivr 에서 온다 (CSS·woff2 모두 — CSS 는 일반 연결, 폰트 파일은 CORS 연결이라 둘 다 미리 연다). 폰트 CSS 는 렌더링을 막지 않게 print 로 받아 두었다가 적용한다 — 그동안은 시스템 폰트 -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"></noscript>
+  <link rel="stylesheet" href="style.css?v=33">
   <link rel="icon" href="../icon-192.png">
 </head>
 <body>
@@ -88,7 +91,7 @@
           <div class="search-wrap">
             <input type="text" id="stockSearch" class="search-input" autocomplete="off" aria-label="종목 검색"
                    placeholder="종목명 · 코드 · 초성 검색 (예: ㅅㅅㅈㅈ)"
-                   oninput="onSearchInput(this.value)">
+                   onfocus="loadMaster()" oninput="onSearchInput(this.value)">
             <button class="search-clear" onclick="clearSearch()" aria-label="검색어 지우기">✕</button>
             <div class="search-results" id="searchResults" role="listbox" aria-label="검색 결과" style="display:none"></div>
           </div>
@@ -172,7 +175,7 @@
             <div class="ticker-picker">
               <input type="text" id="bTickerInput" class="f-input" autocomplete="off"
                      placeholder="종목명으로 검색 (예: 삼성전자, ㅅㅅㅈㅈ, 005930)"
-                     oninput="onTickerSearch(this.value)">
+                     onfocus="loadMaster()" oninput="onTickerSearch(this.value)">
               <div class="ticker-results" id="bTickerResults" style="display:none"></div>
             </div>
             <div class="chip-list" id="bTickerList"></div>
@@ -221,9 +224,9 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="market.js?v=23"></script>
-  <script src="market-ui.js?v=36"></script>
-  <script src="community.js?v=4"></script>
-  <script src="app.js?v=40"></script>
+  <script src="market.js?v=24"></script>
+  <script src="market-ui.js?v=37"></script>
+  <script src="community.js?v=5"></script>
+  <script src="app.js?v=41"></script>
 </body>
 </html>

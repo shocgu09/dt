@@ -59,6 +59,7 @@ function showGate() {
   document.getElementById('bootLoading').style.display = 'none';
   document.getElementById('gate').style.display = '';
   document.getElementById('main').style.display = 'none';
+  rememberDeepLink();        // 공유 링크로 들어온 비회원 — 로그인하고 돌아오면 그 종목·브리핑을 연다
 }
 
 function showMain() {
@@ -66,17 +67,170 @@ function showMain() {
   document.getElementById('gate').style.display = 'none';
   document.getElementById('main').style.display = '';
   if (isAdmin) document.getElementById('tabAdmin').style.display = '';
-  loadBriefings();
+  _briefingsReady = loadBriefings();
   loadConfig();
   initMockMode();
-  // 종목 마스터(약 190KB)를 미리 받아 둔다 — 첫 검색이 파일 내려받기를 기다리지 않게
-  if (typeof loadMaster === 'function') setTimeout(loadMaster, 1200);
+  // 종목 마스터(약 190KB)는 검색창에 포커스가 갈 때 받는다 (index.html onfocus) — 검색하지 않는 회원은 받지 않는다
+  applyDeepLink();
+}
+
+/* ===== 딥링크 (?code=005930 · ?briefing=<문서ID>) =====
+ * 공유 링크로 들어온 비회원은 게이트에서 멈춘다. 링크를 기억해 두었다가, 로그인 뒤 1시간 안에
+ * 재테크에 다시 들어오면 그 종목·브리핑을 연다 (다른 탭에서 로그인하면 이 탭도 바로 열린다).
+ */
+// 함수로 둔다 — Firebase 초기화가 실패하면 이 줄이 실행되기 전에 showGate 가 불린다
+function deepLinkKey() { return 'dt-invest-deeplink'; }
+
+function parseDeepLink(code, bid) {
+  if (code && /^[0-9A-Z]{6}$/.test(code)) return { code: code };
+  if (bid && isDocId(bid)) return { briefing: bid };
+  return null;
+}
+
+function readDeepLink() {
+  var p = new URLSearchParams(location.search);
+  return parseDeepLink(p.get('code'), p.get('briefing'));
+}
+
+function rememberDeepLink() {
+  var link = readDeepLink();
+  if (!link) return;
+  try { localStorage.setItem(deepLinkKey(), JSON.stringify({ link: link, at: Date.now() })); } catch (e) {}
+}
+
+function takeDeepLink() {
+  var saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(deepLinkKey()) || 'null');
+    localStorage.removeItem(deepLinkKey());
+  } catch (e) {}
+  var link = readDeepLink();
+  if (link) return link;
+  if (saved && saved.link && Date.now() - (saved.at || 0) < 3600000) {
+    return parseDeepLink(saved.link.code, saved.link.briefing);
+  }
+  return null;
+}
+
+function applyDeepLink() {
+  var link = takeDeepLink();
+  if (!link) return;
+  if (link.code && typeof openStock === 'function') openStock(link.code, '', { replace: true });
+  else if (link.briefing) openBriefing(link.briefing);
+}
+
+/* ===== 브리핑 열기 (딥링크 · 종목 상세의 "언급된 시황") ===== */
+var _briefingsReady = null;
+function ensureBriefings() {
+  if (!_briefingsReady) _briefingsReady = loadBriefings();
+  return _briefingsReady;
+}
+
+/** 시황 탭으로 옮겨 그 카드를 펼치고 스크롤한다. 받아 둔 50건에 없으면 그 문서 하나만 더 받는다 */
+async function openBriefing(id) {
+  if (!isDocId(id)) return;
+  if (currentTab !== 'briefing') switchTab('briefing');
+  await ensureBriefings();
+  if (!briefings.some(function (x) { return x.id === id; }) && db) {
+    try {
+      var doc = await db.collection('invest_briefings').doc(id).get();
+      if (doc.exists) { briefings.push(Object.assign({ id: doc.id }, doc.data())); renderBriefings(); }
+    } catch (e) { /* 없는 문서 — 아래에서 안내 */ }
+  }
+  var card = document.getElementById('bc-' + id);
+  if (!card) { showToast('브리핑을 찾지 못했습니다'); return; }
+  var body = document.getElementById('bb-' + id);
+  var more = card.querySelector('.briefing-toggle-btn');
+  if (body && more && body.style.display === 'none') toggleBody(id, more);
+  card.classList.remove('focus');
+  void card.offsetWidth;                  // 같은 카드를 다시 열어도 강조가 다시 돈다
+  card.classList.add('focus');
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/** 종목 상세 — 이 종목이 언급된 최근 시황 (최대 3건). 새 쿼리·색인 없이 받아 둔 브리핑에서 거른다 */
+async function renderStockBriefings(code) {
+  await ensureBriefings();
+  var el = document.getElementById('sdBriefings');
+  if (!el || typeof curStock === 'undefined' || !curStock || curStock.code !== code) return;
+  var hits = briefings.filter(function (p) {
+    return Array.isArray(p.tickers) && p.tickers.some(function (t) { return normalizeTicker(t).code === code; });
+  }).sort(function (a, b) {
+    return (b.createdAt && b.createdAt.seconds || 0) - (a.createdAt && a.createdAt.seconds || 0);
+  }).slice(0, 3);
+  if (!hits.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = '';
+  el.innerHTML = '<div class="sb-head">📋 이 종목이 언급된 시황</div>' + hits.map(function (p) {
+    return '<button class="sb-item" onclick="openBriefing(\'' + p.id + '\')">'
+      + '<span class="sb-title">' + escapeHtml(p.title || '') + '</span>'
+      + '<span class="sb-date">' + escapeHtml(p.date || '') + '</span></button>';
+  }).join('');
+}
+
+/* ===== 공유 ===== */
+function investUrl(query) { return location.origin + '/invest/' + (query ? '?' + query : ''); }
+
+/** 공유 시트가 있으면 그걸 쓰고, 없으면(데스크톱 등) 링크를 복사한다 */
+function shareLink(title, text, url) {
+  if (navigator.share) {
+    navigator.share({ title: title, text: text, url: url }).catch(function (e) {
+      if (!e || e.name !== 'AbortError') copyLink(url);      // 사용자가 닫은 것은 실패가 아니다
+    });
+    return;
+  }
+  copyLink(url);
+}
+
+function copyLink(url) {
+  var done = function () { showToast('링크를 복사했습니다'); };
+  var fallback = function () { if (legacyCopy(url)) done(); else prompt('아래 링크를 복사해 주세요', url); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done, fallback);
+  else fallback();
+}
+
+/** 클립보드 API 가 막힌 환경(http·구형 웹뷰)용 */
+function legacyCopy(text) {
+  try {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed'; ta.style.top = '0'; ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch (e) { return false; }
+}
+
+function shareBriefing(id) {
+  if (!isDocId(id)) return;
+  var p = briefings.filter(function (x) { return x.id === id; })[0];
+  var title = (p && p.title) || 'DT 재테크 시황';
+  shareLink(title, (p && p.date ? p.date + ' ' : '') + title, investUrl('briefing=' + id));
+}
+
+function shareStock() {
+  if (typeof curStock === 'undefined' || !curStock) return;
+  shareLink(curStock.name + ' - DT 재테크', curStock.name + ' (' + curStock.code + ')', investUrl('code=' + curStock.code));
+}
+
+function showToast(text) {
+  var old = document.getElementById('appToast');
+  if (old) old.remove();
+  var el = document.createElement('div');
+  el.id = 'appToast';
+  el.className = 'app-toast';
+  el.setAttribute('role', 'status');
+  el.textContent = text;
+  document.body.appendChild(el);
+  setTimeout(function () { el.classList.add('out'); setTimeout(function () { el.remove(); }, 400); }, 2200);
 }
 
 /* ===== 모의투자 모드 =====
  * 코드(mock.js · mock.css)는 모드를 켤 때 처음 불러온다 — 쓰지 않는 회원에게는 아무 변화가 없다.
  */
-var MOCK_VER = '29';
+var MOCK_VER = '30';
 var _mockLoading = null;
 
 function loadMockAssets() {
@@ -153,7 +307,9 @@ async function loadBriefings() {
   try {
     // 단일 orderBy만 사용 → 복합 인덱스 불필요. 고정(pinned) 정렬은 클라이언트에서 처리
     var snap = await db.collection('invest_briefings').orderBy('createdAt', 'desc').limit(50).get();
-    briefings = snap.docs.map(function(d) { return Object.assign({ id: d.id }, d.data()); });
+    // 문서 ID 는 id·onclick 속성에 그대로 들어간다 — 자동 ID 형식이 아니면 그리지 않는다
+    briefings = snap.docs.filter(function(d) { return isDocId(d.id); })
+      .map(function(d) { return Object.assign({ id: d.id }, d.data()); });
     briefings.sort(function(a, b) {
       if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
       return (b.createdAt && b.createdAt.seconds || 0) - (a.createdAt && a.createdAt.seconds || 0);
@@ -197,7 +353,8 @@ var SENT_LABEL = { bull: '🔴 강세', bear: '🔵 약세', neutral: '⚪ 중�
 var MARKET_LABEL = { all: '전체', kospi: '코스피', kosdaq: '코스닥' };
 
 function briefingCardHtml(p) {
-  var sent = p.sentiment || 'neutral';
+  if (!isDocId(p.id)) return '';       // id·onclick 속성에 들어가므로 형식이 다른 ID 는 그리지 않는다
+  var sent = SENT_LABEL[p.sentiment] ? p.sentiment : 'neutral';
   var bodyHtml = linkifyBody(escapeHtml(p.body || ''));
   var isLong = (p.body || '').length > 180;
   var preview = escapeHtml(plainPreview(p.body || '', 180)) + (isLong ? '…' : '');
@@ -236,6 +393,7 @@ function briefingCardHtml(p) {
 
   // 작성자 표기·수정·고정·삭제는 카드에 두지 않는다 — ai-trend / car-trend 처럼 관리 탭에서만 다룬다
   h += '<div class="briefing-footer">';
+  h += '<button class="share-btn" onclick="shareBriefing(\'' + p.id + '\')" aria-label="브리핑 공유">↗ 공유</button>';
   h += '<button class="comment-toggle" onclick="toggleComments(\'' + p.id + '\')">💬 댓글 '
      + (p.commentCount || 0) + ' <span id="ct-' + p.id + '">▾</span></button>';
   h += '</div>';
@@ -277,7 +435,8 @@ async function loadComments(id) {
   try {
     var snap = await db.collection('invest_briefings').doc(id)
       .collection('comments').orderBy('createdAt', 'asc').limit(300).get();
-    commentCache[id] = snap.docs.map(function(d) { return Object.assign({ id: d.id }, d.data()); });
+    commentCache[id] = snap.docs.filter(function(d) { return isDocId(d.id); })
+      .map(function(d) { return Object.assign({ id: d.id }, d.data()); });
     commentError[id] = false;
     renderComments(id);
   } catch (e) {
@@ -343,6 +502,7 @@ function retryComments(id) {
 }
 
 function commentHtml(briefingId, c, isReply) {
+  if (!isDocId(briefingId) || !isDocId(c.id)) return '';
   var liked = Array.isArray(c.likedBy) && currentUser && c.likedBy.indexOf(currentUser.uid) !== -1;
   var mine = currentUser && c.authorUid === currentUser.uid;
 
@@ -830,10 +990,20 @@ function linkifyBody(escaped) {
   );
 }
 
+/** Firestore 자동 ID(20자 영숫자) — 문서 ID 를 id·onclick 속성에 넣기 전에 반드시 거친다 */
+function isDocId(id) { return /^[A-Za-z0-9]{20}$/.test(String(id == null ? '' : id)); }
+
+/** 시각 → KST 벽시계 Date (getFullYear/getMonth… 가 한국 시각을 돌려준다). 기기 시간대와 무관하게 쓴다 */
+function kstDate(ms) {
+  var d = new Date(ms == null ? Date.now() : ms);
+  return new Date(d.getTime() + d.getTimezoneOffset() * 60000 + 9 * 3600000);
+}
+
+/** 오늘 날짜 (KST, YYYY-MM-DD) — 해외에서 열어도 브리핑 날짜가 하루 어긋나지 않게 */
 function todayStr() {
-  var d = new Date();
-  var off = d.getTimezoneOffset() * 60000;
-  return new Date(d - off).toISOString().slice(0, 10);
+  var k = kstDate();
+  var p = function (n) { return String(n).padStart(2, '0'); };
+  return k.getFullYear() + '-' + p(k.getMonth() + 1) + '-' + p(k.getDate());
 }
 
 function timeAgo(ts) {
@@ -843,7 +1013,7 @@ function timeAgo(ts) {
   if (diff < 3600) return Math.floor(diff / 60) + '분 전';
   if (diff < 86400) return Math.floor(diff / 3600) + '시간 전';
   if (diff < 604800) return Math.floor(diff / 86400) + '일 전';
-  var d = new Date(ts.seconds * 1000);
+  var d = kstDate(ts.seconds * 1000);
   return (d.getMonth() + 1) + '.' + d.getDate();
 }
 

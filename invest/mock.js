@@ -238,8 +238,10 @@ var Mock = (function () {
       + '%(ETF·ETN 면제). 자세한 규칙은 참가 안내에 있습니다.</div>'
       ;
     paint(el, h);
-    if (_review) renderReview();
-    else loadReview();
+    // 계좌 탭은 10초마다 다시 그려진다 — 평가가 없는 회원도 매번 GET /review 를 부르지 않게, 받아 봤으면 그 결과로 그린다.
+    // 시즌이 바뀌었거나 10분이 지났으면(남은 횟수가 날짜 따라 바뀐다) 다시 받는다
+    if (_reviewFor === s.id && Date.now() - _reviewAt < 600000) renderReview();
+    else loadReview(s.id);
   }
 
   /* ===== AI 계좌 평가 =====
@@ -255,8 +257,12 @@ var Mock = (function () {
     ['✍️', '코치가 평가를 쓰는 중']
   ];
   var _rvTimer = null;
+  var _rvStep = 0;             // 진행 단계 — 계좌 탭이 다시 그려져도 처음(체결 기록)으로 돌아가지 않게 밖에 둔다
   var _reviewLeft = null;      // 오늘 남은 횟수
   var _reviewBusy = false;
+  var _reviewFor = null;       // 받아 둔 평가가 어느 시즌 것인가 (없음·실패도 "받아 봤음"으로 친다)
+  var _reviewAt = 0;
+  var _reviewLoading = false;
 
   function reviewSectionHtml() {
     return '<section class="m-section"><div class="m-head"><h3>🤖 AI 계좌 평가</h3>'
@@ -264,12 +270,18 @@ var Mock = (function () {
       + '<div id="mkReview"><div class="loading">불러오는 중...</div></div></section>';
   }
 
-  async function loadReview() {
+  async function loadReview(seasonId) {
+    if (_reviewLoading) return;
+    _reviewLoading = true;
     try {
       var r = await api('/review');
       _review = r.review; _reviewLeft = r.remaining;
     } catch (e) {
       _review = null; _reviewLeft = null;
+    } finally {
+      _reviewLoading = false;
+      _reviewFor = seasonId || null;
+      _reviewAt = Date.now();          // 실패해도 10분 동안은 다시 부르지 않는다 (평가받기 버튼은 그대로 쓸 수 있다)
     }
     renderReview();
   }
@@ -360,22 +372,23 @@ var Mock = (function () {
     catch (e) { return ''; }
   }
 
-  /** 단계 문구를 2.5초마다 넘긴다. 마지막 단계에서 멈춘다 (끝난 척하지 않는다) */
+  /** 단계 문구를 2.5초마다 넘긴다. 마지막 단계에서 멈춘다 (끝난 척하지 않는다).
+   * 평가를 기다리는 동안 계좌 탭이 다시 그려지면 이미 돌고 있는 타이머를 그대로 두고 지금 단계만 다시 칠한다 */
   function startRvSteps() {
-    stopRvSteps();
-    var i = 0;
     var paint = function () {
       var el = document.getElementById('mkRvStep');
-      if (!el) { stopRvSteps(); return; }
-      el.innerHTML = '<span class="mk-rv-emoji">' + RV_STEPS[i][0] + '</span>' + escapeHtml(RV_STEPS[i][1]);
+      if (!el) return;                     // 다시 그리는 중일 수 있다 — 다음 틱에 새 칸을 찾는다
+      el.innerHTML = '<span class="mk-rv-emoji">' + RV_STEPS[_rvStep][0] + '</span>' + escapeHtml(RV_STEPS[_rvStep][1]);
       el.classList.remove('in');
       void el.offsetWidth;                 // 애니메이션을 다시 태우려면 한 번 끊어야 한다
       el.classList.add('in');
     };
     paint();
+    if (_rvTimer) return;
     _rvTimer = setInterval(function () {
-      if (i >= RV_STEPS.length - 1) return;   // 마지막에서 멈춘다
-      i++; paint();
+      if (!_reviewBusy) { stopRvSteps(); return; }
+      if (_rvStep >= RV_STEPS.length - 1) return;   // 마지막에서 멈춘다
+      _rvStep++; paint();
     }, 2500);
   }
 
@@ -386,6 +399,7 @@ var Mock = (function () {
   async function askReview(btn) {
     if (_reviewBusy) return;
     _reviewBusy = true;
+    _rvStep = 0;
     renderReview();
     try {
       var r = await api('/review', 'POST', {});
@@ -587,7 +601,8 @@ var Mock = (function () {
     var h = '';
     try {
       var d = await api('/leaderboard');
-      _review = null; _reviewLeft = null;    // 시즌이 바뀌면 이전 평가도 버린다
+      // 시즌이 바뀌었을 때만 이전 평가를 버린다 (10초마다 버리면 계좌 탭이 매번 다시 받았다)
+      if (_reviewFor && _reviewFor !== d.season.id) { _review = null; _reviewLeft = null; _reviewFor = null; }
       // 시즌이 바뀌면 이전 시즌의 순위 기억을 버린다
       if (_prevSeasonId !== d.season.id) { _prevRank = {}; _hallHtml = null; _prevSeasonId = d.season.id; }
       h += '<section class="m-section"><div class="m-head"><h3>🏆 ' + escapeHtml(d.season.name) + '</h3>'
@@ -868,8 +883,15 @@ var Mock = (function () {
     sheet.busy = true;
     var btn = document.getElementById('mkSubmit');
     if (btn) { btn.disabled = true; btn.textContent = '주문 접수 중'; }
-    // 같은 주문이 두 번 들어가지 않도록 주문마다 고유값을 붙인다 (서버가 재전송을 같은 주문으로 본다)
-    var cid = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2);
+    // 같은 주문이 두 번 들어가지 않도록 주문마다 고유값을 붙인다 (서버가 재전송을 같은 주문으로 본다).
+    // 고유값은 주문창에 붙여 둔다 — 15초 시간 초과 뒤 다시 누르면 같은 값으로 보내야 서버가 중복을 막는다.
+    // 종목·매매·종류·수량·가격이 바뀌었을 때만 새로 만든다 (거절된 주문은 서버에 남지 않아 같은 값으로 다시 보내도 된다)
+    var cidKey = [sheet.code, sheet.side, sheet.type, n.qty, sheet.type === 'limit' ? n.price : ''].join('|');
+    if (!sheet.cid || sheet.cidKey !== cidKey) {
+      sheet.cid = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2);
+      sheet.cidKey = cidKey;
+    }
+    var cid = sheet.cid;
     var mySheet = sheet;
     try {
       var d = await api('/orders', 'POST', {
@@ -877,6 +899,7 @@ var Mock = (function () {
         limitPrice: sheet.type === 'limit' ? n.price : undefined
       });
       if (sheet !== mySheet) return;          // 기다리는 사이 창을 닫았으면 계좌 탭에서 확인하면 된다
+      sheet.cid = null;                       // 접수됐다 — 이 창에서 다음 주문은 새 값으로
       sheet.orderId = d.order.id;
       showPending(d.order);
       watchOrder(d.order.id, 0);
@@ -1019,7 +1042,7 @@ var Mock = (function () {
       + _seasons.map(function (x) {
           var st = SEASON_STATUS[x.status] || { text: x.status, cls: 'off' };
           return '<div class="mk-season' + (x.id === curId ? ' now' : '') + '">'
-            + '<button class="mk-season-main" onclick="Mock.pickSeason(\'' + escapeAttr(x.id) + '\')">'
+            + '<button class="mk-season-main" onclick="Mock.pickSeason(\'' + escapeJsArg(x.id) + '\')">'
             +   '<span class="mk-season-top">'
             +     '<b>' + escapeHtml(x.name) + '</b>'
             +     '<span class="mk-season-badge ' + st.cls + '">' + st.text + '</span>'
@@ -1070,7 +1093,7 @@ var Mock = (function () {
               return '<div class="mk-hol">'
                 + '<span class="mk-hol-d">' + fmtYmd(x.ymd) + '</span>'
                 + '<span class="mk-hol-n">' + escapeHtml(x.name || '') + '</span>'
-                + '<button class="mk-hol-x" onclick="Mock.removeHoliday(\'' + escapeAttr(x.ymd) + '\')" aria-label="삭제">✕</button>'
+                + '<button class="mk-hol-x" onclick="Mock.removeHoliday(\'' + escapeJsArg(x.ymd) + '\')" aria-label="삭제">✕</button>'
                 + '</div>';
             }).join('')
           : '<div class="empty">등록된 휴장일이 없습니다</div>');

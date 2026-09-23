@@ -17,12 +17,25 @@ async function marketApi(path, params) {
   if (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) init.signal = AbortSignal.timeout(15000);
   var res;
   try { res = await fetch(url, init); }
-  catch (e) { throw new Error(e && e.name === 'TimeoutError' ? '시세 서버 응답이 늦습니다. 잠시 후 다시 시도합니다' : '네트워크 오류로 시세를 가져오지 못했습니다'); }
+  catch (e) {
+    _apiFailStreak++;
+    throw new Error(e && e.name === 'TimeoutError' ? '시세 서버 응답이 늦습니다. 잠시 후 다시 시도합니다' : '네트워크 오류로 시세를 가져오지 못했습니다');
+  }
   if (res.status === 401) throw new Error('인증이 만료되었습니다. 새로고침해 주세요');
-  if (!res.ok) throw new Error('시세를 가져오지 못했습니다 (' + res.status + ')');
+  if (!res.ok) { if (res.status >= 500) _apiFailStreak++; throw new Error('시세를 가져오지 못했습니다 (' + res.status + ')'); }
   var data = await res.json();
   if (data && data.error) throw new Error(data.error);
+  _apiFailStreak = 0;
+  _apiOkAt = Date.now();
   return data;
+}
+
+/* 연결 상태 — 요청이 연달아 실패하면 화면의 '실시간' 배지를 '연결 끊김'으로 바꾼다.
+ * 서버 장 상태(marketStatus)는 5분 동안 믿기 때문에, 이게 없으면 네트워크가 끊겨도 5분간 '실시간'으로 남았다. */
+var _apiFailStreak = 0, _apiOkAt = 0;
+function isFeedStale() {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+  return _apiFailStreak >= 2 && Date.now() - _apiOkAt > 15000;
 }
 
 var Market = {
@@ -154,6 +167,7 @@ var _serverStatusAt = 0;
 // 예전에는 여기에 목록을 복붙해 두고 functions/mock/engine.js 와 함께 손으로 고쳤다.
 // 두 곳이 어긋나기 쉬웠고 임시공휴일은 넣을 방법이 없었다. 이제 출처는 D1 하나다.
 var KRX_HOLIDAYS = {};
+var _holidaysAt = 0, _holidaysLoading = null;
 
 /** 워커가 내려준 휴장일 목록을 받는다 */
 function setHolidays(list) {
@@ -161,6 +175,23 @@ function setHolidays(list) {
   var m = {};
   for (var i = 0; i < list.length; i++) m[list[i]] = 1;
   KRX_HOLIDAYS = m;
+  _holidaysAt = Date.now();
+}
+
+/**
+ * 휴장일 목록이 아직 없으면 /api/index 를 한 번 불러 채운다.
+ * 목록은 시세 홈의 지수 스트립(loadIndex)이 받아 오는데, 브리핑 종목 칩·딥링크로 종목 상세에 바로 들어오면
+ * 비어 있어 휴장일을 거래일로 보고 차트에 오늘 봉을 새로 열었다.
+ */
+function ensureHolidays() {
+  if (_holidaysAt && Date.now() - _holidaysAt < 6 * 3600000) return Promise.resolve();
+  if (_holidaysLoading) return _holidaysLoading;
+  _holidaysLoading = Market.index().then(function (d) {
+    if (d.marketStatus) setMarketStatus(d.marketStatus);
+    setHolidays(d.holidays);
+  }).catch(function () { /* 다음에 종목을 열 때 다시 — 그동안은 시계·서버 상태로 판단 */ })
+    .then(function () { _holidaysLoading = null; });
+  return _holidaysLoading;
 }
 
 /** KST 기준 날짜·시각 분해 */
@@ -202,6 +233,7 @@ function isMarketStateGuessed() {
 }
 
 function marketStateLabel() {
+  if (isFeedStale()) return { cls: 'stale', text: '연결 끊김' };
   if (!isMarketOpen()) return { cls: 'closed', text: '장 마감' };
   return { cls: 'live', text: isMarketStateGuessed() ? '장중(추정)' : '실시간' };
 }
@@ -212,28 +244,38 @@ function marketStateLabel() {
  * - 화면 전환 시 stopAll()로 확실히 정리
  */
 var Poller = (function () {
-  var jobs = {};          // key -> { fn, ms, timer }
+  var jobs = {};          // key -> { fn, ms, timer, running, gen }
   var paused = false;
 
+  /**
+   * 작업 하나에는 언제나 체인이 하나만 돈다.
+   *  - running: 요청이 날아가 있는 동안에는 새로 시작하지 않는다. 끝나는 쪽이 다음 타이머를 건다.
+   *    (전에는 요청 중에 pause→resume 이 오면 resume 이 새 체인을 열고, 돌아온 옛 체인도 타이머를 걸어 폴링이 두 배가 됐다)
+   *  - gen: 타이머를 걸 때의 세대. pause/resume 이 세대를 올리므로, 혹시 남은 옛 타이머가 불려도 아무것도 하지 않는다.
+   */
   function run(key) {
     var job = jobs[key];
-    if (!job) return;
+    if (!job || job.running) return;
+    job.running = true;
+    clearTimeout(job.timer);
     Promise.resolve()
       .then(job.fn)
       .catch(function () { /* 개별 실패는 무시 — 다음 주기에 재시도 */ })
       .then(function () {
+        job.running = false;
         // 실행 중에 같은 키로 remove+add 가 됐으면 이 체인은 옛것이다 — 여기서 끊어야 폴링이 2중·3중으로 늘지 않는다
         if (jobs[key] !== job || paused) return;
         // 주기는 매번 다시 계산한다 — 개장 전에 들어온 화면이 개장 후에도 느린 주기로 남지 않게
         var ms = typeof job.ms === 'function' ? job.ms() : job.ms;
-        job.timer = setTimeout(function () { run(key); }, ms);
+        var gen = job.gen;
+        job.timer = setTimeout(function () { if (jobs[key] === job && job.gen === gen && !paused) run(key); }, ms);
       });
   }
 
   return {
     add: function (key, fn, ms) {
       this.remove(key);
-      jobs[key] = { fn: fn, ms: ms || 5000, timer: null };
+      jobs[key] = { fn: fn, ms: ms || 5000, timer: null, running: false, gen: 0 };
       run(key);                        // 즉시 1회 실행
     },
     remove: function (key) {
@@ -245,13 +287,13 @@ var Poller = (function () {
     },
     pause: function () {
       paused = true;
-      Object.keys(jobs).forEach(function (k) { clearTimeout(jobs[k].timer); });
+      Object.keys(jobs).forEach(function (k) { clearTimeout(jobs[k].timer); jobs[k].gen++; });
     },
     resume: function () {
       if (!paused) return;
       paused = false;
-      // 멈춰 있던 동안 끝난 실행이 타이머를 다시 걸지 못하도록 여기서만 재개한다
-      Object.keys(jobs).forEach(function (k) { clearTimeout(jobs[k].timer); run(k); });
+      // 요청이 날아가 있는 작업은 run 이 건너뛴다 — 그 요청이 끝나며 다음 타이머를 건다 (체인 하나 유지)
+      Object.keys(jobs).forEach(function (k) { clearTimeout(jobs[k].timer); jobs[k].gen++; run(k); });
     },
     activeKeys: function () { return Object.keys(jobs); }
   };
@@ -765,13 +807,27 @@ function fmtRate(r) {
   return (r > 0 ? '+' : '') + Number(r).toFixed(2) + '%';
 }
 
-/** 거래량/금액을 만·억·조 단위로 */
+/**
+ * 거래량/금액을 만·억·조 단위로.
+ * 10 미만은 소수 한 자리(1.4억 · 3.2만), 그 이상은 정수(1,234억). 조는 100조 미만까지 소수 한 자리(12.3조).
+ * 반올림해서 1만 단위가 되면 윗 단위로 올린다 (9,999.6억 → 1조, 9,999.7만 → 1억).
+ */
+var COMPACT_UNITS = [[1e12, '조', 100], [1e8, '억', 10], [1e4, '만', 10]];   // [크기, 단위, 소수 한 자리를 쓰는 상한]
 function fmtCompact(n) {
-  if (!n && n !== 0) return '-';
-  var a = Math.abs(n);
-  if (a >= 1e12) return (n / 1e12).toFixed(1) + '조';
-  if (a >= 1e8) return (n / 1e8).toFixed(0) + '억';
-  if (a >= 1e4) return (n / 1e4).toFixed(0) + '만';
+  if (n === null || n === undefined || n === '' || isNaN(n)) return '-';
+  n = Number(n);
+  var a = Math.abs(n), sign = n < 0 ? '-' : '';
+  for (var i = 0; i < COMPACT_UNITS.length; i++) {
+    var u = COMPACT_UNITS[i];
+    if (a < u[0]) continue;
+    var x = a / u[0];
+    var r = x < u[2] ? Math.round(x * 10) / 10 : Math.round(x);
+    if (r >= 10000 && i > 0) {                 // 윗 단위로 올림
+      u = COMPACT_UNITS[i - 1];
+      r = Math.round(a / u[0] * 10) / 10;
+    }
+    return sign + (r % 1 ? r.toFixed(1) : fmtNum(r)) + u[1];
+  }
   return fmtNum(n);
 }
 

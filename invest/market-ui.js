@@ -14,6 +14,12 @@ var rankMarket = 'KOSPI';
 var watchView = 'card';          // 'card' | 'list'
 var chartMode = 'simple';        // 'simple' | 'detail'
 var sparkCache = {};             // code -> { values, at }
+var _homeScrollY = 0;            // 종목 상세로 들어가기 전 시세 홈 스크롤 위치
+var _detailFrom = null;          // 상세를 열기 전 보던 탭 — 뒤로 가기로 닫으면 그 탭으로 돌아간다
+var _backToHome = false;         // "← 시세" 로 닫는 중 (다른 탭에서 왔어도 시세 홈으로)
+
+// 뒤로 가기 때 브라우저가 스크롤을 제멋대로 옮기지 않게 한다 — 시세 홈 위치는 직접 되돌린다
+try { if ('scrollRestoration' in history) history.scrollRestoration = 'manual'; } catch (e) {}
 
 /* ===== 시세 탭 진입 ===== */
 async function enterMarketTab() {
@@ -27,14 +33,13 @@ async function enterMarketTab() {
   startHomePolling();
 }
 
-/** 시세 홈 1회 초기화 — 브리핑 종목 칩으로 상세에 먼저 들어온 경우 '← 시세'에서도 불린다 */
+/** 시세 홈 1회 초기화 — 브리핑 종목 칩으로 상세에 먼저 들어온 경우 '← 시세'에서도 불린다.
+ * 랭킹·테마는 여기서 부르지 않는다 — 바로 뒤의 startHomePolling 이 즉시 1회 실행하므로 두 번 받게 된다. */
 async function initMarketHome() {
   if (marketLoaded) return;
   marketLoaded = true;
   await ensureWatchlist();
   renderRecent();
-  loadSectors(true);
-  loadRank();
 }
 
 function leaveMarketTab() {
@@ -51,14 +56,9 @@ function startHomePolling() {
   });
   // 워커 캐시가 랭킹 60초·테마 120초라 그보다 자주 불러도 같은 값이 온다
   Poller.add('rank', loadRank, pollMs(60000, 600000));
-  // 순위·거래대금은 1분마다면 충분하지만 가격은 관심종목과 같은 속도로 맞춘다 (같은 /api/quotes)
-  Poller.add('rankpx', refreshRankPrices, pollMs(5000, 120000));
   Poller.add('sectors', loadSectors, pollMs(120000, 600000));
-  if (watchlist.length) {
-    Poller.add('watch', loadWatchQuotes, pollMs(5000, 120000));
-  } else {
-    loadWatchQuotes();       // 비어 있어도 1회는 그려야 "불러오는 중"이 안 남는다
-  }
+  // 관심종목·랭킹·테마 종목의 가격은 한 번의 /api/quotes 로 함께 받는다 (관심종목이 비어 있어도 1회는 그린다)
+  Poller.add('quotes', refreshListQuotes, pollMs(5000, 120000));
 }
 
 /* ===== 지수 스트립 ===== */
@@ -185,7 +185,6 @@ async function loadIndex() {
     var d = await Market.index();
     if (d.marketStatus) setMarketStatus(d.marketStatus);   // 워커가 대표 종목 기준으로 실어 준다
     setHolidays(d.holidays);                              // 휴장일도 워커 목록을 쓴다 (D1 단일 출처)
-    var st = marketStateLabel();
 
     // 뼈대는 구성이 바뀔 때만 다시 만들고 평소엔 값만 갈아끼운다 (플래시 애니메이션 유지)
     var pick = indexPick();
@@ -233,14 +232,29 @@ async function loadIndex() {
     });
 
     paintIndexSparks(have, d);
-
-    var sEl = document.getElementById('ixState');
-    // 이 배지는 국장 기준이다. 옆의 나스닥 선물·금·유가는 국장이 닫혀 있어도 돌아간다.
-    if (sEl) { sEl.textContent = '국내 ' + st.text; sEl.className = 'idx-state ' + st.cls; }
+    paintStateBadges();
   } catch (e) {
     if (!el.dataset.built) el.innerHTML = '<div class="idx-err">지수를 불러오지 못했습니다</div>';
+    paintStateBadges();          // 실패가 이어지면 '실시간' 대신 '연결 끊김'으로 바꾼다
   }
 }
+
+/**
+ * 장 상태 배지 (지수 스트립 · 종목 상세 기준 시각 옆).
+ * 요청이 연달아 실패하거나 오프라인이면 '연결 끊김' — 숫자가 멈춰 있는데 '실시간'이라고 쓰지 않는다.
+ */
+function paintStateBadges() {
+  var st = marketStateLabel();
+  var sEl = document.getElementById('ixState');
+  // 이 배지는 국장 기준이다. 옆의 나스닥 선물·금·유가는 국장이 닫혀 있어도 돌아간다.
+  if (sEl) { sEl.textContent = st.cls === 'stale' ? st.text : '국내 ' + st.text; sEl.className = 'idx-state ' + st.cls; }
+  document.querySelectorAll('#pxAsOf .state-dot').forEach(function (d) {
+    d.textContent = st.text;
+    d.className = 'state-dot ' + st.cls;
+  });
+}
+window.addEventListener('online', paintStateBadges);
+window.addEventListener('offline', paintStateBadges);
 
 /**
  * 지수 셀의 스파크라인.
@@ -331,7 +345,7 @@ function setWatchView(v) {
   });
   var el = document.getElementById('watchList');
   if (el) { el.dataset.key = ''; el.dataset.built = ''; }   // 뼈대 재생성 강제
-  loadWatchQuotes();
+  paintWatch();                 // 받아 둔 시세로 바로 다시 그린다 (새로 부르지 않는다)
 }
 
 (function initWatchView() {
@@ -353,7 +367,89 @@ async function ensureSparkline(code) {
   }
 }
 
-async function loadWatchQuotes() {
+/* ===== 목록 시세 (관심종목 · 랭킹 · 테마 종목) =====
+ * 목록 화면의 가격은 /api/quotes 에서만 받는다 (원칙). 랭킹·테마 API 의 가격은 워커 캐시 때문에 1~2분 늦어서
+ * 같은 종목이 목록마다 다른 값으로 보였고, 랭킹을 다시 그릴 때마다 옛 가격이 잠깐 비쳤다.
+ * 받은 값은 _quoteMap 에 모아 두고 모든 목록이 여기서 그린다. 요청도 한 주기에 한 번(50종목씩 나눔)만 보낸다.
+ */
+var _quoteMap = {};              // code -> 마지막으로 받은 /api/quotes 한 줄 (+ _at 받은 시각)
+var _rankCodes = [];             // 지금 랭킹에 보이는 종목
+var _sectorCodes = [];           // 열어 둔 테마의 종목
+var _listQuotesTried = false;    // 한 번이라도 받아 봤는가 ("불러오는 중"과 "못 불러옴"을 가른다)
+var _listQuotesBusy = false, _listQuotesAgain = false;
+
+/** 목록에 그대로 써도 될 만큼 최근 값인가 — 오래된 값은 '–' 로 두고 새로 받는다 */
+function freshQuote(code) {
+  var q = _quoteMap[code];
+  if (!q) return null;
+  return Date.now() - q._at < (isMarketOpen() ? 20000 : 300000) ? q : null;
+}
+
+function listQuoteCodes() {
+  var seen = {}, out = [];
+  watchlist.concat(_rankCodes, _sectorCodes).forEach(function (c) {
+    if (isStockCode(c) && !seen[c]) { seen[c] = 1; out.push(c); }
+  });
+  return out;
+}
+
+async function fetchQuotesInto(codes) {
+  var chunks = [];
+  for (var i = 0; i < codes.length; i += 50) chunks.push(codes.slice(i, i + 50));
+  var got = await Promise.all(chunks.map(function (c) {
+    return Market.quotes(c).catch(function () { return null; });
+  }));
+  var now = Date.now(), first = null;
+  got.forEach(function (d) {
+    ((d && d.items) || []).forEach(function (q) {
+      if (!q || !isStockCode(q.code)) return;
+      q._at = now;
+      _quoteMap[q.code] = q;
+      if (!first) first = q;
+    });
+  });
+  if (first) setMarketStatus(first.marketStatus);
+}
+
+/**
+ * 관심종목·랭킹·테마 종목의 시세를 한 번에 받아 세 목록을 모두 칠한다 (폴러 'quotes').
+ * 받는 중에 또 불리면(랭킹이 새로 그려졌다 등) 끝난 뒤 아직 값이 없는 종목만 한 번 더 받는다.
+ */
+async function refreshListQuotes() {
+  if (_listQuotesBusy) { _listQuotesAgain = true; return; }
+  _listQuotesBusy = true;
+  try {
+    var codes = listQuoteCodes();
+    while (true) {
+      _listQuotesAgain = false;
+      if (codes.length) await fetchQuotesInto(codes);
+      _listQuotesTried = true;
+      paintListQuotes();
+      if (!_listQuotesAgain) break;
+      codes = listQuoteCodes().filter(function (c) { return !freshQuote(c); });
+      if (!codes.length) break;
+    }
+  } finally {
+    _listQuotesBusy = false;
+  }
+}
+
+function paintListQuotes() {
+  paintWatch();
+  paintQuotes(_rankCodes.map(freshQuote).filter(Boolean), 'rk');
+  paintQuotes(_sectorCodes.map(freshQuote).filter(Boolean), 'sk');
+}
+
+/** 목록의 가격·등락 칸 첫 값 — 받아 둔 최근 시세가 없으면 '–' 로 두고 받은 뒤 채운다 */
+function listPriceCells(prefix, code) {
+  var q = freshQuote(code);
+  return '<span class="q-price" id="' + prefix + 'p-' + code + '">' + (q ? fmtNum(q.price) : '–') + '</span>'
+    + '<span class="q-chg ' + (q ? signClass(q.change) : 'flat') + '" id="' + prefix + 'c-' + code + '">'
+    + (q ? fmtRate(q.changeRate) : '–') + '</span>';
+}
+
+/** 관심종목 — 가격은 _quoteMap(= /api/quotes)에서만 그린다. 새로 부르지 않는다 */
+function paintWatch() {
   var el = document.getElementById('watchList');
   if (!el) return;
 
@@ -363,86 +459,75 @@ async function loadWatchQuotes() {
 
   if (!watchlist.length) {
     el.dataset.built = ''; el.dataset.key = '';
+    el.className = '';
     el.innerHTML = '<div class="empty">관심종목이 없습니다.<br>종목을 검색해 ⭐를 눌러보세요.</div>';
     return;
   }
-  try {
-    // 종목마다 따로 부르지 않고 50개씩 묶어 한 번에 받는다 (워커·네이버 호출 1회)
-    var chunks = [];
-    for (var ci = 0; ci < watchlist.length; ci += 50) chunks.push(watchlist.slice(ci, ci + 50));
-    var byCode = {};
-    (await Promise.all(chunks.map(function (c) {
-      return Market.quotes(c).catch(function () { return { items: [] }; });
-    }))).forEach(function (d) {
-      (d.items || []).forEach(function (q) { byCode[q.code] = q; });
-    });
-    var rows = watchlist.map(function (c) { return byCode[c]; }).filter(function (q) { return q && isStockCode(q.code); });
-    if (rows.length) setMarketStatus(rows[0].marketStatus);
+  var rows = watchlist.map(function (c) { return _quoteMap[c]; }).filter(function (q) { return q && isStockCode(q.code); });
+  if (!rows.length) {
+    if (!el.dataset.built && _listQuotesTried) el.innerHTML = '<div class="empty">시세를 불러오지 못했습니다</div>';
+    return;
+  }
 
-    if (!rows.length) {
-      if (!el.dataset.built) el.innerHTML = '<div class="empty">시세를 불러오지 못했습니다</div>';
-      return;
-    }
+  var key = watchView + '|' + rows.map(function (q) { return q.code; }).join(',');
+  if (el.dataset.key !== key) {
+    el.className = watchView === 'card' ? 'watch-cards' : '';
+    el.innerHTML = rows.map(function (q) {
+      var open = 'openStock(\'' + q.code + '\',\'' + escapeJsArg(q.name) + '\')';
+      // 관심종목에서 바로 뺄 수 있도록 하트를 단다 — 랭킹에도 같은 종목의 하트가 있어 id 대신 data-fav 로 찾는다
+      var fav = '<button class="fav-btn on" data-fav="' + q.code + '"'
+              + ' onclick="onFavToggle(\'' + q.code + '\')" aria-label="관심종목에서 빼기">♥</button>';
 
-    var key = watchView + '|' + rows.map(function (q) { return q.code; }).join(',');
-    if (el.dataset.key !== key) {
-      el.className = watchView === 'card' ? 'watch-cards' : '';
-      el.innerHTML = rows.map(function (q) {
-        var open = 'openStock(\'' + q.code + '\',\'' + escapeJsArg(q.name) + '\')';
-        // 관심종목에서 바로 뺄 수 있도록 하트를 단다 (전역 동일한 fav-btn)
-        var fav = '<button class="fav-btn on" id="fav-' + q.code + '"'
-                + ' onclick="onFavToggle(\'' + q.code + '\')" aria-label="관심종목에서 빼기">♥</button>';
-
-        if (watchView === 'list') {
-          return '<div class="q-row rank-row">'
-            + '<button class="rank-main" onclick="' + open + '">'
-            +   stockLogoHtml(q.code, q.name, q.logo)
-            +   '<span class="q-name">' + escapeHtml(q.name) + '</span>'
-            +   '<span class="rank-nums">'
-            +     '<span class="q-price" id="wqp-' + q.code + '"></span>'
-            +     '<span class="q-chg" id="wqc-' + q.code + '"></span>'
-            +   '</span>'
-            + '</button>' + fav + '</div>';
-        }
-        return '<div class="w-card">'
-          + '<button class="w-card-main" onclick="' + open + '">'
-          +   '<div class="w-card-head">'
-          +     stockLogoHtml(q.code, q.name, q.logo, 'sm')
-          +     '<span class="w-card-name">' + escapeHtml(q.name) + '</span>'
-          +     '<span class="w-card-code">' + q.code + '</span>'
-          +   '</div>'
-          +   '<div class="w-card-row">'
+      if (watchView === 'list') {
+        return '<div class="q-row rank-row">'
+          + '<button class="rank-main" onclick="' + open + '">'
+          +   stockLogoHtml(q.code, q.name, q.logo)
+          +   '<span class="q-name">' + escapeHtml(q.name) + '</span>'
+          +   '<span class="rank-nums">'
           +     '<span class="q-price" id="wqp-' + q.code + '"></span>'
           +     '<span class="q-chg" id="wqc-' + q.code + '"></span>'
-          +   '</div>'
-          +   '<div class="w-card-spark" id="wqs-' + q.code + '"></div>'
+          +   '</span>'
           + '</button>' + fav + '</div>';
-      }).join('');
-      el.dataset.key = key;
-      el.dataset.built = '1';
-    }
-
-    rows.forEach(function (q) {
-      var pEl = document.getElementById('wqp-' + q.code);
-      var cEl = document.getElementById('wqc-' + q.code);
-      if (!pEl || !cEl) return;
-      setTextFlash(pEl, fmtNum(q.price), dirOf('w:' + q.code, q.price));
-      cEl.textContent = signMark(q.change) + ' ' + fmtRate(q.changeRate);
-      cEl.className = 'q-chg ' + signClass(q.change);
-
-      if (watchView === 'card') {
-        var sEl = document.getElementById('wqs-' + q.code);
-        if (sEl) {
-          ensureSparkline(q.code).then(function (vals) {
-            var cur = document.getElementById('wqs-' + q.code);
-            if (cur) cur.innerHTML = sparklineSvg(vals, q.change >= 0);
-          });
-        }
       }
-    });
-  } catch (e) {
-    if (!el.dataset.built) el.innerHTML = '<div class="empty">시세를 불러오지 못했습니다</div>';
+      return '<div class="w-card">'
+        + '<button class="w-card-main" onclick="' + open + '">'
+        +   '<div class="w-card-head">'
+        +     stockLogoHtml(q.code, q.name, q.logo, 'sm')
+        +     '<span class="w-card-name">' + escapeHtml(q.name) + '</span>'
+        +     '<span class="w-card-code">' + q.code + '</span>'
+        +   '</div>'
+        +   '<div class="w-card-row">'
+        +     '<span class="q-price" id="wqp-' + q.code + '"></span>'
+        +     '<span class="q-chg" id="wqc-' + q.code + '"></span>'
+        +   '</div>'
+        +   '<div class="w-card-spark" id="wqs-' + q.code + '"></div>'
+        + '</button>' + fav + '</div>';
+    }).join('');
+    el.dataset.key = key;
+    el.dataset.built = '1';
   }
+
+  rows.forEach(function (q) {
+    var pEl = document.getElementById('wqp-' + q.code);
+    var cEl = document.getElementById('wqc-' + q.code);
+    if (!pEl || !cEl) return;
+    setTextFlash(pEl, fmtNum(q.price), dirOf('w:' + q.code, q.price));
+    cEl.textContent = signMark(q.change) + ' ' + fmtRate(q.changeRate);
+    cEl.className = 'q-chg ' + signClass(q.change);
+
+    if (watchView === 'card' && document.getElementById('wqs-' + q.code)) {
+      ensureSparkline(q.code).then(function (vals) {
+        var cur = document.getElementById('wqs-' + q.code);
+        if (!cur) return;
+        // 5초마다 SVG 를 통째로 새로 만들지 않는다 — 선 데이터(1분 캐시)나 색이 바뀔 때만 다시 그린다
+        var hit = sparkCache[q.code];
+        var sk = (hit ? hit.at : 0) + ':' + (q.change >= 0 ? 'u' : 'd');
+        if (cur.dataset.sk === sk) return;
+        cur.dataset.sk = sk;
+        cur.innerHTML = sparklineSvg(vals, q.change >= 0);
+      });
+    }
+  });
 }
 
 /* ===== 최근 본 종목 ===== */
@@ -464,14 +549,33 @@ function onClearRecent() {
 }
 
 /* ===== 지금 뜨는 테마 ===== */
+var _sectorSeq = 0;              // 느리게 온 응답이 그 사이 연 화면(테마 목록 ↔ 테마 종목)을 덮지 않게
+
+/** 목록 위에 작은 안내 한 줄 — 이미 그린 내용은 그대로 둔다 (일시적 실패로 목록을 지우지 않는다) */
+function setListNote(el, text) {
+  var n = el.querySelector('.list-note');
+  if (!text) { if (n) n.remove(); return; }
+  if (!n) {
+    n = document.createElement('div');
+    n.className = 'list-note';
+    n.setAttribute('role', 'status');
+    el.insertBefore(n, el.firstChild);
+  }
+  n.textContent = text;
+}
+
 async function loadSectors(force) {
   var el = document.getElementById('themeList');
   if (!el) return;
   // 테마 상세(종목 목록)를 열어 둔 동안에는 주기 갱신이 그 화면을 덮지 않게 한다
   if (!force && el.querySelector('.sector-head')) return;
+  var seq = ++_sectorSeq;
+  if (force) _sectorCodes = [];          // 테마 목록으로 돌아간다 — 테마 종목 시세는 더 받지 않는다
   try {
     var d = await Market.sectors('theme');
+    if (seq !== _sectorSeq) return;
     var top = (d.groups || []).filter(function (g) { return /^\d{1,8}$/.test(String(g.no)); }).slice(0, 8);
+    _sectorCodes = [];
     el.innerHTML = top.map(function (g) {
       var c = signClass(g.changeRate);
       return '<button class="theme-row" onclick="openSector(\'' + String(g.no) + '\',\'' + escapeJsArg(g.name) + '\')">'
@@ -481,31 +585,44 @@ async function loadSectors(force) {
         + '</button>';
     }).join('');
   } catch (e) {
-    el.innerHTML = '<div class="empty">테마를 불러오지 못했습니다</div>';
+    if (seq !== _sectorSeq) return;
+    if (!force && el.querySelector('.theme-row')) {
+      setListNote(el, '테마를 새로 받지 못했습니다 · 잠시 후 다시 시도합니다');
+      return;
+    }
+    el.innerHTML = '<div class="empty">테마를 불러오지 못했습니다<br>'
+      + '<button class="mini-btn" style="margin-top:8px" onclick="loadSectors(true)">다시 시도</button></div>';
   }
 }
 
 async function openSector(no, name) {
+  if (!/^\d{1,8}$/.test(String(no))) return;
   var el = document.getElementById('themeList');
-  el.innerHTML = '<div class="loading">' + escapeHtml(name) + ' 종목 불러오는 중...</div>';
+  var seq = ++_sectorSeq;
+  var head = '<div class="sector-head">'
+    + '<strong>' + escapeHtml(name) + '</strong>'
+    + '<button class="mini-btn" onclick="loadSectors(true)">← 테마 목록</button></div>';
+  el.innerHTML = head + '<div class="loading">' + escapeHtml(name) + ' 종목 불러오는 중...</div>';
   try {
     var d = await Market.sectors('theme', no);
-    el.innerHTML = '<div class="sector-head">'
-      + '<strong>' + escapeHtml(name) + '</strong>'
-      + '<button class="mini-btn" onclick="loadSectors(true)">← 테마 목록</button></div>'
-      + (d.items || []).filter(function (s) { return isStockCode(s.code); }).map(function (s) {
-        var c = signClass(s.changeRate);
-        return '<button class="q-row" onclick="openStock(\'' + s.code + '\',\'' + escapeJsArg(s.name) + '\')">'
-          + stockLogoHtml(s.code, s.name, s.logo, 'sm')
-          + '<span class="q-name">' + escapeHtml(s.name) + '</span>'
-          + '<span class="q-price" id="skp-' + s.code + '">' + fmtNum(s.price) + '</span>'
-          + '<span class="q-chg ' + c + '" id="skc-' + s.code + '">' + fmtRate(s.changeRate) + '</span>'
-          + '</button>';
-      }).join('');
+    if (seq !== _sectorSeq) return;
+    var items = (d.items || []).filter(function (s) { return isStockCode(s.code); });
+    // 가격은 테마 API(2분 캐시) 값을 쓰지 않는다 — 받아 둔 /api/quotes 값이 없으면 '–' 로 두고 곧 채운다
+    _sectorCodes = items.map(function (s) { return s.code; });
     resetDirs('sk:');
-    refreshSectorPrices();
+    el.innerHTML = head + items.map(function (s) {
+      return '<button class="q-row" onclick="openStock(\'' + s.code + '\',\'' + escapeJsArg(s.name) + '\')">'
+        + stockLogoHtml(s.code, s.name, s.logo, 'sm')
+        + '<span class="q-name">' + escapeHtml(s.name) + '</span>'
+        + listPriceCells('sk', s.code)
+        + '</button>';
+    }).join('');
+    // 열어 둔 동안에는 'quotes' 폴러가 같은 주기로 갱신한다
+    if (_sectorCodes.some(function (c) { return !freshQuote(c); })) refreshListQuotes();
   } catch (e) {
-    el.innerHTML = '<div class="empty">종목을 불러오지 못했습니다</div>';
+    if (seq !== _sectorSeq) return;
+    el.innerHTML = head + '<div class="empty">종목을 불러오지 못했습니다<br>'
+      + '<button class="mini-btn" style="margin-top:8px" onclick="openSector(\'' + String(no) + '\',\'' + escapeJsArg(name) + '\')">다시 시도</button></div>';
   }
 }
 
@@ -529,16 +646,19 @@ async function loadRank() {
   var key = rankType + ':' + rankMarket;
   if (el.dataset.key !== key || !el.querySelector('.rank-row')) {
     el.innerHTML = '<div class="loading">불러오는 중...</div>';
+    _rankCodes = [];
   }
   try {
     var d = await Market.rank(rankType, rankMarket);
     // 기다리는 사이 다른 세그먼트를 눌렀으면 늦게 온 응답은 버린다
     if (key !== rankType + ':' + rankMarket) return;
     var items = (d.items || []).filter(function (s) { return isStockCode(s.code); }).slice(0, 15);
-    if (!items.length) { el.innerHTML = '<div class="empty">데이터가 없습니다</div>'; return; }
+    if (!items.length) { _rankCodes = []; el.innerHTML = '<div class="empty">데이터가 없습니다</div>'; return; }
 
+    // 순위·거래대금만 랭킹 API 값을 쓰고, 가격·등락률은 /api/quotes 로 받아 둔 값(_quoteMap)으로 그린다.
+    // 랭킹 API 가격은 워커 캐시로 최대 1분 늦어 1분마다 다시 그릴 때 옛 가격이 잠깐 비쳤다.
+    _rankCodes = items.map(function (s) { return s.code; });
     el.innerHTML = items.map(function (s, i) {
-      var c = signClass(s.changeRate);
       var watched = watchlist.indexOf(s.code) !== -1;
       // 거래대금·거래량을 함께 보여주되, 거래량 탭에서는 거래량을 위(주 지표)로 올린다
       var tvTxt = s.tradingValueText || (s.tradingValue != null ? fmtCompact(s.tradingValue) + '원' : '');
@@ -553,24 +673,22 @@ async function loadRank() {
         +     '<span class="q-name">' + escapeHtml(s.name) + '</span>'
         +     '<span class="rank-code">' + s.code + '</span>'
         +   '</span>'
-        +   '<span class="rank-nums">'
-        +     '<span class="q-price" id="rkp-' + s.code + '">' + fmtNum(s.price) + '</span>'
-        +     '<span class="q-chg ' + c + '" id="rkc-' + s.code + '">' + fmtRate(s.changeRate) + '</span>'
-        +   '</span>'
+        +   '<span class="rank-nums">' + listPriceCells('rk', s.code) + '</span>'
         +   (main || sub
               ? '<span class="rank-tv"><span>' + escapeHtml(main || sub) + '</span>'
                 + (main && sub ? '<span class="rank-tv-sub">' + escapeHtml(sub) + '</span>' : '') + '</span>'
               : '')
         + '</button>'
-        + '<button class="fav-btn' + (watched ? ' on' : '') + '" id="fav-' + s.code + '"'
-        +   ' onclick="onFavToggle(\'' + s.code + '\')" aria-label="관심종목">'
+        + '<button class="fav-btn' + (watched ? ' on' : '') + '" data-fav="' + s.code + '"'
+        +   ' onclick="onFavToggle(\'' + s.code + '\')" aria-label="' + (watched ? '관심종목에서 빼기' : '관심종목에 담기') + '">'
         +   (watched ? '♥' : '♡') + '</button>'
         + '</div>';
     }).join('')
     + rankNoteHtml(items, d.approx);
     el.dataset.key = key;
     resetDirs('rk:');
-    refreshRankPrices();          // 랭킹 API 는 최대 1분 늦다 — 가격만 현재가로 덮는다
+    // 받아 둔 값이 없거나 오래된 종목만 바로 받는다 — 나머지는 'quotes' 폴러가 같은 주기로 갱신한다
+    if (_rankCodes.some(function (c) { return !freshQuote(c); })) refreshListQuotes();
   } catch (e) {
     if (!el.querySelector('.rank-row')) el.innerHTML = '<div class="empty">랭킹을 불러오지 못했습니다</div>';
   }
@@ -595,31 +713,6 @@ function rankAsOf(items) {
 }
 
 /**
- * 랭킹 목록의 가격만 현재가로 맞춘다.
- * 순위·거래대금은 네이버 랭킹 API(워커 캐시 60초)에서 오는데, 관심종목은 /api/quotes(3초)를 쓴다.
- * 두 출처의 시차 때문에 같은 종목이 화면에서 다른 값으로 보였다(회원 제보 2026-09-23).
- * 가격만 관심종목과 같은 엔드포인트로 덮어써서 숫자가 어긋나지 않게 한다.
- * (덤으로 프리·애프터마켓에도 맞는다 — 랭킹은 KRX 종가, quotes 는 NXT 체결가를 쓴다)
- */
-async function refreshRankPrices() {
-  var el = document.getElementById('rankList');
-  if (!el || !el.querySelector('.rank-row')) return;
-  var codes = [].slice.call(el.querySelectorAll('.q-price[id^="rkp-"]'))
-    .map(function (n) { return n.id.slice(4); })
-    .filter(isStockCode);
-  if (!codes.length) return;
-
-  var key = el.dataset.key;
-  try {
-    var d = await Market.quotes(codes);
-    // 기다리는 사이 다른 세그먼트를 눌렀으면 늦게 온 값으로 새 목록을 덮지 않는다
-    el = document.getElementById('rankList');
-    if (!el || el.dataset.key !== key) return;
-    paintQuotes(d.items, 'rk');
-  } catch (e) { /* 다음 주기에 다시 — 기존 숫자를 그대로 둔다 */ }
-}
-
-/**
  * 목록의 가격·등락 칸을 현재가로 덮는다.
  * 가격 칸 id 는 '<prefix>p-<종목코드>', 등락 칸은 '<prefix>c-<종목코드>' 규칙.
  * 가격에는 색을 입히지 않는다 — 목록에서는 등락률 칸만 색을 쓴다.
@@ -635,58 +728,73 @@ function paintQuotes(items, prefix) {
   });
 }
 
-/** 테마 종목 목록도 같은 이유로 현재가를 덧씌운다 (테마 API 는 2분 캐시다) */
-async function refreshSectorPrices() {
-  var el = document.getElementById('themeList');
-  if (!el || !el.querySelector('.sector-head')) return;
-  var codes = [].slice.call(el.querySelectorAll('.q-price[id^="skp-"]'))
-    .map(function (n) { return n.id.slice(4); })
-    .filter(isStockCode);
-  if (!codes.length) return;
-  try {
-    var d = await Market.quotes(codes);
-    var now = document.getElementById('themeList');
-    if (!now || !now.querySelector('.sector-head')) return;   // 그 사이 목록으로 돌아갔다
-    paintQuotes(d.items, 'sk');
-  } catch (e) { /* 다음 기회에 — 기존 숫자를 그대로 둔다 */ }
+/* ===== 관심종목 하트 =====
+ * 같은 종목의 하트가 관심종목·랭킹·종목 상세에 동시에 있을 수 있다 — data-fav 로 모두 찾아 함께 바꾼다.
+ */
+var _favBusy = {};               // code -> 저장 중 (두 번 눌러 켰다 꺼지는 것 방지)
+
+function favButtons(code) {
+  return isStockCode(code) ? [].slice.call(document.querySelectorAll('.fav-btn[data-fav="' + code + '"]')) : [];
 }
 
-/** 랭킹 목록에서 바로 관심종목 토글 */
+function syncFavButtons(code, on) {
+  favButtons(code).forEach(function (b) {
+    b.classList.toggle('on', on);
+    b.textContent = on ? '♥' : '♡';
+    b.setAttribute('aria-label', on ? '관심종목에서 빼기' : '관심종목에 담기');
+  });
+  var sd = document.getElementById('starBtn');
+  if (sd && curStock && curStock.code === code) {
+    sd.classList.toggle('on', on);
+    sd.textContent = on ? '♥' : '♡';
+  }
+  // 관심종목 섹션은 다음에 칠할 때 뼈대부터 다시 만든다
+  var wl = document.getElementById('watchList');
+  if (wl) wl.dataset.key = '';
+}
+
+/** 관심종목·랭킹 목록에서 바로 관심종목 토글 */
 async function onFavToggle(code) {
-  var btn = document.getElementById('fav-' + code);
-  if (!btn) return;
-  btn.disabled = true;
+  if (!isStockCode(code) || _favBusy[code]) return;
+  _favBusy[code] = true;
+  favButtons(code).forEach(function (b) { b.disabled = true; });
   try {
     var on = await toggleWatch(code);
-    btn.classList.toggle('on', on);
-    btn.textContent = on ? '♥' : '♡';
-    // 종목 상세를 보고 있는 중이면 그쪽 하트도 맞춘다
-    var sd = document.getElementById('starBtn');
-    if (sd && curStock && curStock.code === code) {
-      sd.classList.toggle('on', on);
-      sd.textContent = on ? '♥' : '♡';
+    syncFavButtons(code, on);
+    // 시세 홈에 있을 때만 다시 칠한다. 폴러는 다시 만들지 않는다 — 5개를 한꺼번에 즉시 재실행하게 된다
+    if (!curStock && currentTab === 'market') {
+      paintWatch();                           // 뺀 종목은 바로 사라진다
+      if (on && !freshQuote(code)) refreshListQuotes();    // 새로 담은 종목은 시세를 받아야 그릴 수 있다
     }
-    // 관심종목 섹션도 다시 그린다 (뼈대 재생성 강제) — 시세 홈에 있을 때만. 종목 상세를 보는 중이면
-    // 홈 폴링으로 갈아타 상세 시세가 멈춰 버린다
-    var wl = document.getElementById('watchList');
-    if (wl) { wl.dataset.key = ''; wl.dataset.built = ''; }
-    if (!curStock && currentTab === 'market') { loadWatchQuotes(); startHomePolling(); }
   } catch (e) {
     alert(e && e.message ? e.message : '관심종목 저장에 실패했습니다.');
   } finally {
-    btn.disabled = false;
+    _favBusy[code] = false;
+    favButtons(code).forEach(function (b) { b.disabled = false; });
   }
 }
 
 /* ===== 종목 상세 ===== */
-async function openStock(code, name) {
+/**
+ * @param opts.fromPop  뒤로/앞으로 가기로 열 때 — 주소 기록을 새로 쌓지 않는다
+ * @param opts.replace  딥링크로 처음 열 때 — 지금 기록을 바꿔 쓴다 (뒤로 가기로 빈 화면이 나오지 않게)
+ */
+async function openStock(code, name, opts) {
   if (!isStockCode(code)) return;
+  opts = opts || {};
+  var nameKnown = !!name;
   name = String(name || code);
+  // 시세 홈에서 들어가면 스크롤 위치를 기억해 둔다 — 돌아올 때 그 자리로
+  if (!curStock) {
+    _detailFrom = currentTab;
+    if (currentTab === 'market') _homeScrollY = window.pageYOffset || 0;
+  }
+  var same = !!(curStock && curStock.code === code);
   curStock = { code: code, name: name };
   if (window.Community) Community.reset();
   curTf = 'D';
   bookOpen = false;
-  pushRecent(code, name);
+  if (nameKnown) pushRecent(code, name);       // 이름을 모르면(딥링크) 시세를 받은 뒤에 넣는다
   resetDirs('px:');
   resetDirs('bk:');
   _trendLoadedFor = null;
@@ -706,11 +814,15 @@ async function openStock(code, name) {
   el.innerHTML = stockShellHtml(code, name);
   window.scrollTo(0, 0);
   clearSearch();
+  if (!opts.fromPop) setStockUrl(code, name, opts.replace || same);
 
   // 뼈대를 그린 뒤에 탭을 전환한다 — enterMarketTab 이 startStockPolling 을 돌린다
   switchTab('market');
   loadStockChart();
   if (window.Mock) Mock.renderTradeBar();      // 모의투자 모드면 하단에 매수·매도
+  // 시세 홈을 거치지 않고 들어오면 휴장일 목록이 비어 있다 — 봉 갱신·장 상태 판단 전에 한 번 받아 둔다
+  ensureHolidays();
+  if (typeof renderStockBriefings === 'function') renderStockBriefings(code);
 
   // 시세 홈을 거치지 않고(브리핑 종목 칩) 들어오면 관심종목이 아직 없다 — 불러온 뒤 하트를 맞춘다
   ensureWatchlist().then(function () {
@@ -721,6 +833,49 @@ async function openStock(code, name) {
     btn.textContent = on ? '♥' : '♡';
   });
 }
+
+/* ===== 주소 (?code=) · 뒤로 가기 =====
+ * 종목 상세를 열면 ?code=XXXXXX 를 기록에 쌓는다. 다른 파라미터는 그대로 둔다 (공유 링크의 ?briefing 만 지운다).
+ * 안드로이드 뒤로 가기·스와이프로 상세가 닫히고, 링크를 그대로 공유·새로고침할 수 있다.
+ */
+function stockUrl(code) {
+  var u = new URL(location.href);
+  if (code) u.searchParams.set('code', code);
+  else u.searchParams.delete('code');
+  u.searchParams.delete('briefing');
+  return u.pathname + u.search + u.hash;
+}
+
+function setStockUrl(code, name, replace) {
+  try {
+    var st = { dtStock: code, dtName: name, dtPushed: true };
+    if (replace) {
+      st.dtPushed = !!(history.state && history.state.dtPushed);
+      history.replaceState(st, '', stockUrl(code));
+    } else {
+      history.pushState(st, '', stockUrl(code));
+    }
+  } catch (e) { /* 기록 API 가 막힌 환경 — 주소만 안 바뀐다 */ }
+}
+
+window.addEventListener('popstate', function (e) {
+  if (typeof isMember === 'undefined' || !isMember) return;
+  var st = e.state || {};
+  var code = st.dtStock || new URLSearchParams(location.search).get('code');
+  if (_backToHome) {
+    // "← 시세" 로 돌아왔는데 앞 기록도 종목이면(상세에서 다른 종목으로 건너간 경우) 그 기록을 홈으로 바꿔 쓴다
+    _backToHome = false;
+    if (isStockCode(code)) { try { history.replaceState(null, '', stockUrl(null)); } catch (x) {} }
+    closeDetail(true);
+    return;
+  }
+  if (isStockCode(code)) {
+    if (!curStock || curStock.code !== code) openStock(code, st.dtName || '', { fromPop: true });
+    else if (currentTab !== 'market') switchTab('market');
+  } else if (curStock) {
+    closeDetail(false);
+  }
+});
 
 /** 종목 상세 폴링 시작/재개 (즉시 1회 실행됨) */
 function startStockPolling() {
@@ -742,13 +897,40 @@ function allowNewBarNow() {
   return false;
 }
 
+/** "← 시세" — 쌓아 둔 기록이 있으면 뒤로 가기와 똑같이 닫는다 (기록이 두 갈래로 갈라지지 않게) */
 function backToMarket() {
+  if (history.state && history.state.dtStock && history.state.dtPushed) {
+    _backToHome = true;
+    history.back();                // popstate 가 closeDetail 을 부른다
+    return;
+  }
+  // 딥링크로 바로 들어와 되돌아갈 기록이 없다 — 주소에서 code 만 지우고 닫는다
+  try { history.replaceState(null, '', stockUrl(null)); } catch (e) {}
+  closeDetail(true);
+}
+
+/**
+ * 종목 상세를 닫는다.
+ * @param toHome true 면 시세 홈으로, false(뒤로 가기)면 상세를 열기 전에 보던 탭으로 돌아간다
+ */
+function closeDetail(toHome) {
+  var from = _detailFrom;
+  _detailFrom = null;
   curStock = null;
-  Poller.stopAll();
+  Poller.remove('quote'); Poller.remove('bars'); Poller.remove('book');
   if (chartHandle) { chartHandle.dispose(); chartHandle = null; }
+  var tb = document.getElementById('mkTradeBar');
+  if (tb) tb.remove();
   document.getElementById('stockDetail').style.display = 'none';
   document.getElementById('marketHome').style.display = '';
-  window.scrollTo(0, 0);
+  // 브리핑 종목 칩처럼 다른 탭에서 들어왔으면 뒤로 가기는 그 탭으로
+  if (!toHome && from && from !== 'market' && currentTab === 'market') {
+    var tabBtn = document.querySelector('.tab-btn[data-tab="' + from + '"]');
+    if (tabBtn && tabBtn.style.display !== 'none') { switchTab(from); return; }
+  }
+  if (currentTab !== 'market') return;         // 다른 탭을 보는 중 — 상세만 닫아 둔다
+  Poller.stopAll();
+  window.scrollTo(0, _homeScrollY || 0);
   initMarketHome().then(function () {
     if (curStock || currentTab !== 'market') return;
     renderRecent();
@@ -760,9 +942,10 @@ function stockShellHtml(code, name) {
   var watched = watchlist.indexOf(code) !== -1;
   return ''
     + '<div class="sd-head">'
-    +   '<button class="mini-btn" onclick="backToMarket()">← 시세</button>'
+    +   '<button class="mini-btn sd-back" onclick="backToMarket()">← 시세</button>'
     +   stockLogoHtml(code, name, null, 'lg')
-    +   '<span class="sd-title">' + escapeHtml(name) + '</span>'
+    +   '<span class="sd-title" id="sdTitle">' + escapeHtml(name) + '</span>'
+    +   '<button class="share-btn sd-share" onclick="shareStock()" aria-label="종목 공유">↗</button>'
     +   '<button class="fav-btn sd-fav' + (watched ? ' on' : '') + '" id="starBtn" onclick="onToggleWatch()"'
     +     ' aria-label="관심종목">' + (watched ? '♥' : '♡') + '</button>'
     + '</div>'
@@ -792,6 +975,7 @@ function stockShellHtml(code, name) {
     +   '<div class="chart-box" id="chartBox"><div class="loading">차트 불러오는 중...</div></div>'
     +   '<button class="book-toggle" id="bookToggle" onclick="toggleBook()">▾ 호가 보기 (20분 지연)</button>'
     +   '<div class="book-wrap" id="bookWrap" style="display:none"></div>'
+    +   '<div class="sd-briefings" id="sdBriefings" style="display:none"></div>'
     +   '<a class="ext-link" href="https://m.stock.naver.com/domestic/stock/' + code + '/total" target="_blank" rel="noopener noreferrer">네이버 증권에서 보기 →</a>'
     + '</div>'
     + '<div class="sd-panel" id="sdInfo" style="display:none"></div>'
@@ -805,7 +989,7 @@ function stockShellHtml(code, name) {
     +   '<div id="ndDisc" style="display:none"></div>'
     + '</div>'
     + '<div class="sd-panel" id="sdCommunity" style="display:none"><div class="loading">불러오는 중...</div></div>'
-    + '<div class="disclaimer">⚠️ 시세는 참고용이며 지연·오류가 있을 수 있습니다. 실제 매매는 증권사 앱에서 확인하세요.</div>';
+    + '<div class="disclaimer" id="sdDisclaimer">⚠️ 시세는 참고용이며 지연·오류가 있을 수 있습니다. 실제 매매는 증권사 앱에서 확인하세요.</div>';
 }
 
 function sdSwitch(tab) {
@@ -815,6 +999,9 @@ function sdSwitch(tab) {
   document.getElementById('sdTrend').style.display = tab === 'trend' ? '' : 'none';
   document.getElementById('sdNews').style.display = tab === 'news' ? '' : 'none';
   document.getElementById('sdCommunity').style.display = tab === 'community' ? '' : 'none';
+  // 커뮤니티 탭에는 글쓰기 칸 아래 안내 한 줄만 둔다 — 시세 면책까지 겹쳐 쌓이지 않게
+  var disc = document.getElementById('sdDisclaimer');
+  if (disc) disc.style.display = tab === 'community' ? 'none' : '';
   if (tab === 'info') loadStockProfile();
   if (tab === 'trend') loadDealTrend();
   if (tab === 'news') setNewsMode(newsMode);
@@ -823,16 +1010,19 @@ function sdSwitch(tab) {
 
 async function onToggleWatch() {
   if (!curStock) return;
+  var code = curStock.code;
+  if (_favBusy[code]) return;                // 저장 중에 또 누르면 켰다 꺼진다
+  _favBusy[code] = true;
   var btn = document.getElementById('starBtn');
-  btn.disabled = true;
+  if (btn) btn.disabled = true;
   try {
-    var on = await toggleWatch(curStock.code);
-    btn.classList.toggle('on', on);
-    btn.textContent = on ? '♥' : '♡';
+    var on = await toggleWatch(code);
+    syncFavButtons(code, on);      // 숨어 있는 시세 홈의 하트(관심종목·랭킹)도 함께 맞춘다
   } catch (e) {
     alert(e && e.message ? e.message : '관심종목 저장에 실패했습니다.');
   } finally {
-    btn.disabled = false;
+    _favBusy[code] = false;
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -861,6 +1051,18 @@ async function loadStockQuote() {
     box = document.getElementById('sdPrice');
     if (!box) return;
     setMarketStatus(q.marketStatus);        // 시계 대신 서버 상태를 신뢰
+    // 딥링크로 코드만 알고 들어왔으면 이름을 시세 응답으로 채운다 (제목·최근 본 종목·공유 문구)
+    if (q.name && curStock.name === code) {
+      curStock.name = String(q.name);
+      var tEl = document.getElementById('sdTitle');
+      if (tEl) tEl.textContent = curStock.name;
+      pushRecent(code, curStock.name);
+      try {
+        if (history.state && history.state.dtStock === code) {
+          history.replaceState(Object.assign({}, history.state, { dtName: curStock.name }), '', location.href);
+        }
+      } catch (e) {}
+    }
     var cls = signClass(q.change);
     var st = marketStateLabel();
 
@@ -908,6 +1110,7 @@ async function loadStockQuote() {
     if (chartHandle) chartHandle.updateLast(q.price, currentBucketTime(), q.volume, allowNewBarNow());
   } catch (e) {
     if (!box.dataset.built) box.innerHTML = '<div class="empty">' + escapeHtml(e.message) + '</div>';
+    paintStateBadges();          // 실패가 이어지면 '실시간' 대신 '연결 끊김'
   }
 }
 
