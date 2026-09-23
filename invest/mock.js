@@ -43,10 +43,21 @@ var Mock = (function () {
   function modeKey() { return 'dt-invest-mock:' + (currentUser ? currentUser.uid : ''); }
   function won(n) { return fmtNum(Math.round(n)) + '원'; }
   function rateHtml(r) { return '<span class="' + signClass(r) + '">' + fmtRate(r) + '</span>'; }
+  /** 체결 시각 — 좁은 줄에 들어가야 해서 "09.22 10:42" 로 짧게 쓴다 (KST 고정) */
   function kstHM(ms) {
-    var d = new Date(ms);
-    try { return d.toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Seoul' }).replace(/\s/g, ' '); }
-    catch (e) { var p = function (n) { return String(n).padStart(2, '0'); }; return (d.getMonth() + 1) + '.' + d.getDate() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()); }
+    var d = new Date(Number(ms) || 0);
+    if (isNaN(d)) return '';
+    var p2 = function (n) { return String(n).padStart(2, '0'); };
+    try {
+      var f = new Intl.DateTimeFormat('ko-KR', {
+        month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+        hour12: false, timeZone: 'Asia/Seoul'
+      }).formatToParts(d).reduce(function (o, x) { o[x.type] = x.value; return o; }, {});
+      return f.month + '.' + f.day + ' ' + f.hour + ':' + f.minute;
+    } catch (e) {
+      var k = new Date(d.getTime() + d.getTimezoneOffset() * 60000 + 9 * 3600000);
+      return p2(k.getMonth() + 1) + '.' + p2(k.getDate()) + ' ' + p2(k.getHours()) + ':' + p2(k.getMinutes());
+    }
   }
 
   /** KRX 호가단위 — 서버(engine.js)와 같은 표 */
@@ -479,6 +490,7 @@ var Mock = (function () {
       var rows = d.items.map(function (f) {
         return '<div class="mk-ord">'
           + '<span class="mk-side ' + (f.side === 'buy' ? 'buy' : 'sell') + '">' + (f.side === 'buy' ? '매수' : '매도') + '</span>'
+          + stockLogoHtml(f.code, f.name, null, 'sm')
           + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(f.name) + '</span>'
           +   '<span class="mk-pos-sub">' + escapeHtml(kstHM(f.at)) + ' · ' + fmtNum(f.qty) + '주 × ' + fmtNum(f.price) + '원</span></span>'
           + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(f.qty * f.price) + '원</span>'
