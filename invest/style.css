@@ -264,7 +264,7 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 }
 .idx-scroll::-webkit-scrollbar { display: none; }
 .idx-scroll::after { content: ''; flex: 0 0 20px; }   /* 끝까지 밀었을 때 마지막 지수가 흐려지지 않게 (마스크 18px 보다 넓게) */
-.idx-cell { flex: 0 0 auto; min-width: 96px; }
+.idx-cell { flex: 0 0 auto; min-width: 96px; max-width: 150px; }
 /* 해외 지수선물 — 국내 지수와 다른 묶음이라 선으로 가른다 */
 .idx-cell.fut-first { border-left: 1px solid var(--border); padding-left: 10px; margin-left: 2px; }
 .idx-cell.fut .idx-name { color: var(--text3); }
@@ -281,7 +281,8 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 }
 .idx-price { font-size: 1rem; font-weight: 800; margin-top: 2px; letter-spacing: -.3px; }
 .idx-chg { font-size: .72rem; font-weight: 700; margin-top: 1px; }
-.idx-spark { height: 22px; margin-top: 4px; }
+/* 폭을 고정한다 — 비워 두면 기기에 따라 셀 폭까지 늘어나 선이 길게 뭉개진다 */
+.idx-spark { width: 96px; height: 22px; margin-top: 4px; }
 .idx-spark.none { display: none; }     /* 분봉이 없는 해외 선물 — 숫자만 보여 준다 */
 
 /* 상태 배지 + 항목 고르기 */
@@ -888,6 +889,20 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 .rs-item:hover { background: var(--bg3); }
 .rs-title { font-size: .84rem; font-weight: 700; line-height: 1.45; }
 .rs-meta { font-size: .7rem; color: var(--text3); font-weight: 600; margin-top: 3px; }
+
+@media (max-width: 520px) {
+  /* 배지·기어가 가로를 130px 먹어 지수가 하나밖에 안 보였다 — 작게 줄여 칸을 넓힌다.
+     줄을 나누면 폭은 벌지만 높이가 늘어 첫 화면이 더 답답해진다. */
+  .index-strip { padding: 8px 10px; gap: 6px; }
+  .idx-side { gap: 4px; }
+  .idx-state { font-size: .58rem; padding: 1px 5px; }
+  .ix-gear { font-size: .72rem; padding: 1px 5px; }
+  .idx-cell { min-width: 88px; }
+  .idx-spark { width: 88px; height: 18px; margin-top: 3px; }
+  .idx-price { font-size: .94rem; }
+  .idx-name { font-size: .66rem; }
+  .idx-chg { font-size: .68rem; }
+}
 
 @media (max-width: 380px) {
   .rv-x { font-size: .58rem; }

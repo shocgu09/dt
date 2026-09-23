@@ -106,6 +106,7 @@ var Mock = (function () {
     catch (e) { season = { error: e.message }; }
     if (season && season.joined) await refreshAccount();
     else renderBar();
+    syncAdminMount();          // 관리 탭이 열려 있으면 시즌 패널도 맞춘다
     return season;
   }
 
@@ -139,6 +140,7 @@ var Mock = (function () {
     Poller.remove('mock-acc');
     Poller.remove('mock-rank');
     if (!on) return;
+    if (tab === 'admin') { mountAdmin(); return; }
     if (tab === 'account') {
       renderAccount();
       // 장중에는 10초, 장외에는 2분 — 계좌 탭을 보고 있을 때만 돈다
@@ -168,6 +170,11 @@ var Mock = (function () {
     });
   }
 
+  /** 시즌 정보가 새로 들어오면 관리 탭이 열려 있을 때 패널도 맞춘다 */
+  function syncAdminMount() {
+    if (typeof currentTab !== 'undefined' && currentTab === 'admin') mountAdmin();
+  }
+
   function renderAccount(errMsg) {
     var el = document.getElementById('tab-account');
     if (!el) return;
@@ -180,11 +187,11 @@ var Mock = (function () {
             ? '<p>다음 시즌 <b>' + escapeHtml(season.next.name) + '</b> — ' + escapeHtml(season.next.start_date) + ' 시작</p>'
             : '<p>다음 시즌 일정이 정해지면 여기에 표시됩니다.</p>')
         + '<button class="mini-btn" onclick="switchTab(\'ranking\')">지난 시즌 결과 보기</button></div>'
-        + adminHtml());
+      );
       return;
     }
 
-    if (!season.joined) { paint(el, joinHtml() + adminHtml()); return; }
+    if (!season.joined) { paint(el, joinHtml()); return; }
     if (!account) { paint(el, '<div class="empty">' + escapeHtml(errMsg || '계좌 정보를 불러오는 중') + '</div>'); return; }
 
     var a = account, s = a.season;
@@ -229,9 +236,8 @@ var Mock = (function () {
       + '<div class="disclaimer">⚠️ 가상 자금 모의투자이며 투자 권유가 아닙니다. 체결가는 네이버 증권 시세 기준(정규장 KRX · 시간외 NXT/KRX), '
       + '체결 판정은 최대 1분 지연될 수 있습니다. 최종 순위는 15:30 KRX 종가 기준 · 수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2)
       + '%(ETF·ETN 면제). 자세한 규칙은 참가 안내에 있습니다.</div>'
-      + adminHtml();
+      ;
     paint(el, h);
-    if (season.isAdmin) fillAdminForm();
     if (_review) renderReview();
     else loadReview();
   }
@@ -906,6 +912,17 @@ var Mock = (function () {
   }
 
   /* ===== 관리자: 시즌 만들기·고치기 ===== */
+  /** 관리 탭에 시즌·휴장일 패널을 그린다 (계좌 탭에 있던 것을 옮겼다) */
+  function mountAdmin() {
+    var mount = document.getElementById('mkAdminMount');
+    if (!mount) return;
+    if (!season || !season.isAdmin) { mount.innerHTML = ''; return; }
+    // 이미 그려 뒀으면 다시 만들지 않는다 (펼친 상태와 입력 중인 값을 지키기 위해)
+    if (mount.querySelector('.mk-admin')) return;
+    mount.innerHTML = adminHtml();
+    fillAdminForm();
+  }
+
   function adminHtml() {
     if (!season || !season.isAdmin) return '';
     return '<details class="mk-admin" ontoggle="if(this.open) Mock.loadSeasons()"><summary>⚙️ 시즌 · 휴장일 관리</summary>'
@@ -1136,6 +1153,7 @@ var Mock = (function () {
     join: join, openJoinFlow: openJoinFlow, joinStep2: joinStep2, closeJoin: closeJoin, cancel: cancel, loadHistory: loadHistory,
     openSheet: openSheet, closeSheet: closeSheet, setSheet: setSheet, input: input, step: step, pct: pct, submit: submit,
     askReview: askReview,
+    mountAdmin: mountAdmin,
     saveSeason: saveSeason, loadSeasons: loadSeasons, pickSeason: pickSeason,
     newSeasonForm: newSeasonForm, onSeasonIdInput: onSeasonIdInput,
     addHoliday: addHoliday, removeHoliday: removeHoliday,
