@@ -1033,7 +1033,9 @@ async function loadStockProfile() {
       + revenueCardHtml(p.finance)
       + targetCardHtml(p)
       + summaryCardHtml(p)
-      + researchCardHtml(p);
+      + researchCardHtml(p)
+      + '<div class="pf-source">투자지표 · 실적 · 컨센서스 · 기업개요는 네이버 증권을 통해 받은 '
+      +   'FnGuide 제공 자료입니다. 지연·오류가 있을 수 있습니다.</div>';
     syncTargetUpside();
     _profileLoadedFor = code;
   } catch (e) {
@@ -1222,7 +1224,7 @@ function syncTargetUpside() {
 
 function summaryCardHtml(p) {
   if (!p.summary || !p.summary.length) return '';
-  return '<section class="pf-card">' + pfCardHead('기업 개요')
+  return '<section class="pf-card">' + pfCardHead('기업 개요', 'FnGuide')
     + '<ul class="pf-summary">'
     + p.summary.map(function (l) { return '<li>' + escapeHtml(l) + '</li>'; }).join('')
     + '</ul></section>';
