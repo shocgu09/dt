@@ -256,13 +256,14 @@ async function handleIndex(env) {
     // 휴장일에는 CLOSE 가 와서 시계만 보고 "실시간"이라 표시하던 문제도 없어진다.
     // 해외 지수선물은 국내 장중에도 돌아간다 — 지수 스트립에 같이 실어 보낸다.
     // 선물이 죽어도 국내 지수는 그려야 하므로 실패는 삼킨다.
-    const [idx, ref, fut] = await Promise.all([
+    const [idx, ref, fut, extra] = await Promise.all([
       naver.getIndex(),
       naver.getQuote('005930').catch(() => null),
-      naver.getWorldFutures().catch(() => ({}))
+      naver.getWorldFutures().catch(() => ({})),
+      naver.getMarketExtras().catch(() => ({}))
     ]);
     return {
-      ...idx, ...fut,
+      ...idx, ...fut, ...extra,
       marketStatus: ref ? ref.marketStatus : null,
       sessionType: ref ? ref.sessionType : null
     };

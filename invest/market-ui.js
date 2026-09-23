@@ -59,11 +59,18 @@ function startHomePolling() {
 /* ===== 지수 스트립 ===== */
 // 표시 순서 — 워커가 내려준 것만 그린다 (구버전 캐시 응답에는 뒤의 것이 없을 수 있다)
 // 뒤쪽 셋은 CME 해외 지수선물 — 국내 장중에도 돌아가서 "지금 미국이 어디로 가는지"를 보여준다
-var INDEX_KEYS = ['kospi', 'kosdaq', 'kpi200', 'fut', 'kq150', 'nasdaq', 'sp500', 'dow', 'gold', 'oil'];
-var FUT_KEYS = { nasdaq: 1, sp500: 1, dow: 1, gold: 1, oil: 1 };
+var INDEX_KEYS = [
+  'kospi', 'kosdaq', 'kpi200', 'fut', 'kq150',
+  'usd', 'nasdaq', 'sp500', 'dow', 'vix', 'sox', 'gold', 'oil', 'us10y', 'kr10y', 'kr3y'
+];
+// 국내 지수가 아닌 것들 — 스트립에서 선 하나로 갈라 놓는다 (분봉이 없어 스파크라인도 없다)
+var FUT_KEYS = {
+  usd: 1, nasdaq: 1, sp500: 1, dow: 1, vix: 1, sox: 1,
+  gold: 1, oil: 1, us10y: 1, kr10y: 1, kr3y: 1
+};
 
 // 열 개를 다 켜면 가로로 너무 길다 — 처음엔 다섯 개만 보이고, 회원이 체크리스트로 고른다
-var INDEX_DEFAULT = ['kospi', 'kosdaq', 'fut', 'nasdaq', 'sp500'];
+var INDEX_DEFAULT = ['kospi', 'kosdaq', 'fut', 'usd', 'nasdaq', 'sp500'];
 var INDEX_PICK_KEY = 'dt-invest-index-pick';
 var _indexPick = null;
 var _indexSpark = null;      // key -> 당일 분봉 종가 배열
@@ -118,11 +125,13 @@ function renderIndexPanel() {
 }
 
 // 네이버 이름이 길어 좁은 셀에서 두 줄이 된다 ("나스닥 100 선물")
-var INDEX_NAME = { nasdaq: '나스닥 선물', sp500: 'S&P 선물', dow: '다우 선물' };
+var INDEX_NAME = { nasdaq: '나스닥 선물', sp500: 'S&P 선물', dow: '다우 선물', sox: '필라델피아 반도체' };
 // 체크리스트용 이름 (셀 이름은 네이버 값을 쓰지만 목록에서는 항상 같은 말로 보인다)
 var INDEX_LABEL = {
   kospi: '코스피', kosdaq: '코스닥', kpi200: '코스피 200', fut: '코스피 200 선물', kq150: '코스닥 150',
-  nasdaq: '나스닥 선물', sp500: 'S&P 선물', dow: '다우 선물', gold: '금', oil: 'WTI 유가'
+  usd: '원/달러 환율', nasdaq: '나스닥 선물', sp500: 'S&P 선물', dow: '다우 선물',
+  vix: 'VIX (공포지수)', sox: '필라델피아 반도체', gold: '금', oil: 'WTI 유가',
+  us10y: '미국 국채 10년', kr10y: '한국 국채 10년', kr3y: '한국 국채 3년'
 };
 
 async function loadIndex() {
@@ -167,9 +176,11 @@ async function loadIndex() {
       var cEl = document.getElementById('ixc-' + k);
       if (!pEl || !cEl) return;
       var cls = signClass(x.change);
-      // 지수는 항상 소수 둘째 자리까지 (1,115.10 이 1,115.1 로 찍히지 않게)
+      // 지수는 소수 둘째 자리까지, 국채 금리는 셋째 자리까지 (4.955%). 단위는 항목이 알려 준다.
+      var dg = x.decimals == null ? 2 : x.decimals;
       var pTxt = x.price == null ? '-'
-        : Number(x.price).toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        : Number(x.price).toLocaleString('ko-KR', { minimumFractionDigits: dg, maximumFractionDigits: dg })
+          + (x.unit || '');
       setTextFlash(pEl, pTxt, dirOf('ix:' + k, x.price));
       pEl.className = 'idx-price ' + cls;
       cEl.textContent = signMark(x.change) + ' ' + fmtRate(x.changeRate);

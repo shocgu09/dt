@@ -432,6 +432,80 @@ export const naver = {
     return out;
   },
 
+
+  /**
+   * 시장 지표 — 환율 · VIX · 필라델피아 반도체 · 미국/한국 국채 금리.
+   * 세 종류가 경로가 다르다.
+   *   해외 지수(.VIX/.SOX) : polling worldstock/index  — 콤마 배치라 1건
+   *   환율                 : marketindex/exchange/{code}
+   *   국채 금리            : marketindex/bond/{reutersCode}  (예: US10YT=RR)
+   * 환율·국채는 closePrice/fluctuations/fluctuationsRatio 로 형태가 같아 매퍼를 공유한다.
+   * 하나가 실패해도 나머지는 살린다 — 스트립 전체가 비면 안 된다.
+   */
+  async getMarketExtras() {
+    const WORLD = { '.VIX': { key: 'vix', decimals: 2 }, '.SOX': { key: 'sox', decimals: 2 } };
+    const BONDS = [
+      ['US10YT=RR', 'us10y'], ['KR10YT=RR', 'kr10y'], ['KR3YT=RR', 'kr3y']
+    ];
+    const out = {};
+
+    const mapBox = (b, key, decimals, unit) => {
+      const price = num(b.closePrice);
+      if (price == null) return;
+      out[key] = {
+        code: b.reutersCode || key,
+        name: b.name || key,
+        price,
+        change: num(b.fluctuations),
+        changeRate: Number(b.fluctuationsRatio),
+        decimals, unit: unit || null,
+        delayMin: (b.delayTime != null ? b.delayTime : (b.stockExchangeType && b.stockExchangeType.delayTime)) || 0
+      };
+    };
+
+    await Promise.all([
+      // 해외 지수 — 한 번에
+      (async () => {
+        try {
+          const d = await getJson(
+            `https://polling.finance.naver.com/api/realtime/worldstock/index/${Object.keys(WORLD).join(',')}`
+          );
+          for (const x of (d && d.datas) || []) {
+            const meta = WORLD[x.reutersCode];
+            if (!meta) continue;
+            const sign = signOf(x.compareToPreviousPrice && x.compareToPreviousPrice.code);
+            const price = num(x.closePrice);
+            if (price == null) continue;
+            out[meta.key] = {
+              code: x.reutersCode, name: x.indexName,
+              price,
+              change: sign * Math.abs(num(x.compareToPreviousClosePrice) || 0),
+              changeRate: Number(x.fluctuationsRatio),
+              decimals: meta.decimals, unit: null,
+              delayMin: (x.stockExchangeType && x.stockExchangeType.delayTime) || 0
+            };
+          }
+        } catch (e) { /* 이 묶음만 빠진다 */ }
+      })(),
+      // 환율 (하나은행 고시)
+      (async () => {
+        try {
+          const d = await getJson('https://api.stock.naver.com/marketindex/exchange/FX_USDKRW');
+          if (d && d.exchangeInfo) mapBox(d.exchangeInfo, 'usd', 2, '원');
+        } catch (e) { /* 빠진다 */ }
+      })(),
+      // 국채 금리 — 종목당 1건
+      ...BONDS.map(async ([code, key]) => {
+        try {
+          const d = await getJson(`https://api.stock.naver.com/marketindex/bond/${encodeURIComponent(code)}`);
+          if (d) mapBox(d, key, 3, '%');
+        } catch (e) { /* 빠진다 */ }
+      })
+    ]);
+
+    return out;
+  },
+
   async getProfile(code) {
     const [integration, finance] = await Promise.all([
       getJson(`https://m.stock.naver.com/api/stock/${code}/integration`),
