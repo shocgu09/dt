@@ -247,6 +247,14 @@ var Mock = (function () {
    * 유료 API 라 하루 3회까지. 본인만 본다.
    */
   var _review = null;          // { metrics, body, createdAt }
+  // 워커가 실제로 밟는 순서 — 체결 재생 → 벤치마크 → 습관 지표 → AI 작성
+  var RV_STEPS = [
+    ['📒', '체결 기록을 되짚는 중'],
+    ['📈', '시장과 견줘 보는 중'],
+    ['🔍', '매매 습관을 뜯어보는 중'],
+    ['✍️', '코치가 평가를 쓰는 중']
+  ];
+  var _rvTimer = null;
   var _reviewLeft = null;      // 오늘 남은 횟수
   var _reviewBusy = false;
 
@@ -273,9 +281,14 @@ var Mock = (function () {
     if (left) left.textContent = _reviewLeft == null ? '' : '오늘 ' + _reviewLeft + '회 남음';
 
     if (_reviewBusy) {
-      box.innerHTML = '<div class="loading">계좌를 분석하는 중... (10초쯤 걸립니다)</div>';
+      box.innerHTML = '<div class="mk-rv-load">'
+        + '<div class="mk-rv-bar"><i></i></div>'
+        + '<div class="mk-rv-step" id="mkRvStep"></div>'
+        + '</div>';
+      startRvSteps();
       return;
     }
+    stopRvSteps();
     var btn = '<button class="btn-submit mk-rv-btn" onclick="Mock.askReview(this)"'
       + (_reviewLeft === 0 ? ' disabled' : '') + '>'
       + (_review ? '다시 평가받기' : '평가받기') + '</button>';
@@ -344,6 +357,29 @@ var Mock = (function () {
     if (isNaN(d)) return '';
     try { return d.toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Seoul' }); }
     catch (e) { return ''; }
+  }
+
+  /** 단계 문구를 2.5초마다 넘긴다. 마지막 단계에서 멈춘다 (끝난 척하지 않는다) */
+  function startRvSteps() {
+    stopRvSteps();
+    var i = 0;
+    var paint = function () {
+      var el = document.getElementById('mkRvStep');
+      if (!el) { stopRvSteps(); return; }
+      el.innerHTML = '<span class="mk-rv-emoji">' + RV_STEPS[i][0] + '</span>' + escapeHtml(RV_STEPS[i][1]);
+      el.classList.remove('in');
+      void el.offsetWidth;                 // 애니메이션을 다시 태우려면 한 번 끊어야 한다
+      el.classList.add('in');
+    };
+    paint();
+    _rvTimer = setInterval(function () {
+      if (i >= RV_STEPS.length - 1) return;   // 마지막에서 멈춘다
+      i++; paint();
+    }, 2500);
+  }
+
+  function stopRvSteps() {
+    if (_rvTimer) { clearInterval(_rvTimer); _rvTimer = null; }
   }
 
   async function askReview(btn) {
