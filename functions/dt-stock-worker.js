@@ -13,6 +13,9 @@ const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  // Authorization 헤더 때문에 요청마다 preflight(OPTIONS)가 붙는다. 브라우저 기본 캐시는 5초라
+  // 3~5초 폴링이 거의 매번 왕복 두 번이 됐다 — 하루 동안 재사용하게 한다 (크롬은 최대 2시간으로 자른다)
+  'Access-Control-Max-Age': '86400',
   'Content-Type': 'application/json; charset=utf-8'
 };
 

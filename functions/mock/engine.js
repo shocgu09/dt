@@ -115,6 +115,9 @@ export async function acceptOrder(db, season, account, input, quote, taxFree, no
     .bind(account.uid, String(input.clientOrderId)).first();
   if (dup) return dup;
 
+  // 종료일이 지난 시즌 — 마감 크론이 늦거나 실패해도 다음 날 매매가 이어지지 않게 한다
+  if (season.end_date && t.iso > season.end_date) throw new OrderError('시즌이 종료되었습니다. 최종 순위를 집계하고 있습니다', 'season_over');
+
   const tradingDay = isTradingDay(t);
   let session = null;
   if (tradingDay && t.hm >= PRE_FROM && t.hm < ACCEPT_FROM) session = 'pre';
@@ -186,13 +189,22 @@ export async function acceptOrder(db, season, account, input, quote, taxFree, no
   const marketable = type === 'limit' && !preOpen
     ? ((side === 'buy' ? cur <= limit : cur >= limit) ? 1 : 0) : 0;
   const id = uuid();
-  await db.prepare(
-    `INSERT INTO orders (id, client_order_id, season_id, uid, code, name, side, type, qty, limit_price,
-       reserved, vol_at_accept, pre_open, marketable, tax_free, trade_date, accepted_at, updated_at, session, nxt_vol_at_accept)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-  ).bind(id, String(input.clientOrderId), season.id, account.uid, quote.code, quote.name || quote.code,
-    side, type, qty, limit, reserved, preOpen ? 0 : (quote.krx.volume || 0), preOpen, marketable,
-    taxFree ? 1 : 0, t.ymd, now, now, session, (quote.nxt && quote.nxt.volume) || 0).run();
+  try {
+    await db.prepare(
+      `INSERT INTO orders (id, client_order_id, season_id, uid, code, name, side, type, qty, limit_price,
+         reserved, vol_at_accept, pre_open, marketable, tax_free, trade_date, accepted_at, updated_at, session, nxt_vol_at_accept)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    ).bind(id, String(input.clientOrderId), season.id, account.uid, quote.code, quote.name || quote.code,
+      side, type, qty, limit, reserved, preOpen ? 0 : (quote.krx.volume || 0), preOpen, marketable,
+      taxFree ? 1 : 0, t.ymd, now, now, session, (quote.nxt && quote.nxt.volume) || 0).run();
+  } catch (e) {
+    // 같은 주문이 동시에 두 번 도착해 위의 중복 확인을 둘 다 통과한 경우 — UNIQUE(uid, client_order_id) 에 걸린
+    // 쪽은 먼저 들어간 주문을 그대로 돌려준다 (500 으로 끝나면 화면은 실패로 알고 또 누른다)
+    const again = await db.prepare(`SELECT * FROM orders WHERE uid=? AND client_order_id=?`)
+      .bind(account.uid, String(input.clientOrderId)).first();
+    if (again) return again;
+    throw e;
+  }
   return db.prepare(`SELECT * FROM orders WHERE id=?`).bind(id).first();
 }
 
@@ -221,6 +233,8 @@ export async function expireStale(db, now = Date.now()) {
  * @returns 체결 내역 | null
  */
 export async function tryFill(db, season, order, ctx, now = Date.now()) {
+  // ctx.stats.q — 이 호출이 쓴 D1 문장 수 (크론이 호출당 한도 안에서 멈추도록 센다)
+  const count = (n) => { if (ctx.stats) ctx.stats.q += n; };
   if (order.status !== 'open' && order.status !== 'partial') return null;
   const t = kstNow(now);
   const ext = order.session === 'pre' || order.session === 'after';
@@ -282,6 +296,7 @@ export async function tryFill(db, season, order, ctx, now = Date.now()) {
     if (hits(open)) { price = open; volCap = todayBars[0].v || 0; }
     else {
       // 시가에 안 닿은 지정가는 이제부터 일반 대기 주문이 된다
+      count(1);
       await db.prepare(`UPDATE orders SET vol_at_accept=?, updated_at=? WHERE id=? AND vol_at_accept=0`)
         .bind(Math.max(1, q.krx.volume || 1), now, order.id).run();
       return null;
@@ -307,16 +322,21 @@ export async function tryFill(db, season, order, ctx, now = Date.now()) {
   let qty = Math.min(remaining, season.volume_fill ? Math.max(0, Math.floor(volCap)) : remaining);
   if (qty <= 0) return null;
 
-  const account = await getAccount(db, season.id, order.uid);
+  // 계정·주문 가능 금액은 크론이 미리 한 번에 읽어 넘겨준다 — 무료 요금제는 호출당 D1 쿼리가 50건이라
+  // 주문마다 두 번씩 읽으면 장 시작 직후 몇 건 만에 한도에 닿는다
+  if (!ctx.account) count(1);
+  const account = ctx.account || await getAccount(db, season.id, order.uid);
   if (!account) return null;
   let cancelRest = false;
   if (isBuy) {
     // 이 주문 몫으로 쓸 수 있는 현금 = 현금 − 다른 주문이 묶어 둔 금액
-    const budget = await availableCash(db, season.id, order.uid, account.cash, order.id);
+    const budget = ctx.available != null ? ctx.available
+      : await availableCash(db, season.id, order.uid, account.cash, order.id);
     const affordable = Math.floor(budget / (price * (1 + season.fee_rate)));
     if (affordable < qty) { qty = Math.max(0, affordable); cancelRest = true; }
     while (qty > 0 && price * qty + fee(price * qty, season.fee_rate) > budget) qty--;   // 절사 오차 보정
     if (qty <= 0) {
+      count(1);
       await db.prepare(`UPDATE orders SET status='cancelled', reserved=0, reason='주문 가능 금액 부족', updated_at=?
                         WHERE id=? AND status IN ('open','partial')`).bind(now, order.id).run();
       return null;
@@ -331,18 +351,28 @@ export async function tryFill(db, season, order, ctx, now = Date.now()) {
   const status = done ? 'filled' : (cancelRest ? 'cancelled' : 'partial');
   const newReserved = (isBuy && !done && !cancelRest) ? Math.max(0, order.reserved - (amount + f)) : 0;
 
-  // 1) 주문 행을 먼저 잡는다 — filled_qty 가 읽은 값 그대로일 때만. 같은 주문을 두 경로(화면 폴링·크론)가
-  //    동시에 체결하려 해도 한쪽만 통과한다.
-  const lock = await db.prepare(
-    `UPDATE orders SET filled_qty=?, reserved=?, status=?, reason=?, updated_at=?
-     WHERE id=? AND status IN ('open','partial') AND filled_qty=?`
-  ).bind(newFilled, newReserved, status, cancelRest ? '주문 가능 금액 초과로 일부 체결' : null, now, order.id, order.filled_qty).run();
-  if (!lock.meta.changes) return null;
-
-  // 2) 잔고·보유·체결 기록은 한 트랜잭션. CHECK(cash>=0, qty>=0) 위반이면 통째로 롤백된다.
+  // 주문 잠금·잔고·보유·체결 기록을 batch 하나(= 한 트랜잭션)로 처리한다.
+  // 예전에는 잠금을 먼저 따로 걸었는데, 그 뒤 batch 가 실패하고 되돌리기까지 실패하면 주문만 '체결'로 남고
+  // 장부는 비었다. 되돌리기가 그 사이 회원이 취소한 주문을 다시 살려 내기도 했다.
   const fillId = uuid();
   const key = [season.id, order.uid, order.code];
-  const stmts = isBuy ? [
+  const stmts = [
+    // 1) 주문 행 잠금 — filled_qty 가 읽은 값 그대로일 때만. 이 체결의 id 를 남겨 아래 가드가 "내가 잡았는지" 확인한다
+    db.prepare(
+      `UPDATE orders SET filled_qty=?, reserved=?, status=?, reason=?, updated_at=?, last_fill_id=?
+       WHERE id=? AND status IN ('open','partial') AND filled_qty=?`
+    ).bind(newFilled, newReserved, status, cancelRest ? '주문 가능 금액 초과로 일부 체결' : null, now, fillId, order.id, order.filled_qty),
+    // 2) 가드 — 잠금을 다른 경로(화면 폴링·크론)가 먼저 가져갔거나, 매도할 보유 수량이 모자라면
+    //    CHECK(cash >= 0) 위반을 일부러 일으켜 batch 전체를 되돌린다.
+    //    동시에 들어온 매도 두 건 중 뒤엣것이 이미 지워진 보유 행을 팔아 현금만 생기던 구멍을 막는다
+    //    (UPDATE positions 는 행이 없으면 0행 변경으로 조용히 넘어가서 CHECK 가 걸리지 않았다).
+    db.prepare(
+      `UPDATE accounts SET cash = -1 WHERE season_id=? AND uid=? AND (
+         NOT EXISTS (SELECT 1 FROM orders WHERE id=? AND last_fill_id=?)`
+      + (isBuy ? ')' : ` OR COALESCE((SELECT qty FROM positions WHERE season_id=? AND uid=? AND code=?), 0) < ?)`)
+    ).bind(season.id, order.uid, order.id, fillId, ...(isBuy ? [] : [...key, qty]))
+  ];
+  stmts.push(...(isBuy ? [
     db.prepare(`UPDATE accounts SET cash = cash - ?, fills = fills + 1 WHERE season_id=? AND uid=?`)
       .bind(amount + f, season.id, order.uid),
     db.prepare(`INSERT INTO positions (season_id, uid, code, name, qty, cost) VALUES (?,?,?,?,?,?)
@@ -358,20 +388,37 @@ export async function tryFill(db, season, order, ctx, now = Date.now()) {
     db.prepare(`UPDATE positions SET cost = cost - CAST(ROUND(cost * 1.0 * ? / qty) AS INTEGER), qty = qty - ?
                 WHERE season_id=? AND uid=? AND code=?`).bind(qty, qty, ...key),
     db.prepare(`DELETE FROM positions WHERE season_id=? AND uid=? AND code=? AND qty=0`).bind(...key)
-  ];
+  ]));
   stmts.push(db.prepare(
     `INSERT INTO fills (id, order_id, season_id, uid, code, name, side, qty, price, fee, tax, at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(fillId, order.id, season.id, order.uid, order.code, order.name, order.side, qty, price, f, tax, now));
 
+  count(stmts.length);
   try {
     await db.batch(stmts);
   } catch (e) {
-    // 장부 반영에 실패하면 주문 행을 되돌린다 (체결은 없던 일)
-    await db.prepare(`UPDATE orders SET filled_qty=?, reserved=?, status=?, reason=NULL, updated_at=? WHERE id=?`)
-      .bind(order.filled_qty, order.reserved, order.status, now, order.id).run();
-    throw e;
+    count(3);
+    // 통째로 되돌려졌다 (체결은 없던 일). 왜 실패했는지 다시 읽어 판단한다.
+    const cur = await db.prepare(`SELECT status, filled_qty FROM orders WHERE id=?`).bind(order.id).first();
+    // 다른 경로가 먼저 체결·취소했다 — 정상적인 경합이므로 조용히 넘어간다
+    if (!cur || cur.filled_qty !== order.filled_qty || (cur.status !== 'open' && cur.status !== 'partial')) return null;
+    if (!isBuy) {
+      const pos = await db.prepare(`SELECT qty FROM positions WHERE season_id=? AND uid=? AND code=?`).bind(...key).first();
+      if ((pos ? pos.qty : 0) < qty) {
+        // 동시에 낸 다른 매도가 먼저 팔았다 — 매분 다시 시도해도 계속 실패하므로 취소한다
+        await db.prepare(`UPDATE orders SET status='cancelled', reserved=0, reason='매도 가능 수량 부족', updated_at=?
+                          WHERE id=? AND status IN ('open','partial') AND filled_qty=?`).bind(now, order.id, order.filled_qty).run();
+        return null;
+      }
+    }
+    throw e;   // 매수 현금 부족(동시 매수 경합) 등 — 다음 판정 때 새 잔고로 다시 계산한다
   }
-  return { id: fillId, orderId: order.id, code: order.code, side: order.side, qty, price, fee: f, tax, status };
+  return {
+    id: fillId, orderId: order.id, code: order.code, side: order.side, qty, price, fee: f, tax, status,
+    // 크론이 미리 읽어 둔 잔고를 이어서 쓸 수 있게 변화량을 알려 준다
+    cashDelta: isBuy ? -(amount + f) : (amount - f - tax),
+    reservedDelta: isBuy ? newReserved - order.reserved : 0
+  };
 }
 
 // ── 평가 ──────────────────────────────────────────────────────

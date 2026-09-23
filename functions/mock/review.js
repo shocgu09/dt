@@ -53,18 +53,25 @@ function replayFills(fills) {
 }
 
 /** 코스피·코스닥의 같은 기간 수익률 — 내 성과가 시장 덕인지 가르는 기준 */
-async function benchmarkReturn(code, startDate, now) {
+/**
+ * 지수 수익률 — 회원과 같은 출발선에서 잰다.
+ * 기준은 참가한 시점 직전의 종가: 15:30 전에 참가했으면 전 거래일 종가, 그 뒤면 그날 종가.
+ * (예전에는 시즌 시작일 종가를 기준으로 삼아, 중도 참가자의 "시장 대비"가 엉뚱한 기간과 비교됐다)
+ */
+async function benchmarkReturn(code, joinedAt, now) {
   const p = (n) => String(n).padStart(2, '0');
-  const k = new Date(now + 9 * 3600e3);
-  const ymd = `${k.getUTCFullYear()}${p(k.getUTCMonth() + 1)}${p(k.getUTCDate())}`;
-  const from = String(startDate || '').replace(/-/g, '');
-  if (!/^\d{8}$/.test(from)) return null;
+  const kst = (ms) => new Date(ms + 9 * 3600e3);
+  const ymdOf = (d) => `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}`;
+  if (!joinedAt) return null;
+  const j = kst(joinedAt);
+  const joinYmd = ymdOf(j);
+  const afterClose = j.getUTCHours() * 60 + j.getUTCMinutes() >= 15 * 60 + 30;
   try {
-    const bars = await naver.indexDailyCloses(code, from, ymd);
-    if (!bars || bars.length < 2) return null;
-    const first = bars[0], last = bars[bars.length - 1];
-    if (!first || !last) return null;
-    return round2((last - first) / first * 100);
+    const rows = await naver.indexDailyCloses(code, ymdOf(kst(joinedAt - 14 * 86400e3)), ymdOf(kst(now)), true);
+    const base = rows.filter((r) => (afterClose ? r.d <= joinYmd : r.d < joinYmd)).pop();
+    const last = rows[rows.length - 1];
+    if (!base || !last || !base.c || last === base) return null;
+    return round2((last.c - base.c) / base.c * 100);
   } catch (e) { return null; }
 }
 
@@ -109,8 +116,8 @@ export async function buildMetrics(db, season, account, view, now) {
   }
 
   const [kospi, kosdaq] = await Promise.all([
-    benchmarkReturn('KOSPI', season.start_date, now),
-    benchmarkReturn('KOSDAQ', season.start_date, now)
+    benchmarkReturn('KOSPI', account.joined_at, now),
+    benchmarkReturn('KOSDAQ', account.joined_at, now)
   ]);
   const ret = round2(view.returnRate);
 

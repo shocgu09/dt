@@ -523,13 +523,15 @@ export const naver = {
   },
 
   /** 지수 일별 종가 — 시즌 기간 벤치마크 수익률 계산용 (YYYYMMDD) */
-  async indexDailyCloses(code, fromYmd, toYmd) {
+  /** 지수 일봉 종가 — withDates 면 { d: YYYYMMDD, c } 로 */
+  async indexDailyCloses(code, fromYmd, toYmd, withDates) {
     const bars = await getJson(
       `https://api.stock.naver.com/chart/domestic/index/${code}/day?startDateTime=${fromYmd}0000&endDateTime=${toYmd}0000`
     );
-    return (Array.isArray(bars) ? bars : [])
-      .map((x) => (typeof x.closePrice === 'number' ? x.closePrice : num(x.closePrice)))
-      .filter((v) => v != null);
+    const rows = (Array.isArray(bars) ? bars : [])
+      .map((x) => ({ d: String(x.localDate || x.localDateTime || '').slice(0, 8), c: typeof x.closePrice === 'number' ? x.closePrice : num(x.closePrice) }))
+      .filter((r) => r.c != null);
+    return withDates ? rows : rows.map((r) => r.c);
   },
 
   async getProfile(code) {

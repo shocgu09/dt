@@ -65,6 +65,8 @@ CREATE TABLE IF NOT EXISTS orders (
   reason          TEXT,
   accepted_at     INTEGER NOT NULL,
   updated_at      INTEGER NOT NULL,
+  last_fill_id    TEXT,                           -- 마지막으로 이 주문을 잠근 체결 id — 체결 batch 가 "내가 잠갔는지" 확인한다
+                                                  -- (기존 DB: ALTER TABLE orders ADD COLUMN last_fill_id TEXT)
   CHECK (filled_qty >= 0 AND filled_qty <= qty),
   UNIQUE (uid, client_order_id)
 );

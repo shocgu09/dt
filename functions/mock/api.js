@@ -78,11 +78,18 @@ async function kindOf(code, name) {
   }).catch(() => 'stock');
 }
 
-async function todayBars(code, now) {
+/**
+ * 오늘 1분봉. fromHm(KST 분) 이후만 받는다 — 판정에는 접수 이후 봉만 쓰이는데, 늘 09:00 부터 받으면
+ * 오후엔 종목당 수백 봉을 파싱하느라 무료 요금제 CPU 한도(호출당 10ms)를 넘길 수 있다.
+ */
+async function todayBars(code, now, fromHm) {
   const t = E.kstNow(now);
   const p = (n) => String(n).padStart(2, '0');
-  const end = `${t.ymd}${p(Math.floor(t.hm / 60))}${p(t.hm % 60)}`;
-  return memo(`bars:${code}:${end}`, 20000, () => naver.getOhlc(code, '1m', { start: `${t.ymd}0900`, end }).catch(() => []));
+  const hhmm = (m) => `${p(Math.floor(m / 60))}${p(m % 60)}`;
+  const from = Math.max(E.OPEN_AT, Math.min(fromHm == null ? E.OPEN_AT : fromHm, t.hm));
+  const end = `${t.ymd}${hhmm(t.hm)}`;
+  const start = `${t.ymd}${hhmm(from)}`;
+  return memo(`bars:${code}:${start}:${end}`, 20000, () => naver.getOhlc(code, '1m', { start, end }).catch(() => []));
 }
 
 /**
@@ -91,16 +98,17 @@ async function todayBars(code, now) {
  *    평가도 시간외 가격을 따라간다. 20:00 이후에는 마지막 시간외 가격에서 멈춘다.
  *  - official: 저장해 둔 15:30 종가 — 일일 스냅샷과 시즌 최종 순위는 KRX 정규장 종가로 확정한다.
  */
-async function pricer(db, codes, now, official) {
+async function pricer(db, codes, now, official, asOfYmd) {
   const t = E.kstNow(now);
   const live = !official && E.isTradingDay(t) && t.hm >= E.PRE_FROM && t.hm < E.AFTER_TO;
   const quotes = codes.length ? await quotesFor(codes) : {};
   const closes = {};
   if (official && codes.length) {
+    // asOfYmd — 시즌 종료일이 지난 뒤 늦게 마감할 때, 그 뒤 날짜의 종가가 섞이지 않게 한다
     const rows = (await db.prepare(
       `SELECT c.code, c.close FROM closes c
-       JOIN (SELECT code, MAX(date) AS d FROM closes GROUP BY code) m ON m.code = c.code AND m.d = c.date`
-    ).all()).results || [];
+       JOIN (SELECT code, MAX(date) AS d FROM closes WHERE date <= ? GROUP BY code) m ON m.code = c.code AND m.d = c.date`
+    ).bind(asOfYmd || '99999999').all()).results || [];
     for (const r of rows) closes[r.code] = r.close;
   }
   return {
@@ -170,7 +178,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
   // ── 관리자 ──
   if (path.startsWith('/admin/')) {
     if (!isAdmin) throw new HttpError(403, '관리자만 가능합니다');
-    return handleAdmin(db, uid, path, method, body, now);
+    return handleAdmin(db, uid, path, method, body, now, url);
   }
 
   // 주문창의 호가단위 ± 버튼용 — ETF·ETN 은 호가단위와 세금이 다르다
@@ -276,7 +284,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       // 화면이 주문 상태를 물어볼 때마다 체결을 시도한다 (크론을 기다리지 않고 바로 체결되도록)
       const quote = await naver.getQuote(order.code).catch(() => null);
       const needBars = (order.type === 'limit' || order.pre_open) && order.session !== 'pre';   // NXT 프리마켓은 분봉이 없다
-      const bars = needBars ? await todayBars(order.code, now) : null;
+      const bars = needBars ? await todayBars(order.code, now, E.kstNow(order.accepted_at).hm) : null;
       fill = await E.tryFill(db, season, order, { quote, bars }, now);
       if (fill) { mem.delete(`lb:${season.id}`); order = await db.prepare(`SELECT * FROM orders WHERE id=?`).bind(m[1]).first(); }
     }
@@ -335,6 +343,12 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       throw new HttpError(429, `평가는 하루 ${REVIEW_DAILY_MAX}번까지 받을 수 있습니다. 내일 다시 시도해 주세요`, 'quota');
     }
 
+    // 하루 횟수를 풀어 둔 동안에도 연타로 유료 API 가 연달아 불리지 않게 1분 간격은 둔다
+    const lastAt = await db.prepare(`SELECT MAX(created_at) AS at FROM reviews WHERE uid=?`).bind(uid).first();
+    if (lastAt && lastAt.at && now - lastAt.at < 60000) {
+      throw new HttpError(429, '방금 평가를 받았습니다. 1분 뒤에 다시 시도해 주세요', 'cooldown');
+    }
+
     const view = await accountView(db, season, account, now);
     const metrics = await buildMetrics(db, season, account, view, now);
 
@@ -348,8 +362,8 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) {
-        // 401 은 OpenAI 키 문제다 — 운영진이 바로 알아볼 수 있게 구분해 알린다
-        if (d && d.upstream === 401) throw new HttpError(502, 'AI 키가 만료된 것 같습니다. 운영진에게 알려 주세요');
+        // 401 은 OpenAI 키 문제다 — 로그로 구분해 두고, 회원에게는 담백하게 알린다
+        if (d && d.upstream === 401) { console.error('review: OpenAI 401 — 키 확인 필요'); throw new HttpError(502, 'AI 평가를 잠시 이용할 수 없습니다'); }
         throw new HttpError(502, (d && d.error) || 'AI 평가를 가져오지 못했습니다');
       }
       text = d.text;
@@ -384,12 +398,18 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
   }
 
   if (path === '/history' && method === 'GET') {
-    const before = Number(url.searchParams.get('before')) || now + 1;
+    // 다음 페이지 기준은 (시각, id) — 크론 한 번의 체결은 모두 같은 시각이라 시각만 쓰면 경계에서 빠진다.
+    // before 는 "시각" 또는 "시각_id" (옛 화면이 보내는 숫자도 받는다)
+    const cur = String(url.searchParams.get('before') || '');
+    const mm = /^(\d{1,15})(?:_([0-9a-f-]{36}))?$/i.exec(cur);
+    const bAt = mm ? Number(mm[1]) : now + 1;
+    const bId = mm && mm[2] ? mm[2] : (mm ? '' : 'ffffffff');
     const rows = (await db.prepare(
       `SELECT id, code, name, side, qty, price, fee, tax, at FROM fills
-       WHERE season_id=? AND uid=? AND at < ? ORDER BY at DESC LIMIT 50`
-    ).bind(season.id, uid, before).all()).results || [];
-    return { items: rows, next: rows.length === 50 ? rows[rows.length - 1].at : null };
+       WHERE season_id=? AND uid=? AND (at < ? OR (at = ? AND id < ?)) ORDER BY at DESC, id DESC LIMIT 50`
+    ).bind(season.id, uid, bAt, bAt, bId).all()).results || [];
+    const last = rows[rows.length - 1];
+    return { items: rows, next: rows.length === 50 ? `${last.at}_${last.id}` : null };
   }
 
   throw new HttpError(404, 'Not Found');
@@ -431,18 +451,18 @@ function liveBoard(db, season, now) {
   return memo(`lb:${season.id}`, 10000, () => leaderboard(db, season, now));
 }
 
-async function leaderboard(db, season, now, official) {
+async function leaderboard(db, season, now, official, asOfYmd) {
   const [accRes, posRes] = await Promise.all([
     db.prepare(`SELECT uid, nickname, cash, fills, joined_at FROM accounts WHERE season_id=? AND status='active'`).bind(season.id).all(),
     db.prepare(`SELECT uid, code, qty, cost FROM positions WHERE season_id=?`).bind(season.id).all()
   ]);
   const positions = posRes.results || [];
-  const px = await pricer(db, positions.map((p) => p.code), now, official);
+  const px = await pricer(db, positions.map((p) => p.code), now, official, asOfYmd);
   return { rows: E.valuate(accRes.results || [], positions, px.priceOf), asOf: now, live: px.live };
 }
 
 // ── 관리자 ────────────────────────────────────────────────────
-async function handleAdmin(db, actor, path, method, body, now) {
+async function handleAdmin(db, actor, path, method, body, now, url) {
   const log = (action, detail) => db.prepare(`INSERT INTO audit_log (at, actor, action, detail) VALUES (?,?,?,?)`)
     .bind(now, actor, action, JSON.stringify(detail)).run();
 
@@ -572,9 +592,14 @@ export function mockErrorResponse(e, json) {
   return json({ error: '요청을 처리하지 못했습니다. 잠시 후 다시 시도하세요' }, 500);
 }
 
-// ── 크론 (평일 08:00~19:59 KST 매분) ──────────────────────────
-// 무료 요금제는 호출당 외부 요청이 50건이라 한 번에 처리하는 종목 수를 제한한다.
+// ── 크론 (평일 08:00~20:05 KST 매분) ──────────────────────────
+// 무료 요금제 한도 (호출 1번 = 크론 1회):
+//   - 외부 요청 50건 → 한 번에 다루는 종목 수를 자른다
+//   - D1 쿼리 50건 (batch 안의 문장도 한 건씩 센다) → 체결 한 건이 5~6문장이라 한 번에 처리하는 체결 수를 자른다.
+//     남은 주문은 다음 분에 이어서 처리하고, 주문 상태를 보고 있는 회원은 화면 폴링(별도 호출)으로 바로 체결된다.
 const MAX_CODES_PER_RUN = 20;
+const FILL_QUERY_BUDGET = 26;      // 체결 판정에 쓸 D1 문장 수 (체결 1건 ≈ 5~6문장) + 고정 조회 약 9건 + 장 마감 처리 약 10건 < 50
+const MAX_CLOSES_PER_RUN = 10;     // 15:40~16:30 에는 체결 판정과 종가 저장이 같은 호출에 겹친다 — 외부 요청 합이 50 을 넘지 않게
 
 export async function runCron(env, now = Date.now()) {
   const db = env.MOCK_DB;
@@ -582,8 +607,11 @@ export async function runCron(env, now = Date.now()) {
   E.setHolidays(await H.holidaySet(db));
   const t = E.kstNow(now);
 
-  // 휴장일은 자동으로 고치지 않는다 — 오판하면 멀쩡한 날 주문이 통째로 막힌다.
-  // 운영진이 관리 화면에서 넣는다 (검색 버튼이 공휴일 후보를 뽑아 준다).
+  // 종료일이 지났는데 아직 열려 있는 시즌을 먼저 마감한다 — 휴장일에도 돈다.
+  // 종료일이 휴장일이거나 그날 크론이 실패하면 closeOfDay 의 "종료일" 분기를 못 타서 시즌이 영영 열려 있었다.
+  await finalizeOverdue(db, now);
+
+  // 휴장일은 자동으로 고치지 않는다 — 오판하면 멀쩡한 날 주문이 통째로 막힌다 (관리 화면에서 넣는다)
   if (!E.isTradingDay(t)) return;
   const season = await E.activeSeason(db, now);
   await E.expireStale(db, now);
@@ -595,28 +623,57 @@ export async function runCron(env, now = Date.now()) {
 }
 
 async function fillOpenOrders(db, season, now) {
+  // 종목 단위로 돌려 가며 고른다 — 접수순으로 앞 N건만 보면 미체결이 쌓였을 때 새 주문이 영영 판정되지 않는다
+  const allCodes = ((await db.prepare(
+    `SELECT DISTINCT code FROM orders WHERE season_id=? AND status IN ('open','partial') ORDER BY code`
+  ).bind(season.id).all()).results || []).map((r) => r.code);
+  if (!allCodes.length) return;
+  const rot = Math.floor(now / 60000) % allCodes.length;
+  const codes = allCodes.slice(rot).concat(allCodes.slice(0, rot)).slice(0, MAX_CODES_PER_RUN * 2);
   const orders = (await db.prepare(
-    `SELECT * FROM orders WHERE season_id=? AND status IN ('open','partial') ORDER BY accepted_at LIMIT 200`
-  ).bind(season.id).all()).results || [];
+    `SELECT * FROM orders WHERE season_id=? AND status IN ('open','partial') AND code IN (${codes.map(() => '?').join(',')})
+     ORDER BY accepted_at LIMIT 300`
+  ).bind(season.id, ...codes).all()).results || [];
   if (!orders.length) return;
-  // 무료 요금제의 외부 요청 한도 때문에 한 번에 다루는 종목 수를 자르는데, 늘 앞에서만 자르면 뒤 종목의 주문이
-  // 영영 굶는다 — 분마다 시작 위치를 돌려 가며 모든 종목이 차례로 판정되게 한다
-  const allCodes = Array.from(new Set(orders.map((o) => o.code)));
-  const rot = allCodes.length ? Math.floor(now / 60000) % allCodes.length : 0;
-  const rotated = allCodes.slice(rot).concat(allCodes.slice(0, rot));
-  const codes = rotated.slice(0, MAX_CODES_PER_RUN * 2);
+
   const quotes = await quotesFor(codes);
-  // 지정가·장전 주문이 걸린 종목만 분봉을 받는다 (종목당 외부 요청 1건)
+  // 지정가·장전 주문이 걸린 종목만 분봉을 받는다 (종목당 외부 요청 1건). 가장 이른 접수 시각부터만 받는다.
   // 프리마켓 주문은 NXT 라 분봉이 없다 — 시세 폴링만으로 판정한다
-  const needBarsSet = new Set(orders.filter((o) => (o.type === 'limit' || o.pre_open) && o.session !== 'pre').map((o) => o.code));
-  const needBars = codes.filter((c) => needBarsSet.has(c)).slice(0, MAX_CODES_PER_RUN);
-  const bars = {};
-  await Promise.all(needBars.map(async (c) => { bars[c] = await todayBars(c, now); }));
-  let filled = 0;
+  const fromByCode = {};
   for (const o of orders) {
-    if (!quotes[o.code]) continue;
-    try { if (await E.tryFill(db, season, o, { quote: quotes[o.code], bars: bars[o.code] || null }, now)) filled++; }
-    catch (e) { console.error('fill failed', o.id, e && e.message); }
+    if (!((o.type === 'limit' || o.pre_open) && o.session !== 'pre')) continue;
+    const hm = E.kstNow(o.accepted_at).hm;
+    fromByCode[o.code] = fromByCode[o.code] == null ? hm : Math.min(fromByCode[o.code], hm);
+  }
+  const needBars = codes.filter((c) => fromByCode[c] != null).slice(0, MAX_CODES_PER_RUN);
+  const bars = {};
+  await Promise.all(needBars.map(async (c) => { bars[c] = await todayBars(c, now, fromByCode[c]); }));
+
+  // 계정과 묶인 증거금을 한 번에 읽어 둔다 (주문마다 읽으면 D1 쿼리가 두 배)
+  const accounts = {};
+  for (const a of ((await db.prepare(
+    `SELECT * FROM accounts WHERE season_id=? AND uid IN (SELECT DISTINCT uid FROM orders WHERE season_id=? AND status IN ('open','partial'))`
+  ).bind(season.id, season.id).all()).results || [])) accounts[a.uid] = a;
+  const reserved = {};
+  for (const r of ((await db.prepare(
+    `SELECT uid, COALESCE(SUM(reserved),0) AS r FROM orders WHERE season_id=? AND side='buy' AND status IN ('open','partial') GROUP BY uid`
+  ).bind(season.id).all()).results || [])) reserved[r.uid] = r.r;
+
+  let filled = 0;
+  const stats = { q: 0 };
+  for (const o of orders) {
+    if (stats.q >= FILL_QUERY_BUDGET - 6) break;    // 한 건 더 체결할 여유가 없으면 다음 분으로 넘긴다
+    const acc = accounts[o.uid];
+    if (!quotes[o.code] || !acc) continue;
+    const available = acc.cash - ((reserved[o.uid] || 0) - (o.side === 'buy' ? o.reserved : 0));
+    try {
+      const f = await E.tryFill(db, season, o, { quote: quotes[o.code], bars: bars[o.code] || null, account: acc, available, stats }, now);
+      if (f) {
+        filled++;
+        acc.cash += f.cashDelta;
+        reserved[o.uid] = (reserved[o.uid] || 0) + f.reservedDelta;
+      }
+    } catch (e) { console.error('fill failed', o.id, e && e.message); }
   }
   if (filled) mem.delete(`lb:${season.id}`);
 }
@@ -629,37 +686,84 @@ async function closeOfDay(db, season, now) {
 
   const held = ((await db.prepare(`SELECT DISTINCT code FROM positions WHERE season_id=?`).bind(season.id).all()).results || []).map((r) => r.code);
   const have = new Set(((await db.prepare(`SELECT code FROM closes WHERE date=?`).bind(t.ymd).all()).results || []).map((r) => r.code));
-  const todo = held.filter((c) => !have.has(c)).slice(0, MAX_CODES_PER_RUN);
+  const todo = held.filter((c) => !have.has(c)).slice(0, MAX_CLOSES_PER_RUN);
+  const lastTry = t.hm >= 16 * 60 + 25;    // 16:30 이 마지막 기회 — 그때까지 못 받은 종목은 직전 종가로 평가한다
   let tradingDay = have.size > 0 || held.length === 0;
-  for (const code of todo) {
-    const day = (await naver.getOhlc(code, '1m', { start: `${t.ymd}0900`, end: `${t.ymd}1531` }).catch(() => []))
-      .filter((b) => String(b.t).slice(0, 8) === t.ymd && String(b.t).slice(8, 12) <= '1530');
-    if (!day.length) continue;                       // 오늘 봉이 없다 — 휴장일이거나 거래정지
-    tradingDay = true;
-    // 15:30 봉(종가 단일가)이 없으면 그 전 마지막 체결가가 종가다
-    await db.prepare(`INSERT OR REPLACE INTO closes (code, date, close) VALUES (?,?,?)`).bind(code, t.ymd, Math.round(day[day.length - 1].c)).run();
-    have.add(code);
+  let failed = 0;
+  const got = [];
+  // 오늘 봉을 받아 온다. 조회 실패(네이버 일시 장애)와 "오늘 봉 없음"(거래정지)을 구분한다 —
+  // 예전에는 둘 다 빈 배열이라 장애가 나면 직전 종가로 스냅샷·최종 순위가 확정됐다.
+  const dayBars = async (code, from) => (await naver.getOhlc(code, '1m', { start: `${t.ymd}${from}`, end: `${t.ymd}1531` }))
+    .filter((b) => String(b.t).slice(0, 8) === t.ymd && String(b.t).slice(8, 12) <= '1530');
+  await Promise.all(todo.map(async (code) => {
+    try {
+      // 종가 부근만 먼저 본다. 비어 있으면(장중 거래정지 등) 하루 전체에서 마지막 체결가를 찾는다
+      let day = await dayBars(code, '1525');
+      if (!day.length) day = await dayBars(code, '0900');
+      if (!day.length) return;                     // 오늘 거래가 없다 — 휴장일이거나 거래정지
+      tradingDay = true;
+      // 15:30 봉(종가 단일가)이 없으면 그 전 마지막 체결가가 종가다
+      got.push({ code, close: Math.round(day[day.length - 1].c) });
+    } catch (e) { failed++; }
+  }));
+  if (got.length) {
+    await db.prepare(
+      `INSERT OR REPLACE INTO closes (code, date, close)
+       SELECT json_extract(value, '$.code'), ?, json_extract(value, '$.close') FROM json_each(?)`
+    ).bind(t.ymd, JSON.stringify(got)).run();
+    for (const g of got) have.add(g.code);
   }
+  if (failed && !lastTry) return;                   // 다음 분에 다시 받는다
   // 보유 종목이 없을 때는 대표 종목으로 거래일인지 확인한다
   if (!held.length) {
-    const probe = await naver.getOhlc('005930', '1m', { start: `${t.ymd}0900`, end: `${t.ymd}0905` }).catch(() => []);
-    tradingDay = probe.some((b) => String(b.t).slice(0, 8) === t.ymd);
+    const probe = await naver.getOhlc('005930', '1m', { start: `${t.ymd}0900`, end: `${t.ymd}0905` }).catch(() => null);
+    if (probe == null && !lastTry) return;
+    tradingDay = (probe || []).some((b) => String(b.t).slice(0, 8) === t.ymd) || (probe == null && lastTry);
   }
   if (!tradingDay) return;
-  // 거래정지 등으로 오늘 봉이 없는 종목은 직전 종가로 평가되므로 기다리지 않는다. 남은 종목이 있으면 다음 분에 이어서.
-  if (held.filter((c) => !have.has(c)).length > 0 && todo.length === MAX_CODES_PER_RUN) return;
+  // 남은 종목이 있으면 다음 분에 이어서
+  if (held.filter((c) => !have.has(c)).length > 0 && todo.length === MAX_CLOSES_PER_RUN && !lastTry) return;
 
-  const board = await leaderboard(db, season, now, true);      // 15:30 종가 기준
-  const stmts = board.rows.map((r) => db.prepare(
-    `INSERT OR REPLACE INTO daily_snapshots (season_id, uid, date, equity, cash, rank) VALUES (?,?,?,?,?,?)`
-  ).bind(season.id, r.uid, t.ymd, r.equity, r.cash, r.rank));
-  if (t.iso >= season.end_date) {
-    for (const r of board.rows) {
-      stmts.push(db.prepare(`INSERT OR REPLACE INTO final_rankings (season_id, rank, uid, nickname, equity, fills) VALUES (?,?,?,?,?,?)`)
-        .bind(season.id, r.rank, r.uid, r.nickname, r.equity, r.fills));
-    }
-    stmts.push(db.prepare(`UPDATE seasons SET status='closed' WHERE id=?`).bind(season.id));
-  }
+  const board = await leaderboard(db, season, now, true, t.ymd);      // 15:30 종가 기준
+  const rows = board.rows.map((r) => ({ uid: r.uid, equity: r.equity, cash: r.cash, rank: r.rank }));
+  const stmts = [];
+  // 참가자마다 한 문장씩 쓰면 D1 쿼리 한도(호출당 50)를 참가자 수만으로 넘긴다 — JSON 한 덩어리로 한 문장에 넣는다
+  if (rows.length) stmts.push(db.prepare(
+    `INSERT OR REPLACE INTO daily_snapshots (season_id, uid, date, equity, cash, rank)
+     SELECT ?, json_extract(value, '$.uid'), ?, json_extract(value, '$.equity'), json_extract(value, '$.cash'), json_extract(value, '$.rank')
+     FROM json_each(?)`
+  ).bind(season.id, t.ymd, JSON.stringify(rows)));
+  if (t.iso >= season.end_date) stmts.push(...finalStatements(db, season, board.rows));
   if (stmts.length) await db.batch(stmts);
   mem.delete(`lb:${season.id}`);
+}
+
+/** 최종 순위 확정 + 시즌 종료 — 두 문장 */
+function finalStatements(db, season, rows) {
+  const out = [];
+  if (rows.length) out.push(db.prepare(
+    `INSERT OR REPLACE INTO final_rankings (season_id, rank, uid, nickname, equity, fills)
+     SELECT ?, json_extract(value, '$.rank'), json_extract(value, '$.uid'), json_extract(value, '$.nickname'),
+            json_extract(value, '$.equity'), json_extract(value, '$.fills') FROM json_each(?)`
+  ).bind(season.id, JSON.stringify(rows.map((r) => ({ rank: r.rank, uid: r.uid, nickname: r.nickname, equity: r.equity, fills: r.fills })))));
+  out.push(db.prepare(`UPDATE seasons SET status='closed' WHERE id=? AND status='active'`).bind(season.id));
+  return out;
+}
+
+/**
+ * 종료일이 지났는데 열려 있는 시즌을 마감한다.
+ * 기준은 종료일까지 저장된 마지막 15:30 종가 (종료일이 휴장일이면 그 직전 거래일 종가).
+ */
+async function finalizeOverdue(db, now) {
+  const t = E.kstNow(now);
+  const overdue = (await db.prepare(`SELECT * FROM seasons WHERE status='active' AND end_date < ?`).bind(t.iso).all()).results || [];
+  for (const s of overdue) {
+    try {
+      await E.expireStale(db, now);
+      const board = await leaderboard(db, s, now, true, s.end_date.replace(/-/g, ''));
+      await db.batch(finalStatements(db, s, board.rows));
+      mem.delete(`lb:${s.id}`);
+      console.log('season finalized (overdue)', s.id, board.rows.length);
+    } catch (e) { console.error('finalize failed', s.id, e && e.message); }
+  }
 }
