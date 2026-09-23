@@ -210,6 +210,8 @@ var Mock = (function () {
         + a.openOrders.map(orderRowHtml).join('') + '</section>';
     }
 
+    h += reviewSectionHtml();
+
     h += '<section class="m-section"><div class="m-head"><h3>🧾 체결 내역</h3>'
       + '<button class="mini-btn" onclick="Mock.loadHistory(true)">불러오기</button></div>'
       + '<div id="mkHistory"></div></section>'
@@ -219,6 +221,108 @@ var Mock = (function () {
       + adminHtml();
     paint(el, h);
     if (season.isAdmin) fillAdminForm();
+    if (_review) renderReview();
+    else loadReview();
+  }
+
+  /* ===== AI 계좌 평가 =====
+   * 지표는 워커가 D1 으로 계산하고 AI 는 문장만 쓴다 — 화면 숫자는 워커가 준 metrics 를 그대로 쓴다.
+   * 유료 API 라 하루 3회까지. 본인만 본다.
+   */
+  var _review = null;          // { metrics, body, createdAt }
+  var _reviewLeft = null;      // 오늘 남은 횟수
+  var _reviewBusy = false;
+
+  function reviewSectionHtml() {
+    return '<section class="m-section"><div class="m-head"><h3>🤖 AI 계좌 평가</h3>'
+      + '<span class="m-hint" id="mkRvLeft"></span></div>'
+      + '<div id="mkReview"><div class="loading">불러오는 중...</div></div></section>';
+  }
+
+  async function loadReview() {
+    try {
+      var r = await api('/review');
+      _review = r.review; _reviewLeft = r.remaining;
+    } catch (e) {
+      _review = null; _reviewLeft = null;
+    }
+    renderReview();
+  }
+
+  function renderReview() {
+    var box = document.getElementById('mkReview');
+    if (!box) return;
+    var left = document.getElementById('mkRvLeft');
+    if (left) left.textContent = _reviewLeft == null ? '' : '오늘 ' + _reviewLeft + '회 남음';
+
+    if (_reviewBusy) {
+      box.innerHTML = '<div class="loading">계좌를 분석하는 중... (10초쯤 걸립니다)</div>';
+      return;
+    }
+    var btn = '<button class="btn-submit mk-rv-btn" onclick="Mock.askReview(this)"'
+      + (_reviewLeft === 0 ? ' disabled' : '') + '>'
+      + (_review ? '다시 평가받기' : '평가받기') + '</button>';
+
+    if (!_review) {
+      box.innerHTML = '<div class="mk-rv-empty">매매 기록을 바탕으로 코치처럼 짚어 드립니다.<br>'
+        + '<span class="mk-dim">수익률·시장 대비 성과·보유 습관을 봅니다. 나만 볼 수 있습니다.</span></div>' + btn;
+      return;
+    }
+    box.innerHTML = reviewCardHtml(_review) + btn;
+  }
+
+  function reviewCardHtml(r) {
+    var m = r.metrics || {};
+    var rows = [];
+    var pct = function (v) { return v == null ? null : (v > 0 ? '+' : '') + Number(v).toFixed(2) + '%'; };
+    if (m.returnRate != null) {
+      rows.push(['수익률', '<span class="' + signClass(m.returnRate) + '">' + pct(m.returnRate) + '</span>'
+        + (m.benchmark && m.benchmark.kospi != null ? '<span class="mk-dim"> · 코스피 ' + pct(m.benchmark.kospi) + '</span>' : '')]);
+    }
+    if (m.alpha != null) rows.push(['시장 대비', '<span class="' + signClass(m.alpha) + '">' + pct(m.alpha) + 'p</span>']);
+    if (m.topPosition && m.topPosition.weight != null) {
+      rows.push(['집중도', escapeHtml(m.topPosition.name) + ' ' + m.topPosition.weight.toFixed(0) + '%'
+        + '<span class="mk-dim"> · ' + m.positionCount + '종목</span>']);
+    }
+    if (m.trades) {
+      rows.push(['매매', fmtNum(m.trades.total) + '회'
+        + (m.winRate != null ? '<span class="mk-dim"> · 승률 ' + m.winRate.toFixed(0) + '%</span>' : '<span class="mk-dim"> · 매도 없음</span>')]);
+    }
+    if (m.holdDays && m.holdDays.win != null && m.holdDays.loss != null) {
+      rows.push(['보유기간', '이익 ' + m.holdDays.win.toFixed(1) + '일 · 손실 ' + m.holdDays.loss.toFixed(1) + '일']);
+    }
+    if (m.mdd != null) rows.push(['최대 낙폭', '<span class="down">' + m.mdd.toFixed(2) + '%</span>']);
+
+    return '<div class="mk-rv-card">'
+      + '<pre class="mk-rv-body">' + escapeHtml(r.body || '') + '</pre>'
+      + (rows.length ? '<div class="mk-rv-metrics">' + rows.map(function (x) {
+          return '<div class="mk-rv-row"><span>' + x[0] + '</span><span>' + x[1] + '</span></div>';
+        }).join('') + '</div>' : '')
+      + '<div class="mk-rv-foot">' + reviewTime(r.createdAt) + ' 기준 · 숫자는 계좌 기록에서 계산한 값입니다</div>'
+      + '</div>';
+  }
+
+  function reviewTime(ms) {
+    var d = new Date(Number(ms) || 0);
+    if (isNaN(d)) return '';
+    try { return d.toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Seoul' }); }
+    catch (e) { return ''; }
+  }
+
+  async function askReview(btn) {
+    if (_reviewBusy) return;
+    _reviewBusy = true;
+    renderReview();
+    try {
+      var r = await api('/review', 'POST', {});
+      _review = r.review;
+      if (r.remaining != null) _reviewLeft = r.remaining;
+    } catch (e) {
+      alert(e && e.message ? e.message : 'AI 평가를 받지 못했습니다.');
+    } finally {
+      _reviewBusy = false;
+      renderReview();
+    }
   }
 
   function cell(k, v) { return '<div class="mk-cell"><span class="mk-cell-k">' + k + '</span><span class="mk-cell-v">' + v + '</span></div>'; }
@@ -401,6 +505,7 @@ var Mock = (function () {
     var h = '';
     try {
       var d = await api('/leaderboard');
+      _review = null; _reviewLeft = null;    // 시즌이 바뀌면 이전 평가도 버린다
       // 시즌이 바뀌면 이전 시즌의 순위 기억을 버린다
       if (_prevSeasonId !== d.season.id) { _prevRank = {}; _hallHtml = null; _prevSeasonId = d.season.id; }
       h += '<section class="m-section"><div class="m-head"><h3>🏆 ' + escapeHtml(d.season.name) + '</h3>'
@@ -921,6 +1026,7 @@ var Mock = (function () {
     setMode: setMode, onTab: onTab, renderTradeBar: renderTradeBar, onEscape: onEscape,
     join: join, openJoinFlow: openJoinFlow, joinStep2: joinStep2, closeJoin: closeJoin, cancel: cancel, loadHistory: loadHistory,
     openSheet: openSheet, closeSheet: closeSheet, setSheet: setSheet, input: input, step: step, pct: pct, submit: submit,
+    askReview: askReview,
     saveSeason: saveSeason, loadSeasons: loadSeasons, pickSeason: pickSeason,
     newSeasonForm: newSeasonForm, setSeasonStatus: setSeasonStatus,
     // 커뮤니티 자랑하기 — 숫자는 워커가 장부에서 직접 만든다 (community.js 가 쓴다)

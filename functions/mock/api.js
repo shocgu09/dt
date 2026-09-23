@@ -3,6 +3,7 @@
 // 장부(D1: env.MOCK_DB)는 여기서만 읽고 쓴다.
 
 import { naver } from '../providers/naver.js';
+import { buildMetrics } from './review.js';
 import { profileOf } from '../lib/profile.js';
 import * as E from './engine.js';
 
@@ -311,6 +312,65 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       id, season_id: season.id, nickname: nick, code: pos.code, name: pos.name,
       qty: pos.qty, avg_price: avg, price: quote.price, pnl, pnl_rate: rate, created_at: now
     }, season.name) };
+  }
+
+  /* ── AI 계좌 평가 ────────────────────────────────────────
+   * 지표는 여기서 D1 로 계산하고, 문장만 dt-ai 워커(OpenAI)에 맡긴다.
+   * 화면이 지표를 보내면 숫자를 위조할 수 있으므로 서버끼리 주고받는다.
+   * 유료 API 라 하루 횟수를 제한한다.
+   */
+  if (path === '/review' && method === 'POST') {
+    if (!env.AI_WORKER_URL || !env.REVIEW_SECRET) throw new HttpError(503, 'AI 평가가 아직 준비되지 않았습니다');
+    const ymd = E.kstNow(now).ymd;
+    const used = await db.prepare(`SELECT COUNT(*) AS n FROM reviews WHERE uid=? AND ymd=?`).bind(uid, ymd).first();
+    const DAILY_MAX = 3;
+    if (used && used.n >= DAILY_MAX) {
+      throw new HttpError(429, `평가는 하루 ${DAILY_MAX}번까지 받을 수 있습니다. 내일 다시 시도해 주세요`, 'quota');
+    }
+
+    const view = await accountView(db, season, account, now);
+    const metrics = await buildMetrics(db, season, account, view, now);
+
+    let text;
+    try {
+      const r = await fetch(env.AI_WORKER_URL + '/api/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Review-Secret': env.REVIEW_SECRET },
+        body: JSON.stringify({ metrics }),
+        signal: AbortSignal.timeout(30000)
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        // 401 은 OpenAI 키 문제다 — 운영진이 바로 알아볼 수 있게 구분해 알린다
+        if (d && d.upstream === 401) throw new HttpError(502, 'AI 키가 만료된 것 같습니다. 운영진에게 알려 주세요');
+        throw new HttpError(502, (d && d.error) || 'AI 평가를 가져오지 못했습니다');
+      }
+      text = d.text;
+    } catch (e) {
+      if (e instanceof HttpError) throw e;
+      throw new HttpError(502, e && e.name === 'TimeoutError' ? 'AI 응답이 늦습니다. 잠시 후 다시 시도해 주세요' : 'AI 평가를 가져오지 못했습니다');
+    }
+    if (!text) throw new HttpError(502, 'AI 평가를 가져오지 못했습니다');
+
+    const id = crypto.randomUUID();
+    await db.prepare(
+      `INSERT INTO reviews (id, season_id, uid, ymd, metrics, body, created_at) VALUES (?,?,?,?,?,?,?)`
+    ).bind(id, season.id, uid, ymd, JSON.stringify(metrics), text, now).run();
+
+    return { review: { id, metrics, body: text, createdAt: now }, remaining: DAILY_MAX - ((used ? used.n : 0) + 1) };
+  }
+
+  // 가장 최근 평가 (다시 열어 볼 때 — 새로 부르지 않는다)
+  if (path === '/review' && method === 'GET') {
+    const ymd = E.kstNow(now).ymd;
+    const [last, used] = await Promise.all([
+      db.prepare(`SELECT id, metrics, body, created_at FROM reviews WHERE season_id=? AND uid=? ORDER BY created_at DESC LIMIT 1`).bind(season.id, uid).first(),
+      db.prepare(`SELECT COUNT(*) AS n FROM reviews WHERE uid=? AND ymd=?`).bind(uid, ymd).first()
+    ]);
+    return {
+      review: last ? { id: last.id, metrics: JSON.parse(last.metrics), body: last.body, createdAt: last.created_at } : null,
+      remaining: Math.max(0, 3 - (used ? used.n : 0))
+    };
   }
 
   if (path === '/history' && method === 'GET') {

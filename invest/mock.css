@@ -220,3 +220,30 @@
   font-size: .68rem; font-weight: 700; padding: 0 10px; cursor: pointer; white-space: nowrap;
 }
 .mk-season-st:hover { color: var(--text); background: var(--bg3); }
+
+/* ── AI 계좌 평가 ── */
+.mk-rv-empty {
+  background: var(--bg2); border: 1px solid var(--border); padding: 14px;
+  font-size: .82rem; line-height: 1.7; color: var(--text2); margin-bottom: 8px;
+}
+.mk-rv-card {
+  background: var(--bg2); border: 1px solid var(--border); border-left: 3px solid var(--primary);
+  margin-bottom: 8px;
+}
+.mk-rv-body {
+  margin: 0; padding: 14px; font-family: inherit; font-size: .84rem; line-height: 1.75;
+  color: var(--text); white-space: pre-wrap; word-break: break-word;
+}
+.mk-rv-metrics { border-top: 1px solid var(--border); background: var(--bg); }
+.mk-rv-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 8px 14px; font-size: .78rem; border-bottom: 1px solid var(--border);
+}
+.mk-rv-row:last-child { border-bottom: none; }
+.mk-rv-row span:first-child { color: var(--text3); font-weight: 700; }
+.mk-rv-row span:last-child { font-weight: 700; font-variant-numeric: tabular-nums; }
+.mk-rv-foot {
+  padding: 8px 14px; border-top: 1px solid var(--border);
+  font-size: .66rem; color: var(--text3); line-height: 1.5;
+}
+.mk-rv-btn { width: 100%; }

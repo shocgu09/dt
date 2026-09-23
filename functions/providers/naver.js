@@ -506,6 +506,16 @@ export const naver = {
     return out;
   },
 
+  /** 지수 일별 종가 — 시즌 기간 벤치마크 수익률 계산용 (YYYYMMDD) */
+  async indexDailyCloses(code, fromYmd, toYmd) {
+    const bars = await getJson(
+      `https://api.stock.naver.com/chart/domestic/index/${code}/day?startDateTime=${fromYmd}0000&endDateTime=${toYmd}0000`
+    );
+    return (Array.isArray(bars) ? bars : [])
+      .map((x) => (typeof x.closePrice === 'number' ? x.closePrice : num(x.closePrice)))
+      .filter((v) => v != null);
+  },
+
   async getProfile(code) {
     const [integration, finance] = await Promise.all([
       getJson(`https://m.stock.naver.com/api/stock/${code}/integration`),

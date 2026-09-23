@@ -843,7 +843,7 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 .brag-sub { margin-top: 4px; font-size: .68rem; color: var(--text3); font-weight: 600; line-height: 1.5; }
 
 /* 글쓰기 칸에 붙여 둔 미리보기 */
-.brag-pending { position: relative; }
+.brag-pending { position: relative; margin-bottom: 12px; }
 .brag-pending .brag-card { margin-bottom: 0; padding-right: 44px; }   /* ✕ 버튼 자리 */
 .brag-remove {
   position: absolute; top: 12px; right: 8px;

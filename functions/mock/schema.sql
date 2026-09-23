@@ -150,3 +150,19 @@ CREATE TABLE IF NOT EXISTS brags (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_brags_uid ON brags(uid, created_at DESC);
+
+-- ── AI 계좌 평가 ──────────────────────────────────────────────
+-- 지표는 워커가 D1 에서 직접 계산하고(metrics), AI 는 그걸 문장으로만 푼다(body).
+-- 숫자를 AI 에게 계산시키면 틀리고, 같은 계좌를 두 번 평가할 때 값이 달라진다.
+-- ymd 는 하루 횟수 제한용(KST 기준).
+CREATE TABLE IF NOT EXISTS reviews (
+  id         TEXT PRIMARY KEY,
+  season_id  TEXT NOT NULL,
+  uid        TEXT NOT NULL,
+  ymd        TEXT NOT NULL,            -- YYYYMMDD (KST)
+  metrics    TEXT NOT NULL,            -- 계산된 지표 JSON — 화면 숫자는 이걸 쓴다
+  body       TEXT NOT NULL,            -- AI 가 쓴 평가문
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reviews_user ON reviews(uid, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_reviews_quota ON reviews(uid, ymd);

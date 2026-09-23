@@ -6,6 +6,9 @@ compatibility_date = "2026-01-01"
 FIREBASE_PROJECT_ID = "dt-club"
 # 개발 중 인증 게이트를 끄려면 "false" (운영에서는 절대 끄지 말 것)
 REQUIRE_AUTH = "true"
+# AI 계좌 평가 — OpenAI 키가 Pages 쪽에 있어서 Pages Function 을 서버끼리 부른다
+# (REVIEW_SECRET 은 secret 으로 양쪽에 설정)
+AI_WORKER_URL = "https://dt-1js.pages.dev"
 
 # KV — 일봉/검색 캐시 (현재가·호가는 TTL이 짧아 워커 메모리 캐시 사용)
 # wrangler kv namespace create STOCK_KV --config functions/wrangler-stock.toml
