@@ -151,7 +151,10 @@ export async function acceptOrder(db, season, account, input, quote, taxFree, no
     }
     // 가격제한폭 — 실전처럼 상한가는 호가단위로 내림, 하한가는 올림한 값을 경계로 쓴다
     const prev = quote.krx.prevClose;
-    if (prev) {
+    // 정리매매(상장폐지 전 7거래일)는 가격제한폭이 없다. 오늘 현재가가 이미 ±30% 밖이면 제한폭이 없는 날로 본다
+    // (예: 2026-09-23 디에이테크놀로지 −96.68% — 예전엔 지정가 매도가 전부 '가격제한폭' 으로 거절됐다)
+    const noLimit = prev && quote.krx.price != null && Math.abs(quote.krx.price / prev - 1) > 0.3;
+    if (prev && !noLimit) {
       const upRaw = prev * 1.3, dnRaw = prev * 0.7;
       const upper = Math.floor(upRaw / tickSize(upRaw, taxFree)) * tickSize(upRaw, taxFree);
       const lower = Math.ceil(dnRaw / tickSize(dnRaw, taxFree)) * tickSize(dnRaw, taxFree);

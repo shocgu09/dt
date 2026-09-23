@@ -103,6 +103,20 @@ async function pricer(db, codes, now, official, asOfYmd) {
   const live = !official && E.isTradingDay(t) && t.hm >= E.PRE_FROM && t.hm < E.AFTER_TO;
   const quotes = codes.length ? await quotesFor(codes) : {};
   const closes = {};
+  // 시세가 없는 종목(상장폐지 뒤 네이버 응답에서 빠짐 등) — 매입가로 평가하면 손실이 0% 로 보인다.
+  // 저장해 둔 마지막 15:30 종가(정리매매 마지막 날 가격)로 평가한다
+  const missing = official ? [] : Array.from(new Set(codes)).filter((c) => {
+    const q = quotes[c];
+    return !q || (q.price == null && !(q.krx && q.krx.price != null));
+  });
+  if (missing.length) {
+    const rows = (await db.prepare(
+      `SELECT c.code, c.close FROM closes c
+       JOIN (SELECT code, MAX(date) AS d FROM closes WHERE code IN (${missing.map(() => '?').join(',')}) GROUP BY code) m
+         ON m.code = c.code AND m.d = c.date`
+    ).bind(...missing).all()).results || [];
+    for (const r of rows) closes[r.code] = r.close;
+  }
   if (official && codes.length) {
     // asOfYmd — 시즌 종료일이 지난 뒤 늦게 마감할 때, 그 뒤 날짜의 종가가 섞이지 않게 한다
     const rows = (await db.prepare(
@@ -116,8 +130,8 @@ async function pricer(db, codes, now, official, asOfYmd) {
     priceOf: (code) => {
       if (official && closes[code] != null) return closes[code];
       const q = quotes[code];
-      if (!q) return null;
-      return q.price != null ? q.price : (q.krx ? q.krx.price : null);
+      const p = q ? (q.price != null ? q.price : (q.krx ? q.krx.price : null)) : null;
+      return p != null ? p : (closes[code] != null ? closes[code] : null);
     }
   };
 }
