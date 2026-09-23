@@ -101,7 +101,9 @@ export async function join(db, season, uid, nickname, now = Date.now()) {
  * @param quote  방금 받은(캐시 아닌) 시세 — providers/naver 의 공통 형태
  * @param taxFree ETF·ETN 여부
  */
-export async function acceptOrder(db, season, account, input, quote, taxFree, now = Date.now()) {
+export async function acceptOrder(db, season, account, input, quote, taxFree, now = Date.now(), opts = {}) {
+  // opts.replaces — 정정: 이 원주문을 닫고 그 자리에 새 주문을 넣는다 (주문가능금액·매도가능수량에서 원주문 몫은 뺀다)
+  const orig = opts.replaces || null;
   const t = kstNow(now);
   const side = input.side, type = input.type;
   const qty = Number(input.qty);
@@ -123,6 +125,9 @@ export async function acceptOrder(db, season, account, input, quote, taxFree, no
   if (tradingDay && t.hm >= PRE_FROM && t.hm < ACCEPT_FROM) session = 'pre';
   else if (tradingDay && t.hm >= ACCEPT_FROM && t.hm < ACCEPT_TO) session = 'regular';
   else if (tradingDay && t.hm >= AFTER_FROM && t.hm < AFTER_TO) session = 'after';
+  if (orig && (orig.session !== session || orig.trade_date !== t.ymd)) {
+    throw new OrderError('주문한 거래 시간대가 끝나 정정할 수 없습니다', 'session');
+  }
   if (!session) {
     if (t.dow >= 1 && t.dow <= 5 && !tradingDay) throw new OrderError('오늘은 휴장일입니다. 다음 거래일 08:00 부터 주문할 수 있습니다', 'holiday');
     throw new OrderError('주문 가능 시간이 아닙니다 (거래일 08:00~20:00, 15:30~15:40 제외)', 'closed');
@@ -175,15 +180,15 @@ export async function acceptOrder(db, season, account, input, quote, taxFree, no
     // 체결가가 올라 모자라면 살 수 있는 수량까지만 체결된다.
     const est = (limit || cur) * qty;
     reserved = est + fee(est, season.fee_rate);
-    const avail = await availableCash(db, season.id, account.uid, account.cash);
+    const avail = await availableCash(db, season.id, account.uid, account.cash, orig && orig.id);
     if (reserved > avail) throw new OrderError('주문 가능 금액이 부족합니다', 'cash');
   } else {
     const pos = await db.prepare(`SELECT qty FROM positions WHERE season_id=? AND uid=? AND code=?`)
       .bind(season.id, account.uid, quote.code).first();
     const pending = await db.prepare(
       `SELECT COALESCE(SUM(qty - filled_qty),0) AS q FROM orders
-       WHERE season_id=? AND uid=? AND code=? AND side='sell' AND status IN ('open','partial')`
-    ).bind(season.id, account.uid, quote.code).first();
+       WHERE season_id=? AND uid=? AND code=? AND side='sell' AND status IN ('open','partial') AND id<>?`
+    ).bind(season.id, account.uid, quote.code, orig ? orig.id : '').first();
     const sellable = (pos ? pos.qty : 0) - (pending ? pending.q : 0);
     if (qty > sellable) throw new OrderError('매도 가능 수량이 부족합니다', 'qty');
   }
@@ -192,14 +197,39 @@ export async function acceptOrder(db, season, account, input, quote, taxFree, no
   const marketable = type === 'limit' && !preOpen
     ? ((side === 'buy' ? cur <= limit : cur >= limit) ? 1 : 0) : 0;
   const id = uuid();
+  const insert = db.prepare(
+    `INSERT INTO orders (id, client_order_id, season_id, uid, code, name, side, type, qty, limit_price,
+       reserved, vol_at_accept, pre_open, marketable, tax_free, trade_date, accepted_at, updated_at, session, nxt_vol_at_accept, orig_order_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  ).bind(id, String(input.clientOrderId), season.id, account.uid, quote.code, quote.name || quote.code,
+    side, type, qty, limit, reserved, preOpen ? 0 : (quote.krx.volume || 0), preOpen, marketable,
+    taxFree ? 1 : 0, t.ymd, now, now, session, (quote.nxt && quote.nxt.volume) || 0, orig ? orig.id : null);
+  if (orig) {
+    // 원주문 닫기 + 새 주문 넣기를 한 트랜잭션으로. 그 사이 크론이 원주문을 체결했으면(filled_qty 변화) 통째로 되돌린다.
+    // 일부 체결된 원주문은 체결된 만큼으로 줄여 '체결'로, 아니면 '정정'으로 닫는다.
+    const token = 'amend:' + id;
+    try {
+      await db.batch([
+        db.prepare(
+          `UPDATE orders SET status = CASE WHEN filled_qty > 0 THEN 'filled' ELSE 'cancelled' END,
+             qty = CASE WHEN filled_qty > 0 THEN filled_qty ELSE qty END,
+             reserved = 0, reason = '정정', updated_at = ?, last_fill_id = ?
+           WHERE id = ? AND uid = ? AND status IN ('open','partial') AND filled_qty = ?`
+        ).bind(now, token, orig.id, account.uid, orig.filled_qty),
+        db.prepare(`UPDATE accounts SET cash = -1 WHERE season_id=? AND uid=?
+                    AND NOT EXISTS (SELECT 1 FROM orders WHERE id=? AND last_fill_id=?)`).bind(season.id, account.uid, orig.id, token),
+        insert
+      ]);
+    } catch (e) {
+      const again = await db.prepare(`SELECT * FROM orders WHERE uid=? AND client_order_id=?`)
+        .bind(account.uid, String(input.clientOrderId)).first();
+      if (again) return again;
+      throw new OrderError('이미 체결되었거나 취소된 주문입니다', 'gone');
+    }
+    return db.prepare(`SELECT * FROM orders WHERE id=?`).bind(id).first();
+  }
   try {
-    await db.prepare(
-      `INSERT INTO orders (id, client_order_id, season_id, uid, code, name, side, type, qty, limit_price,
-         reserved, vol_at_accept, pre_open, marketable, tax_free, trade_date, accepted_at, updated_at, session, nxt_vol_at_accept)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-    ).bind(id, String(input.clientOrderId), season.id, account.uid, quote.code, quote.name || quote.code,
-      side, type, qty, limit, reserved, preOpen ? 0 : (quote.krx.volume || 0), preOpen, marketable,
-      taxFree ? 1 : 0, t.ymd, now, now, session, (quote.nxt && quote.nxt.volume) || 0).run();
+    await insert.run();
   } catch (e) {
     // 같은 주문이 동시에 두 번 도착해 위의 중복 확인을 둘 다 통과한 경우 — UNIQUE(uid, client_order_id) 에 걸린
     // 쪽은 먼저 들어간 주문을 그대로 돌려준다 (500 으로 끝나면 화면은 실패로 알고 또 누른다)
@@ -216,6 +246,48 @@ export async function cancelOrder(db, uid, orderId, now = Date.now()) {
     `UPDATE orders SET status='cancelled', reserved=0, updated_at=? WHERE id=? AND uid=? AND status IN ('open','partial')`
   ).bind(now, orderId, uid).run();
   return r.meta.changes > 0;
+}
+
+/**
+ * 주문 정정 — 실전(KRX) 규칙을 따른다.
+ *  - 수량만 줄이기(일부 취소): 같은 주문에서 수량만 줄인다 → 대기 순서(접수 시각·접수 시점 거래량) 유지
+ *  - 가격·종류 바꾸기: 원주문을 닫고 잔량을 새 주문으로 다시 접수한다 → 대기 순서가 정정 시점으로 밀린다
+ *  - 수량 늘리기: 없다 (새 주문을 내야 한다)
+ * @returns { order, replaced }
+ */
+export async function amendOrder(db, season, account, orderId, input, quote, taxFree, now = Date.now()) {
+  const order = await db.prepare(`SELECT * FROM orders WHERE id=? AND uid=?`).bind(orderId, account.uid).first();
+  if (!order) throw new OrderError('주문을 찾을 수 없습니다', 'not_found');
+  // 같은 정정이 재전송되면 이미 만든 새 주문을 돌려준다
+  if (input.clientOrderId) {
+    const dup = await db.prepare(`SELECT * FROM orders WHERE uid=? AND client_order_id=?`).bind(account.uid, String(input.clientOrderId)).first();
+    if (dup) return { order: dup, replaced: true };
+  }
+  if (order.status !== 'open' && order.status !== 'partial') throw new OrderError('이미 체결되었거나 취소된 주문입니다', 'gone');
+  const remaining = order.qty - order.filled_qty;
+  const qty = input.qty == null ? remaining : Number(input.qty);
+  if (!Number.isInteger(qty) || qty <= 0) throw new OrderError('수량은 1주 이상의 정수여야 합니다');
+  if (qty > remaining) throw new OrderError('수량을 늘리는 정정은 없습니다. 추가 수량은 새 주문으로 내 주세요', 'qty_up');
+  const type = input.type || order.type;
+  if (type !== 'market' && type !== 'limit') throw new OrderError('주문 종류가 올바르지 않습니다');
+  const limitPrice = type === 'limit' ? Number(input.limitPrice != null ? input.limitPrice : order.limit_price) : null;
+  const priceChanged = type !== order.type || (type === 'limit' && limitPrice !== order.limit_price);
+
+  if (!priceChanged) {
+    if (qty === remaining) throw new OrderError('바뀐 내용이 없습니다', 'same');
+    // 일부 취소 — 줄어든 만큼 묶인 증거금도 푼다
+    const reserved = order.side === 'buy' ? Math.ceil(order.reserved * qty / remaining) : 0;
+    const r = await db.prepare(
+      `UPDATE orders SET qty = ?, reserved = ?, updated_at = ? WHERE id = ? AND uid = ? AND status IN ('open','partial') AND filled_qty = ?`
+    ).bind(order.filled_qty + qty, reserved, now, order.id, account.uid, order.filled_qty).run();
+    if (!r.meta.changes) throw new OrderError('그 사이 체결이 있었습니다. 주문 상태를 확인한 뒤 다시 시도하세요', 'raced');
+    return { order: await db.prepare(`SELECT * FROM orders WHERE id=?`).bind(order.id).first(), replaced: false };
+  }
+  if (!input.clientOrderId) throw new OrderError('주문 식별값이 없습니다');
+  const created = await acceptOrder(db, season, account, {
+    clientOrderId: input.clientOrderId, code: order.code, side: order.side, type, qty, limitPrice
+  }, quote, taxFree, now, { replaces: order });
+  return { order: created, replaced: true };
 }
 
 /** 거래일이 지났거나 장이 끝난 미체결 주문을 만료시킨다 */

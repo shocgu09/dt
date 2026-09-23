@@ -174,7 +174,7 @@
 .mk-toast.sell { border-left-color: var(--stock-down); }
 .mk-toast.out { opacity: 0; transform: translate(-50%, 8px); }
 
-/* 운영진 */
+/* 관리자 */
 .mk-admin { margin-top: 18px; border: 1px solid var(--border); background: var(--bg2); padding: 12px 14px; }
 .mk-admin summary { cursor: pointer; font-size: .82rem; font-weight: 700; color: var(--text2); }
 .mk-admin .form-grid { margin-top: 12px; }
@@ -185,7 +185,7 @@
 }
 
 
-/* ── 시즌 목록 (운영진) ── */
+/* ── 시즌 목록 (관리자) ── */
 .mk-seasons { margin-top: 14px; }
 .mk-seasons-head {
   font-size: .74rem; font-weight: 700; color: var(--text3);
@@ -299,3 +299,91 @@
   .mk-rv-bar i { animation: none; width: 100%; opacity: .5; }
   .mk-rv-step.in { animation: none; }
 }
+
+/* ── 정정 · 감시주문 · 권리 변동 ── */
+/* 행 안의 버튼은 손가락으로 누르기 좋게 44px 이상 */
+.mk-acts { display: flex; gap: 6px; flex-shrink: 0; }
+.mk-act { min-height: 44px; min-width: 52px; padding: 0 12px; font-size: .78rem; font-weight: 700; }
+.mk-x { min-width: 44px; min-height: 44px; }
+.mk-chip { min-height: 44px; padding: 0 14px; font-weight: 700; }
+.m-head + .mk-ord, .m-head + .mk-posrow, .mk-stopwarn + .mk-ord { border-top: 1px solid var(--border); }
+
+/* 보유 종목 행 + 손절·익절 버튼 (버튼 안에 버튼을 둘 수 없어 나란히 둔다) */
+.mk-posrow { display: flex; align-items: stretch; background: var(--bg2); border: 1px solid var(--border); border-top: none; }
+.mk-posrow > .mk-pos { border: none; flex: 1; min-width: 0; }
+.mk-pos-act {
+  flex: 0 0 58px; min-height: 44px; border: none; border-left: 1px solid var(--border);
+  background: var(--bg2); color: var(--text3); font-family: inherit; font-size: .68rem; font-weight: 800;
+  line-height: 1.35; cursor: pointer; padding: 0 4px;
+}
+.mk-pos-act:hover { background: var(--bg3); color: var(--text); }
+.mk-pos-act.on { color: var(--primary-light); box-shadow: inset 0 -3px 0 var(--primary); }
+
+/* 보조 창 공통 */
+.mk-sheet.still { animation: none; }
+.mk-sheet .up { color: var(--stock-up); }
+.mk-sheet .down { color: var(--stock-down); }
+.mk-sheet .flat { color: var(--stock-flat); }
+.mk-cur { margin-top: 0; font-variant-numeric: tabular-nums; }
+.mk-cur b { color: var(--text); }
+.mk-field-tight { margin-top: 8px; }
+.mk-help { font-size: .74rem; font-weight: 600; color: var(--text3); margin: 6px 0 8px; line-height: 1.55; font-variant-numeric: tabular-nums; min-height: 1em; }
+.mk-help b { font-weight: 800; }
+.mk-hot { color: var(--accent); }
+.mk-stepper em { white-space: nowrap; padding-left: 2px; }
+.mk-select { min-height: 44px; font-weight: 700; }
+.mk-seg2 .seg { min-height: 44px; }
+
+/* 익절(상승색) · 손절(하락색) 블록 */
+.mk-stop-blk { border: 1px solid var(--border); border-left: 3px solid var(--stock-up); background: var(--bg); padding: 10px 12px 2px; margin-top: 12px; }
+.mk-stop-blk.sl { border-left-color: var(--stock-down); }
+.mk-stop-blk.done { padding-bottom: 4px; opacity: .85; }
+.mk-stop-h { display: flex; align-items: center; gap: 8px; font-size: .78rem; font-weight: 700; color: var(--text2); margin-bottom: 6px; }
+.mk-stop-h b { color: var(--text); font-size: .9rem; font-weight: 800; }
+.mk-stop-h .mk-tag { margin-left: auto; }
+
+/* 주문창의 감시 매수 진입 — 본 흐름을 가리지 않게 점선 보조 버튼으로 */
+.mk-alt {
+  display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%; min-height: 44px; margin-top: 8px;
+  background: none; border: 1px dashed var(--border); color: var(--text2);
+  font-family: inherit; font-size: .8rem; font-weight: 800; cursor: pointer;
+}
+.mk-alt span { color: var(--text3); font-weight: 600; }
+.mk-alt:hover { border-color: var(--primary); color: var(--text); }
+
+/* 감시 중 목록 */
+.mk-stop .mk-pos-sub { white-space: normal; line-height: 1.45; }
+.mk-tag-dim { background: var(--bg3); color: var(--text2); }
+.mk-stopwarn { margin: 0 0 8px; }
+.mk-empty-line { font-size: .78rem; color: var(--text3); font-weight: 600; padding: 12px; border: 1px solid var(--border); background: var(--bg2); }
+.mk-past { margin-top: 8px; }
+.mk-past > summary {
+  list-style: none; cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 6px;
+  padding: 0 12px; border: 1px solid var(--border); background: var(--bg2);
+  font-size: .8rem; font-weight: 700; color: var(--text2);
+}
+.mk-past > summary::-webkit-details-marker { display: none; }
+.mk-past > summary::before { content: '▸'; color: var(--text3); }
+.mk-past[open] > summary::before { content: '▾'; }
+.mk-past > summary span { margin-left: auto; font-size: .72rem; color: var(--text3); }
+.mk-stop.past { background: var(--bg); }
+.mk-st { font-size: .68rem; font-weight: 800; padding: 3px 7px; border: 1px solid var(--border); color: var(--text2); flex-shrink: 0; }
+.mk-st.ok { border-color: var(--primary); color: var(--primary-light); }
+.mk-st.bad { border-color: var(--accent); color: var(--accent); }
+.mk-reason { color: var(--text2); }
+
+/* 권리 변동 알림 (계좌 탭) */
+.mk-ca { border-top-color: var(--primary-light); padding: 12px 14px; }
+.mk-ca-h { font-size: .84rem; font-weight: 800; margin-bottom: 4px; }
+.mk-ca-line { font-size: .8rem; font-weight: 600; color: var(--text2); line-height: 1.5; padding: 6px 0; border-top: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+.mk-ca-h + .mk-ca-line { border-top: none; }
+.mk-ca-line b { color: var(--text); }
+
+/* 관리자 · 권리 변동 */
+.mk-ca-admin #mkCaAdmin { margin-top: 12px; }
+.mk-ca-badge { margin-left: 6px; font-size: .7rem; font-weight: 800; color: var(--accent); }
+.mk-ca-item { border: 1px solid var(--border); border-left: 3px solid var(--accent); background: var(--bg2); padding: 10px 12px; margin-bottom: 8px; }
+.mk-ca-item .mk-season-top { flex-wrap: wrap; }
+.mk-ca-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.mk-ca-btns .mk-act { flex: 1 1 auto; }
+.mk-ca-hist { margin-top: 14px; }

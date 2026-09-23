@@ -996,3 +996,39 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
   .briefing-card.focus { animation: none; box-shadow: 0 0 0 2px var(--primary-light); }
   .app-toast { transition: none; }
 }
+
+/* ── DT 회원 보유 현황 (모의투자 집계) ── */
+/* 종목 상세: 가격·지표 바로 아래 한 장 */
+.cw-card {
+  display: flex; align-items: flex-start; gap: 9px;
+  background: var(--bg2); border: 1px solid var(--border); border-left: 3px solid var(--primary);
+  padding: 10px 13px; margin: -2px 0 14px;
+}
+.cw-icon { flex: 0 0 auto; font-size: .95rem; line-height: 1.4; }
+.cw-body { flex: 1; min-width: 0; }
+.cw-main { font-size: .82rem; font-weight: 700; line-height: 1.5; color: var(--text); font-variant-numeric: tabular-nums; }
+.cw-main b { font-weight: 800; }
+.cw-sub { font-size: .74rem; font-weight: 600; line-height: 1.5; color: var(--text2); margin-top: 2px; font-variant-numeric: tabular-nums; }
+/* 항목 단위로만 줄을 바꾼다 ("평균 수익률 +4.3%" 가 둘로 쪼개지지 않게) */
+.cw-main > span:not(.cw-sep), .cw-sub > span:not(.cw-sep) { white-space: nowrap; }
+.cw-sep { color: var(--text3); margin: 0 5px; }
+/* 3명 미만 — 한 줄로 흐리게 */
+.cw-card.few { border-left-color: var(--border); padding-top: 8px; padding-bottom: 8px; }
+.cw-card.few .cw-main { color: var(--text3); font-weight: 600; font-size: .78rem; }
+
+/* 시세 홈: 👥 DT 회원 픽 — 행은 랭킹(rank-row)을 그대로 쓰고 보유 인원 칸만 더한다 */
+.cw-count {
+  flex: 0 0 auto; min-width: 40px; text-align: right;
+  font-size: .76rem; font-weight: 800; color: var(--primary-light);
+  font-variant-numeric: tabular-nums;
+}
+.cw-seg { margin-bottom: 10px; }
+/* 세그먼트는 보이는 높이 그대로, 누르는 면적만 44px (아래 목록과 겹치지 않게 margin 10px 안쪽까지만) */
+.cw-seg .seg { position: relative; min-height: 34px; }
+.cw-seg .seg::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 50%;
+  height: max(100%, 44px); transform: translateY(-50%);
+}
+@media (max-width: 420px) {
+  .cw-count { min-width: 34px; font-size: .72rem; }
+}

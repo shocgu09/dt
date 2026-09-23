@@ -67,8 +67,29 @@ var Market = {
     var p = { code: code };
     if (id) p.id = id;
     return marketApi('/api/disclosure', p);
-  }
+  },
+  // DT 회원 보유 현황 (모의투자 참가자 집계) — 종목 하나 / 많이 보유·오늘 많이 산 상위 10
+  crowd:    function (code) { return crowdApi('/crowd', { code: code }); },
+  crowdTop: function (type) { return crowdApi('/crowd/top', { type: type === 'bought' ? 'bought' : 'held' }); }
 };
+
+/* ===== DT 회원 보유 현황 호출 =====
+ * 모의투자 집계는 부가 정보라 실패하면 화면에서 조용히 숨긴다.
+ * marketApi 를 쓰지 않는 이유 — 이 API 가 느리거나 없어도 시세 연결 상태(_apiFailStreak)가 '연결 끊김'으로 바뀌면 안 된다.
+ * 실패는 status 를 달아 던진다 (4xx 면 부르는 쪽이 폴링을 멈춘다).
+ */
+async function crowdApi(path, params) {
+  if (!currentUser) throw new Error('로그인이 필요합니다');
+  var token = await currentUser.getIdToken();
+  var qs = new URLSearchParams(params || {}).toString();
+  var init = { headers: { Authorization: 'Bearer ' + token } };
+  if (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) init.signal = AbortSignal.timeout(10000);
+  var res = await fetch(MARKET_API + '/api/mock' + path + (qs ? '?' + qs : ''), init);
+  if (!res.ok) { var err = new Error('crowd ' + res.status); err.status = res.status; throw err; }
+  var data = await res.json();
+  if (!data || data.error) throw new Error((data && data.error) || 'crowd empty');
+  return data;
+}
 
 /* ===== 종목 검색 =====
  * 네이버 자동완성은 이름의 앞부분만 맞춘다. 초성도 그래서 "SKㅎㅇㄴㅅ"은 되고 "ㅎㅇㄴㅅ"은 안 되며,
@@ -227,15 +248,17 @@ function isMarketOpen(now) {
   return k.hm >= 8 * 60 && k.hm <= 20 * 60 + 10;
 }
 
-/** 서버 상태 없이 시계로만 판정 중인가 (배지 문구를 약하게 쓰기 위해) */
+/** 서버 상태 없이 시계로만 판정 중인가 */
 function isMarketStateGuessed() {
   return !(_serverMarketStatus && Date.now() - _serverStatusAt < 300000);
 }
 
+// 배지는 확정된 사실만 쓴다 — "(추정)" 같은 단서를 화면에 달지 않는다.
+// 시계로만 판정 중일 때는 "실시간" 대신 "장중"으로만 표시한다.
 function marketStateLabel() {
   if (isFeedStale()) return { cls: 'stale', text: '연결 끊김' };
   if (!isMarketOpen()) return { cls: 'closed', text: '장 마감' };
-  return { cls: 'live', text: isMarketStateGuessed() ? '장중(추정)' : '실시간' };
+  return { cls: 'live', text: isMarketStateGuessed() ? '장중' : '실시간' };
 }
 
 /* ===== 폴링 스케줄러 =====

@@ -57,7 +57,9 @@ function startHomePolling() {
   // 워커 캐시가 랭킹 60초·테마 120초라 그보다 자주 불러도 같은 값이 온다
   Poller.add('rank', loadRank, pollMs(60000, 600000));
   Poller.add('sectors', loadSectors, pollMs(120000, 600000));
-  // 관심종목·랭킹·테마 종목의 가격은 한 번의 /api/quotes 로 함께 받는다 (관심종목이 비어 있어도 1회는 그린다)
+  // DT 회원 픽 — 모의투자 집계라 자주 바뀌지 않는다. 5분에 한 번
+  Poller.add('crowdTop', loadCrowdTop, 300000);
+  // 관심종목·랭킹·테마·회원 픽 종목의 가격은 한 번의 /api/quotes 로 함께 받는다 (관심종목이 비어 있어도 1회는 그린다)
   Poller.add('quotes', refreshListQuotes, pollMs(5000, 120000));
 }
 
@@ -375,6 +377,7 @@ async function ensureSparkline(code) {
 var _quoteMap = {};              // code -> 마지막으로 받은 /api/quotes 한 줄 (+ _at 받은 시각)
 var _rankCodes = [];             // 지금 랭킹에 보이는 종목
 var _sectorCodes = [];           // 열어 둔 테마의 종목
+var _crowdCodes = [];            // DT 회원 픽에 보이는 종목
 var _listQuotesTried = false;    // 한 번이라도 받아 봤는가 ("불러오는 중"과 "못 불러옴"을 가른다)
 var _listQuotesBusy = false, _listQuotesAgain = false;
 
@@ -387,7 +390,7 @@ function freshQuote(code) {
 
 function listQuoteCodes() {
   var seen = {}, out = [];
-  watchlist.concat(_rankCodes, _sectorCodes).forEach(function (c) {
+  watchlist.concat(_rankCodes, _sectorCodes, _crowdCodes).forEach(function (c) {
     if (isStockCode(c) && !seen[c]) { seen[c] = 1; out.push(c); }
   });
   return out;
@@ -438,6 +441,7 @@ function paintListQuotes() {
   paintWatch();
   paintQuotes(_rankCodes.map(freshQuote).filter(Boolean), 'rk');
   paintQuotes(_sectorCodes.map(freshQuote).filter(Boolean), 'sk');
+  paintQuotes(_crowdCodes.map(freshQuote).filter(Boolean), 'ck');
 }
 
 /** 목록의 가격·등락 칸 첫 값 — 받아 둔 최근 시세가 없으면 '–' 로 두고 받은 뒤 채운다 */
@@ -883,6 +887,8 @@ function startStockPolling() {
   // 봉은 장외에는 바뀌지 않는다 — 10분에 한 번이면 충분하다 (워커·KV 호출 절약)
   Poller.add('bars', refreshChartBars, pollMs(60000, 600000));
   if (bookOpen) Poller.add('book', loadBook, pollMs(3000, 60000));
+  // DT 회원 보유 현황 — 장중 1분, 장외 5분 (집계라 자주 부를 필요가 없다)
+  Poller.add('crowd', loadStockCrowd, pollMs(60000, 300000));
 }
 
 /**
@@ -917,7 +923,7 @@ function closeDetail(toHome) {
   var from = _detailFrom;
   _detailFrom = null;
   curStock = null;
-  Poller.remove('quote'); Poller.remove('bars'); Poller.remove('book');
+  Poller.remove('quote'); Poller.remove('bars'); Poller.remove('book'); Poller.remove('crowd');
   if (chartHandle) { chartHandle.dispose(); chartHandle = null; }
   var tb = document.getElementById('mkTradeBar');
   if (tb) tb.remove();
@@ -953,6 +959,7 @@ function stockShellHtml(code, name) {
     + '<div class="sd-price-block" id="sdPrice"><div class="loading">시세 불러오는 중...</div></div>'
     + '<div id="sdRange"></div>'
     + '<div class="sd-stats" id="sdStats"></div>'
+    + '<div class="cw-card" id="sdCrowd" style="display:none"></div>'
     + '<div class="sd-tabs">'
     +   '<button class="sd-tab on" data-sdtab="chart" onclick="sdSwitch(\'chart\')">차트</button>'
     +   '<button class="sd-tab" data-sdtab="info" onclick="sdSwitch(\'info\')">정보</button>'
@@ -1402,6 +1409,177 @@ async function loadBook() {
         + escapeHtml(e.message) + '</span></div>';
     }
   }
+}
+
+/* ===== DT 회원 보유 현황 (모의투자 참가자 집계) =====
+ * 부가 정보라 실패하면 조용히 숨긴다. 시즌이 없으면 아무것도 그리지 않는다.
+ *  - 종목 상세: 가격·지표 아래 한 장 (폴러 'crowd')
+ *  - 시세 홈: 👥 DT 회원 픽 (폴러 'crowdTop', 가격은 _quoteMap = /api/quotes 에서만)
+ */
+var _crowdSeq = 0;               // 종목 상세 — 느리게 온 응답이 그 사이 연 종목을 덮지 않게
+var _crowdDrawn = '';            // 종목 상세에 마지막으로 그린 '코드|내용' — 같으면 다시 그리지 않는다
+var _crowdTopSeq = 0;
+var crowdType = 'held';          // 'held' | 'bought'
+
+function crowdCount(v) {
+  var n = Number(v);
+  return v != null && isFinite(n) && n >= 0 ? Math.round(n) : null;
+}
+
+/** 종목 상세 카드 내용 — 그릴 것이 없으면 '' */
+function crowdCardHtml(d) {
+  if (!d || !d.season) return '';
+  if (d.few) {
+    return '<span class="cw-icon" aria-hidden="true">👥</span>'
+      + '<div class="cw-body"><div class="cw-main">모의투자 보유 회원 3명 미만</div></div>';
+  }
+  var holders = crowdCount(d.holders);
+  if (holders == null) return '';
+  var main = ['<span>DT 회원 <b>' + fmtNum(holders) + '명</b> 보유</span>'];
+  var avg = d.avgReturn == null ? NaN : Number(d.avgReturn);
+  if (isFinite(avg)) {
+    main.push('<span>평균 수익률 <b class="' + signClass(avg) + '">' + (avg > 0 ? '+' : '') + avg.toFixed(1) + '%</b></span>');
+  }
+  var winners = crowdCount(d.winners);
+  if (winners != null) main.push('<span>수익 중 ' + fmtNum(winners) + '명</span>');
+
+  var bought = crowdCount(d.boughtToday), sold = crowdCount(d.soldToday);
+  var today = [];
+  if (bought != null) today.push('오늘 산 회원 ' + fmtNum(bought) + '명');
+  if (sold != null) today.push((bought != null ? '판 회원 ' : '오늘 판 회원 ') + fmtNum(sold) + '명');
+
+  var sep = '<span class="cw-sep" aria-hidden="true">·</span>';
+  return '<span class="cw-icon" aria-hidden="true">👥</span>'
+    + '<div class="cw-body">'
+    +   '<div class="cw-main">' + main.join(sep) + '</div>'
+    +   (today.length ? '<div class="cw-sub">' + today.map(function (t) { return '<span>' + t + '</span>'; }).join(sep) + '</div>' : '')
+    + '</div>';
+}
+
+/** 종목 상세의 회원 보유 현황 (폴러 'crowd') */
+async function loadStockCrowd() {
+  if (!curStock) return;
+  var code = curStock.code;
+  var seq = ++_crowdSeq;
+  var d = null, failed = null;
+  try { d = await Market.crowd(code); } catch (e) { failed = e || {}; }
+  if (seq !== _crowdSeq || !curStock || curStock.code !== code) return;
+  var el = document.getElementById('sdCrowd');
+  if (!el) return;
+
+  if (failed) {
+    // 4xx(아직 없는 API·권한)는 이 종목을 보는 동안 다시 부르지 않는다.
+    // 일시적 실패는 이미 그린 카드를 그대로 두고 다음 주기에 다시 받는다.
+    if (failed.status >= 400 && failed.status < 500) Poller.remove('crowd');
+    if (failed.status < 500 || _crowdDrawn.indexOf(code + '|') !== 0) { el.style.display = 'none'; el.innerHTML = ''; _crowdDrawn = ''; }
+    return;
+  }
+  var html = crowdCardHtml(d);
+  if (!d.season) Poller.remove('crowd');        // 시즌이 없다 — 다시 열 때 확인한다
+  if (!html) { el.style.display = 'none'; el.innerHTML = ''; _crowdDrawn = ''; return; }
+  el.classList.toggle('few', !!d.few);
+  // 종목을 새로 열면 뼈대가 새로 그려져 카드가 비어 있다 — 그때도 다시 채운다
+  if (_crowdDrawn !== code + '|' + html || !el.firstChild) {
+    el.innerHTML = html;
+    _crowdDrawn = code + '|' + html;
+  }
+  el.style.display = '';
+}
+
+/* ----- 시세 홈: 👥 DT 회원 픽 ----- */
+function setCrowdType(t) {
+  if (t !== 'held' && t !== 'bought') return;
+  crowdType = t;
+  document.querySelectorAll('[data-crowd]').forEach(function (b) {
+    b.classList.toggle('on', b.dataset.crowd === crowdType);
+  });
+  loadCrowdTop();
+}
+
+function hideCrowdSection() {
+  var sec = document.getElementById('crowdSection');
+  var el = document.getElementById('crowdList');
+  if (sec) sec.style.display = 'none';
+  if (el) { el.innerHTML = ''; el.dataset.key = ''; }
+  _crowdCodes = [];
+  // 다시 나타날 때는 '많이 보유'부터 — 숨은 채로 '오늘 많이 산'에 머물면 섹션을 띄울지 판단이 어긋난다
+  crowdType = 'held';
+  document.querySelectorAll('[data-crowd]').forEach(function (b) { b.classList.toggle('on', b.dataset.crowd === 'held'); });
+}
+
+/** 많이 보유 / 오늘 많이 산 상위 종목 (폴러 'crowdTop') */
+async function loadCrowdTop() {
+  var sec = document.getElementById('crowdSection');
+  var el = document.getElementById('crowdList');
+  if (!sec || !el) return;
+  var type = crowdType;
+  var seq = ++_crowdTopSeq;
+  var switching = el.dataset.type !== type;
+  if (switching && sec.style.display !== 'none') {
+    el.innerHTML = '<div class="loading">불러오는 중...</div>';
+    el.dataset.key = '';
+    _crowdCodes = [];
+  }
+  var d;
+  try { d = await Market.crowdTop(type); }
+  catch (e) {
+    if (seq !== _crowdTopSeq) return;
+    if (e && e.status >= 400 && e.status < 500) Poller.remove('crowdTop');   // 시세 홈에 다시 들어올 때 확인한다
+    // 일시적 실패는 이미 그린 목록을 그대로 둔다
+    if ((e && e.status < 500) || switching || !el.querySelector('.cw-row')) hideCrowdSection();
+    return;
+  }
+  if (seq !== _crowdTopSeq || type !== crowdType) return;
+
+  var seen = {};
+  var items = (d.items || []).filter(function (s) {
+    if (!s || !isStockCode(s.code) || seen[s.code] || crowdCount(s.count) == null) return false;
+    seen[s.code] = 1;
+    return true;
+  }).slice(0, 10);
+
+  // 시즌이 없거나 '많이 보유'가 3종목 미만이면 섹션을 통째로 숨긴다.
+  // '오늘 많이 산'만 적으면 섹션은 두고 안내 한 줄 — 누른 버튼이 사라지지 않게
+  if (!d.season || (type === 'held' && items.length < 3)) { hideCrowdSection(); el.dataset.type = 'held'; return; }
+  var hint = document.getElementById('crowdHint');
+  if (hint) hint.textContent = String(d.season.name || '모의투자') + ' 기준';
+  sec.style.display = '';
+  el.dataset.type = type;
+
+  if (items.length < 3) {
+    _crowdCodes = [];
+    el.dataset.key = '';
+    el.innerHTML = '<div class="empty">오늘은 아직 집계할 만큼 산 회원이 없습니다</div>';
+    return;
+  }
+
+  var key = type + '|' + items.map(function (s) { return s.code + ':' + crowdCount(s.count); }).join(',');
+  _crowdCodes = items.map(function (s) { return s.code; });
+  if (el.dataset.key !== key) {
+    resetDirs('ck:');
+    el.innerHTML = items.map(function (s, i) {
+      var name = String(s.name || s.code);
+      var watched = watchlist.indexOf(s.code) !== -1;
+      return '<div class="q-row rank-row cw-row">'
+        + '<button class="rank-main" onclick="openStock(\'' + s.code + '\',\'' + escapeJsArg(name) + '\')">'
+        +   '<span class="q-rank">' + (i + 1) + '</span>'
+        +   stockLogoHtml(s.code, name, null)
+        +   '<span class="rank-names">'
+        +     '<span class="q-name">' + escapeHtml(name) + '</span>'
+        +     '<span class="rank-code">' + s.code + '</span>'
+        +   '</span>'
+        +   '<span class="rank-nums">' + listPriceCells('ck', s.code) + '</span>'
+        +   '<span class="cw-count">' + fmtNum(crowdCount(s.count)) + '명</span>'
+        + '</button>'
+        + '<button class="fav-btn' + (watched ? ' on' : '') + '" data-fav="' + s.code + '"'
+        +   ' onclick="onFavToggle(\'' + s.code + '\')" aria-label="' + (watched ? '관심종목에서 빼기' : '관심종목에 담기') + '">'
+        +   (watched ? '♥' : '♡') + '</button>'
+        + '</div>';
+    }).join('');
+    el.dataset.key = key;
+  }
+  // 받아 둔 시세가 없는 종목만 바로 받는다 — 나머지는 'quotes' 폴러가 같은 주기로 갱신한다
+  if (!curStock && _crowdCodes.some(function (c) { return !freshQuote(c); })) refreshListQuotes();
 }
 
 /* ===== 투자자별 매매동향 ===== */

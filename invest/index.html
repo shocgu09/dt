@@ -19,8 +19,8 @@
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"></noscript>
-  <link rel="stylesheet" href="style.css?v=33">
-  <link rel="icon" href="../icon-192.png">
+  <link rel="stylesheet" href="style.css?v=34">
+  <link rel="icon" href="../icon-192.png?v=2">
 </head>
 <body>
   <div class="container">
@@ -121,6 +121,19 @@
               <span class="m-hint">요즘 어디로 돈이 몰리는지</span>
             </div>
             <div id="themeList"><div class="loading">불러오는 중...</div></div>
+          </section>
+
+          <!-- DT 회원 픽 — 모의투자 참가 회원 집계 (시즌이 없거나 3종목 미만이면 market-ui.js 가 숨긴 채로 둔다) -->
+          <section class="m-section" id="crowdSection" style="display:none">
+            <div class="m-head">
+              <h3>👥 DT 회원 픽</h3>
+              <span class="m-hint" id="crowdHint">모의투자 기준</span>
+            </div>
+            <div class="seg-row cw-seg">
+              <button class="seg on" data-crowd="held" onclick="setCrowdType('held')">많이 보유</button>
+              <button class="seg" data-crowd="bought" onclick="setCrowdType('bought')">오늘 많이 산</button>
+            </div>
+            <div id="crowdList"></div>
           </section>
 
           <section class="m-section">
@@ -224,8 +237,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="market.js?v=24"></script>
-  <script src="market-ui.js?v=37"></script>
+  <script src="market.js?v=25"></script>
+  <script src="market-ui.js?v=38"></script>
   <script src="community.js?v=5"></script>
   <script src="app.js?v=41"></script>
 </body>

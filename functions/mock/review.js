@@ -12,7 +12,7 @@ const DAY = 86400000;
  * 엔진과 같은 이동평균 원가법을 쓴다 — fills 에 매도 시점 평단이 남지 않아 여기서 되살린다.
  * 보유기간은 매수 시각의 금액가중 평균을 기준으로 잰다.
  */
-function replayFills(fills) {
+function replayFills(fills, corp = []) {
   // code -> { qty, cost(매입금액 합), amt(매수금액 합 — 보유기간 가중용), wAt(매수금액×시각 합) }
   //
   // 엔진(engine.js)과 규칙을 글자 그대로 맞춘다. 하나라도 어긋나면 실현손익이 장부와 달라진다.
@@ -22,7 +22,18 @@ function replayFills(fills) {
   // 그래서 이건 추정이 아니라 재계산이다. 합계가 accounts.realized_pnl 과 일치해야 맞다.
   const book = {};
   const sells = [];
-  for (const f of fills) {
+  // 권리 변동(분할·병합·증자·폐지) 반영도 시각순으로 끼워 넣는다 — 반영 뒤 수량·매입금액을 장부 값 그대로 덮어쓴다
+  const events = fills.map((f) => ({ ...f, _k: 'fill' }))
+    .concat(corp.map((c) => ({ ...c, _k: 'corp' })))
+    .sort((a, b) => (a.at - b.at) || (a._k === b._k ? 0 : a._k === 'fill' ? -1 : 1));
+  for (const f of events) {
+    if (f._k === 'corp') {
+      const b = book[f.code] || (book[f.code] = { qty: 0, cost: 0, amt: 0, wAt: 0 });
+      // 평균 매수시각(보유기간 가중치)은 그대로 둔다 — 분할은 매수 시점을 바꾸지 않는다
+      b.qty = f.qty_after; b.cost = f.cost_after;
+      if (b.qty <= 0) { b.qty = 0; b.cost = 0; b.amt = 0; b.wAt = 0; }
+      continue;
+    }
     const amount = f.price * f.qty;
     const b = book[f.code] || (book[f.code] = { qty: 0, cost: 0, amt: 0, wAt: 0 });
     if (f.side === 'buy') {
@@ -81,15 +92,17 @@ async function benchmarkReturn(code, joinedAt, now) {
  */
 export async function buildMetrics(db, season, account, view, now) {
   const uid = account.uid;
-  const [fillRes, snapRes] = await Promise.all([
+  const [fillRes, snapRes, corpRes] = await Promise.all([
     db.prepare(`SELECT code, name, side, qty, price, fee, tax, at FROM fills WHERE season_id=? AND uid=? ORDER BY at`).bind(season.id, uid).all(),
-    db.prepare(`SELECT date, equity FROM daily_snapshots WHERE season_id=? AND uid=? ORDER BY date`).bind(season.id, uid).all()
+    db.prepare(`SELECT date, equity FROM daily_snapshots WHERE season_id=? AND uid=? ORDER BY date`).bind(season.id, uid).all(),
+    db.prepare(`SELECT code, qty_after, cost_after, realized_delta, at FROM ca_applications WHERE season_id=? AND uid=? ORDER BY at`).bind(season.id, uid).all()
   ]);
   const fills = fillRes.results || [];
+  const corp = corpRes.results || [];
   const snaps = snapRes.results || [];
 
   // ── 매매 습관 ──
-  const sells = replayFills(fills);
+  const sells = replayFills(fills, corp);
   const wins = sells.filter((s) => s.pnl > 0);
   const losses = sells.filter((s) => s.pnl < 0);
   const avg = (arr, f) => (arr.length ? arr.reduce((s, x) => s + f(x), 0) / arr.length : null);
@@ -139,7 +152,7 @@ export async function buildMetrics(db, season, account, view, now) {
     realizedPnl: account.realized_pnl,
     // 재생이 맞는지 스스로 검증한다 — 엔진과 규칙이 어긋나면 여기서 티가 난다.
     // 어긋나면 AI 에게 보유기간·승률을 믿지 말라고 알린다 (조용히 틀린 값을 말하는 것보다 낫다)
-    replayOk: sells.reduce((t, x) => t + x.pnl, 0) === account.realized_pnl,
+    replayOk: sells.reduce((t, x) => t + x.pnl, 0) + corp.reduce((t, x) => t + (x.realized_delta || 0), 0) === account.realized_pnl,
     // 처분효과 — 이익은 빨리 팔고 손실은 오래 들고 있는가
     holdDays: {
       win: round2(avg(wins, (s) => s.heldDays)),

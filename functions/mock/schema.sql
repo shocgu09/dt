@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS orders (
   updated_at      INTEGER NOT NULL,
   last_fill_id    TEXT,                           -- 마지막으로 이 주문을 잠근 체결 id — 체결 batch 가 "내가 잠갔는지" 확인한다
                                                   -- (기존 DB: ALTER TABLE orders ADD COLUMN last_fill_id TEXT)
+  orig_order_id   TEXT,                           -- 정정으로 생긴 주문이면 원주문 id
   CHECK (filled_qty >= 0 AND filled_qty <= qty),
   UNIQUE (uid, client_order_id)
 );
@@ -177,4 +178,84 @@ CREATE TABLE IF NOT EXISTS holidays (
   ymd      TEXT PRIMARY KEY,           -- YYYYMMDD (KST)
   name     TEXT,
   added_at INTEGER NOT NULL
+);
+
+-- ── ③ 회원 보유 현황 — 종목 단위 집계용 인덱스 ─────────────────
+CREATE INDEX IF NOT EXISTS idx_positions_code ON positions (season_id, code);
+CREATE INDEX IF NOT EXISTS idx_fills_day ON fills (season_id, code, at);
+
+-- ── ④ 주문 정정 — 가격을 바꾸면 새 주문 행이 생기고 원주문을 가리킨다 (실전 HTS 도 새 주문번호 + 원주문번호)
+-- (기존 DB: ALTER TABLE orders ADD COLUMN orig_order_id TEXT)
+
+-- ── ④ 감시주문 (손절·익절·돌파매수) ──────────────────────────
+-- 실전 증권사 감시주문처럼 등록할 때 수량·현금을 묶지 않는다. 발동하는 순간 일반 주문으로 접수되며
+-- 그때 매도가능수량·주문가능금액을 확인한다 (모자라면 failed + 사유).
+CREATE TABLE IF NOT EXISTS stop_orders (
+  id              TEXT PRIMARY KEY,
+  client_order_id TEXT NOT NULL,
+  season_id       TEXT NOT NULL,
+  uid             TEXT NOT NULL,
+  code            TEXT NOT NULL,
+  name            TEXT NOT NULL,
+  side            TEXT NOT NULL CHECK (side IN ('buy','sell')),
+  cond            TEXT NOT NULL CHECK (cond IN ('gte','lte')),   -- 현재가 ≥ 감시가 / ≤ 감시가
+  trigger_price   INTEGER NOT NULL CHECK (trigger_price > 0),
+  order_type      TEXT NOT NULL CHECK (order_type IN ('market','limit')),
+  limit_price     INTEGER,
+  qty             INTEGER,                    -- NULL = 발동 시점 매도가능 전량 (매도만)
+  tax_free        INTEGER NOT NULL DEFAULT 0, -- ETF·ETN (호가단위)
+  group_id        TEXT,                       -- 같은 묶음(익절+손절)은 하나가 발동하면 나머지 취소
+  valid_until     TEXT NOT NULL,              -- YYYY-MM-DD (시즌 종료일을 넘지 않는다)
+  status          TEXT NOT NULL DEFAULT 'armed', -- armed | triggered | cancelled | expired | failed
+  order_id        TEXT,
+  reason          TEXT,
+  created_at      INTEGER NOT NULL,
+  updated_at      INTEGER NOT NULL,
+  triggered_at    INTEGER,
+  UNIQUE (uid, client_order_id)
+);
+CREATE INDEX IF NOT EXISTS idx_stop_armed ON stop_orders (status, season_id);
+CREATE INDEX IF NOT EXISTS idx_stop_user ON stop_orders (season_id, uid, created_at);
+
+-- ── ⑤ 권리 변동 (액면분할·병합, 무상·유상증자 권리락, 상장폐지) ───
+-- 감지: 네이버 시세의 기준가(= 현재가 − 전일대비, 거래소가 권리락·분할 당일 조정)와
+--       우리가 저장한 전 거래일 15:30 종가(closes)가 다르면 사건이 있었던 것.
+-- 반영은 계좌별로 ca_applications 에 남긴다 — 두 번 반영되지 않고, AI 평가의 실현손익 재생이 이걸 읽는다.
+CREATE TABLE IF NOT EXISTS corp_actions (
+  id          TEXT PRIMARY KEY,
+  code        TEXT NOT NULL,
+  name        TEXT,
+  kind        TEXT,                 -- split | merge | bonus | rights | delist (needs_review 면 추정값 또는 NULL)
+  ex_date     TEXT NOT NULL,        -- YYYYMMDD (감지한 거래일)
+  ratio       REAL,                 -- 수량 배수 (분할 5, 병합 0.2, 무상 1.3). rights 는 전날종가/기준가
+  prev_close  INTEGER,              -- 우리가 저장한 전 거래일 15:30 종가
+  base_price  INTEGER,              -- 거래소 기준가
+  source      TEXT,                 -- price | price+disclosure:<제목 요약>
+  note        TEXT,
+  status      TEXT NOT NULL,        -- applying | applied | needs_review | dismissed
+  created_at  INTEGER NOT NULL,
+  applied_at  INTEGER,
+  UNIQUE (code, ex_date)
+);
+CREATE TABLE IF NOT EXISTS ca_applications (
+  action_id      TEXT NOT NULL,
+  season_id      TEXT NOT NULL,
+  uid            TEXT NOT NULL,
+  code           TEXT NOT NULL,
+  qty_before     INTEGER NOT NULL,
+  qty_after      INTEGER NOT NULL,
+  cost_before    INTEGER NOT NULL,
+  cost_after     INTEGER NOT NULL,
+  cash_delta     INTEGER NOT NULL DEFAULT 0,
+  realized_delta INTEGER NOT NULL DEFAULT 0,
+  at             INTEGER NOT NULL,
+  PRIMARY KEY (action_id, season_id, uid)
+);
+CREATE INDEX IF NOT EXISTS idx_ca_app_user ON ca_applications (season_id, uid, at);
+-- 종목·날짜별 점검 기록 (ok | event | missing) — 하루 한 번만 비교하고, 시세가 사라진 날을 센다
+CREATE TABLE IF NOT EXISTS ca_checks (
+  code   TEXT NOT NULL,
+  ymd    TEXT NOT NULL,
+  result TEXT NOT NULL,
+  PRIMARY KEY (code, ymd)
 );
