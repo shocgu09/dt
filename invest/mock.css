@@ -342,15 +342,6 @@
 .mk-stop-h b { color: var(--text); font-size: .9rem; font-weight: 800; }
 .mk-stop-h .mk-tag { margin-left: auto; }
 
-/* 주문창의 감시 매수 진입 — 본 흐름을 가리지 않게 점선 보조 버튼으로 */
-.mk-alt {
-  display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%; min-height: 44px; margin-top: 8px;
-  background: none; border: 1px dashed var(--border); color: var(--text2);
-  font-family: inherit; font-size: .8rem; font-weight: 800; cursor: pointer;
-}
-.mk-alt span { color: var(--text3); font-weight: 600; }
-.mk-alt:hover { border-color: var(--primary); color: var(--text); }
-
 /* 감시 중 목록 */
 .mk-stop .mk-pos-sub { white-space: normal; line-height: 1.45; }
 .mk-tag-dim { background: var(--bg3); color: var(--text2); }

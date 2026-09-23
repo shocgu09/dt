@@ -187,9 +187,10 @@ CREATE INDEX IF NOT EXISTS idx_fills_day ON fills (season_id, code, at);
 -- ── ④ 주문 정정 — 가격을 바꾸면 새 주문 행이 생기고 원주문을 가리킨다 (실전 HTS 도 새 주문번호 + 원주문번호)
 -- (기존 DB: ALTER TABLE orders ADD COLUMN orig_order_id TEXT)
 
--- ── ④ 감시주문 (손절·익절·돌파매수) ──────────────────────────
+-- ── ④ 감시주문 (보유 종목의 손절·익절 매도) ─────────────────────
+-- 감시 매수(돌파·저가 매수)는 2026-09-23 폐기 — 매도만 받는다
 -- 실전 증권사 감시주문처럼 등록할 때 수량·현금을 묶지 않는다. 발동하는 순간 일반 주문으로 접수되며
--- 그때 매도가능수량·주문가능금액을 확인한다 (모자라면 failed + 사유).
+-- 그때 매도가능수량을 확인한다 (모자라면 failed + 사유).
 CREATE TABLE IF NOT EXISTS stop_orders (
   id              TEXT PRIMARY KEY,
   client_order_id TEXT NOT NULL,
@@ -197,12 +198,12 @@ CREATE TABLE IF NOT EXISTS stop_orders (
   uid             TEXT NOT NULL,
   code            TEXT NOT NULL,
   name            TEXT NOT NULL,
-  side            TEXT NOT NULL CHECK (side IN ('buy','sell')),
-  cond            TEXT NOT NULL CHECK (cond IN ('gte','lte')),   -- 현재가 ≥ 감시가 / ≤ 감시가
+  side            TEXT NOT NULL CHECK (side = 'sell'),
+  cond            TEXT NOT NULL CHECK (cond IN ('gte','lte')),   -- 현재가 ≥ 감시가(익절) / ≤ 감시가(손절)
   trigger_price   INTEGER NOT NULL CHECK (trigger_price > 0),
   order_type      TEXT NOT NULL CHECK (order_type IN ('market','limit')),
   limit_price     INTEGER,
-  qty             INTEGER,                    -- NULL = 발동 시점 매도가능 전량 (매도만)
+  qty             INTEGER,                    -- NULL = 발동 시점 매도가능 전량
   tax_free        INTEGER NOT NULL DEFAULT 0, -- ETF·ETN (호가단위)
   group_id        TEXT,                       -- 같은 묶음(익절+손절)은 하나가 발동하면 나머지 취소
   valid_until     TEXT NOT NULL,              -- YYYY-MM-DD (시즌 종료일을 넘지 않는다)

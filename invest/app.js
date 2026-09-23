@@ -230,7 +230,7 @@ function showToast(text) {
 /* ===== 모의투자 모드 =====
  * 코드(mock.js · mock.css)는 모드를 켤 때 처음 불러온다 — 쓰지 않는 회원에게는 아무 변화가 없다.
  */
-var MOCK_VER = '31';
+var MOCK_VER = '32';
 var _mockLoading = null;
 
 function loadMockAssets() {

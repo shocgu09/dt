@@ -565,7 +565,7 @@ var Mock = (function () {
           '정규장 08:30~15:30 지정가 · 시장가. 09:00 전 접수분은 <b>시가</b>, 15:20~15:30 접수분은 <b>종가</b>로 체결되고, 미체결은 장 마감 시 만료됩니다.',
           '시간외 08:00~08:30 프리마켓(NXT · 08:50 까지 체결) / 15:40~20:00 애프터마켓(NXT · KRX) — <b>지정가만</b>, ETF · ETN 은 시간외 불가, 미체결은 08:50 · 20:00 에 자동 취소됩니다.',
           '지정가는 전일 종가 ±30% 안에서 호가단위에 맞게 입력합니다. 미체결 주문은 <b>정정 · 취소</b>할 수 있고, 가격을 바꾸면 대기 순서가 뒤로 갑니다.',
-          '감시주문(손절 · 익절 · 감시 매수)은 정규장(09:00~15:20)에 최대 1분 간격으로 확인하며, 급변 시 감시가와 다른 가격에 체결될 수 있습니다.',
+          '감시주문(손절 · 익절)은 정규장(09:00~15:20)에 최대 1분 간격으로 확인하며, 급변 시 감시가와 다른 가격에 체결될 수 있습니다.',
           '수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2) + '% (ETF · ETN 면제) — 실전과 같은 수준',
           '거래가 적은 종목은 여러 번에 나눠 체결되거나 체결되지 않을 수 있습니다.',
           '시장가 매수는 현재가 기준으로 주문 가능 금액을 잡습니다. 체결가가 올라 금액이 모자라면 살 수 있는 수량까지만 체결되고 나머지는 취소됩니다.',
@@ -831,7 +831,6 @@ var Mock = (function () {
       + '<div class="mk-sheet-msg" id="mkMsg" role="alert"></div>'
       + '<button class="mk-submit ' + s.side + '" id="mkSubmit" onclick="Mock.submit()"' + (s.busy ? ' disabled' : '') + '>'
       +   (isBuy ? '매수' : '매도') + ' 주문</button>'
-      + (isBuy ? '<button type="button" class="mk-alt" onclick="Mock.openWatchBuy()">⏱ 감시 매수 <span>· 정한 가격에 닿으면 자동 매수</span></button>' : '')
       + '</div>';
     if (fresh) focusDialog(el);
   }
@@ -1013,7 +1012,7 @@ var Mock = (function () {
     setTimeout(function () { el.classList.add('out'); setTimeout(function () { el.remove(); }, 400); }, 3600);
   }
 
-  /* ===== 보조 창 (정정 · 손절/익절 · 감시 매수) =====
+  /* ===== 보조 창 (정정 · 손절/익절) =====
    * 주문창(#mkSheet)과 따로 #mkAux 하나를 쓴다. 상태는 aux 에 두고,
    * 입력 중에는 도움말·계산 칸만 고친다 (통째로 다시 그리면 포커스와 모바일 키보드가 날아간다).
    */
@@ -1113,7 +1112,6 @@ var Mock = (function () {
     if (!aux) return;
     if (aux.kind === 'amend') auxShell(amendHtml(), aux.side === 'buy' ? 'buy' : 'sell', '주문 정정');
     else if (aux.kind === 'stop') auxShell(stopSheetHtml(), 'sell', '손절 · 익절 설정');
-    else if (aux.kind === 'wbuy') auxShell(wbuyHtml(), 'buy', '감시 매수');
     refreshAuxParts();
   }
 
@@ -1121,7 +1119,6 @@ var Mock = (function () {
     if (!aux) return;
     if (aux.kind === 'amend') amendParts();
     else if (aux.kind === 'stop') stopParts();
-    else if (aux.kind === 'wbuy') wbuyParts();
   }
 
   function auxInput(key, el) {
@@ -1138,7 +1135,7 @@ var Mock = (function () {
     var cur = Number(auxGet(key)) || 0, v;
     if (key === 'qty') {
       var max = aux.kind === 'amend' ? aux.rem : (aux.kind === 'stop' ? aux.hold : Infinity);
-      if (!cur) cur = aux.kind === 'wbuy' ? 0 : max;       // 손절·익절의 빈칸은 "전량"
+      if (!cur) cur = max;                                  // 손절·익절의 빈칸은 "전량"
       v = Math.min(max, Math.max(1, cur + dir));
     } else {
       if (!cur) cur = curPrice(aux.code) || 0;
@@ -1156,7 +1153,6 @@ var Mock = (function () {
     // 지정가로 바꾸면 주문가 칸을 감시가로 채워 둔다
     var m = /^(tp|sl)\.type$/.exec(key);
     if (m && val === 'limit' && !aux[m[1]].limit) aux[m[1]].limit = aux[m[1]].trig;
-    if (key === 'type' && val === 'limit' && aux.kind === 'wbuy' && !aux.limit) aux.limit = aux.trig;
     if (key === 'type' && val === 'limit' && aux.kind === 'amend' && !aux.price) aux.price = curPrice(aux.code) || '';
     renderAux();
   }
@@ -1171,7 +1167,6 @@ var Mock = (function () {
     if (!aux || aux.busy) return;
     if (aux.kind === 'amend') return amendSubmit();
     if (aux.kind === 'stop') return stopSubmit();
-    if (aux.kind === 'wbuy') return wbuySubmit();
   }
 
   /** 지정가가 호가단위에 안 맞으면 가까운 호가로 맞추고 한 번 더 누르게 한다 (주문창과 같은 방식) */
@@ -1444,82 +1439,6 @@ var Mock = (function () {
     toast(a.name + ' 감시주문 ' + made + '건 등록', '');
   }
 
-  /* ----- 감시 매수 (주문창 매수 쪽에서 연다) ----- */
-  function openWatchBuy() {
-    if (!sheet) return;
-    var s = sheet;
-    closeSheet();
-    aux = {
-      kind: 'wbuy', code: s.code, name: s.name, taxFree: !!s.taxFree,
-      cond: 'gte', trig: '', type: 'market', limit: '', qty: Number(s.qty) || '', valid: '1m',
-      busy: false, cid: null, cidKey: null
-    };
-    renderAux();
-    fetchKind(aux);
-  }
-
-  function wbuyHtml() {
-    var a = aux, cur = curPrice(a.code);
-    return auxHead('감시 매수 · ' + escapeHtml(a.name), CODE_RE.test(a.code) ? a.code : '')
-      + (cur ? '<div class="mk-info mk-cur">현재가 ' + fmtNum(cur) + '원</div>' : '')
-      + '<div class="mk-field"><span>조건</span>'
-      +   segHtml('cond', a.cond, [['gte', '이상이면 · 돌파 매수'], ['lte', '이하면 · 저가 매수']]) + '</div>'
-      + '<div class="mk-field mk-field-tight"><span>현재가가</span>'
-      +   stepperHtml('trig', a.trig, a.cond === 'gte' ? '원 이상이면' : '원 이하면', '감시가', '감시가') + '</div>'
-      + '<div class="mk-help" id="mkAuxHelp-trig"></div>'
-      + segHtml('type', a.type, [['market', '시장가 매수'], ['limit', '지정가 매수']])
-      + (a.type === 'limit' ? '<div class="mk-field mk-field-tight"><span>주문가</span>' + stepperHtml('limit', a.limit, '원', '주문가') + '</div>' : '')
-      + '<div class="mk-field"><span>수량</span>' + stepperHtml('qty', a.qty, '주', '감시 매수 수량', '0') + '</div>'
-      + validSelHtml(a.valid)
-      + '<div class="mk-calc" id="mkAuxCalc"></div>'
-      + '<div class="mk-help">발동 시점에 주문 가능 금액이 모자라면 주문되지 않습니다</div>'
-      + '<div class="mk-sheet-msg" id="mkAuxMsg" role="alert"></div>'
-      + '<button class="mk-submit buy" id="mkAuxGo" onclick="Mock.auxSubmit()">감시 매수 등록</button>';
-  }
-
-  function wbuyParts() {
-    var a = aux;
-    var h = document.getElementById('mkAuxHelp-trig');
-    if (h) h.innerHTML = trigHelp(a.trig, a.cond, null, a.code);
-    var box = document.getElementById('mkAuxCalc');
-    if (!box) return;
-    var px = a.type === 'limit' ? (Number(a.limit) || 0) : (Number(a.trig) || 0);
-    var qty = Math.floor(Number(a.qty)) || 0;
-    box.innerHTML = row(a.type === 'limit' ? '주문 금액' : '주문 금액 (감시가 기준)', won(px * qty))
-      + (account ? row('지금 주문 가능 금액', won(account.available)) : '');
-  }
-
-  async function wbuySubmit() {
-    var a = aux;
-    var trig = Number(a.trig) || 0, qty = Math.floor(Number(a.qty)) || 0;
-    if (trig <= 0) return auxMsg('감시가를 입력하세요', 'err');
-    if (qty <= 0) return auxMsg('수량을 입력하세요', 'err');
-    if (a.type === 'limit') {
-      if (!(Number(a.limit) > 0)) return auxMsg('주문가를 입력하세요', 'err');
-      var fix = fixTick('limit', a.taxFree);
-      if (fix) return auxMsg(fix, 'err');
-    }
-    var body = {
-      code: a.code, side: 'buy', cond: a.cond === 'lte' ? 'lte' : 'gte', triggerPrice: trig,
-      orderType: a.type, limitPrice: a.type === 'limit' ? Number(a.limit) : undefined,
-      qty: qty, validUntil: validDate(a.valid)
-    };
-    body.clientOrderId = cidFor(a, body);
-    setAuxBusy(true, '등록 중');
-    try {
-      await api('/stops', 'POST', body);
-      a.cid = null;
-      if (aux === a) closeAux();
-      toast(a.name + ' 감시 매수 등록 · ' + fmtNum(trig) + '원 ' + (body.cond === 'gte' ? '이상' : '이하'), 'buy');
-    } catch (e) {
-      if (aux !== a) return;
-      setAuxBusy(false);
-      auxMsg(e.message, 'err');
-    } finally {
-      loadStops(true);
-    }
-  }
-
   /* ===== 감시주문 목록 (계좌 탭) =====
    * 10초 폴링마다 받지 않는다 — 탭을 열 때, 등록·취소 뒤, 60초가 지났을 때만 받고
    * 계좌 탭을 다시 그릴 때는 받아 둔 것으로 그린다.
@@ -1548,7 +1467,6 @@ var Mock = (function () {
   function armedStops() { return (_stops || []).filter(function (s) { return s.status === 'armed'; }); }
 
   function stopRole(s) {
-    if (s.side === 'buy') return '매수';
     return s.cond === 'gte' ? '익절' : '손절';
   }
 
@@ -1556,7 +1474,7 @@ var Mock = (function () {
   function stopSentence(s) {
     var q = s.qty == null ? '전량' : fmtNum(s.qty) + '주';
     var how = s.orderType === 'limit' ? '지정가 ' + fmtNum(s.limitPrice) + '원' : '시장가';
-    return fmtNum(s.triggerPrice) + '원 ' + (s.cond === 'gte' ? '이상' : '이하') + ' → ' + q + ' ' + how + ' ' + (s.side === 'buy' ? '매수' : '매도')
+    return fmtNum(s.triggerPrice) + '원 ' + (s.cond === 'gte' ? '이상' : '이하') + ' → ' + q + ' ' + how + ' 매도'
       + (md(s.validUntil) ? ' · ~' + md(s.validUntil) : '');
   }
 
@@ -1606,7 +1524,7 @@ var Mock = (function () {
   function stopRowHtml(s) {
     var okId = UUID_RE.test(String(s.id || ''));
     return '<div class="mk-ord mk-stop">'
-      + '<span class="mk-side ' + (s.side === 'buy' ? 'buy' : 'sell') + '">' + stopRole(s) + '</span>'
+      + '<span class="mk-side sell">' + stopRole(s) + '</span>'
       + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(s.name || s.code) + (s.groupId ? ' <i class="mk-tag mk-tag-dim">묶음</i>' : '') + '</span>'
       +   '<span class="mk-pos-sub">' + escapeHtml(stopSentence(s)) + '</span></span>'
       + (okId ? '<button class="mini-btn danger mk-act" onclick="Mock.cancelStop(\'' + s.id + '\', this)">취소</button>' : '')
@@ -2017,7 +1935,7 @@ var Mock = (function () {
     join: join, openJoinFlow: openJoinFlow, joinStep2: joinStep2, closeJoin: closeJoin, cancel: cancel, loadHistory: loadHistory,
     openSheet: openSheet, closeSheet: closeSheet, setSheet: setSheet, input: input, step: step, pct: pct, submit: submit,
     askReview: askReview,
-    openAmend: openAmend, openStops: openStops, openWatchBuy: openWatchBuy, closeAux: closeAux,
+    openAmend: openAmend, openStops: openStops, closeAux: closeAux,
     auxInput: auxInput, auxStep: auxStep, auxSet: auxSet, auxSel: auxSel, auxSubmit: auxSubmit,
     cancelStop: cancelStop, pastToggle: function (o) { _stopsPastOpen = !!o; },
     loadCorpAdmin: loadCorpAdmin, caApply: caApply, caDismiss: caDismiss,

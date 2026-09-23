@@ -1,4 +1,4 @@
-// DT 모의투자 — 감시주문 (손절·익절·돌파매수)
+// DT 모의투자 — 감시주문 (보유 종목의 손절·익절 매도)
 // 실전 증권사의 서버 감시주문과 같은 방식:
 //   - 등록할 때 수량·현금을 묶지 않는다 (손절을 걸어 둔 주식도 직접 팔 수 있다)
 //   - 정규장(09:00~15:20) 동안 1분마다 현재가를 보고, 조건이 되면 그 순간 일반 주문으로 접수한다
@@ -34,7 +34,7 @@ export async function createStop(db, season, account, input, quote, taxFree, now
   const t = E.kstNow(now);
   const { side, cond } = input;
   const orderType = input.orderType;
-  if (side !== 'buy' && side !== 'sell') throw new E.OrderError('매수·매도 구분이 올바르지 않습니다');
+  if (side !== 'sell') throw new E.OrderError('감시주문은 보유 종목의 손절·익절 매도만 걸 수 있습니다');
   if (cond !== 'gte' && cond !== 'lte') throw new E.OrderError('감시 조건이 올바르지 않습니다');
   if (orderType !== 'market' && orderType !== 'limit') throw new E.OrderError('주문 종류가 올바르지 않습니다');
   if (!input.clientOrderId || String(input.clientOrderId).length > 64) throw new E.OrderError('주문 식별값이 없습니다');
@@ -55,7 +55,6 @@ export async function createStop(db, season, account, input, quote, taxFree, now
   }
   let qty = input.qty == null || input.qty === '' ? null : Number(input.qty);
   if (qty != null && (!Number.isInteger(qty) || qty <= 0)) throw new E.OrderError('수량은 1주 이상의 정수여야 합니다');
-  if (side === 'buy' && qty == null) throw new E.OrderError('매수 수량을 입력하세요');
 
   const valid = String(input.validUntil || '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(valid)) throw new E.OrderError('유효기간이 올바르지 않습니다');
@@ -123,7 +122,8 @@ export async function runStops(db, season, now, quotesFor, stats, maxTriggers = 
     const q = quotes[s.code];
     if (!q || !q.krx || q.halted || !hit(s, q.krx.price)) continue;
     // 권리 변동이 반영되기 전의 매도는 발동을 미룬다 (반영 뒤 감시가는 자동 해제된다)
-    if (s.side === 'sell') { stats.q += 3; if (await sellBlocked(db, season, s.uid, q, now)) continue; }
+    stats.q += 3;
+    if (await sellBlocked(db, season, s.uid, q, now)) continue;
     fired++;
     await trigger(db, season, s, q, now, stats);
   }
@@ -151,7 +151,7 @@ async function trigger(db, season, s, quote, now, stats) {
     const account = await E.getAccount(db, season.id, s.uid);
     if (!account || account.status !== 'active') return done('failed', '계좌를 사용할 수 없습니다');
     let qty = s.qty;
-    if (s.side === 'sell' && qty == null) {
+    if (qty == null) {
       // 전량 — 발동 시점의 매도가능수량 (보유 − 미체결 매도)
       stats.q += 2;
       const pos = await db.prepare(`SELECT qty FROM positions WHERE season_id=? AND uid=? AND code=?`).bind(season.id, s.uid, s.code).first();
