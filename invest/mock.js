@@ -447,7 +447,7 @@ var Mock = (function () {
     joinShell(
         '<div class="mk-jf-step">2 / 2</div>'
       + '<h3 class="mk-jf-title">참여 전에 확인해 주세요</h3>'
-      + (s.notice ? '<div class="mk-jf-h">📢 운영진 전달사항</div><div class="mk-jf-notice">' + escapeHtml(s.notice) + '</div>' : '')
+      + (s.notice ? '<div class="mk-jf-h">📢 전달사항</div><div class="mk-jf-notice">' + escapeHtml(s.notice) + '</div>' : '')
       + '<div class="mk-jf-h">⚠️ 주의사항</div>'
       + li([
           '<b>가상의 자금</b>입니다. 실제 돈과 무관하며 현금·포인트·상품 등 어떤 것으로도 교환되지 않습니다.',
@@ -908,7 +908,7 @@ var Mock = (function () {
   /* ===== 관리자: 시즌 만들기·고치기 ===== */
   function adminHtml() {
     if (!season || !season.isAdmin) return '';
-    return '<details class="mk-admin" ontoggle="if(this.open) Mock.loadSeasons()"><summary>⚙️ 시즌 관리 (운영진)</summary>'
+    return '<details class="mk-admin" ontoggle="if(this.open) Mock.loadSeasons()"><summary>⚙️ 시즌 · 휴장일 관리</summary>'
       + '<div class="form-grid">'
       + '<p class="mk-note" style="margin-top:0" id="mkSformNote"></p>'
       + '<input class="f-input" id="mkSid" placeholder="시즌 ID (예: 2026PRE, 2027Q1)" aria-label="시즌 ID"'

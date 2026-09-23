@@ -150,12 +150,18 @@ async function searchStocks(q, onUpdate) {
 var _serverMarketStatus = null;   // 'OPEN' | 'CLOSE' | null(모름)
 var _serverStatusAt = 0;
 
-// KRX 휴장일 (주말 제외, KST YYYYMMDD) — functions/mock/engine.js 의 HOLIDAYS 와 같은 표. 둘을 함께 고친다.
-var KRX_HOLIDAYS = {
-  '20260924': 1, '20260925': 1, '20261005': 1, '20261009': 1, '20261225': 1, '20261231': 1,
-  '20270101': 1, '20270205': 1, '20270208': 1, '20270209': 1, '20270301': 1, '20270505': 1, '20270513': 1, '20270816': 1,
-  '20270914': 1, '20270915': 1, '20270916': 1, '20271004': 1, '20271011': 1, '20271227': 1, '20271231': 1
-};
+// KRX 휴장일 — 워커가 D1 목록을 /api/index 에 실어 준다 (setHolidays 로 받는다).
+// 예전에는 여기에 목록을 복붙해 두고 functions/mock/engine.js 와 함께 손으로 고쳤다.
+// 두 곳이 어긋나기 쉬웠고 임시공휴일은 넣을 방법이 없었다. 이제 출처는 D1 하나다.
+var KRX_HOLIDAYS = {};
+
+/** 워커가 내려준 휴장일 목록을 받는다 */
+function setHolidays(list) {
+  if (!Array.isArray(list)) return;
+  var m = {};
+  for (var i = 0; i < list.length; i++) m[list[i]] = 1;
+  KRX_HOLIDAYS = m;
+}
 
 /** KST 기준 날짜·시각 분해 */
 function kstParts(d) {

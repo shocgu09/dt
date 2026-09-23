@@ -76,7 +76,7 @@ function showMain() {
 /* ===== 모의투자 모드 =====
  * 코드(mock.js · mock.css)는 모드를 켤 때 처음 불러온다 — 쓰지 않는 회원에게는 아무 변화가 없다.
  */
-var MOCK_VER = '19';
+var MOCK_VER = '20';
 var _mockLoading = null;
 
 function loadMockAssets() {
@@ -349,7 +349,6 @@ function commentHtml(briefingId, c, isReply) {
   var h = '<div class="comment-item' + (isReply ? ' reply' : '') + '">';
   h += '<div class="comment-head">';
   h += '<span class="comment-author">' + escapeHtml(c.authorName || '회원') + '</span>';
-  if (c.isAdmin) h += '<span class="admin-tag">운영진</span>';
   h += '<span class="comment-time">' + timeAgo(c.createdAt) + '</span>';
   h += '</div>';
   h += '<div class="comment-body" id="cb-' + c.id + '">' + linkifyBody(escapeHtml(c.body || ''))
@@ -659,7 +658,7 @@ async function submitBriefing() {
       await db.collection('invest_briefings').doc(editingId).update(payload);
       status.innerHTML = '<span class="ok">✅ 브리핑이 수정되었습니다.</span>';
     } else {
-      payload.authorName = myName || '운영진';
+      payload.authorName = myName || 'DT Club';
       payload.generatedBy = 'admin';
       payload.commentCount = 0;
       payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();

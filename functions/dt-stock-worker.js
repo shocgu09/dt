@@ -7,6 +7,7 @@ import { naver, daum, yahoo } from './providers/naver.js';
 import { verifyIdToken, bearerToken } from './lib/verify-id-token.js';
 import { profileOf } from './lib/profile.js';
 import { handleMock, mockErrorResponse, runCron } from './mock/api.js';
+import { holidaySet } from './mock/holidays.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -251,6 +252,9 @@ async function handleOhlc(env, code, tf) {
 
 async function handleIndex(env) {
   return memo('idx', TTL.index, async () => {
+    // 휴장일 목록을 함께 내려보낸다 — 화면이 같은 목록을 쓰게 해서 출처를 하나로 둔다.
+    // (예전에는 invest/market.js 에 같은 목록을 복붙해 뒀다)
+    const holidays = env.MOCK_DB ? [...(await holidaySet(env.MOCK_DB))].sort() : [];
     // 지수의 marketStatus 는 15:30 에 CLOSE 가 되지만 종목은 애프터마켓 동안 OPEN 이다(실측).
     // 화면의 "실시간 / 장 마감"은 종목 기준이 맞으므로 대표 종목의 상태를 함께 싣는다.
     // 휴장일에는 CLOSE 가 와서 시계만 보고 "실시간"이라 표시하던 문제도 없어진다.
@@ -264,6 +268,7 @@ async function handleIndex(env) {
     ]);
     return {
       ...idx, ...fut, ...extra,
+      holidays,
       marketStatus: ref ? ref.marketStatus : null,
       sessionType: ref ? ref.sessionType : null
     };

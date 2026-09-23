@@ -103,10 +103,9 @@ var Community = (function () {
 
   function postHtml(p) {
     var blinded = (p.reportCount || 0) >= BLIND_AT && !isAdmin && !mine(p) && !shown[p.id];
-    var h = '<div class="cm-post' + (p.isAdmin ? ' by-admin' : '') + '" id="cp-' + p.id + '">';
+    var h = '<div class="cm-post" id="cp-' + p.id + '">';
     h += '<div class="comment-head">'
       + '<span class="comment-author">' + escapeHtml(p.authorName || '회원') + '</span>'
-      + (p.isAdmin ? '<span class="admin-tag">운영진</span>' : '')
       + '<span class="comment-time">' + timeAgo(p.createdAt) + (p.editedAt ? ' · 수정됨' : '') + '</span>'
       + '</div>';
     if (blinded) {
@@ -392,7 +391,6 @@ var Community = (function () {
     var liked = Array.isArray(c.likedBy) && currentUser && c.likedBy.indexOf(currentUser.uid) !== -1;
     return '<div class="comment-item">'
       + '<div class="comment-head"><span class="comment-author">' + escapeHtml(c.authorName || '회원') + '</span>'
-      + (c.isAdmin ? '<span class="admin-tag">운영진</span>' : '')
       + '<span class="comment-time">' + timeAgo(c.createdAt) + '</span></div>'
       + '<div class="comment-body">' + linkifyBody(escapeHtml(c.body || '')) + (c.editedAt ? ' <span class="edited-mark">(수정됨)</span>' : '') + '</div>'
       + '<div class="comment-actions">'

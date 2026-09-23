@@ -184,6 +184,7 @@ async function loadIndex() {
   try {
     var d = await Market.index();
     if (d.marketStatus) setMarketStatus(d.marketStatus);   // 워커가 대표 종목 기준으로 실어 준다
+    setHolidays(d.holidays);                              // 휴장일도 워커 목록을 쓴다 (D1 단일 출처)
     var st = marketStateLabel();
 
     // 뼈대는 구성이 바뀔 때만 다시 만들고 평소엔 값만 갈아끼운다 (플래시 애니메이션 유지)

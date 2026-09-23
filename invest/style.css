@@ -153,7 +153,6 @@ body {
 .comment-item.reply { margin-left: 20px; padding-left: 12px; border-left: 2px solid var(--border); border-bottom: none; }
 .comment-head { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; flex-wrap: wrap; }
 .comment-author { font-size: .82rem; font-weight: 700; }
-.admin-tag { background: var(--primary); color: #fff; font-size: .64rem; font-weight: 800; padding: 2px 6px; }
 .comment-time { font-size: .72rem; color: var(--text3); margin-left: auto; }
 .comment-body { font-size: .86rem; color: var(--text2); line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
 .comment-body.deleted { color: var(--text3); font-style: italic; }
@@ -904,7 +903,6 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 .cm-guide { font-size: .72rem; color: var(--text3); line-height: 1.6; margin-top: 8px; }
 .cm-list { display: flex; flex-direction: column; gap: 10px; }
 .cm-post { background: var(--bg2); border: 1px solid var(--border); padding: 12px 14px; }
-.cm-post.by-admin { border-left: 3px solid var(--primary); }
 .cm-post .comment-body { color: var(--text); }
 .cm-post .comment-actions { margin-top: 8px; flex-wrap: wrap; }
 .cm-blind { font-size: .82rem; color: var(--text3); padding: 6px 0; }
