@@ -264,7 +264,7 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
           mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
 }
 .idx-scroll::-webkit-scrollbar { display: none; }
-.idx-scroll::after { content: ''; flex: 0 0 10px; }   /* 끝까지 밀었을 때 마지막 지수가 흐려지지 않게 */
+.idx-scroll::after { content: ''; flex: 0 0 20px; }   /* 끝까지 밀었을 때 마지막 지수가 흐려지지 않게 (마스크 18px 보다 넓게) */
 .idx-cell { flex: 0 0 auto; min-width: 96px; }
 /* 해외 지수선물 — 국내 지수와 다른 묶음이라 선으로 가른다 */
 .idx-cell.fut-first { border-left: 1px solid var(--border); padding-left: 10px; margin-left: 2px; }
