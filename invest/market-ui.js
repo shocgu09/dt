@@ -46,6 +46,8 @@ function startHomePolling() {
   Poller.add('index', loadIndex, pollMs(15000, 120000));
   // 워커 캐시가 랭킹 60초·테마 120초라 그보다 자주 불러도 같은 값이 온다
   Poller.add('rank', loadRank, pollMs(60000, 600000));
+  // 순위·거래대금은 1분마다면 충분하지만 가격은 관심종목과 같은 속도로 맞춘다 (같은 /api/quotes)
+  Poller.add('rankpx', refreshRankPrices, pollMs(5000, 120000));
   Poller.add('sectors', loadSectors, pollMs(120000, 600000));
   if (watchlist.length) {
     Poller.add('watch', loadWatchQuotes, pollMs(5000, 120000));
@@ -337,10 +339,12 @@ async function openSector(no, name) {
         return '<button class="q-row" onclick="openStock(\'' + s.code + '\',\'' + escapeJsArg(s.name) + '\')">'
           + stockLogoHtml(s.code, s.name, s.logo, 'sm')
           + '<span class="q-name">' + escapeHtml(s.name) + '</span>'
-          + '<span class="q-price">' + fmtNum(s.price) + '</span>'
-          + '<span class="q-chg ' + c + '">' + fmtRate(s.changeRate) + '</span>'
+          + '<span class="q-price" id="skp-' + s.code + '">' + fmtNum(s.price) + '</span>'
+          + '<span class="q-chg ' + c + '" id="skc-' + s.code + '">' + fmtRate(s.changeRate) + '</span>'
           + '</button>';
       }).join('');
+    resetDirs('sk:');
+    refreshSectorPrices();
   } catch (e) {
     el.innerHTML = '<div class="empty">종목을 불러오지 못했습니다</div>';
   }
@@ -391,8 +395,8 @@ async function loadRank() {
         +     '<span class="rank-code">' + s.code + '</span>'
         +   '</span>'
         +   '<span class="rank-nums">'
-        +     '<span class="q-price">' + fmtNum(s.price) + '</span>'
-        +     '<span class="q-chg ' + c + '">' + fmtRate(s.changeRate) + '</span>'
+        +     '<span class="q-price" id="rkp-' + s.code + '">' + fmtNum(s.price) + '</span>'
+        +     '<span class="q-chg ' + c + '" id="rkc-' + s.code + '">' + fmtRate(s.changeRate) + '</span>'
         +   '</span>'
         +   (main || sub
               ? '<span class="rank-tv"><span>' + escapeHtml(main || sub) + '</span>'
@@ -406,6 +410,8 @@ async function loadRank() {
     }).join('')
     + rankNoteHtml(items, d.approx);
     el.dataset.key = key;
+    resetDirs('rk:');
+    refreshRankPrices();          // 랭킹 API 는 최대 1분 늦다 — 가격만 현재가로 덮는다
   } catch (e) {
     if (!el.querySelector('.rank-row')) el.innerHTML = '<div class="empty">랭킹을 불러오지 못했습니다</div>';
   }
@@ -415,7 +421,7 @@ async function loadRank() {
 function rankNoteHtml(items, approx) {
   var at = rankAsOf(items);
   var parts = [];
-  if (at) parts.push(escapeHtml(at) + ' 기준');
+  if (at) parts.push('순위·거래대금은 ' + escapeHtml(at) + ' 기준 · 가격은 실시간');
   if (approx) parts.push('거래대금 순위는 시총·급등락 상위 300종목을 합쳐 계산한 근사치입니다');
   return parts.length ? '<div class="rank-note">' + parts.join(' · ') + '</div>' : '';
 }
@@ -427,6 +433,63 @@ function rankAsOf(items) {
     if (s.asOf && (!latest || s.asOf > latest)) latest = s.asOf;
   });
   return latest ? shortTime(latest) : '';
+}
+
+/**
+ * 랭킹 목록의 가격만 현재가로 맞춘다.
+ * 순위·거래대금은 네이버 랭킹 API(워커 캐시 60초)에서 오는데, 관심종목은 /api/quotes(3초)를 쓴다.
+ * 두 출처의 시차 때문에 같은 종목이 화면에서 다른 값으로 보였다(회원 제보 2026-09-23).
+ * 가격만 관심종목과 같은 엔드포인트로 덮어써서 숫자가 어긋나지 않게 한다.
+ * (덤으로 프리·애프터마켓에도 맞는다 — 랭킹은 KRX 종가, quotes 는 NXT 체결가를 쓴다)
+ */
+async function refreshRankPrices() {
+  var el = document.getElementById('rankList');
+  if (!el || !el.querySelector('.rank-row')) return;
+  var codes = [].slice.call(el.querySelectorAll('.q-price[id^="rkp-"]'))
+    .map(function (n) { return n.id.slice(4); })
+    .filter(isStockCode);
+  if (!codes.length) return;
+
+  var key = el.dataset.key;
+  try {
+    var d = await Market.quotes(codes);
+    // 기다리는 사이 다른 세그먼트를 눌렀으면 늦게 온 값으로 새 목록을 덮지 않는다
+    el = document.getElementById('rankList');
+    if (!el || el.dataset.key !== key) return;
+    paintQuotes(d.items, 'rk');
+  } catch (e) { /* 다음 주기에 다시 — 기존 숫자를 그대로 둔다 */ }
+}
+
+/**
+ * 목록의 가격·등락 칸을 현재가로 덮는다.
+ * 가격 칸 id 는 '<prefix>p-<종목코드>', 등락 칸은 '<prefix>c-<종목코드>' 규칙.
+ * 가격에는 색을 입히지 않는다 — 목록에서는 등락률 칸만 색을 쓴다.
+ */
+function paintQuotes(items, prefix) {
+  (items || []).forEach(function (q) {
+    var pEl = document.getElementById(prefix + 'p-' + q.code);
+    var cEl = document.getElementById(prefix + 'c-' + q.code);
+    if (!pEl || !cEl || q.price == null) return;
+    setTextFlash(pEl, fmtNum(q.price), dirOf(prefix + ':' + q.code, q.price));
+    cEl.textContent = fmtRate(q.changeRate);
+    cEl.className = 'q-chg ' + signClass(q.change);
+  });
+}
+
+/** 테마 종목 목록도 같은 이유로 현재가를 덧씌운다 (테마 API 는 2분 캐시다) */
+async function refreshSectorPrices() {
+  var el = document.getElementById('themeList');
+  if (!el || !el.querySelector('.sector-head')) return;
+  var codes = [].slice.call(el.querySelectorAll('.q-price[id^="skp-"]'))
+    .map(function (n) { return n.id.slice(4); })
+    .filter(isStockCode);
+  if (!codes.length) return;
+  try {
+    var d = await Market.quotes(codes);
+    var now = document.getElementById('themeList');
+    if (!now || !now.querySelector('.sector-head')) return;   // 그 사이 목록으로 돌아갔다
+    paintQuotes(d.items, 'sk');
+  } catch (e) { /* 다음 기회에 — 기존 숫자를 그대로 둔다 */ }
 }
 
 /** 랭킹 목록에서 바로 관심종목 토글 */
