@@ -1,4 +1,4 @@
-const CACHE = 'dt-club-v13';   // 올리면 activate 에서 옛 캐시(쌓인 ?v= 버전·HTML)를 통째로 지운다
+const CACHE = 'dt-club-v14';   // 올리면 activate 에서 옛 캐시(쌓인 ?v= 버전·HTML)를 통째로 지운다
 const STATIC = [
   '/',
   '/index.html',
