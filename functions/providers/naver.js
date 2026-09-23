@@ -22,7 +22,7 @@ function signOf(code) {
 // 외부 호출 제한 시간. 네이버가 응답을 끊지 않고 붙들면 워커의 in-flight 캐시(memo)가 그 키를 기다리는
 // 모든 요청을 함께 멈춰 세운다(2026-09-22 health 가 120초 넘게 멈춘 실측). 8초면 끊고 다음 요청이 다시 시도한다.
 // 해외 지수선물 — 네이버 reuters 코드 → 우리 키
-const FUTURES = { NQcv1: 'nasdaq', GCcv1: 'gold', CLcv1: 'oil' };
+const FUTURES = { NQcv1: 'nasdaq', EScv1: 'sp500', YMcv1: 'dow', GCcv1: 'gold', CLcv1: 'oil' };
 
 const FETCH_MS = 8000;
 const withTimeout = (init) => ({ ...(init || {}), signal: AbortSignal.timeout(FETCH_MS) });

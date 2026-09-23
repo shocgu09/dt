@@ -59,11 +59,11 @@ function startHomePolling() {
 /* ===== 지수 스트립 ===== */
 // 표시 순서 — 워커가 내려준 것만 그린다 (구버전 캐시 응답에는 뒤의 것이 없을 수 있다)
 // 뒤쪽 셋은 CME 해외 지수선물 — 국내 장중에도 돌아가서 "지금 미국이 어디로 가는지"를 보여준다
-var INDEX_KEYS = ['kospi', 'kosdaq', 'kpi200', 'fut', 'kq150', 'nasdaq', 'gold', 'oil'];
-var FUT_KEYS = { nasdaq: 1, gold: 1, oil: 1 };
+var INDEX_KEYS = ['kospi', 'kosdaq', 'kpi200', 'fut', 'kq150', 'nasdaq', 'sp500', 'dow', 'gold', 'oil'];
+var FUT_KEYS = { nasdaq: 1, sp500: 1, dow: 1, gold: 1, oil: 1 };
 
 // 네이버 이름이 길어 좁은 셀에서 두 줄이 된다 ("나스닥 100 선물")
-var INDEX_NAME = { nasdaq: '나스닥 선물' };
+var INDEX_NAME = { nasdaq: '나스닥 선물', sp500: 'S&P 선물', dow: '다우 선물' };
 
 async function loadIndex() {
   var el = document.getElementById('indexStrip');
