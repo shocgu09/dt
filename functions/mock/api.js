@@ -142,6 +142,11 @@ const publicOrder = (o) => o && ({
   filledQty: o.filled_qty, status: o.status, reason: o.reason, acceptedAt: o.accepted_at, updatedAt: o.updated_at
 });
 
+/* AI 계좌 평가 하루 횟수. 0 이면 무제한.
+ * 2026-09-23 — 회원님 테스트 기간이라 풀어 두었다. 요청이 오면 3 으로 되돌린다.
+ * 유료 API 를 부르므로 테스트가 끝나면 반드시 다시 막아야 한다. */
+const REVIEW_DAILY_MAX = 0;
+
 // ── 라우팅 ────────────────────────────────────────────────────
 /**
  * @param user  검증된 ID 토큰 payload (sub = uid)
@@ -326,9 +331,8 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     if (!env.AI_WORKER_URL || !env.REVIEW_SECRET) throw new HttpError(503, 'AI 평가가 아직 준비되지 않았습니다');
     const ymd = E.kstNow(now).ymd;
     const used = await db.prepare(`SELECT COUNT(*) AS n FROM reviews WHERE uid=? AND ymd=?`).bind(uid, ymd).first();
-    const DAILY_MAX = 3;
-    if (used && used.n >= DAILY_MAX) {
-      throw new HttpError(429, `평가는 하루 ${DAILY_MAX}번까지 받을 수 있습니다. 내일 다시 시도해 주세요`, 'quota');
+    if (REVIEW_DAILY_MAX > 0 && used && used.n >= REVIEW_DAILY_MAX) {
+      throw new HttpError(429, `평가는 하루 ${REVIEW_DAILY_MAX}번까지 받을 수 있습니다. 내일 다시 시도해 주세요`, 'quota');
     }
 
     const view = await accountView(db, season, account, now);
@@ -360,7 +364,10 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       `INSERT INTO reviews (id, season_id, uid, ymd, metrics, body, created_at) VALUES (?,?,?,?,?,?,?)`
     ).bind(id, season.id, uid, ymd, JSON.stringify(metrics), text, now).run();
 
-    return { review: { id, metrics, body: text, createdAt: now }, remaining: DAILY_MAX - ((used ? used.n : 0) + 1) };
+    return {
+      review: { id, metrics, body: text, createdAt: now },
+      remaining: REVIEW_DAILY_MAX > 0 ? REVIEW_DAILY_MAX - ((used ? used.n : 0) + 1) : null
+    };
   }
 
   // 가장 최근 평가 (다시 열어 볼 때 — 새로 부르지 않는다)
@@ -372,7 +379,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     ]);
     return {
       review: last ? { id: last.id, metrics: JSON.parse(last.metrics), body: last.body, createdAt: last.created_at } : null,
-      remaining: Math.max(0, 3 - (used ? used.n : 0))
+      remaining: REVIEW_DAILY_MAX > 0 ? Math.max(0, REVIEW_DAILY_MAX - (used ? used.n : 0)) : null
     };
   }
 

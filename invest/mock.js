@@ -278,7 +278,7 @@ var Mock = (function () {
     var box = document.getElementById('mkReview');
     if (!box) return;
     var left = document.getElementById('mkRvLeft');
-    if (left) left.textContent = _reviewLeft == null ? '' : '오늘 ' + _reviewLeft + '회 남음';
+    if (left) left.textContent = _reviewLeft == null ? '제한 없음 (테스트 중)' : '오늘 ' + _reviewLeft + '회 남음';
 
     if (_reviewBusy) {
       box.innerHTML = '<div class="mk-rv-load">'
