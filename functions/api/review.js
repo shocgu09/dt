@@ -67,8 +67,11 @@ export async function onRequestPost(context) {
   } catch (e) { return json({ error: '요청 형식이 올바르지 않습니다.' }, 400); }
   if (!metrics || typeof metrics !== 'object') return json({ error: '지표가 없습니다.' }, 400);
 
-  // 모델은 환경변수로 바꿀 수 있게 둔다 (되돌릴 때 코드 배포가 필요 없도록)
-  const model = env.REVIEW_MODEL || 'gpt-5.4-nano';
+  /* 모델은 환경변수로 바꿀 수 있게 둔다 — 갈아탈 때 코드 배포가 필요 없다.
+   * 기본값 gpt-4.1-mini: 지표 계산은 워커가 끝내 두고 AI 는 400자 서술만 하므로
+   * 큰 모델이 필요 없다. personalcar 도 이미지 분석에 이 모델을 쓰고 있다.
+   * gpt-4.1 / gpt-5.4-nano 로 바꾸려면 Pages 환경변수 REVIEW_MODEL 만 고치면 된다. */
+  const model = env.REVIEW_MODEL || 'gpt-4.1-mini';
   const reasoning = /^gpt-5/.test(model);
 
   let res;
@@ -83,11 +86,11 @@ export async function onRequestPost(context) {
           { role: reasoning ? 'developer' : 'system', content: [{ type: 'input_text', text: SYSTEM }] },
           { role: 'user', content: [{ type: 'input_text', text: JSON.stringify(metrics) }] }
         ],
-        text: { format: { type: 'text' }, verbosity: 'medium' },
-        ...(reasoning ? { reasoning: { effort: 'medium' } } : {}),
-        // 추론 모델은 생각하는 토큰도 이 한도에서 깎는다.
-        // 700 으로 두면 생각만 하다 끝나 본문이 비어 돌아온다 — 넉넉히 준다.
-        max_output_tokens: reasoning ? 3000 : 700
+        text: { format: { type: 'text' }, ...(reasoning ? { verbosity: 'medium' } : {}) },
+        ...(reasoning
+          // 추론 모델은 생각하는 토큰도 한도에서 깎는다 — 넉넉히 줘야 본문이 남는다
+          ? { reasoning: { effort: 'medium' }, max_output_tokens: 3000 }
+          : { temperature: 1, top_p: 1, max_output_tokens: 2048 })
       })
     });
   } catch (e) {
