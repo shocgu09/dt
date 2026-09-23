@@ -443,10 +443,11 @@ async function handleAdmin(db, actor, path, method, body, now) {
   const log = (action, detail) => db.prepare(`INSERT INTO audit_log (at, actor, action, detail) VALUES (?,?,?,?)`)
     .bind(now, actor, action, JSON.stringify(detail)).run();
 
-  /* 휴장일 — 전부 자동으로 채워진다(지난 날은 일봉 누락, 오늘은 분봉 0개).
+  /* 휴장일 — 앞날은 표에 들어 있고, 모르는 날은 당일에 자동으로 잡힌다.
      화면에는 현황만 보여 준다. 아래 추가·삭제는 자동 감지가 잘못됐을 때를 위한 비상구다. */
   if (path === '/admin/holidays' && method === 'GET') {
-    return { items: await H.listHolidays(db, 80), today: E.kstNow(now).ymd };
+    const today = E.kstNow(now).ymd;
+    return { items: await H.listHolidays(db, today, 80), today };
   }
   if (path === '/admin/holidays' && method === 'POST') {
     const b = await body();
@@ -463,12 +464,6 @@ async function handleAdmin(db, actor, path, method, body, now) {
     await log('holiday.remove', { ymd });
     return { ok: true };
   }
-  // 지난 휴장일을 지금 한 번 메운다 (운영진 버튼)
-  if (path === '/admin/holidays/sync' && method === 'POST') {
-    const added = await H.syncPastHolidays(db, now, 400);
-    return { ok: true, added };
-  }
-
   if (path === '/admin/seasons' && method === 'GET') {
     // 참가자 수와 최종 순위 확정 여부를 같이 준다 — 목록에서 시즌 상태를 한눈에 보기 위해
     const rows = (await db.prepare(
@@ -573,10 +568,7 @@ export async function runCron(env, now = Date.now()) {
   E.setHolidays(await H.holidaySet(db));
   const t = E.kstNow(now);
 
-  // 휴장일은 전부 자동이다 — 손으로 넣을 일이 없다.
-  //   08:10  지난 날을 코스피 일봉 누락으로 메운다
-  //   09:35  오늘 분봉이 0개면 휴장일로 기록 (임시공휴일도 당일에 잡힌다)
-  if (t.hm === 8 * 60 + 10) await H.syncPastHolidays(db, now).catch(() => 0);
+  // 오늘이 휴장일인지 확인한다 (09:35 · 10:30). 지난 날은 읽힐 일이 없어 모으지 않는다.
   if (await H.syncTodayHoliday(db, t, now).catch(() => false)) {
     E.setHolidays(await H.holidaySet(db));
   }

@@ -166,3 +166,13 @@ CREATE TABLE IF NOT EXISTS reviews (
 );
 CREATE INDEX IF NOT EXISTS idx_reviews_user ON reviews(uid, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_reviews_quota ON reviews(uid, ymd);
+
+-- ── KRX 휴장일 ────────────────────────────────────────────────
+-- 앞날의 휴장일은 표에 들어 있고, 모르는 날은 당일에 자동으로 들어온다
+-- (평일인데 코스피 분봉 0개 / 정규장 중 시세 CLOSE).
+-- 지난 휴장일은 모으지 않는다 — isTradingDay 는 늘 '오늘'만 묻는다.
+CREATE TABLE IF NOT EXISTS holidays (
+  ymd      TEXT PRIMARY KEY,           -- YYYYMMDD (KST)
+  name     TEXT,
+  added_at INTEGER NOT NULL
+);

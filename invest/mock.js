@@ -1004,15 +1004,14 @@ var Mock = (function () {
   function renderHolidays() {
     var box = document.getElementById('mkHolidays');
     if (!box) return;
-    var all = _holidays || [];
-    var up = all.filter(function (x) { return x.ymd >= _holToday; }).sort(function (x, y) { return x.ymd < y.ymd ? -1 : 1; });
+    var up = _holidays || [];        // 워커가 오늘 이후만, 날짜순으로 준다
     var next = up[0];
     box.innerHTML = '<div class="mk-hol-box">'
       + '<div class="mk-hol-head">휴장일 <b>자동</b></div>'
       + '<div class="mk-hol-line">'
       +   (next ? '다음 휴장일 <b>' + fmtYmd(next.ymd) + '</b>' + (next.name ? ' (' + escapeHtml(next.name) + ')' : '')
               : '앞으로 등록된 휴장일 없음')
-      +   '<span class="mk-dim"> · 등록 ' + fmtNum(all.length) + '일</span>'
+      +   '<span class="mk-dim"> · 앞으로 ' + fmtNum(up.length) + '일</span>'
       + '</div>'
       + '</div>';
   }

@@ -31,18 +31,18 @@ export async function holidaySet(db) {
 
 export function forgetHolidays() { cache = null; cacheAt = 0; }
 
-/** 목록 (관리 화면용) — 오늘 이후를 먼저, 그다음 최근 지난 것 */
-export async function listHolidays(db, limit = 60) {
+/** 앞으로의 휴장일 (현황 표시용) */
+export async function listHolidays(db, fromYmd, limit = 60) {
   const rows = (await db.prepare(
-    `SELECT ymd, name, source FROM holidays ORDER BY ymd DESC LIMIT ?`
-  ).bind(limit).all()).results || [];
+    `SELECT ymd, name FROM holidays WHERE ymd >= ? ORDER BY ymd LIMIT ?`
+  ).bind(fromYmd, limit).all()).results || [];
   return rows;
 }
 
 export async function addHoliday(db, ymd, name, now) {
   await db.prepare(
-    `INSERT INTO holidays (ymd, name, source, added_at) VALUES (?,?,'manual',?)
-     ON CONFLICT (ymd) DO UPDATE SET name = excluded.name, source = 'manual'`
+    `INSERT INTO holidays (ymd, name, added_at) VALUES (?,?,?)
+     ON CONFLICT (ymd) DO UPDATE SET name = excluded.name`
   ).bind(ymd, name || null, now).run();
   forgetHolidays();
 }
@@ -50,44 +50,6 @@ export async function addHoliday(db, ymd, name, now) {
 export async function removeHoliday(db, ymd) {
   await db.prepare(`DELETE FROM holidays WHERE ymd=?`).bind(ymd).run();
   forgetHolidays();
-}
-
-/**
- * 지난 휴장일 채우기 — 코스피 일봉이 없는 평일을 찾는다.
- * 하루 한 번이면 충분하다. 외부 호출 1건.
- */
-export async function syncPastHolidays(db, now, days = 120) {
-  const p = (n) => String(n).padStart(2, '0');
-  const k = new Date(now + 9 * 3600e3);
-  const end = `${k.getUTCFullYear()}${p(k.getUTCMonth() + 1)}${p(k.getUTCDate())}`;
-  const fromD = new Date(k.getTime() - days * 86400e3);
-  const from = `${fromD.getUTCFullYear()}${p(fromD.getUTCMonth() + 1)}${p(fromD.getUTCDate())}`;
-
-  let have;
-  try {
-    const closes = await naver.indexDailyDates('KOSPI', from, end);
-    if (!closes.length) return 0;
-    have = new Set(closes);
-  } catch (e) { return 0; }
-
-  // 받아온 봉의 첫 날부터 어제까지만 본다 — 오늘은 아직 봉이 없을 수 있다
-  const first = [...have].sort()[0];
-  const found = [];
-  for (let d = new Date(Date.UTC(+first.slice(0, 4), +first.slice(4, 6) - 1, +first.slice(6, 8)));
-       ; d.setUTCDate(d.getUTCDate() + 1)) {
-    const ymd = `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}`;
-    if (ymd >= end) break;                        // 오늘은 제외
-    const dow = d.getUTCDay();
-    if (dow === 0 || dow === 6) continue;
-    if (!have.has(ymd)) found.push(ymd);
-  }
-  if (!found.length) return 0;
-
-  await db.batch(found.map((ymd) => db.prepare(
-    `INSERT OR IGNORE INTO holidays (ymd, name, source, added_at) VALUES (?, NULL, 'auto', ?)`
-  ).bind(ymd, now)));
-  forgetHolidays();
-  return found.length;
 }
 
 /**
@@ -113,7 +75,7 @@ export async function syncTodayHoliday(db, t, now) {
   if (bars == null || bars > 0) return false;
 
   await db.prepare(
-    `INSERT OR IGNORE INTO holidays (ymd, name, source, added_at) VALUES (?, '휴장 (당일 자동 감지)', 'auto', ?)`
+    `INSERT OR IGNORE INTO holidays (ymd, name, added_at) VALUES (?, '휴장 (당일 자동 감지)', ?)`
   ).bind(t.ymd, now).run();
   forgetHolidays();
   return true;
@@ -135,7 +97,7 @@ export async function catchHolidayFromQuote(db, quote, t, now) {
   const set = await holidaySet(db);
   if (set.has(t.ymd)) return false;
   await db.prepare(
-    `INSERT OR IGNORE INTO holidays (ymd, name, source, added_at) VALUES (?, '휴장 (시세로 감지)', 'auto', ?)`
+    `INSERT OR IGNORE INTO holidays (ymd, name, added_at) VALUES (?, '휴장 (시세로 감지)', ?)`
   ).bind(t.ymd, now).run();
   forgetHolidays();
   return true;
