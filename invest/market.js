@@ -46,7 +46,13 @@ var Market = {
   // 투자자별 매매동향 (개인·외국인·기관) — 최근 5거래일
   trend:   function (code) { return marketApi('/api/trend', { code: code }); },
   // 투자지표·컨센서스 목표가·분기 실적 (하루 단위로만 바뀐다 — 폴링하지 않는다)
-  profile: function (code) { return marketApi('/api/profile', { code: code }); }
+  profile: function (code) { return marketApi('/api/profile', { code: code }); },
+  // 공시 — id 를 주면 그 공시의 본문 (워커가 HTML 을 텍스트로 바꿔 준다)
+  disclosure: function (code, id) {
+    var p = { code: code };
+    if (id) p.id = id;
+    return marketApi('/api/disclosure', p);
+  }
 };
 
 /* ===== 종목 검색 =====

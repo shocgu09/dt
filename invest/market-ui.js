@@ -55,8 +55,13 @@ function startHomePolling() {
 }
 
 /* ===== 지수 스트립 ===== */
-// 표시 순서 — 워커가 내려준 것만 그린다 (구버전 캐시 응답에는 뒤의 셋이 없을 수 있다)
-var INDEX_KEYS = ['kospi', 'kosdaq', 'kpi200', 'fut', 'kq150'];
+// 표시 순서 — 워커가 내려준 것만 그린다 (구버전 캐시 응답에는 뒤의 것이 없을 수 있다)
+// 뒤쪽 셋은 CME 해외 지수선물 — 국내 장중에도 돌아가서 "지금 미국이 어디로 가는지"를 보여준다
+var INDEX_KEYS = ['kospi', 'kosdaq', 'kpi200', 'fut', 'kq150', 'nasdaq', 'sp500', 'dow'];
+var FUT_KEYS = { nasdaq: 1, sp500: 1, dow: 1 };
+
+// 네이버 이름이 길어 좁은 셀에서 두 줄이 된다 ("나스닥 100 선물")
+var INDEX_NAME = { nasdaq: '나스닥 선물', sp500: 'S&P 선물', dow: '다우 선물' };
 
 async function loadIndex() {
   var el = document.getElementById('indexStrip');
@@ -73,8 +78,12 @@ async function loadIndex() {
       el.innerHTML = '<div class="idx-scroll">' + have.map(function (k) {
         var x = d[k];
         if (!x) return '';
-        return '<div class="idx-cell">'
-          + '<div class="idx-name">' + escapeHtml(x.name) + '</div>'
+        // 국내 지수와 해외 선물 사이에 선을 하나 둬서 다른 묶음임을 보인다
+        var first = FUT_KEYS[k] && !FUT_KEYS[have[have.indexOf(k) - 1]];
+        return '<div class="idx-cell' + (FUT_KEYS[k] ? ' fut' : '') + (first ? ' fut-first' : '') + '">'
+          + '<div class="idx-name">' + escapeHtml(INDEX_NAME[k] || x.name)
+          +   (x.delayMin ? '<span class="idx-delay">' + x.delayMin + '분 지연</span>' : '')
+          + '</div>'
           + '<div class="idx-price" id="ixp-' + k + '"></div>'
           + '<div class="idx-chg" id="ixc-' + k + '"></div>'
           + '</div>';
@@ -460,6 +469,8 @@ async function openStock(code, name) {
   resetDirs('bk:');
   _trendLoadedFor = null;
   _profileLoadedFor = null;
+  _discLoadedFor = null;
+  newsMode = 'news';
   // 이전 종목의 시세·일봉이 남아 있으면 범위 바가 잠깐 엉뚱한 값으로 그려진다
   _dayBars = null;
   _lastQuote = null;
@@ -541,7 +552,7 @@ function stockShellHtml(code, name) {
     +   '<button class="sd-tab on" data-sdtab="chart" onclick="sdSwitch(\'chart\')">차트</button>'
     +   '<button class="sd-tab" data-sdtab="info" onclick="sdSwitch(\'info\')">정보</button>'
     +   '<button class="sd-tab" data-sdtab="trend" onclick="sdSwitch(\'trend\')">수급</button>'
-    +   '<button class="sd-tab" data-sdtab="news" onclick="sdSwitch(\'news\')">뉴스</button>'
+    +   '<button class="sd-tab" data-sdtab="news" onclick="sdSwitch(\'news\')">뉴스·공시</button>'
     +   '<button class="sd-tab" data-sdtab="community" onclick="sdSwitch(\'community\')">커뮤니티</button>'
     + '</div>'
     + '<div class="sd-panel" id="sdChart">'
@@ -563,7 +574,14 @@ function stockShellHtml(code, name) {
     + '</div>'
     + '<div class="sd-panel" id="sdInfo" style="display:none"></div>'
     + '<div class="sd-panel" id="sdTrend" style="display:none"></div>'
-    + '<div class="sd-panel" id="sdNews" style="display:none"></div>'
+    + '<div class="sd-panel" id="sdNews" style="display:none">'
+    +   '<div class="seg-row nd-seg">'
+    +     '<button class="seg on" data-nd="news" onclick="setNewsMode(\'news\')">📰 뉴스</button>'
+    +     '<button class="seg" data-nd="disc" onclick="setNewsMode(\'disc\')">📄 공시</button>'
+    +   '</div>'
+    +   '<div id="ndNews"></div>'
+    +   '<div id="ndDisc" style="display:none"></div>'
+    + '</div>'
     + '<div class="sd-panel" id="sdCommunity" style="display:none"><div class="loading">불러오는 중...</div></div>'
     + '<div class="disclaimer">⚠️ 시세는 참고용이며 지연·오류가 있을 수 있습니다. 실제 매매는 증권사 앱에서 확인하세요.</div>';
 }
@@ -577,7 +595,7 @@ function sdSwitch(tab) {
   document.getElementById('sdCommunity').style.display = tab === 'community' ? '' : 'none';
   if (tab === 'info') loadStockProfile();
   if (tab === 'trend') loadDealTrend();
-  if (tab === 'news') loadStockNews();
+  if (tab === 'news') setNewsMode(newsMode);
   if (tab === 'community' && window.Community && curStock) Community.open(curStock.code, curStock.name);
 }
 
@@ -1264,7 +1282,7 @@ function researchDate(s) {
 var _newsLoadedFor = null;
 async function loadStockNews() {
   if (!curStock) return;
-  var el = document.getElementById('sdNews');
+  var el = document.getElementById('ndNews');
   if (!el) return;
   if (_newsLoadedFor === curStock.code && el.innerHTML) return;
   el.innerHTML = '<div class="loading">뉴스 불러오는 중...</div>';
@@ -1281,6 +1299,96 @@ async function loadStockNews() {
   } catch (e) {
     el.innerHTML = '<div class="empty">뉴스를 불러오지 못했습니다</div>';
   }
+}
+
+
+/* ===== 종목 공시 (KOSCOM — 네이버 종목 화면과 같은 것) =====
+ * 네이버에는 공시 하나만 가리키는 웹 주소가 없다(상세 URL 이 종목 화면으로 302).
+ * 그래서 링크로 내보내지 않고 목록에서 바로 펼친다. 본문은 워커가 텍스트로 바꿔 내려준다.
+ */
+var _discLoadedFor = null;
+var newsMode = 'news';
+
+function setNewsMode(m) {
+  newsMode = m;
+  document.querySelectorAll('[data-nd]').forEach(function (b) { b.classList.toggle('on', b.dataset.nd === m); });
+  document.getElementById('ndNews').style.display = m === 'news' ? '' : 'none';
+  document.getElementById('ndDisc').style.display = m === 'disc' ? '' : 'none';
+  if (m === 'disc') loadDisclosures();
+  else loadStockNews();
+}
+
+async function loadDisclosures() {
+  if (!curStock) return;
+  var el = document.getElementById('ndDisc');
+  if (!el) return;
+  if (_discLoadedFor === curStock.code && el.innerHTML) return;
+  el.innerHTML = '<div class="loading">공시 불러오는 중...</div>';
+  var code = curStock.code;
+  try {
+    var d = await Market.disclosure(code);
+    if (!curStock || curStock.code !== code) return;
+    el = document.getElementById('ndDisc');
+    if (!el) return;
+    if (!d.items || !d.items.length) { el.innerHTML = '<div class="empty">공시가 없습니다</div>'; return; }
+    el.innerHTML = d.items.map(function (x) {
+      return '<div class="dc-item">'
+        + '<button class="dc-head" onclick="toggleDisclosure(\'' + escapeJsArg(x.id) + '\')" aria-expanded="false">'
+        +   '<span class="dc-title">' + escapeHtml(x.title) + '</span>'
+        +   '<span class="dc-meta">' + escapeHtml(discTime(x.datetime))
+        +     (x.author ? ' · ' + escapeHtml(x.author) : '') + '</span>'
+        +   '<span class="dc-caret" id="dcCaret-' + escapeAttr(x.id) + '">▾</span>'
+        + '</button>'
+        + '<div class="dc-body" id="dcBody-' + escapeAttr(x.id) + '" style="display:none"></div>'
+        + '</div>';
+    }).join('')
+    + '<div class="dc-note">한국거래소·금융감독원 공시를 네이버를 통해 받아옵니다</div>';
+    _discLoadedFor = code;
+  } catch (e) {
+    el = document.getElementById('ndDisc');
+    if (el) el.innerHTML = '<div class="empty">공시를 불러오지 못했습니다</div>';
+  }
+}
+
+/** 공시 펼치기 — 본문은 처음 펼칠 때 한 번만 받는다 */
+async function toggleDisclosure(id) {
+  if (!curStock) return;
+  var body = document.getElementById('dcBody-' + id);
+  var caret = document.getElementById('dcCaret-' + id);
+  if (!body) return;
+  var open = body.style.display !== 'none';
+  if (open) {
+    body.style.display = 'none';
+    if (caret) caret.textContent = '▾';
+    return;
+  }
+  body.style.display = '';
+  if (caret) caret.textContent = '▴';
+  if (body.dataset.loaded) return;
+
+  body.innerHTML = '<div class="loading">본문 불러오는 중...</div>';
+  var code = curStock.code;
+  try {
+    var d = await Market.disclosure(code, id);
+    if (!curStock || curStock.code !== code) return;
+    body = document.getElementById('dcBody-' + id);
+    if (!body) return;
+    var text = d.item && d.item.text;
+    if (!text) { body.innerHTML = '<div class="empty">본문을 가져오지 못했습니다</div>'; return; }
+    // 워커가 이미 태그를 걷어낸 텍스트를 준다 — 여기서 escape 만 하면 안전하다
+    body.innerHTML = '<pre class="dc-text">' + escapeHtml(text) + '</pre>';
+    body.dataset.loaded = '1';
+  } catch (e) {
+    body = document.getElementById('dcBody-' + id);
+    if (body) body.innerHTML = '<div class="empty">본문을 가져오지 못했습니다</div>';
+  }
+}
+
+/** "2026-08-21T06:52:22" → "08.21 06:52" */
+function discTime(s) {
+  var t = String(s || '');
+  if (t.length < 16) return t;
+  return t.slice(5, 7) + '.' + t.slice(8, 10) + ' ' + t.slice(11, 16);
 }
 
 /* ===== 유틸 ===== */

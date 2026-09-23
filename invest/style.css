@@ -266,7 +266,14 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 .idx-scroll::-webkit-scrollbar { display: none; }
 .idx-scroll::after { content: ''; flex: 0 0 10px; }   /* 끝까지 밀었을 때 마지막 지수가 흐려지지 않게 */
 .idx-cell { flex: 0 0 auto; min-width: 96px; }
-.idx-name { font-size: .7rem; color: var(--text3); font-weight: 700; }
+/* 해외 지수선물 — 국내 지수와 다른 묶음이라 선으로 가른다 */
+.idx-cell.fut-first { border-left: 1px solid var(--border); padding-left: 10px; margin-left: 2px; }
+.idx-cell.fut .idx-name { color: var(--text3); }
+.idx-name { font-size: .7rem; color: var(--text3); font-weight: 700; white-space: nowrap; }
+.idx-delay {
+  margin-left: 4px; font-size: .58rem; font-weight: 700; color: var(--text3);
+  border: 1px solid var(--border); padding: 0 3px; vertical-align: 1px;
+}
 .idx-price { font-size: 1rem; font-weight: 800; margin-top: 2px; letter-spacing: -.3px; }
 .idx-chg { font-size: .72rem; font-weight: 700; margin-top: 1px; }
 .idx-state {
@@ -781,6 +788,33 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 .pf-source {
   margin: -4px 0 4px; padding: 10px 12px; background: var(--bg2);
   border: 1px solid var(--border); font-size: .66rem; color: var(--text3); line-height: 1.6;
+}
+
+/* ── 뉴스·공시 탭의 공시 목록 ── */
+.nd-seg { margin-bottom: 10px; }
+.dc-item { border: 1px solid var(--border); border-bottom: none; background: var(--bg2); }
+.dc-item:last-of-type { border-bottom: 1px solid var(--border); }
+.dc-head {
+  width: 100%; display: grid; grid-template-columns: 1fr 16px; align-items: center;
+  gap: 4px 8px; padding: 11px 12px; background: none; border: none;
+  color: inherit; text-align: left; cursor: pointer;
+}
+.dc-head:hover { background: var(--bg3); }
+.dc-title { grid-column: 1; font-size: .84rem; font-weight: 700; line-height: 1.45; min-width: 0; }
+.dc-meta { grid-column: 1; font-size: .7rem; color: var(--text3); font-weight: 600; }
+.dc-caret {
+  grid-column: 2; grid-row: 1 / span 2;
+  font-size: .8rem; color: var(--text3); text-align: center;
+}
+.dc-body { border-top: 1px solid var(--border); background: var(--bg); }
+.dc-text {
+  margin: 0; padding: 12px; max-height: 420px; overflow: auto;
+  font-family: inherit; font-size: .78rem; line-height: 1.7; color: var(--text2);
+  white-space: pre-wrap; word-break: break-word;
+}
+.dc-note {
+  padding: 8px 12px; font-size: .66rem; color: var(--text3);
+  background: var(--bg2); border: 1px solid var(--border); border-top: none;
 }
 
 /* 최근 리포트 */

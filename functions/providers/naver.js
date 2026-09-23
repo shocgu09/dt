@@ -21,6 +21,9 @@ function signOf(code) {
 
 // 외부 호출 제한 시간. 네이버가 응답을 끊지 않고 붙들면 워커의 in-flight 캐시(memo)가 그 키를 기다리는
 // 모든 요청을 함께 멈춰 세운다(2026-09-22 health 가 120초 넘게 멈춘 실측). 8초면 끊고 다음 요청이 다시 시도한다.
+// 해외 지수선물 — 네이버 reuters 코드 → 우리 키
+const FUTURES = { NQcv1: 'nasdaq', EScv1: 'sp500', YMcv1: 'dow' };
+
 const FETCH_MS = 8000;
 const withTimeout = (init) => ({ ...(init || {}), signal: AbortSignal.timeout(FETCH_MS) });
 
@@ -199,6 +202,35 @@ export const naver = {
     if (!out.kospi && !out.kosdaq) throw new Error('naver: index empty');
     return out;
   },
+  /**
+   * 해외 지수선물 (CME) — 나스닥100·S&P500·다우.
+   * 국내 장중에도 거의 24시간 돌아가서 "지금 미국이 어디로 가는지"를 보여준다.
+   * 응답 형태가 국내 지수 폴링 API 와 같아 매퍼를 공유한다 (이름 필드만 futuresName).
+   * 주의: 10분 지연(stockExchangeType.delayTime) — 화면에 반드시 밝힌다.
+   */
+  async getWorldFutures(codes) {
+    const list = (codes && codes.length ? codes : Object.keys(FUTURES)).filter((c) => FUTURES[c]);
+    if (!list.length) return {};
+    const d = await getJson(
+      `https://polling.finance.naver.com/api/realtime/worldstock/futures/${list.join(',')}`
+    );
+    const out = {};
+    for (const x of (d && d.datas) || []) {
+      const key = FUTURES[x.reutersCode];
+      if (!key) continue;
+      const sign = signOf(x.compareToPreviousPrice && x.compareToPreviousPrice.code);
+      out[key] = {
+        code: x.reutersCode,
+        name: x.futuresName,
+        price: num(x.closePrice),
+        change: sign * Math.abs(num(x.compareToPreviousClosePrice) || 0),
+        changeRate: Number(x.fluctuationsRatio),
+        delayMin: (x.stockExchangeType && x.stockExchangeType.delayTime) || 0
+      };
+    }
+    return out;
+  },
+
 
   // 종목 검색 — 초성 검색 지원 (ㅅㅅㅈㅈ → 삼성전자)
   async search(q) {
@@ -322,6 +354,40 @@ export const naver = {
     }));
   },
 
+
+  /**
+   * 종목 공시 목록 (KOSCOM 제공 — 네이버 종목 화면과 같은 것)
+   * 네이버에는 공시 하나만 가리키는 웹 주소가 없다(상세 URL 은 종목 화면으로 302).
+   * 그래서 목록에서 바로 펼쳐 볼 수 있게 본문은 getDisclosure 로 따로 받는다.
+   */
+  async getDisclosures(code, size = 15) {
+    const d = await getJson(
+      `https://m.stock.naver.com/api/stock/${code}/disclosure?page=1&pageSize=${size}`
+    );
+    return (Array.isArray(d) ? d : []).map((x) => ({
+      id: x.disclosureId,
+      title: (x.title || '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&apos;/g, "'"),
+      datetime: x.datetime,
+      author: x.author || null
+    })).filter((x) => x.id && x.title).slice(0, size);
+  },
+
+  /**
+   * 공시 본문.
+   * 네이버가 KOSCOM 원문을 HTML 표로 준다. 그 HTML 을 화면에 그대로 꽂으면 XSS 통로가 되므로
+   * 여기(서버)에서 텍스트로 바꿔 내려보낸다 — 화면은 받은 문자열을 escape 해서 그리기만 하면 된다.
+   */
+  async getDisclosure(code, id) {
+    const d = await getJson(`https://m.stock.naver.com/api/stock/${code}/disclosure/${id}`);
+    const x = d && d.disclosure;
+    if (!x) return null;
+    return {
+      id: x.disclosureId,
+      datetime: x.datetime,
+      text: htmlToText(x.contents || '')
+    };
+  },
+
   /** 종목 뉴스 */
   async getNews(code, size = 10) {
     const d = await getJson(`https://m.stock.naver.com/api/news/stock/${code}?pageSize=${size}&page=1`);
@@ -401,6 +467,32 @@ export const naver = {
     };
   }
 };
+
+/**
+ * 공시 원문 HTML → 읽을 수 있는 텍스트.
+ * 표 기반 양식이라 행/칸 경계를 살려야 뜻이 통한다 — 행은 줄바꿈, 칸은 가운뎃점으로 잇는다.
+ * script·style 은 내용째로 버린다.
+ */
+function htmlToText(html) {
+  return String(html)
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, '')
+    // 원문이 이미 예쁘게 들여쓰여 있다 — 그 줄바꿈을 먼저 지워야 표 구조로만 줄을 나눌 수 있다
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/<\/(tr|p|h[1-6])>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/t[dh]>/gi, ' · ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .split('\n')
+    .map((l) => l.replace(/[ \t]+/g, ' ').replace(/(?: · )+/g, ' · ')
+      .replace(/^ ?· | ?· ?$/g, '')
+      .replace(/ : · /g, ' : ')          // '회 사 명 : · 삼성전자' → '회 사 명 : 삼성전자'
+      .trim())
+    .filter(Boolean)
+    .join('\n')
+    .slice(0, 6000);        // 아주 긴 공시(사업보고서 등)는 잘라 보낸다
+}
 
 /** corporationSummary(comment1~3) → 문장 배열 */
 function summaryLines(s) {

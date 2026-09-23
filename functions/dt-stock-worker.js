@@ -17,7 +17,8 @@ const CORS = {
 
 // 캐시 TTL(초) — 네이버 권장 폴링이 7초라 그보다 짧게 잡을 이유가 없다
 const TTL = { quote: 3, book: 3, index: 15, ohlcIntra: 30, ohlcDay: 43200, search: 86400,
-              rank: 60, sectors: 120, news: 300, spark: 60, trend: 600, profile: 900 };
+              rank: 60, sectors: 120, news: 300, spark: 60, trend: 600, profile: 900,
+              disclosure: 300, disclosureBody: 86400 };
 
 const KV_MIN_TTL = 600;
 const MAX_BATCH = 50;
@@ -173,6 +174,7 @@ export default {
       if (path === '/api/news')    return json(await handleNews(env, q.get('code')));
       if (path === '/api/trend')   return json(await handleTrend(env, q.get('code')));
       if (path === '/api/profile') return json(await handleProfile(env, q.get('code')));
+      if (path === '/api/disclosure') return json(await handleDisclosure(env, q.get('code'), q.get('id')));
       if (path === '/api/spark')   return json(await handleSpark(env, q.get('code')));
     } catch (e) {
       // 업스트림 URL·내부 예외 원문은 로그에만 남긴다 (회원에게 그대로 보이면 내부 구조가 드러난다)
@@ -251,11 +253,18 @@ async function handleIndex(env) {
     // 지수의 marketStatus 는 15:30 에 CLOSE 가 되지만 종목은 애프터마켓 동안 OPEN 이다(실측).
     // 화면의 "실시간 / 장 마감"은 종목 기준이 맞으므로 대표 종목의 상태를 함께 싣는다.
     // 휴장일에는 CLOSE 가 와서 시계만 보고 "실시간"이라 표시하던 문제도 없어진다.
-    const [idx, ref] = await Promise.all([
+    // 해외 지수선물은 국내 장중에도 돌아간다 — 지수 스트립에 같이 실어 보낸다.
+    // 선물이 죽어도 국내 지수는 그려야 하므로 실패는 삼킨다.
+    const [idx, ref, fut] = await Promise.all([
       naver.getIndex(),
-      naver.getQuote('005930').catch(() => null)
+      naver.getQuote('005930').catch(() => null),
+      naver.getWorldFutures().catch(() => ({}))
     ]);
-    return { ...idx, marketStatus: ref ? ref.marketStatus : null, sessionType: ref ? ref.sessionType : null };
+    return {
+      ...idx, ...fut,
+      marketStatus: ref ? ref.marketStatus : null,
+      sessionType: ref ? ref.sessionType : null
+    };
   });
 }
 
@@ -340,6 +349,23 @@ async function handleTrend(env, code) {
 async function handleProfile(env, code) {
   if (!isCode(code)) return { error: '종목코드는 6자리 숫자입니다' };
   return memo(`pf:${code}`, TTL.profile, async () => ({ ...(await naver.getProfile(code)), source: 'naver' }));
+}
+
+/**
+ * 종목 공시 — id 가 없으면 목록, 있으면 그 공시의 본문.
+ * 본문은 이미 공시된 확정 문서라 바뀌지 않는다 → 하루 캐시(KV).
+ */
+async function handleDisclosure(env, code, id) {
+  if (!isCode(code)) return { error: '종목코드는 6자리 숫자입니다' };
+  if (id) {
+    if (!/^\d{1,12}$/.test(id)) return { error: '공시 번호가 올바르지 않습니다' };
+    return cached(env, `dcb:${code}:${id}`, TTL.disclosureBody, async () => ({
+      code, item: await naver.getDisclosure(code, id), source: 'naver'
+    }));
+  }
+  return memo(`dc:${code}`, TTL.disclosure, async () => ({
+    code, items: await naver.getDisclosures(code, 15), source: 'naver'
+  }));
 }
 
 /** 종목 뉴스 */
