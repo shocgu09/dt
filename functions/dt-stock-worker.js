@@ -17,7 +17,7 @@ const CORS = {
 
 // 캐시 TTL(초) — 네이버 권장 폴링이 7초라 그보다 짧게 잡을 이유가 없다
 const TTL = { quote: 3, book: 3, index: 15, ohlcIntra: 30, ohlcDay: 43200, search: 86400,
-              rank: 60, sectors: 120, news: 300, spark: 60, trend: 600 };
+              rank: 60, sectors: 120, news: 300, spark: 60, trend: 600, profile: 900 };
 
 const KV_MIN_TTL = 600;
 const MAX_BATCH = 50;
@@ -172,6 +172,7 @@ export default {
       if (path === '/api/sectors') return json(await handleSectors(env, q.get('kind'), q.get('no')));
       if (path === '/api/news')    return json(await handleNews(env, q.get('code')));
       if (path === '/api/trend')   return json(await handleTrend(env, q.get('code')));
+      if (path === '/api/profile') return json(await handleProfile(env, q.get('code')));
       if (path === '/api/spark')   return json(await handleSpark(env, q.get('code')));
     } catch (e) {
       // 업스트림 URL·내부 예외 원문은 로그에만 남긴다 (회원에게 그대로 보이면 내부 구조가 드러난다)
@@ -329,6 +330,16 @@ async function handleTrend(env, code) {
   return cached(env, `dt:${code}:${kstStamp().ymd}`, TTL.trend, async () => ({
     code, rows: await naver.getDealTrend(code), source: 'naver'
   }));
+}
+
+/**
+ * 종목 기본정보 — 투자지표·컨센서스 목표가·최근 분기 실적.
+ * 하루 단위로만 바뀌는 값이라 길게 잡아도 되지만, KV 쓰기(무료 하루 1,000건)를 아끼려고
+ * 워커 메모리 캐시만 쓴다. 회원이 보는 종목 수가 많지 않아 15분이면 네이버 호출이 충분히 준다.
+ */
+async function handleProfile(env, code) {
+  if (!isCode(code)) return { error: '종목코드는 6자리 숫자입니다' };
+  return memo(`pf:${code}`, TTL.profile, async () => ({ ...(await naver.getProfile(code)), source: 'naver' }));
 }
 
 /** 종목 뉴스 */

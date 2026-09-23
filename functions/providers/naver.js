@@ -336,8 +336,109 @@ export const naver = {
       }
     }
     return items.slice(0, size);
+  },
+
+  /**
+   * 종목 기본정보 — 투자지표(PER·EPS·배당 등) + 증권사 컨센서스 + 최근 분기 실적 + 기업 개요.
+   * 네이버에 전용 엔드포인트가 없어 두 곳을 합친다.
+   *   integration      → totalInfos(지표), consensusInfo(목표가), researches(리포트), etfKeyIndicator
+   *   finance/quarter  → 최근 6분기 매출·영업이익 (마지막 칸은 컨센서스 추정치일 수 있다)
+   * 실적은 ETF·리츠 등에 없으므로 실패해도 지표만으로 화면이 서도록 각각 따로 감싼다.
+   */
+  async getProfile(code) {
+    const [integration, finance] = await Promise.all([
+      getJson(`https://m.stock.naver.com/api/stock/${code}/integration`),
+      getJson(`https://m.stock.naver.com/api/stock/${code}/finance/quarter`).catch(() => null)
+    ]);
+
+    // totalInfos 는 [{code,key,value}] 배열 — 값은 이미 단위가 붙은 표시용 문자열이다("12.68배")
+    const info = {};
+    for (const t of (integration.totalInfos || [])) {
+      if (t && t.code && t.value != null && t.value !== 'N/A' && t.value !== '-') info[t.code] = String(t.value);
+    }
+
+    const cns = integration.consensusInfo;
+    const consensus = cns && num(cns.priceTargetMean)
+      ? { date: cns.createDate || null, recommMean: num(cns.recommMean), targetMean: num(cns.priceTargetMean) }
+      : null;
+
+    const etfKi = integration.etfKeyIndicator;
+    const etf = etfKi ? {
+      issuer: etfKi.issuerName || null,
+      baseIndex: info.etfBaseIdx || null,
+      totalFee: etfKi.totalFee != null ? Number(etfKi.totalFee) : null,
+      nav: num(etfKi.nav),
+      deviationRate: etfKi.deviationRate != null
+        ? (etfKi.deviationSign === '-' ? -Number(etfKi.deviationRate) : Number(etfKi.deviationRate))
+        : null,
+      dividendYieldTtm: etfKi.dividendYieldTtm != null ? Number(etfKi.dividendYieldTtm) : null,
+      returnRate1m: etfKi.returnRate1m != null ? Number(etfKi.returnRate1m) : null,
+      returnRate3m: etfKi.returnRate3m != null ? Number(etfKi.returnRate3m) : null,
+      returnRate1y: etfKi.returnRate1y != null ? Number(etfKi.returnRate1y) : null,
+      marketValue: etfKi.marketValue || null
+    } : null;
+
+    const researches = (integration.researches || []).slice(0, 5).map((r) => ({
+      id: r.id,
+      broker: r.bnm || '',
+      title: (r.tit || '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&apos;/g, "'"),
+      date: r.wdt || ''
+    })).filter((r) => r.id && r.title);
+
+    return {
+      code,
+      name: integration.stockName || null,
+      type: integration.stockEndType === 'etf' ? 'etf' : (integration.stockEndType || 'stock'),
+      summary: summaryLines(finance && finance.corporationSummary),
+      indicators: info,
+      etf,
+      consensus,
+      researches,
+      finance: mapQuarterFinance(finance && finance.financeInfo)
+    };
   }
 };
+
+/** corporationSummary(comment1~3) → 문장 배열 */
+function summaryLines(s) {
+  if (!s) return null;
+  const lines = [s.comment1, s.comment2, s.comment3]
+    .map((x) => String(x || '').trim()).filter(Boolean);
+  return lines.length ? lines : null;
+}
+
+/**
+ * finance/quarter 의 rowList(행=항목, 열=분기) → 화면이 쓰기 좋은 열 배열로 뒤집는다.
+ * 금액 단위는 억원. 미발표 분기는 "-" 로 오므로 null 로 바꾼다.
+ * trTitleList 의 isConsensus === 'Y' 는 증권사 추정치(아직 발표 전)라는 뜻이라 화면에서 구분해 표시한다.
+ */
+function mapQuarterFinance(fi) {
+  if (!fi || !Array.isArray(fi.trTitleList) || !Array.isArray(fi.rowList)) return null;
+  const cols = fi.trTitleList.map((t) => ({
+    key: t.key,
+    title: String(t.title || '').replace(/\.$/, ''),   // "2026.09." → "2026.09"
+    estimate: t.isConsensus === 'Y'
+  }));
+  if (!cols.length) return null;
+
+  const pick = (title) => {
+    const row = fi.rowList.find((r) => r.title === title);
+    if (!row || !row.columns) return null;
+    const vals = cols.map((c) => num(row.columns[c.key] && row.columns[c.key].value));
+    return vals.some((v) => v != null) ? vals : null;
+  };
+
+  const revenue = pick('매출액');
+  if (!revenue) return null;      // 매출이 없으면 실적 카드를 그릴 이유가 없다
+  return {
+    unit: '억원',
+    cols,
+    revenue,
+    operatingProfit: pick('영업이익'),
+    netProfit: pick('당기순이익'),
+    opMargin: pick('영업이익률')
+  };
+}
 
 
 // ── 폴백 프로바이더 ────────────────────────────────────────────

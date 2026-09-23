@@ -44,7 +44,9 @@ var Market = {
   // 스파크라인 전용 경량 엔드포인트 — 분봉 전체 대신 40포인트만 내려온다
   spark:   function (code) { return marketApi('/api/spark', { code: code }); },
   // 투자자별 매매동향 (개인·외국인·기관) — 최근 5거래일
-  trend:   function (code) { return marketApi('/api/trend', { code: code }); }
+  trend:   function (code) { return marketApi('/api/trend', { code: code }); },
+  // 투자지표·컨센서스 목표가·분기 실적 (하루 단위로만 바뀐다 — 폴링하지 않는다)
+  profile: function (code) { return marketApi('/api/profile', { code: code }); }
 };
 
 /* ===== 종목 검색 =====

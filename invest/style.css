@@ -709,6 +709,90 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 .dt-foot { font-size: .74rem; color: var(--text2); font-weight: 700; }
 .dt-note { font-size: .66rem; color: var(--text3); }
 
+/* ── 종목 정보 탭 (투자지표 · 실적 · 목표가) ── */
+.pf-card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-left: 3px solid var(--primary); padding: 13px 14px 12px; margin-bottom: 12px;
+}
+.pf-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 11px; }
+.pf-head h4 { font-size: .92rem; font-weight: 800; letter-spacing: -.2px; }
+.pf-hint { margin-left: auto; font-size: .7rem; color: var(--text3); font-weight: 600; }
+.pf-k { font-size: .72rem; color: var(--text3); font-weight: 700; }
+/* 2열 고정 — 시가총액("1,650조 1,121억") 같은 긴 값이 3열에서는 줄바꿈된다 */
+.pf-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px;
+  background: var(--border); border: 1px solid var(--border);
+}
+.pf-cell { background: var(--bg2); padding: 9px 10px; }
+.pf-v { font-size: .88rem; font-weight: 800; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.pf-s { font-size: .68rem; color: var(--text3); font-weight: 600; margin-top: 2px; }
+.pf-sub-head { font-size: .72rem; color: var(--text3); font-weight: 700; margin: 12px 0 6px; }
+.pf-foot {
+  margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--border);
+  font-size: .76rem; color: var(--text2); font-weight: 700;
+}
+.pf-note { margin-top: 9px; font-size: .66rem; color: var(--text3); line-height: 1.6; }
+.pf-summary { margin-top: -2px; padding-left: 15px; }
+.pf-summary li { font-size: .8rem; color: var(--text2); line-height: 1.65; margin-bottom: 5px; }
+.pf-summary li:last-child { margin-bottom: 0; }
+
+/* 매출 추이 */
+.rv-top { display: flex; align-items: flex-end; gap: 8px; margin-bottom: 12px; }
+.rv-now { font-size: 1.24rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.rv-q { display: block; font-size: .68rem; color: var(--text3); font-weight: 700; margin-top: 2px; }
+.rv-yoy { margin-left: auto; font-size: .84rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.rv-chart { display: flex; gap: 5px; align-items: flex-end; }
+.rv-col { flex: 1; min-width: 0; }
+.rv-bar-wrap { height: 68px; display: flex; align-items: flex-end; }
+.rv-bar { display: block; width: 100%; background: var(--bg3); border: 1px solid var(--border); }
+.rv-col.on .rv-bar { background: var(--primary); border-color: var(--primary); }
+.rv-col.est .rv-bar { background: transparent; border-style: dashed; border-color: var(--primary-light); }
+.rv-col.none .rv-x { opacity: .45; }   /* 아직 발표되지 않은 분기 */
+.rv-x {
+  margin-top: 5px; font-size: .62rem; color: var(--text3); font-weight: 700;
+  text-align: center; white-space: nowrap;
+}
+.rv-col.on .rv-x { color: var(--text2); }
+
+/* 목표가 */
+.tg-op { margin-bottom: 14px; }
+.tg-op-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.tg-op-v { margin-left: auto; font-size: .88rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.tg-op-v small { font-size: .7rem; color: var(--text3); font-weight: 700; }
+.tg-badge { font-size: .7rem; font-weight: 800; padding: 2px 6px; background: var(--bg3); }
+.tg-badge.up { background: var(--bull-bg); }
+.tg-badge.down { background: var(--bear-bg); }
+.tg-gauge { position: relative; height: 6px; background: var(--bg3); border: 1px solid var(--border); }
+.tg-gauge i { display: block; height: 100%; background: var(--primary); }
+.tg-gauge-x { display: flex; justify-content: space-between; margin-top: 3px; font-size: .62rem; color: var(--text3); font-weight: 700; }
+.tg-main { display: flex; align-items: flex-end; gap: 10px; margin-bottom: 8px; }
+.tg-col { min-width: 0; }
+.tg-col.right { margin-left: auto; text-align: right; }
+.tg-target { font-size: 1.3rem; font-weight: 800; color: var(--primary-light); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.tg-now { font-size: 1.05rem; font-weight: 800; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.tg-bar { position: relative; height: 7px; background: var(--bg3); border: 1px solid var(--border); overflow: hidden; }
+.tg-bar i { display: block; height: 100%; background: var(--primary); opacity: .55; }
+.tg-bar.over i { background: var(--stock-down); }
+.tg-gap { margin-top: 8px; font-size: .78rem; font-weight: 700; color: var(--text2); }
+.tg-gap b { font-weight: 800; font-variant-numeric: tabular-nums; }
+.tg-gap.up b { color: var(--stock-up); }
+.tg-gap.down b { color: var(--stock-down); }
+
+/* 최근 리포트 */
+.rs-item {
+  display: block; padding: 10px 0; border-bottom: 1px solid var(--border);
+  text-decoration: none; color: inherit;
+}
+.rs-item:first-of-type { border-top: 1px solid var(--border); }
+.rs-item:hover { background: var(--bg3); }
+.rs-title { font-size: .84rem; font-weight: 700; line-height: 1.45; }
+.rs-meta { font-size: .7rem; color: var(--text3); font-weight: 600; margin-top: 3px; }
+
+@media (max-width: 380px) {
+  .rv-x { font-size: .58rem; }
+  .sd-tab { font-size: .76rem; padding: 8px 2px; }
+}
+
 /* AI 생성 브리핑 배지 */
 .briefing-badge.ai { background: var(--primary-light); color: #0b1013; }
 

@@ -429,6 +429,7 @@ async function openStock(code, name) {
   resetDirs('px:');
   resetDirs('bk:');
   _trendLoadedFor = null;
+  _profileLoadedFor = null;
   // 이전 종목의 시세·일봉이 남아 있으면 범위 바가 잠깐 엉뚱한 값으로 그려진다
   _dayBars = null;
   _lastQuote = null;
@@ -508,6 +509,7 @@ function stockShellHtml(code, name) {
     + '<div class="sd-stats" id="sdStats"></div>'
     + '<div class="sd-tabs">'
     +   '<button class="sd-tab on" data-sdtab="chart" onclick="sdSwitch(\'chart\')">차트</button>'
+    +   '<button class="sd-tab" data-sdtab="info" onclick="sdSwitch(\'info\')">정보</button>'
     +   '<button class="sd-tab" data-sdtab="trend" onclick="sdSwitch(\'trend\')">수급</button>'
     +   '<button class="sd-tab" data-sdtab="news" onclick="sdSwitch(\'news\')">뉴스</button>'
     +   '<button class="sd-tab" data-sdtab="community" onclick="sdSwitch(\'community\')">커뮤니티</button>'
@@ -529,6 +531,7 @@ function stockShellHtml(code, name) {
     +   '<div class="book-wrap" id="bookWrap" style="display:none"></div>'
     +   '<a class="ext-link" href="https://m.stock.naver.com/domestic/stock/' + code + '/total" target="_blank" rel="noopener noreferrer">네이버 증권에서 보기 →</a>'
     + '</div>'
+    + '<div class="sd-panel" id="sdInfo" style="display:none"></div>'
     + '<div class="sd-panel" id="sdTrend" style="display:none"></div>'
     + '<div class="sd-panel" id="sdNews" style="display:none"></div>'
     + '<div class="sd-panel" id="sdCommunity" style="display:none"><div class="loading">불러오는 중...</div></div>'
@@ -538,9 +541,11 @@ function stockShellHtml(code, name) {
 function sdSwitch(tab) {
   document.querySelectorAll('.sd-tab').forEach(function (b) { b.classList.toggle('on', b.dataset.sdtab === tab); });
   document.getElementById('sdChart').style.display = tab === 'chart' ? '' : 'none';
+  document.getElementById('sdInfo').style.display = tab === 'info' ? '' : 'none';
   document.getElementById('sdTrend').style.display = tab === 'trend' ? '' : 'none';
   document.getElementById('sdNews').style.display = tab === 'news' ? '' : 'none';
   document.getElementById('sdCommunity').style.display = tab === 'community' ? '' : 'none';
+  if (tab === 'info') loadStockProfile();
   if (tab === 'trend') loadDealTrend();
   if (tab === 'news') loadStockNews();
   if (tab === 'community' && window.Community && curStock) Community.open(curStock.code, curStock.name);
@@ -626,6 +631,7 @@ async function loadStockQuote() {
     }).join('');
 
     renderRange(q);
+    syncTargetUpside();          // 목표가 카드가 열려 있으면 상승여력을 현재가에 맞춘다
 
     // ★ 차트 마지막 봉을 새로고침 없이 갱신.
     // 장 마감 후에도 한 번은 맞춰야 종가가 차트에 반영된다 (상단 시세와 끝점 불일치 방지).
@@ -971,6 +977,245 @@ async function loadDealTrend() {
   } catch (e) {
     el.innerHTML = '<div class="empty">매매동향을 불러오지 못했습니다</div>';
   }
+}
+
+/* ===== 종목 정보 (투자지표 · 실적 · 컨센서스 목표가) =====
+ * 하루 단위로만 바뀌는 값이라 폴링하지 않고 탭을 열 때 한 번만 받는다.
+ * 목표가의 상승여력만 현재가가 움직일 때마다 다시 계산한다(syncTargetUpside).
+ */
+var _profileLoadedFor = null;
+var _targetMean = null;      // 평균 목표가 — 시세 틱마다 상승여력을 다시 그리는 데 쓴다
+
+async function loadStockProfile() {
+  if (!curStock) return;
+  var el = document.getElementById('sdInfo');
+  if (!el) return;
+  if (_profileLoadedFor === curStock.code && el.innerHTML) return;
+  el.innerHTML = '<div class="loading">종목정보 불러오는 중...</div>';
+  var code = curStock.code;
+  try {
+    var p = await Market.profile(code);
+    if (!curStock || curStock.code !== code) return;      // 기다리는 사이 다른 종목으로 넘어갔다
+    el = document.getElementById('sdInfo');
+    if (!el) return;
+    _targetMean = p.consensus ? p.consensus.targetMean : null;
+    el.innerHTML = (p.type === 'etf' ? etfInfoCardHtml(p) : stockInfoCardHtml(p))
+      + revenueCardHtml(p.finance)
+      + targetCardHtml(p)
+      + summaryCardHtml(p)
+      + researchCardHtml(p);
+    syncTargetUpside();
+    _profileLoadedFor = code;
+  } catch (e) {
+    el = document.getElementById('sdInfo');
+    if (el) el.innerHTML = '<div class="empty">종목정보를 불러오지 못했습니다</div>';
+  }
+}
+
+/** 지표 한 칸 — 값이 없으면 아예 만들지 않는다 (빈칸이 늘어서면 오히려 어수선하다) */
+function infoCell(label, value, sub, subCls) {
+  if (value == null || value === '') return '';
+  return '<div class="pf-cell">'
+    + '<div class="pf-k">' + escapeHtml(label) + '</div>'
+    + '<div class="pf-v">' + escapeHtml(value) + '</div>'
+    + (sub ? '<div class="pf-s' + (subCls ? ' ' + subCls : '') + '">' + escapeHtml(sub) + '</div>' : '')
+    + '</div>';
+}
+
+/** 2열 격자 — 칸이 홀수면 마지막 줄이 절반만 칠해져 어색하다. 빈 칸으로 줄을 맞춘다 */
+function pfGrid(cells) {
+  var list = cells.filter(Boolean);
+  if (!list.length) return '';
+  if (list.length % 2) list.push('<div class="pf-cell"></div>');
+  return '<div class="pf-grid">' + list.join('') + '</div>';
+}
+
+function pfCardHead(title, hint) {
+  return '<div class="pf-head"><h4>' + escapeHtml(title) + '</h4>'
+    + (hint ? '<span class="pf-hint">' + escapeHtml(hint) + '</span>' : '') + '</div>';
+}
+
+function stockInfoCardHtml(p) {
+  var i = p.indicators || {};
+  var grid = pfGrid([
+    infoCell('PER', i.per, i.cnsPer ? '추정 ' + i.cnsPer : ''),
+    infoCell('EPS', i.eps, i.cnsEps ? '추정 ' + i.cnsEps : ''),
+    infoCell('PBR', i.pbr, i.bps ? 'BPS ' + i.bps : ''),
+    infoCell('배당수익률', i.dividendYieldRatio, i.dividend ? '주당 ' + i.dividend : ''),
+    infoCell('시가총액', i.marketValue),
+    infoCell('외인소진율', i.foreignRate)
+  ]);
+  if (!grid) return '';
+  return '<section class="pf-card">' + pfCardHead('종목정보', '투자지표')
+    + grid
+    + '<div class="pf-note">PER·EPS 는 최근 4분기 실적 기준 · 추정치는 증권사 컨센서스</div>'
+    + '</section>';
+}
+
+function etfInfoCardHtml(p) {
+  var e = p.etf || {};
+  var pct = function (v) { return v == null ? null : (v > 0 ? '+' : '') + v.toFixed(2) + '%'; };
+  var grid = pfGrid([
+    infoCell('기초지수', e.baseIndex),
+    infoCell('운용사', (e.issuer || '').replace(/\(ETF\)$/, '')),
+    infoCell('총보수', e.totalFee == null ? null : e.totalFee.toFixed(2) + '%'),
+    infoCell('순자산가치', e.nav == null ? null : fmtNum(Math.round(e.nav)) + '원'),
+    infoCell('괴리율', pct(e.deviationRate)),
+    infoCell('분배율', e.dividendYieldTtm == null ? null : e.dividendYieldTtm.toFixed(2) + '%'),
+    infoCell('시가총액', e.marketValue)
+  ]);
+  var rates = [['1개월', e.returnRate1m], ['3개월', e.returnRate3m], ['1년', e.returnRate1y]]
+    .filter(function (r) { return r[1] != null; });
+  var rateHtml = rates.length
+    ? '<div class="pf-sub-head">기간 수익률</div>' + pfGrid(rates.map(function (r) {
+        return '<div class="pf-cell"><div class="pf-k">' + r[0] + '</div>'
+          + '<div class="pf-v ' + signClass(r[1]) + '">' + (r[1] > 0 ? '+' : '') + r[1].toFixed(2) + '%</div></div>';
+      }))
+    : '';
+  if (!grid && !rateHtml) return '';
+  return '<section class="pf-card">' + pfCardHead('ETF 정보', '기초지수 · 보수')
+    + grid
+    + rateHtml
+    + '<div class="pf-note">괴리율은 시장가와 순자산가치(NAV)의 차이 · 기간 수익률은 분배금 포함</div>'
+    + '</section>';
+}
+
+/** 억원 → "204.9조" / "1,714억" */
+function fmtEok(v) {
+  if (v == null) return '-';
+  var a = Math.abs(v), s;
+  if (a >= 10000) { var jo = a / 10000; s = (jo >= 1000 ? fmtNum(Math.round(jo)) : jo.toFixed(1)) + '조'; }
+  else s = fmtNum(Math.round(a)) + '억';
+  return (v < 0 ? '-' : '') + s;
+}
+
+/** 분기 매출 추이 — 마지막 칸이 컨센서스 추정치면 점선 막대로 구분한다 */
+function revenueCardHtml(f) {
+  if (!f || !f.revenue || !f.cols) return '';
+  var vals = f.revenue, cols = f.cols;
+  var last = -1;
+  for (var i = vals.length - 1; i >= 0; i--) { if (vals[i] != null) { last = i; break; } }
+  if (last < 0) return '';
+
+  var max = Math.max.apply(null, vals.filter(function (v) { return v != null; }).map(Math.abs));
+  if (!(max > 0)) return '';
+
+  var yoy = (last >= 4 && vals[last - 4]) ? (vals[last] - vals[last - 4]) / Math.abs(vals[last - 4]) * 100 : null;
+  var op = f.operatingProfit ? f.operatingProfit[last] : null;
+  var margin = f.opMargin ? f.opMargin[last] : null;
+
+  var bars = cols.map(function (c, idx) {
+    var v = vals[idx];
+    var h = v == null ? 0 : Math.max(3, Math.round(Math.abs(v) / max * 100));
+    return '<div class="rv-col' + (idx === last ? ' on' : '') + (c.estimate ? ' est' : '') + (v == null ? ' none' : '') + '">'
+      + '<div class="rv-bar-wrap">' + (v == null ? '' : '<i class="rv-bar" style="height:' + h + '%"></i>') + '</div>'
+      + '<div class="rv-x">' + escapeHtml(c.title.slice(2)) + (c.estimate ? 'E' : '') + '</div>'
+      + '</div>';
+  }).join('');
+
+  return '<section class="pf-card">' + pfCardHead('매출 추이', '최근 ' + cols.length + '분기')
+    + '<div class="rv-top">'
+    +   '<div class="rv-now">' + fmtEok(vals[last]) + '<span class="rv-q">' + escapeHtml(cols[last].title) + (cols[last].estimate ? ' 추정' : '') + '</span></div>'
+    +   (yoy == null ? '' : '<div class="rv-yoy ' + signClass(yoy) + '">' + (yoy > 0 ? '+' : '') + yoy.toFixed(1) + '% YoY</div>')
+    + '</div>'
+    + '<div class="rv-chart">' + bars + '</div>'
+    + (op == null ? '' : '<div class="pf-foot">영업이익 ' + fmtEok(op)
+        + (margin == null ? '' : ' · 영업이익률 ' + margin + '%') + '</div>')
+    + '<div class="pf-note">연결 기준 · 단위 원 · E 는 증권사 추정치</div>'
+    + '</section>';
+}
+
+/** 투자의견 평균(1~5) → 사람이 읽는 말 */
+function recommLabel(v) {
+  if (v == null) return null;
+  if (v >= 4.5) return { text: '적극 매수', cls: 'up' };
+  if (v >= 3.5) return { text: '매수 우세', cls: 'up' };
+  if (v >= 2.5) return { text: '중립', cls: 'flat' };
+  if (v >= 1.5) return { text: '매도 우세', cls: 'down' };
+  return { text: '적극 매도', cls: 'down' };
+}
+
+function targetCardHtml(p) {
+  var c = p.consensus;
+  if (!c || !c.targetMean) return '';
+  var rec = recommLabel(c.recommMean);
+  var gauge = c.recommMean == null ? '' :
+      '<div class="tg-op">'
+    +   '<div class="tg-op-row"><span class="pf-k">투자의견 평균</span>'
+    +     '<span class="tg-op-v">' + c.recommMean.toFixed(2) + '<small> / 5</small>'
+    +     (rec ? ' <b class="tg-badge ' + rec.cls + '">' + rec.text + '</b>' : '') + '</span></div>'
+    +   '<div class="tg-gauge"><i style="width:' + Math.max(0, Math.min(100, (c.recommMean - 1) / 4 * 100)).toFixed(1) + '%"></i></div>'
+    +   '<div class="tg-gauge-x"><span>매도</span><span>중립</span><span>매수</span></div>'
+    + '</div>';
+
+  return '<section class="pf-card">' + pfCardHead('목표가', '증권사 컨센서스')
+    + gauge
+    + '<div class="tg-main">'
+    +   '<div class="tg-col"><div class="pf-k">평균 목표가</div><div class="tg-target">' + fmtNum(Math.round(c.targetMean)) + '</div></div>'
+    +   '<div class="tg-col right"><div class="pf-k">현재가</div><div class="tg-now" id="tgNow">-</div></div>'
+    + '</div>'
+    + '<div class="tg-bar" id="tgBar"><i style="width:0%"></i><span class="tg-mark" style="left:0%"></span></div>'
+    + '<div class="tg-gap" id="tgGap"></div>'
+    + '<div class="pf-note">' + (c.date ? escapeHtml(c.date) + ' 기준 · ' : '')
+    +   '증권사 추정치이며 실제 주가와 다를 수 있습니다</div>'
+    + '</section>';
+}
+
+/**
+ * 목표가 대비 현재가 — 시세가 움직일 때마다 다시 그린다.
+ * 카드가 그려지기 전이거나 목표가가 없으면 아무 일도 하지 않는다.
+ */
+function syncTargetUpside() {
+  var bar = document.getElementById('tgBar');
+  if (!bar || _targetMean == null) return;
+  var price = _lastQuote ? _lastQuote.price : null;
+  var nowEl = document.getElementById('tgNow');
+  var gapEl = document.getElementById('tgGap');
+  if (price == null || !isFinite(price) || price <= 0) {
+    if (nowEl) nowEl.textContent = '-';
+    if (gapEl) gapEl.innerHTML = '';
+    return;
+  }
+  if (nowEl) nowEl.textContent = fmtNum(price);
+
+  var gap = (_targetMean - price) / price * 100;
+  // 막대는 현재가와 목표가 중 큰 쪽을 100% 로 두고 작은 쪽의 비율만큼 채운다
+  var lo = Math.min(price, _targetMean), hi = Math.max(price, _targetMean);
+  bar.querySelector('i').style.width = (hi > 0 ? (lo / hi * 100).toFixed(1) : '0') + '%';
+  bar.classList.toggle('over', _targetMean < price);
+  if (gapEl) {
+    gapEl.className = 'tg-gap ' + signClass(gap);
+    gapEl.innerHTML = (gap >= 0 ? '상승 여력 <b>+' + gap.toFixed(1) + '%</b>'
+                                : '현재가가 목표가를 <b>' + Math.abs(gap).toFixed(1) + '%</b> 웃돕니다');
+  }
+}
+
+function summaryCardHtml(p) {
+  if (!p.summary || !p.summary.length) return '';
+  return '<section class="pf-card">' + pfCardHead('기업 개요')
+    + '<ul class="pf-summary">'
+    + p.summary.map(function (l) { return '<li>' + escapeHtml(l) + '</li>'; }).join('')
+    + '</ul></section>';
+}
+
+function researchCardHtml(p) {
+  if (!p.researches || !p.researches.length) return '';
+  return '<section class="pf-card">' + pfCardHead('최근 리포트', '네이버 증권')
+    + p.researches.map(function (r) {
+        return '<a class="rs-item" target="_blank" rel="noopener noreferrer"'
+          + ' href="https://m.stock.naver.com/investment/research/company/' + encodeURIComponent(r.id) + '">'
+          + '<div class="rs-title">' + escapeHtml(r.title) + '</div>'
+          + '<div class="rs-meta">' + escapeHtml(r.broker) + (r.date ? ' · ' + escapeHtml(researchDate(r.date)) : '') + '</div>'
+          + '</a>';
+      }).join('')
+    + '</section>';
+}
+
+/** "20260923" → "26.09.23" */
+function researchDate(s) {
+  var t = String(s || '');
+  if (!/^\d{8}$/.test(t)) return t;
+  return t.slice(2, 4) + '.' + t.slice(4, 6) + '.' + t.slice(6, 8);
 }
 
 /* ===== 종목 뉴스 ===== */
