@@ -4,6 +4,7 @@
 
 import { naver } from '../providers/naver.js';
 import { buildMetrics } from './review.js';
+import * as H from './holidays.js';
 import { profileOf } from '../lib/profile.js';
 import * as E from './engine.js';
 
@@ -153,6 +154,8 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
   const path = url.pathname.replace(/^\/api\/mock/, '') || '/';
   const method = request.method;
   const body = async () => { try { return await request.json(); } catch { throw new HttpError(400, '요청 형식이 올바르지 않습니다'); } };
+
+  E.setHolidays(await H.holidaySet(db));   // 거래일 판정 전에 최신 목록을 넣는다
 
   const profile = await profileOf(env, uid, token);
   if (profile.transient) throw new HttpError(503, '회원 확인이 지연되고 있습니다. 잠시 후 다시 시도하세요');
@@ -436,6 +439,31 @@ async function handleAdmin(db, actor, path, method, body, now) {
   const log = (action, detail) => db.prepare(`INSERT INTO audit_log (at, actor, action, detail) VALUES (?,?,?,?)`)
     .bind(now, actor, action, JSON.stringify(detail)).run();
 
+  /* 휴장일 — seed(옮겨 온 목록) · auto(크론이 찾은 것) · manual(운영진이 넣은 앞날) */
+  if (path === '/admin/holidays' && method === 'GET') {
+    return { items: await H.listHolidays(db, 80), today: E.kstNow(now).ymd };
+  }
+  if (path === '/admin/holidays' && method === 'POST') {
+    const b = await body();
+    const ymd = String(b.ymd || '').replace(/-/g, '');
+    if (!/^\d{8}$/.test(ymd)) throw new HttpError(400, '날짜는 YYYY-MM-DD 형식이어야 합니다');
+    await H.addHoliday(db, ymd, String(b.name || '').slice(0, 40), now);
+    await log('holiday.add', { ymd });
+    return { ok: true };
+  }
+  if (path === '/admin/holidays' && method === 'DELETE') {
+    const ymd = String(url.searchParams.get('ymd') || '').replace(/-/g, '');
+    if (!/^\d{8}$/.test(ymd)) throw new HttpError(400, '날짜가 올바르지 않습니다');
+    await H.removeHoliday(db, ymd);
+    await log('holiday.remove', { ymd });
+    return { ok: true };
+  }
+  // 지난 휴장일을 지금 한 번 메운다 (운영진 버튼)
+  if (path === '/admin/holidays/sync' && method === 'POST') {
+    const added = await H.syncPastHolidays(db, now, 400);
+    return { ok: true, added };
+  }
+
   if (path === '/admin/seasons' && method === 'GET') {
     // 참가자 수와 최종 순위 확정 여부를 같이 준다 — 목록에서 시즌 상태를 한눈에 보기 위해
     const rows = (await db.prepare(
@@ -537,7 +565,15 @@ const MAX_CODES_PER_RUN = 20;
 export async function runCron(env, now = Date.now()) {
   const db = env.MOCK_DB;
   if (!db) return;
+  E.setHolidays(await H.holidaySet(db));
   const t = E.kstNow(now);
+
+  // 휴장일 자동 수집 — 하루 한 번(08:10경) 지난 날을 코스피 일봉으로 메운다
+  if (t.hm === 8 * 60 + 10) await H.syncPastHolidays(db, now).catch(() => 0);
+  // 임시공휴일은 당일에 잡아야 뒤이은 체결·스냅샷이 틀어지지 않는다
+  if (await H.syncTodayHoliday(db, t, now).catch(() => false)) {
+    E.setHolidays(await H.holidaySet(db));
+  }
   if (!E.isTradingDay(t)) return;
   const season = await E.activeSeason(db, now);
   await E.expireStale(db, now);

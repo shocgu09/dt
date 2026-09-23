@@ -1202,12 +1202,15 @@ async function loadBook() {
 
 /* ===== 투자자별 매매동향 ===== */
 var _trendLoadedFor = null;
+var _trendAt = 0;
 
 async function loadDealTrend() {
   if (!curStock) return;
   var el = document.getElementById('sdTrend');
   if (!el) return;
-  if (_trendLoadedFor === curStock.code && el.innerHTML) return;
+  // 매매동향은 장 마감 후 집계되는 일별 확정 데이터라 장중에는 바뀌지 않는다.
+  // 다만 마감 뒤 오늘 치가 생기므로, 10분 지난 값이면 다시 받는다 (워커 캐시도 10분이다).
+  if (_trendLoadedFor === curStock.code && el.innerHTML && Date.now() - _trendAt < 600000) return;
   el.innerHTML = '<div class="loading">매매동향 불러오는 중...</div>';
   try {
     var d = await Market.trend(curStock.code);
@@ -1241,8 +1244,10 @@ async function loadDealTrend() {
       + (rows[0].foreignHoldRate
           ? '<div class="dt-foot">외국인 보유율 ' + escapeHtml(rows[0].foreignHoldRate) + '</div>'
           : '')
-      + '<div class="dt-note">순매수 수량(주) 기준 · 최근 5거래일 · 출처 네이버</div>';
+      + '<div class="dt-note">순매수 수량(주) 기준 · 최근 5거래일 · 출처 네이버<br>'
+      +   '장 마감 후 집계되는 값이라 장중에는 바뀌지 않습니다. 오늘 수급은 내일 반영됩니다.</div>';
     _trendLoadedFor = curStock.code;
+    _trendAt = Date.now();
   } catch (e) {
     el.innerHTML = '<div class="empty">매매동향을 불러오지 못했습니다</div>';
   }

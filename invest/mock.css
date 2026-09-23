@@ -242,3 +242,34 @@
   font-size: .66rem; color: var(--text3); line-height: 1.5;
 }
 .mk-rv-btn { width: 100%; }
+
+/* 평가 지표 줄 — 한 덩어리로 보이던 것을 색과 줄무늬로 가른다 */
+.mk-rv-row:nth-child(even) { background: var(--bg2); }
+.mk-rv-row.key { border-left: 3px solid var(--primary); padding-left: 11px; }
+.mk-rv-row b { font-weight: 800; }
+.mk-rv-row .mk-dim { font-weight: 600; color: var(--text3); }
+
+/* ── 휴장일 관리 ── */
+.mk-holidays { margin-top: 16px; }
+.mk-hol-add { margin-bottom: 8px; }
+.mk-hol-add .f-input { flex: 1; min-width: 0; }
+.mk-hol {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg2); border: 1px solid var(--border); border-bottom: none;
+  padding: 8px 10px; font-size: .76rem;
+}
+.mk-hol:last-of-type { border-bottom: 1px solid var(--border); }
+.mk-hol.past { opacity: .55; }
+.mk-hol-d { font-weight: 800; font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+.mk-hol-n { color: var(--text3); font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mk-hol-s {
+  flex: 0 0 auto; font-size: .62rem; font-weight: 800; padding: 2px 6px;
+  background: var(--bg3); color: var(--text3);
+}
+.mk-hol-s.manual { background: var(--primary); color: #fff; }
+.mk-hol-s.auto { background: var(--bull-bg); color: var(--stock-up); }
+.mk-hol-x {
+  flex: 0 0 auto; background: none; border: none; color: var(--text3);
+  font-size: .8rem; cursor: pointer; padding: 2px 4px;
+}
+.mk-hol-x:hover { color: var(--accent); }

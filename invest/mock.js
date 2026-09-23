@@ -284,30 +284,50 @@ var Mock = (function () {
 
   function reviewCardHtml(r) {
     var m = r.metrics || {};
-    var rows = [];
     var pct = function (v) { return v == null ? null : (v > 0 ? '+' : '') + Number(v).toFixed(2) + '%'; };
+    // [라벨, 값HTML, 강조여부] — 시장 대비는 이 평가의 중심이라 줄째로 강조한다
+    var rows = [];
+
     if (m.returnRate != null) {
-      rows.push(['수익률', '<span class="' + signClass(m.returnRate) + '">' + pct(m.returnRate) + '</span>'
-        + (m.benchmark && m.benchmark.kospi != null ? '<span class="mk-dim"> · 코스피 ' + pct(m.benchmark.kospi) + '</span>' : '')]);
+      rows.push(['수익률',
+        '<b class="' + signClass(m.returnRate) + '">' + pct(m.returnRate) + '</b>'
+        + (m.benchmark && m.benchmark.kospi != null
+            ? '<span class="mk-dim"> vs 코스피 </span><span class="' + signClass(m.benchmark.kospi) + '">' + pct(m.benchmark.kospi) + '</span>'
+            : '')]);
     }
-    if (m.alpha != null) rows.push(['시장 대비', '<span class="' + signClass(m.alpha) + '">' + pct(m.alpha) + 'p</span>']);
+    if (m.alpha != null) {
+      rows.push(['시장 대비',
+        '<b class="' + signClass(m.alpha) + '">' + pct(m.alpha) + 'p</b>'
+        + '<span class="mk-dim"> ' + (m.alpha >= 0 ? '앞섬' : '뒤처짐') + '</span>', true]);
+    }
     if (m.topPosition && m.topPosition.weight != null) {
-      rows.push(['집중도', escapeHtml(m.topPosition.name) + ' ' + m.topPosition.weight.toFixed(0) + '%'
+      // 한 종목에 절반 넘게 실려 있으면 눈에 띄게 (쏠림은 그 자체로 위험이다)
+      var heavy = m.topPosition.weight >= 50;
+      rows.push(['집중도',
+        '<b' + (heavy ? ' class="down"' : '') + '>' + escapeHtml(m.topPosition.name) + ' ' + m.topPosition.weight.toFixed(0) + '%</b>'
         + '<span class="mk-dim"> · ' + m.positionCount + '종목</span>']);
     }
     if (m.trades) {
-      rows.push(['매매', fmtNum(m.trades.total) + '회'
-        + (m.winRate != null ? '<span class="mk-dim"> · 승률 ' + m.winRate.toFixed(0) + '%</span>' : '<span class="mk-dim"> · 매도 없음</span>')]);
+      rows.push(['매매', '<b>' + fmtNum(m.trades.total) + '회</b>'
+        + (m.winRate != null
+            ? '<span class="mk-dim"> · 승률 </span><b class="' + (m.winRate >= 50 ? 'up' : 'down') + '">' + m.winRate.toFixed(0) + '%</b>'
+            : '<span class="mk-dim"> · 매도 없음</span>')]);
     }
     if (m.holdDays && m.holdDays.win != null && m.holdDays.loss != null) {
-      rows.push(['보유기간', '이익 ' + m.holdDays.win.toFixed(1) + '일 · 손실 ' + m.holdDays.loss.toFixed(1) + '일']);
+      // 손실을 더 오래 들고 있으면 처분효과 — 그 자체가 신호라 색으로 구분한다
+      var bad = m.holdDays.loss > m.holdDays.win;
+      rows.push(['보유기간',
+        '<span class="mk-dim">이익 </span><b class="up">' + m.holdDays.win.toFixed(1) + '일</b>'
+        + '<span class="mk-dim"> · 손실 </span><b class="' + (bad ? 'down' : '') + '">' + m.holdDays.loss.toFixed(1) + '일</b>',
+        bad]);
     }
-    if (m.mdd != null) rows.push(['최대 낙폭', '<span class="down">' + m.mdd.toFixed(2) + '%</span>']);
+    if (m.mdd != null) rows.push(['최대 낙폭', '<b class="' + (m.mdd < 0 ? 'down' : '') + '">' + m.mdd.toFixed(2) + '%</b>']);
+    if (m.cashRatio != null) rows.push(['현금 비중', '<b>' + m.cashRatio.toFixed(0) + '%</b>']);
 
     return '<div class="mk-rv-card">'
       + '<pre class="mk-rv-body">' + escapeHtml(r.body || '') + '</pre>'
       + (rows.length ? '<div class="mk-rv-metrics">' + rows.map(function (x) {
-          return '<div class="mk-rv-row"><span>' + x[0] + '</span><span>' + x[1] + '</span></div>';
+          return '<div class="mk-rv-row' + (x[2] ? ' key' : '') + '"><span>' + x[0] + '</span><span>' + x[1] + '</span></div>';
         }).join('') + '</div>' : '')
       + '<div class="mk-rv-foot">' + reviewTime(r.createdAt) + ' 기준 · 숫자는 계좌 기록에서 계산한 값입니다</div>'
       + '</div>';
@@ -903,6 +923,7 @@ var Mock = (function () {
       + '</div>'
       + '<div class="status-msg" id="mkSstatus"></div>'
       + '<div class="mk-seasons" id="mkSeasons"><div class="loading">시즌 목록 불러오는 중...</div></div>'
+      + '<div class="mk-holidays" id="mkHolidays"></div>'
       + '<p class="mk-note">새 시즌은 시드 1억원 · 수수료 0.015% · 매도세 0.20% 로 만들어집니다. 시작일이 되면 자동으로 열리고, 종료일 장 마감 후 최종 순위가 확정됩니다. '
       + '같은 ID 로 저장하면 기존 시즌을 고칩니다 (시드·요율은 유지).</p>'
       + '</div></details>';
@@ -921,6 +942,7 @@ var Mock = (function () {
       var r = await api('/admin/seasons');
       _seasons = r.items || [];
       renderSeasons();
+      loadHolidays();
       updateFormNote();
     } catch (e) {
       box.innerHTML = '<div class="empty">시즌 목록을 불러오지 못했습니다</div>';
@@ -959,6 +981,87 @@ var Mock = (function () {
 
   /* 상태 변경 버튼은 두지 않는다 — 시작(시작일 도달)과 종료(종료일 장 마감)가 모두 자동이라
      운영진이 손댈 일이 없고, 잘못 누르면 최종 순위 확정을 건너뛴다. */
+
+  /* ===== 휴장일 =====
+   * 예전에는 코드 두 곳(engine.js · market.js)에 목록을 복붙해 두고 손으로 고쳤다.
+   * 이제 D1 이 단일 출처고, 크론이 코스피 일봉으로 지난 휴장일을 자동으로 메운다.
+   * 앞날의 휴장일(설·추석 등)만 여기서 미리 넣어 두면 된다.
+   */
+  var _holidays = null, _holToday = null;
+
+  async function loadHolidays() {
+    var box = document.getElementById('mkHolidays');
+    if (!box) return;
+    try {
+      var r = await api('/admin/holidays');
+      _holidays = r.items || []; _holToday = r.today;
+      renderHolidays();
+    } catch (e) {
+      box.innerHTML = '<div class="empty">휴장일을 불러오지 못했습니다</div>';
+    }
+  }
+
+  var HOL_SRC = { seed: '기존', auto: '자동', manual: '수기' };
+
+  function renderHolidays() {
+    var box = document.getElementById('mkHolidays');
+    if (!box) return;
+    var up = (_holidays || []).filter(function (x) { return x.ymd >= _holToday; });
+    var past = (_holidays || []).filter(function (x) { return x.ymd < _holToday; }).slice(0, 8);
+    var row = function (x) {
+      return '<div class="mk-hol' + (x.ymd < _holToday ? ' past' : '') + '">'
+        + '<span class="mk-hol-d">' + fmtYmd(x.ymd) + '</span>'
+        + '<span class="mk-hol-n">' + escapeHtml(x.name || '') + '</span>'
+        + '<span class="mk-hol-s ' + x.source + '">' + (HOL_SRC[x.source] || x.source) + '</span>'
+        + '<button class="mk-hol-x" onclick="Mock.removeHoliday(\'' + escapeAttr(x.ymd) + '\')" aria-label="삭제">✕</button>'
+        + '</div>';
+    };
+    box.innerHTML = '<div class="mk-seasons-head">휴장일 <span>앞으로 ' + up.length + '일</span></div>'
+      + '<div class="form-row mk-hol-add">'
+      +   '<input type="date" class="f-input" id="mkHolDate" aria-label="휴장일 날짜">'
+      +   '<input type="text" class="f-input" id="mkHolName" maxlength="40" placeholder="설명 (선택)" aria-label="휴장일 설명">'
+      +   '<button class="mini-btn" onclick="Mock.addHoliday(this)">추가</button>'
+      + '</div>'
+      + (up.length ? up.map(row).join('') : '<div class="empty">앞으로 등록된 휴장일이 없습니다</div>')
+      + (past.length ? '<div class="mk-seasons-head" style="margin-top:10px">최근 지난 휴장일</div>' + past.map(row).join('') : '')
+      + '<p class="mk-note">지난 휴장일은 크론이 코스피 일봉을 보고 자동으로 채웁니다(자동). '
+      +   '임시공휴일은 당일 장중에 잡힙니다. 앞날의 휴장일만 미리 넣어 두세요. '
+      +   '<button class="mini-btn" onclick="Mock.syncHolidays(this)">지난 휴장일 지금 채우기</button></p>';
+  }
+
+  function fmtYmd(y) {
+    return String(y || '').replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3');
+  }
+
+  async function addHoliday(btn) {
+    var d = document.getElementById('mkHolDate'), nm = document.getElementById('mkHolName');
+    if (!d || !d.value) { alert('날짜를 골라 주세요.'); return; }
+    btn.disabled = true;
+    try {
+      await api('/admin/holidays', 'POST', { ymd: d.value, name: nm ? nm.value.trim() : '' });
+      d.value = ''; if (nm) nm.value = '';
+      await loadHolidays();
+    } catch (e) { alert(e && e.message ? e.message : '추가하지 못했습니다.'); }
+    btn.disabled = false;
+  }
+
+  async function removeHoliday(ymd) {
+    if (!confirm(fmtYmd(ymd) + ' 을 휴장일에서 빼시겠습니까?')) return;
+    try {
+      await api('/admin/holidays?ymd=' + encodeURIComponent(ymd), 'DELETE');
+      await loadHolidays();
+    } catch (e) { alert(e && e.message ? e.message : '삭제하지 못했습니다.'); }
+  }
+
+  async function syncHolidays(btn) {
+    btn.disabled = true; var t = btn.textContent; btn.textContent = '채우는 중...';
+    try {
+      var r = await api('/admin/holidays/sync', 'POST', {});
+      await loadHolidays();
+      alert(r.added ? r.added + '일을 찾아 넣었습니다.' : '새로 찾은 휴장일이 없습니다.');
+    } catch (e) { alert(e && e.message ? e.message : '실패했습니다.'); }
+    btn.disabled = false; btn.textContent = t;
+  }
 
   /** 폼에 어떤 시즌이 들어 있는지에 맞춰 안내를 고친다 — 고정 문구면 다른 시즌을 채웠을 때 어긋난다 */
   function updateFormNote() {
@@ -1052,6 +1155,7 @@ var Mock = (function () {
     askReview: askReview,
     saveSeason: saveSeason, loadSeasons: loadSeasons, pickSeason: pickSeason,
     newSeasonForm: newSeasonForm, onSeasonIdInput: onSeasonIdInput,
+    addHoliday: addHoliday, removeHoliday: removeHoliday, syncHolidays: syncHolidays,
     // 커뮤니티 자랑하기 — 숫자는 워커가 장부에서 직접 만든다 (community.js 가 쓴다)
     brag: function (code) { return api('/brag', 'POST', { code: code }); },
     brags: function (ids) { return api('/brag?ids=' + encodeURIComponent(ids.join(','))); }

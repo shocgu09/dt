@@ -506,6 +506,14 @@ export const naver = {
     return out;
   },
 
+  /** 지수 일봉이 있는 날짜들 — 평일인데 없으면 휴장일이다 */
+  async indexDailyDates(code, fromYmd, toYmd) {
+    const bars = await getJson(
+      `https://api.stock.naver.com/chart/domestic/index/${code}/day?startDateTime=${fromYmd}0000&endDateTime=${toYmd}0000`
+    );
+    return (Array.isArray(bars) ? bars : []).map((x) => String(x.localDate || '')).filter((d) => /^\d{8}$/.test(d));
+  },
+
   /** 지수 일별 종가 — 시즌 기간 벤치마크 수익률 계산용 (YYYYMMDD) */
   async indexDailyCloses(code, fromYmd, toYmd) {
     const bars = await getJson(
