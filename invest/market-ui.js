@@ -62,8 +62,68 @@ function startHomePolling() {
 var INDEX_KEYS = ['kospi', 'kosdaq', 'kpi200', 'fut', 'kq150', 'nasdaq', 'sp500', 'dow', 'gold', 'oil'];
 var FUT_KEYS = { nasdaq: 1, sp500: 1, dow: 1, gold: 1, oil: 1 };
 
+// 열 개를 다 켜면 가로로 너무 길다 — 처음엔 다섯 개만 보이고, 회원이 체크리스트로 고른다
+var INDEX_DEFAULT = ['kospi', 'kosdaq', 'fut', 'nasdaq', 'sp500'];
+var INDEX_PICK_KEY = 'dt-invest-index-pick';
+var _indexPick = null;
+var _indexSpark = null;      // key -> 당일 분봉 종가 배열
+var _indexSparkLoading = false;
+var _indexSparkAt = 0;          // 마지막으로 받은 시각 — 분봉이라 주기적으로 다시 받는다
+var _indexPanelOpen = false;
+
+/** 회원이 고른 표시 목록 — 저장이 막혀 있어도(사파리 사생활 모드) 기본값으로 돈다 */
+function indexPick() {
+  if (_indexPick) return _indexPick;
+  try {
+    var raw = localStorage.getItem(INDEX_PICK_KEY);
+    var arr = raw ? JSON.parse(raw) : null;
+    if (Array.isArray(arr)) _indexPick = arr.filter(function (k) { return INDEX_KEYS.indexOf(k) !== -1; });
+  } catch (e) { /* 무시 */ }
+  if (!_indexPick || !_indexPick.length) _indexPick = INDEX_DEFAULT.slice();
+  return _indexPick;
+}
+
+function toggleIndexKey(key) {
+  var pick = indexPick().slice();
+  var i = pick.indexOf(key);
+  if (i === -1) pick.push(key);
+  else if (pick.length > 1) pick.splice(i, 1);     // 하나는 남긴다 (빈 스트립 방지)
+  else return;
+  _indexPick = pick;
+  try { localStorage.setItem(INDEX_PICK_KEY, JSON.stringify(pick)); } catch (e) { /* 무시 */ }
+  var el = document.getElementById('indexStrip');
+  if (el) el.dataset.built = '';        // 구성이 바뀌었으니 뼈대를 다시 그린다
+  loadIndex();
+  renderIndexPanel();
+}
+
+function toggleIndexPanel() {
+  _indexPanelOpen = !_indexPanelOpen;
+  renderIndexPanel();
+}
+
+function renderIndexPanel() {
+  var box = document.getElementById('ixPanel');
+  if (!box) return;
+  box.style.display = _indexPanelOpen ? '' : 'none';
+  if (!_indexPanelOpen) return;
+  var pick = indexPick();
+  box.innerHTML = '<div class="ix-pick-head">스트립에 보여 줄 항목</div>'
+    + '<div class="ix-pick-list">' + INDEX_KEYS.map(function (k) {
+        var on = pick.indexOf(k) !== -1;
+        return '<button class="ix-pick' + (on ? ' on' : '') + '" onclick="toggleIndexKey(\'' + k + '\')" aria-pressed="' + on + '">'
+          + '<span class="ix-pick-box">' + (on ? '✓' : '') + '</span>'
+          + escapeHtml(INDEX_LABEL[k] || k) + '</button>';
+      }).join('') + '</div>';
+}
+
 // 네이버 이름이 길어 좁은 셀에서 두 줄이 된다 ("나스닥 100 선물")
 var INDEX_NAME = { nasdaq: '나스닥 선물', sp500: 'S&P 선물', dow: '다우 선물' };
+// 체크리스트용 이름 (셀 이름은 네이버 값을 쓰지만 목록에서는 항상 같은 말로 보인다)
+var INDEX_LABEL = {
+  kospi: '코스피', kosdaq: '코스닥', kpi200: '코스피 200', fut: '코스피 200 선물', kq150: '코스닥 150',
+  nasdaq: '나스닥 선물', sp500: 'S&P 선물', dow: '다우 선물', gold: '금', oil: 'WTI 유가'
+};
 
 async function loadIndex() {
   var el = document.getElementById('indexStrip');
@@ -74,7 +134,8 @@ async function loadIndex() {
     var st = marketStateLabel();
 
     // 뼈대는 구성이 바뀔 때만 다시 만들고 평소엔 값만 갈아끼운다 (플래시 애니메이션 유지)
-    var have = INDEX_KEYS.filter(function (k) { return d[k]; });
+    var pick = indexPick();
+    var have = INDEX_KEYS.filter(function (k) { return d[k] && pick.indexOf(k) !== -1; });
     if (el.dataset.built !== have.join(',')) {
       // 지수 셀만 가로로 밀리고(idx-scroll) 상태 배지는 그 밖에 고정 — 좁은 화면에서 배지가 숫자를 가리지 않는다
       el.innerHTML = '<div class="idx-scroll">' + have.map(function (k) {
@@ -88,9 +149,16 @@ async function loadIndex() {
           + '</div>'
           + '<div class="idx-price" id="ixp-' + k + '"></div>'
           + '<div class="idx-chg" id="ixc-' + k + '"></div>'
+          + '<div class="idx-spark" id="ixs-' + k + '"></div>'
           + '</div>';
-      }).join('') + '</div><div class="idx-state" id="ixState"></div>';
+      }).join('') + '</div>'
+      + '<div class="idx-side">'
+      +   '<div class="idx-state" id="ixState"></div>'
+      +   '<button class="ix-gear" onclick="toggleIndexPanel()" aria-label="표시 항목 고르기">⚙</button>'
+      + '</div>'
+      + '<div class="ix-panel" id="ixPanel" style="display:none"></div>';
       el.dataset.built = have.join(',');
+      renderIndexPanel();
     }
 
     have.forEach(function (k) {
@@ -108,12 +176,46 @@ async function loadIndex() {
       cEl.className = 'idx-chg ' + cls;
     });
 
+    paintIndexSparks(have, d);
+
     var sEl = document.getElementById('ixState');
     // 이 배지는 국장 기준이다. 옆의 나스닥 선물·금·유가는 국장이 닫혀 있어도 돌아간다.
     if (sEl) { sEl.textContent = '국내 ' + st.text; sEl.className = 'idx-state ' + st.cls; }
   } catch (e) {
     if (!el.dataset.built) el.innerHTML = '<div class="idx-err">지수를 불러오지 못했습니다</div>';
   }
+}
+
+/**
+ * 지수 셀의 스파크라인.
+ * 국내 지수만 당일 분봉이 있다 — 해외 선물은 네이버가 분봉을 주지 않으므로 선을 그리지 않고
+ * 숫자만 둔다 (네이버 자기 화면도 같은 방식이다).
+ * 데이터는 하루치라 자주 받을 이유가 없다 — 한 번 받아 두고 재사용한다.
+ */
+function paintIndexSparks(have, d) {
+  // 워커 캐시가 장중 60초다 — 그보다 자주 불러도 같은 값이 온다
+  var stale = Date.now() - _indexSparkAt > (isMarketOpen() ? 60000 : 600000);
+  if ((!_indexSpark || stale) && !_indexSparkLoading) {
+    _indexSparkLoading = true;
+    Market.indexSpark().then(function (r) {
+      _indexSpark = r.series || {};
+      _indexSparkAt = Date.now();
+      _indexSparkLoading = false;
+      if (currentTab === 'market' && !curStock) paintIndexSparks(have, d);
+    }).catch(function () {
+      _indexSparkLoading = false;      // 다음 폴링에서 다시 — 선 없이 숫자만 보인다
+    });
+    if (!_indexSpark) return;          // 처음이면 그릴 게 없다. 갱신 중이면 기존 선을 유지한다
+  }
+  have.forEach(function (k) {
+    var box = document.getElementById('ixs-' + k);
+    if (!box) return;
+    var pts = _indexSpark[k];
+    if (!pts || pts.length < 3) { box.innerHTML = ''; box.classList.add('none'); return; }
+    box.classList.remove('none');
+    var x = d[k];
+    box.innerHTML = sparklineSvg(pts, !(x && x.change < 0), 96, 22);
+  });
 }
 
 /* ===== 종목 검색 (초성 지원) ===== */

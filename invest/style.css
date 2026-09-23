@@ -252,7 +252,7 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 
 /* 지수 스트립 */
 .index-strip {
-  display: flex; gap: 10px; align-items: stretch;
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch;
   background: var(--bg2); border: 1px solid var(--border); border-left: 3px solid var(--primary);
   padding: 10px 12px; margin-bottom: 12px;
 }
@@ -276,6 +276,34 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 }
 .idx-price { font-size: 1rem; font-weight: 800; margin-top: 2px; letter-spacing: -.3px; }
 .idx-chg { font-size: .72rem; font-weight: 700; margin-top: 1px; }
+.idx-spark { height: 22px; margin-top: 4px; }
+.idx-spark.none { display: none; }     /* 분봉이 없는 해외 선물 — 숫자만 보여 준다 */
+
+/* 상태 배지 + 항목 고르기 */
+.idx-side { margin-left: auto; align-self: center; flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
+.ix-gear {
+  background: var(--bg3); border: 1px solid var(--border); color: var(--text2);
+  font-size: .82rem; padding: 3px 7px; cursor: pointer; line-height: 1.3;
+}
+.ix-gear:hover { border-color: var(--primary); color: var(--text); }
+.ix-panel {
+  flex: 1 0 100%; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+}
+.ix-pick-head { font-size: .7rem; color: var(--text3); font-weight: 700; margin-bottom: 7px; }
+.ix-pick-list { display: flex; flex-wrap: wrap; gap: 5px; }
+.ix-pick {
+  display: flex; align-items: center; gap: 5px;
+  background: var(--bg); border: 1px solid var(--border); color: var(--text2);
+  font-size: .74rem; font-weight: 700; padding: 5px 9px; cursor: pointer;
+}
+.ix-pick.on { border-color: var(--primary); color: var(--text); }
+.ix-pick-box {
+  width: 13px; height: 13px; flex: 0 0 auto; display: inline-flex;
+  align-items: center; justify-content: center;
+  border: 1px solid var(--border); font-size: .6rem; line-height: 1;
+}
+.ix-pick.on .ix-pick-box { background: var(--primary); border-color: var(--primary); color: #fff; }
+
 .idx-state {
   margin-left: auto; align-self: center; flex: 0 0 auto;
   font-size: .66rem; font-weight: 800; padding: 3px 8px; white-space: nowrap;

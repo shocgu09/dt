@@ -47,6 +47,8 @@ var Market = {
   trend:   function (code) { return marketApi('/api/trend', { code: code }); },
   // 투자지표·컨센서스 목표가·분기 실적 (하루 단위로만 바뀐다 — 폴링하지 않는다)
   profile: function (code) { return marketApi('/api/profile', { code: code }); },
+  // 지수 스트립 스파크라인 (일봉 종가) — 하루 단위로만 바뀐다
+  indexSpark: function () { return marketApi('/api/indexspark'); },
   // 공시 — id 를 주면 그 공시의 본문 (워커가 HTML 을 텍스트로 바꿔 준다)
   disclosure: function (code, id) {
     var p = { code: code };

@@ -168,6 +168,7 @@ export default {
       if (path === '/api/book')   return json(await handleBook(env, q.get('code')));
       if (path === '/api/ohlc')   return json(await handleOhlc(env, q.get('code'), q.get('tf') || 'D'));
       if (path === '/api/index')  return json(await handleIndex(env));
+      if (path === '/api/indexspark') return json(await handleIndexSpark(env));
       if (path === '/api/search') return json(await handleSearch(env, q.get('q')));
       if (path === '/api/rank')    return json(await handleRank(env, q.get('type'), q.get('market')));
       if (path === '/api/sectors') return json(await handleSectors(env, q.get('kind'), q.get('no')));
@@ -349,6 +350,19 @@ async function handleTrend(env, code) {
 async function handleProfile(env, code) {
   if (!isCode(code)) return { error: '종목코드는 6자리 숫자입니다' };
   return memo(`pf:${code}`, TTL.profile, async () => ({ ...(await naver.getProfile(code)), source: 'naver' }));
+}
+
+/**
+ * 지수 스트립 스파크라인 — 국내 지수 5종의 당일 분봉.
+ * 해외 선물은 네이버에 분봉이 없어 빠진다(화면은 숫자만 보여 준다).
+ * 항목당 외부 호출 1건(총 5건). 거래 시간대에는 1분, 그 밖에는 10분 캐시.
+ * 개장 전에는 분봉이 없어 빈 결과가 나오므로 길게 캐시하면 개장 후에도 선이 안 생긴다 — 짧게 잡는다.
+ */
+async function handleIndexSpark(env) {
+  const st = kstStamp();
+  return cached(env, `ixsp:${st.ymd}`, marketOpen() ? 60 : 600, async () => ({
+    series: await naver.getIndexSparks(), span: 'intraday', source: 'naver'
+  }));
 }
 
 /**

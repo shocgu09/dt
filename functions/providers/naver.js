@@ -23,6 +23,8 @@ function signOf(code) {
 // 모든 요청을 함께 멈춰 세운다(2026-09-22 health 가 120초 넘게 멈춘 실측). 8초면 끊고 다음 요청이 다시 시도한다.
 // 해외 지수선물 — 네이버 reuters 코드 → 우리 키
 const FUTURES = { NQcv1: 'nasdaq', EScv1: 'sp500', YMcv1: 'dow', GCcv1: 'gold', CLcv1: 'oil' };
+// 국내 지수 — 네이버 코드 → 우리 키
+const INDEX_CODES = { KOSPI: 'kospi', KOSDAQ: 'kosdaq', KPI200: 'kpi200', FUT: 'fut', KQI150: 'kq150' };
 
 const FETCH_MS = 8000;
 const withTimeout = (init) => ({ ...(init || {}), signal: AbortSignal.timeout(FETCH_MS) });
@@ -185,7 +187,7 @@ export const naver = {
   // 지수 — 코드 여러 개를 쉼표로 묶어 한 번에 받는다 (네이버 모바일이 쓰는 방식)
   //   KOSPI / KOSDAQ / KPI200(코스피 200) / FUT(코스피 200 선물) / KQI150(코스닥 150)
   async getIndex() {
-    const KEYS = { KOSPI: 'kospi', KOSDAQ: 'kosdaq', KPI200: 'kpi200', FUT: 'fut', KQI150: 'kq150' };
+    const KEYS = INDEX_CODES;
     const d = await getJson(`https://polling.finance.naver.com/api/realtime/domestic/index/${Object.keys(KEYS).join(',')}`);
     const out = { source: 'naver' };
     for (const x of (d && d.datas) || []) {
@@ -414,6 +416,22 @@ export const naver = {
    *   finance/quarter  → 최근 6분기 매출·영업이익 (마지막 칸은 컨센서스 추정치일 수 있다)
    * 실적은 ETF·리츠 등에 없으므로 실패해도 지표만으로 화면이 서도록 각각 따로 감싼다.
    */
+
+  /**
+   * 국내 지수 5종의 당일 분봉 스파크라인. 외부 호출 5건.
+   * 해외 선물은 네이버에 분봉이 없어 선을 그리지 않는다 — 숫자만 보여 준다.
+   */
+  async getIndexSparks() {
+    const out = {};
+    await Promise.all(Object.entries(INDEX_CODES).map(async ([code, key]) => {
+      try {
+        const pts = await indexIntraday(code, 30);
+        if (pts.length >= 3) out[key] = pts;
+      } catch (e) { /* 이 항목만 선이 안 그려진다 */ }
+    }));
+    return out;
+  },
+
   async getProfile(code) {
     const [integration, finance] = await Promise.all([
       getJson(`https://m.stock.naver.com/api/stock/${code}/integration`),
@@ -492,6 +510,37 @@ function htmlToText(html) {
     .filter(Boolean)
     .join('\n')
     .slice(0, 6000);        // 아주 긴 공시(사업보고서 등)는 잘라 보낸다
+}
+
+/**
+ * 국내 지수 당일 분봉 종가 — 스트립 스파크라인용.
+ * 해외 선물·해외 지수는 네이버가 분봉을 주지 않는다 (/minute 는 200 이지만 0봉, /price 도 일별 종가).
+ * 네이버 자기 화면도 그래서 해외는 선 없이 숫자만 보여 준다 — 우리도 그렇게 한다.
+ * 장 시작 전이라 분봉이 아직 없으면 선을 그리지 않는다 (일봉으로 대신하면 '실시간'이 아니다).
+ */
+async function indexIntraday(code, points) {
+  const k = new Date(Date.now() + 9 * 3600e3);
+  const p2 = (n) => String(n).padStart(2, '0');
+  const ymd = `${k.getUTCFullYear()}${p2(k.getUTCMonth() + 1)}${p2(k.getUTCDate())}`;
+  const hm = `${p2(k.getUTCHours())}${p2(k.getUTCMinutes())}`;
+
+  const bars = await getJson(
+    `https://api.stock.naver.com/chart/domestic/index/${code}/minute?startDateTime=${ymd}0900&endDateTime=${ymd}${hm}`
+  );
+  const closes = (Array.isArray(bars) ? bars : [])
+    .map((x) => (typeof x.currentPrice === 'number' ? x.currentPrice : num(x.currentPrice)))
+    .filter((v) => v != null);
+  return downsample(closes, points || 30);
+}
+
+/** 앞부분을 버리지 않고 고르게 솎는다 — 마지막 값은 항상 남긴다 */
+function downsample(arr, max) {
+  if (arr.length <= max) return arr;
+  const out = [];
+  const step = arr.length / max;
+  for (let i = 0; i < max; i++) out.push(arr[Math.min(arr.length - 1, Math.floor(i * step))]);
+  out[max - 1] = arr[arr.length - 1];
+  return out;
 }
 
 /** corporationSummary(comment1~3) → 문장 배열 */
