@@ -482,7 +482,7 @@ var Mock = (function () {
           + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(f.name) + '</span>'
           +   '<span class="mk-pos-sub">' + escapeHtml(kstHM(f.at)) + ' · ' + fmtNum(f.qty) + '주 × ' + fmtNum(f.price) + '</span></span>'
           + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(f.qty * f.price) + '</span>'
-          +   '<span class="mk-pos-sub">비용 ' + fmtNum(f.fee + f.tax) + '</span></span>'
+          +   '<span class="mk-pos-sub">' + costText(f) + '</span></span>'
           + '</div>';
       }).join('');
       if (reset) el.innerHTML = rows || '<div class="empty">체결 내역이 없습니다.</div>';
@@ -492,6 +492,13 @@ var Mock = (function () {
     } catch (e) {
       if (reset) el.innerHTML = '<div class="empty">' + escapeHtml(e.message) + '</div>';
     }
+  }
+
+  /** 체결 한 건의 비용 — 매수는 수수료만, 매도는 수수료와 거래세가 따로 붙는다 */
+  function costText(f) {
+    if (f.side === 'buy') return '수수료 ' + fmtNum(f.fee);
+    if (!f.tax) return '수수료 ' + fmtNum(f.fee) + ' · 세금 면제';   // ETF·ETN
+    return '수수료 ' + fmtNum(f.fee) + ' · 세금 ' + fmtNum(f.tax);
   }
 
   /* ===== 랭킹 ===== */
