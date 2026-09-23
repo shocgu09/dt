@@ -451,6 +451,13 @@ async function handleAdmin(db, actor, path, method, body, now) {
       : [{ ymd: String(b2.ymd || '').replace(/-/g, ''), name: b2.name }];
     const bad = items.find((x) => !/^\d{8}$/.test(String(x.ymd || '').replace(/-/g, '')));
     if (bad) throw new HttpError(400, '날짜는 YYYY-MM-DD 형식이어야 합니다');
+    // 주말은 요일로 이미 걸러진다 — 표에 넣으면 목록만 지저분해진다
+    const weekend = items.find((x) => {
+      const y = String(x.ymd).replace(/-/g, '');
+      const w = new Date(Date.UTC(+y.slice(0, 4), +y.slice(4, 6) - 1, +y.slice(6, 8))).getUTCDay();
+      return w === 0 || w === 6;
+    });
+    if (weekend) throw new HttpError(400, '주말은 넣지 않아도 됩니다. 평일 휴장일만 등록하세요', 'weekend');
     const added = await H.addHolidays(db, items.map((x) => ({
       ymd: String(x.ymd).replace(/-/g, ''), name: x.name
     })), now);
