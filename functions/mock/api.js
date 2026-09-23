@@ -377,7 +377,14 @@ async function handleAdmin(db, actor, path, method, body, now) {
     .bind(now, actor, action, JSON.stringify(detail)).run();
 
   if (path === '/admin/seasons' && method === 'GET') {
-    return { items: (await db.prepare(`SELECT * FROM seasons ORDER BY start_date DESC`).all()).results || [] };
+    // 참가자 수와 최종 순위 확정 여부를 같이 준다 — 목록에서 시즌 상태를 한눈에 보기 위해
+    const rows = (await db.prepare(
+      `SELECT s.*,
+              (SELECT COUNT(*) FROM accounts a WHERE a.season_id = s.id AND a.status = 'active') AS participants,
+              (SELECT COUNT(*) FROM final_rankings f WHERE f.season_id = s.id) AS finals
+       FROM seasons s ORDER BY s.start_date DESC`
+    ).all()).results || [];
+    return { items: rows };
   }
   if (path === '/admin/seasons' && method === 'POST') {
     const b = await body();

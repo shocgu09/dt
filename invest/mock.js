@@ -765,7 +765,7 @@ var Mock = (function () {
   function adminHtml() {
     if (!season || !season.isAdmin) return '';
     var cur = season.season || season.next;
-    return '<details class="mk-admin"><summary>⚙️ 시즌 관리 (운영진)</summary>'
+    return '<details class="mk-admin" ontoggle="if(this.open) Mock.loadSeasons()"><summary>⚙️ 시즌 관리 (운영진)</summary>'
       + '<div class="form-grid">'
       + (cur ? '<p class="mk-note" style="margin-top:0">현재 시즌 <b>' + escapeHtml(cur.name) + '</b> (' + escapeHtml(cur.id) + ') 값이 채워져 있습니다. '
           + (season.season ? '진행 중인 시즌은 이름 · 종료일 · 전달사항만 바꿀 수 있습니다.' : '시작 전이라 모든 값을 바꿀 수 있습니다.') + '</p>' : '')
@@ -774,11 +774,122 @@ var Mock = (function () {
       + '<div class="form-row"><input type="date" class="f-input" id="mkSstart" aria-label="시작일">'
       + '<input type="date" class="f-input" id="mkSend" aria-label="종료일"></div>'
       + '<textarea class="f-textarea" id="mkSnotice" maxlength="1000" placeholder="전달사항 (선택) — 참가 안내 창에 표시됩니다" style="min-height:80px" aria-label="전달사항"></textarea>'
-      + '<button class="btn-submit" onclick="Mock.saveSeason(this)">시즌 저장</button>'
+      + '<div class="form-row">'
+      +   '<button class="btn-submit" onclick="Mock.saveSeason(this)">시즌 저장</button>'
+      +   '<button class="btn-ghost" onclick="Mock.newSeasonForm()">새 시즌</button>'
+      + '</div>'
       + '<div class="status-msg" id="mkSstatus"></div>'
+      + '<div class="mk-seasons" id="mkSeasons"><div class="loading">시즌 목록 불러오는 중...</div></div>'
       + '<p class="mk-note">새 시즌은 시드 1억원 · 수수료 0.015% · 매도세 0.20% 로 만들어집니다. 시작일이 되면 자동으로 열리고, 종료일 장 마감 후 최종 순위가 확정됩니다. '
       + '같은 ID 로 저장하면 기존 시즌을 고칩니다 (시드·요율은 유지).</p>'
       + '</div></details>';
+  }
+
+  /* ===== 시즌 목록 =====
+   * 워커에 GET /admin/seasons 가 있었는데 화면이 부르지 않아 목록을 볼 방법이 없었다.
+   * 행을 누르면 폼에 채워져 그대로 고칠 수 있다.
+   */
+  var _seasons = null;
+
+  async function loadSeasons() {
+    var box = document.getElementById('mkSeasons');
+    if (!box) return;
+    try {
+      var r = await api('/admin/seasons');
+      _seasons = r.items || [];
+      renderSeasons();
+    } catch (e) {
+      box.innerHTML = '<div class="empty">시즌 목록을 불러오지 못했습니다</div>';
+    }
+  }
+
+  var SEASON_STATUS = {
+    upcoming: { text: '시작 전', cls: 'up' },
+    active:   { text: '진행 중', cls: 'on' },
+    settling: { text: '정산 중', cls: 'wait' },
+    closed:   { text: '종료',   cls: 'off' }
+  };
+
+  function renderSeasons() {
+    var box = document.getElementById('mkSeasons');
+    if (!box) return;
+    if (!_seasons || !_seasons.length) { box.innerHTML = '<div class="empty">아직 만든 시즌이 없습니다</div>'; return; }
+    var curId = season && season.season && season.season.id;
+    box.innerHTML = '<div class="mk-seasons-head">시즌 목록 <span>' + fmtNum(_seasons.length) + '개</span></div>'
+      + _seasons.map(function (x) {
+          var st = SEASON_STATUS[x.status] || { text: x.status, cls: 'off' };
+          return '<div class="mk-season' + (x.id === curId ? ' now' : '') + '">'
+            + '<button class="mk-season-main" onclick="Mock.pickSeason(\'' + escapeAttr(x.id) + '\')">'
+            +   '<span class="mk-season-top">'
+            +     '<b>' + escapeHtml(x.name) + '</b>'
+            +     '<span class="mk-season-badge ' + st.cls + '">' + st.text + '</span>'
+            +   '</span>'
+            +   '<span class="mk-season-sub">' + escapeHtml(x.id) + ' · ' + escapeHtml(x.start_date) + ' ~ ' + escapeHtml(x.end_date)
+            +     ' · 참가 ' + fmtNum(x.participants || 0) + '명'
+            +     ' · 시드 ' + fmtCompact(x.seed) + '원'
+            +     (x.finals ? ' · 최종순위 확정' : '') + '</span>'
+            + '</button>'
+            + statusBtns(x)
+            + '</div>';
+        }).join('')
+      + '<p class="mk-note">행을 누르면 위 폼에 값이 채워집니다. 시작일이 되면 자동으로 열리고 종료일 장 마감 후 자동으로 확정되므로, 상태는 보통 건드릴 필요가 없습니다.</p>';
+  }
+
+  /** 상태 수동 변경 — 예외 상황용이라 확인을 받는다 */
+  function statusBtns(x) {
+    var next = { upcoming: 'active', active: 'settling', settling: 'closed' }[x.status];
+    if (!next) return '';
+    var label = (SEASON_STATUS[next] || {}).text || next;
+    return '<button class="mk-season-st" onclick="Mock.setSeasonStatus(\'' + escapeAttr(x.id) + '\',\'' + next + '\')">'
+      + '→ ' + escapeHtml(label) + '</button>';
+  }
+
+  async function setSeasonStatus(id, status) {
+    var warn = status === 'closed'
+      ? '종료로 바꾸면 더 이상 수정할 수 없고 주문도 막힙니다.\n최종 순위는 종료일 장 마감에 자동으로 확정되므로 보통은 그대로 두면 됩니다.\n\n계속할까요?'
+      : '시즌 ' + id + ' 상태를 "' + ((SEASON_STATUS[status] || {}).text || status) + '" 로 바꿉니다. 계속할까요?';
+    if (!confirm(warn)) return;
+    try {
+      await api('/admin/seasons/status', 'POST', { id: id, status: status });
+      await loadSeasons();
+      await refreshSeason();
+      renderAccount();
+    } catch (e) {
+      alert(e && e.message ? e.message : '상태를 바꾸지 못했습니다.');
+    }
+  }
+
+  /** 목록에서 고른 시즌을 폼에 채운다 (입력 중이던 값은 덮어쓴다 — 고르는 행동 자체가 의도다) */
+  function pickSeason(id) {
+    var x = (_seasons || []).filter(function (s) { return s.id === id; })[0];
+    if (!x) return;
+    var set = function (elId, v) {
+      var el = document.getElementById(elId);
+      if (el) { el.value = v || ''; el.dataset.touched = '1'; }
+    };
+    set('mkSid', x.id); set('mkSname', x.name);
+    set('mkSstart', x.start_date); set('mkSend', x.end_date); set('mkSnotice', x.notice || '');
+    var st = document.getElementById('mkSstatus');
+    if (st) {
+      st.innerHTML = x.status === 'closed'
+        ? '<span class="err">종료된 시즌은 수정할 수 없습니다. 값만 참고용으로 채웠습니다.</span>'
+        : '<span class="ok">' + escapeHtml(x.name) + ' 값을 채웠습니다.'
+          + (x.status !== 'upcoming' ? ' 진행 중이라 이름 · 종료일 · 전달사항만 바뀝니다.' : '') + '</span>';
+    }
+    var f = document.getElementById('mkSid');
+    if (f) f.scrollIntoView({ block: 'nearest' });
+  }
+
+  /** 새 시즌을 만들려고 폼을 비운다 */
+  function newSeasonForm() {
+    ['mkSid', 'mkSname', 'mkSstart', 'mkSend', 'mkSnotice'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) { el.value = ''; el.dataset.touched = '1'; }
+    });
+    var st = document.getElementById('mkSstatus');
+    if (st) st.innerHTML = '<span class="ok">새 시즌 정보를 입력하세요. 새 ID 로 저장하면 만들어집니다.</span>';
+    var f = document.getElementById('mkSid');
+    if (f) f.focus();
   }
 
   /** 시즌 관리 폼에 현재(또는 다음) 시즌 값을 채운다 — 비어 있을 때만 (입력 중인 글자를 덮지 않는다) */
@@ -798,6 +909,7 @@ var Mock = (function () {
     try {
       var r = await api('/admin/seasons', 'POST', { id: v('mkSid'), name: v('mkSname'), startDate: v('mkSstart'), endDate: v('mkSend'), notice: v('mkSnotice') });
       st.innerHTML = '<span class="ok">✅ ' + (r.updated ? '기존 시즌을 고쳤습니다.' : '새 시즌을 만들었습니다.') + '</span>';
+      await loadSeasons();
       await refreshSeason();
       renderAccount();
     } catch (e) { st.innerHTML = '<span class="err">❌ ' + escapeHtml(e.message) + '</span>'; }
@@ -809,7 +921,8 @@ var Mock = (function () {
     setMode: setMode, onTab: onTab, renderTradeBar: renderTradeBar, onEscape: onEscape,
     join: join, openJoinFlow: openJoinFlow, joinStep2: joinStep2, closeJoin: closeJoin, cancel: cancel, loadHistory: loadHistory,
     openSheet: openSheet, closeSheet: closeSheet, setSheet: setSheet, input: input, step: step, pct: pct, submit: submit,
-    saveSeason: saveSeason,
+    saveSeason: saveSeason, loadSeasons: loadSeasons, pickSeason: pickSeason,
+    newSeasonForm: newSeasonForm, setSeasonStatus: setSeasonStatus,
     // 커뮤니티 자랑하기 — 숫자는 워커가 장부에서 직접 만든다 (community.js 가 쓴다)
     brag: function (code) { return api('/brag', 'POST', { code: code }); },
     brags: function (ids) { return api('/brag?ids=' + encodeURIComponent(ids.join(','))); }

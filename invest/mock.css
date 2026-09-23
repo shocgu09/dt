@@ -183,3 +183,40 @@
   .mk-spin, .mk-sheet, .mk-rank.moved-up, .mk-rank.moved-down { animation: none; }
   .mk-toast { transition: none; }
 }
+
+
+/* ── 시즌 목록 (운영진) ── */
+.mk-seasons { margin-top: 14px; }
+.mk-seasons-head {
+  font-size: .74rem; font-weight: 700; color: var(--text3);
+  display: flex; justify-content: space-between; margin-bottom: 7px;
+}
+.mk-season {
+  display: flex; align-items: stretch; gap: 1px;
+  background: var(--border); border: 1px solid var(--border); border-bottom: none;
+}
+.mk-season:last-of-type { border-bottom: 1px solid var(--border); }
+.mk-season.now { border-left: 3px solid var(--primary); }
+.mk-season-main {
+  flex: 1; min-width: 0; text-align: left; cursor: pointer;
+  background: var(--bg2); border: none; color: inherit; padding: 10px 12px;
+}
+.mk-season-main:hover { background: var(--bg3); }
+.mk-season-top { display: flex; align-items: center; gap: 7px; }
+.mk-season-top b { font-size: .84rem; font-weight: 800; }
+.mk-season-badge {
+  font-size: .64rem; font-weight: 800; padding: 2px 6px;
+  background: var(--bg3); color: var(--text2);
+}
+.mk-season-badge.on { background: var(--primary); color: #fff; }
+.mk-season-badge.up { background: var(--bull-bg); color: var(--stock-up); }
+.mk-season-badge.wait { background: var(--bear-bg); color: var(--stock-down); }
+.mk-season-sub {
+  display: block; margin-top: 3px; font-size: .68rem; color: var(--text3);
+  font-weight: 600; line-height: 1.5;
+}
+.mk-season-st {
+  flex: 0 0 auto; background: var(--bg2); border: none; color: var(--text3);
+  font-size: .68rem; font-weight: 700; padding: 0 10px; cursor: pointer; white-space: nowrap;
+}
+.mk-season-st:hover { color: var(--text); background: var(--bg3); }
