@@ -323,7 +323,7 @@ var Mock = (function () {
       // 한 종목에 절반 넘게 실려 있으면 눈에 띄게 (쏠림은 그 자체로 위험이다)
       var heavy = m.topPosition.weight >= 50;
       rows.push(['집중도',
-        '<b' + (heavy ? ' class="down"' : '') + '>' + escapeHtml(m.topPosition.name) + ' ' + m.topPosition.weight.toFixed(0) + '%</b>'
+        '<b' + (heavy ? ' class="down"' : '') + '>' + escapeHtml(m.topPosition.name) + ' ' + m.topPosition.weight.toFixed(1) + '%</b>'
         + '<span class="mk-dim"> · ' + m.positionCount + '종목</span>']);
     }
     if (m.trades) {
