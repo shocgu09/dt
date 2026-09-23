@@ -439,7 +439,8 @@ async function handleAdmin(db, actor, path, method, body, now) {
   const log = (action, detail) => db.prepare(`INSERT INTO audit_log (at, actor, action, detail) VALUES (?,?,?,?)`)
     .bind(now, actor, action, JSON.stringify(detail)).run();
 
-  /* 휴장일 — seed(옮겨 온 목록) · auto(크론이 찾은 것) · manual(운영진이 넣은 앞날) */
+  /* 휴장일 — 전부 자동으로 채워진다(지난 날은 일봉 누락, 오늘은 분봉 0개).
+     화면에는 현황만 보여 준다. 아래 추가·삭제는 자동 감지가 잘못됐을 때를 위한 비상구다. */
   if (path === '/admin/holidays' && method === 'GET') {
     return { items: await H.listHolidays(db, 80), today: E.kstNow(now).ymd };
   }
@@ -568,9 +569,10 @@ export async function runCron(env, now = Date.now()) {
   E.setHolidays(await H.holidaySet(db));
   const t = E.kstNow(now);
 
-  // 휴장일 자동 수집 — 하루 한 번(08:10경) 지난 날을 코스피 일봉으로 메운다
+  // 휴장일은 전부 자동이다 — 손으로 넣을 일이 없다.
+  //   08:10  지난 날을 코스피 일봉 누락으로 메운다
+  //   09:35  오늘 분봉이 0개면 휴장일로 기록 (임시공휴일도 당일에 잡힌다)
   if (t.hm === 8 * 60 + 10) await H.syncPastHolidays(db, now).catch(() => 0);
-  // 임시공휴일은 당일에 잡아야 뒤이은 체결·스냅샷이 틀어지지 않는다
   if (await H.syncTodayHoliday(db, t, now).catch(() => false)) {
     E.setHolidays(await H.holidaySet(db));
   }

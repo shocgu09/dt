@@ -506,6 +506,14 @@ export const naver = {
     return out;
   },
 
+  /** 그날 지수 분봉이 몇 개인가 — 0 이면 휴장일이다 (거래일은 수백 개) */
+  async indexMinuteCount(code, ymd) {
+    const bars = await getJson(
+      `https://api.stock.naver.com/chart/domestic/index/${code}/minute?startDateTime=${ymd}0900&endDateTime=${ymd}1530`
+    );
+    return Array.isArray(bars) ? bars.length : null;
+  },
+
   /** 지수 일봉이 있는 날짜들 — 평일인데 없으면 휴장일이다 */
   async indexDailyDates(code, fromYmd, toYmd) {
     const bars = await getJson(

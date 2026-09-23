@@ -91,19 +91,29 @@ export async function syncPastHolidays(db, now, days = 120) {
 }
 
 /**
- * 오늘이 휴장일인지 시장 상태로 확인한다 (임시공휴일 당일 반영).
- * 장이 도는 시간대에만 의미가 있다 — 장 시작 전에는 CLOSE 가 정상이다.
+ * 오늘이 휴장일인지 확인한다 — 코스피 당일 분봉이 하나도 없으면 휴장일이다.
+ * marketStatus 보다 이 신호가 세다. 네이버가 잠깐 흔들려 CLOSE 를 줘도 분봉은 남아 있기 때문이다.
+ * 실측: 거래일 391개 / 휴장일 0개 (2026-08-17 광복절 대체).
+ *
+ * 09:35 에 한 번 보고, 그때 네트워크가 튀었을 수 있으니 10:30 에 한 번 더 본다.
+ * 매분 부르면 거래일에도 외부 호출이 하루 700건 늘어나는데 얻는 게 없다.
+ *
+ * 남는 틈: 08:00~09:35 에는 아직 모른다. 그 사이 접수된 주문은 거래량이 늘지 않아 체결되지 않고
+ * 장 마감에 만료되므로 장부가 틀어지지는 않는다.
  */
 export async function syncTodayHoliday(db, t, now) {
   if (t.dow === 0 || t.dow === 6) return false;
-  if (t.hm < 10 * 60 || t.hm > 15 * 60) return false;   // 10:00~15:00 사이에만 판정
+  if (t.hm !== 9 * 60 + 35 && t.hm !== 10 * 60 + 30) return false;
   const set = await holidaySet(db);
   if (set.has(t.ymd)) return false;
-  let q;
-  try { q = await naver.getQuote('005930'); } catch (e) { return false; }
-  if (!q || q.marketStatus !== 'CLOSE') return false;
+
+  let bars;
+  try { bars = await naver.indexMinuteCount('KOSPI', t.ymd); }
+  catch (e) { return false; }           // 못 물어봤으면 아무것도 단정하지 않는다
+  if (bars == null || bars > 0) return false;
+
   await db.prepare(
-    `INSERT OR IGNORE INTO holidays (ymd, name, source, added_at) VALUES (?, '임시휴장(자동 감지)', 'auto', ?)`
+    `INSERT OR IGNORE INTO holidays (ymd, name, source, added_at) VALUES (?, '휴장 (당일 자동 감지)', 'auto', ?)`
   ).bind(t.ymd, now).run();
   forgetHolidays();
   return true;

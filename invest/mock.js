@@ -1001,66 +1001,26 @@ var Mock = (function () {
     }
   }
 
-  var HOL_SRC = { seed: '기존', auto: '자동', manual: '수기' };
-
   function renderHolidays() {
     var box = document.getElementById('mkHolidays');
     if (!box) return;
-    var up = (_holidays || []).filter(function (x) { return x.ymd >= _holToday; });
-    var past = (_holidays || []).filter(function (x) { return x.ymd < _holToday; }).slice(0, 8);
-    var row = function (x) {
-      return '<div class="mk-hol' + (x.ymd < _holToday ? ' past' : '') + '">'
-        + '<span class="mk-hol-d">' + fmtYmd(x.ymd) + '</span>'
-        + '<span class="mk-hol-n">' + escapeHtml(x.name || '') + '</span>'
-        + '<span class="mk-hol-s ' + x.source + '">' + (HOL_SRC[x.source] || x.source) + '</span>'
-        + '<button class="mk-hol-x" onclick="Mock.removeHoliday(\'' + escapeAttr(x.ymd) + '\')" aria-label="삭제">✕</button>'
-        + '</div>';
-    };
-    box.innerHTML = '<div class="mk-seasons-head">휴장일 <span>앞으로 ' + up.length + '일</span></div>'
-      + '<div class="form-row mk-hol-add">'
-      +   '<input type="date" class="f-input" id="mkHolDate" aria-label="휴장일 날짜">'
-      +   '<input type="text" class="f-input" id="mkHolName" maxlength="40" placeholder="설명 (선택)" aria-label="휴장일 설명">'
-      +   '<button class="mini-btn" onclick="Mock.addHoliday(this)">추가</button>'
+    var all = _holidays || [];
+    var up = all.filter(function (x) { return x.ymd >= _holToday; }).sort(function (x, y) { return x.ymd < y.ymd ? -1 : 1; });
+    var next = up[0];
+    box.innerHTML = '<div class="mk-hol-box">'
+      + '<div class="mk-hol-head">휴장일 <b>자동</b></div>'
+      + '<div class="mk-hol-line">'
+      +   (next ? '다음 휴장일 <b>' + fmtYmd(next.ymd) + '</b>' + (next.name ? ' (' + escapeHtml(next.name) + ')' : '')
+              : '앞으로 등록된 휴장일 없음')
+      +   '<span class="mk-dim"> · 등록 ' + fmtNum(all.length) + '일</span>'
       + '</div>'
-      + (up.length ? up.map(row).join('') : '<div class="empty">앞으로 등록된 휴장일이 없습니다</div>')
-      + (past.length ? '<div class="mk-seasons-head" style="margin-top:10px">최근 지난 휴장일</div>' + past.map(row).join('') : '')
-      + '<p class="mk-note">지난 휴장일은 크론이 코스피 일봉을 보고 자동으로 채웁니다(자동). '
-      +   '임시공휴일은 당일 장중에 잡힙니다. 앞날의 휴장일만 미리 넣어 두세요. '
-      +   '<button class="mini-btn" onclick="Mock.syncHolidays(this)">지난 휴장일 지금 채우기</button></p>';
+      + '<div class="mk-hol-note">지난 휴장일은 코스피 일봉으로, 오늘 휴장은 분봉으로 매일 자동 확인합니다. '
+      +   '임시공휴일도 당일 09:35 에 잡힙니다. 손으로 넣을 것은 없습니다.</div>'
+      + '</div>';
   }
 
   function fmtYmd(y) {
     return String(y || '').replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3');
-  }
-
-  async function addHoliday(btn) {
-    var d = document.getElementById('mkHolDate'), nm = document.getElementById('mkHolName');
-    if (!d || !d.value) { alert('날짜를 골라 주세요.'); return; }
-    btn.disabled = true;
-    try {
-      await api('/admin/holidays', 'POST', { ymd: d.value, name: nm ? nm.value.trim() : '' });
-      d.value = ''; if (nm) nm.value = '';
-      await loadHolidays();
-    } catch (e) { alert(e && e.message ? e.message : '추가하지 못했습니다.'); }
-    btn.disabled = false;
-  }
-
-  async function removeHoliday(ymd) {
-    if (!confirm(fmtYmd(ymd) + ' 을 휴장일에서 빼시겠습니까?')) return;
-    try {
-      await api('/admin/holidays?ymd=' + encodeURIComponent(ymd), 'DELETE');
-      await loadHolidays();
-    } catch (e) { alert(e && e.message ? e.message : '삭제하지 못했습니다.'); }
-  }
-
-  async function syncHolidays(btn) {
-    btn.disabled = true; var t = btn.textContent; btn.textContent = '채우는 중...';
-    try {
-      var r = await api('/admin/holidays/sync', 'POST', {});
-      await loadHolidays();
-      alert(r.added ? r.added + '일을 찾아 넣었습니다.' : '새로 찾은 휴장일이 없습니다.');
-    } catch (e) { alert(e && e.message ? e.message : '실패했습니다.'); }
-    btn.disabled = false; btn.textContent = t;
   }
 
   /** 폼에 어떤 시즌이 들어 있는지에 맞춰 안내를 고친다 — 고정 문구면 다른 시즌을 채웠을 때 어긋난다 */
@@ -1155,7 +1115,6 @@ var Mock = (function () {
     askReview: askReview,
     saveSeason: saveSeason, loadSeasons: loadSeasons, pickSeason: pickSeason,
     newSeasonForm: newSeasonForm, onSeasonIdInput: onSeasonIdInput,
-    addHoliday: addHoliday, removeHoliday: removeHoliday, syncHolidays: syncHolidays,
     // 커뮤니티 자랑하기 — 숫자는 워커가 장부에서 직접 만든다 (community.js 가 쓴다)
     brag: function (code) { return api('/brag', 'POST', { code: code }); },
     brags: function (ids) { return api('/brag?ids=' + encodeURIComponent(ids.join(','))); }
