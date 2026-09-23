@@ -330,6 +330,7 @@ var Mock = (function () {
       rows.push(['매매', '<b>' + fmtNum(m.trades.total) + '회</b>'
         + (m.winRate != null
             ? '<span class="mk-dim"> · 승률 </span><b class="' + (m.winRate >= 50 ? 'up' : 'down') + '">' + m.winRate.toFixed(0) + '%</b>'
+              + '<span class="mk-dim"> (매도 ' + fmtNum(m.trades.sells) + '건)</span>'
             : '<span class="mk-dim"> · 매도 없음</span>')]);
     }
     if (m.holdDays && m.holdDays.win != null && m.holdDays.loss != null) {
@@ -341,7 +342,7 @@ var Mock = (function () {
         bad]);
     }
     if (m.mdd != null) rows.push(['최대 낙폭', '<b class="' + (m.mdd < 0 ? 'down' : '') + '">' + m.mdd.toFixed(2) + '%</b>']);
-    if (m.cashRatio != null) rows.push(['현금 비중', '<b>' + m.cashRatio.toFixed(0) + '%</b>']);
+    if (m.cashRatio != null) rows.push(['현금 비중', '<b>' + m.cashRatio.toFixed(1) + '%</b>']);
 
     return '<div class="mk-rv-card">'
       + '<pre class="mk-rv-body">' + escapeHtml(r.body || '') + '</pre>'
