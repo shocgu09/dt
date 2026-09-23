@@ -8,7 +8,6 @@ import * as H from './holidays.js';
 import { profileOf } from '../lib/profile.js';
 import * as E from './engine.js';
 import * as C from './corp.js';
-import * as S from './stops.js';
 
 const isCode = (c) => /^[0-9A-Z]{6}$/.test(c || '');
 
@@ -389,32 +388,6 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     }
   }
 
-  /* ── ④ 감시주문 ── */
-  if (path === '/stops' && method === 'GET') {
-    const [armed, done] = await Promise.all([
-      db.prepare(`SELECT * FROM stop_orders WHERE season_id=? AND uid=? AND status='armed' ORDER BY created_at DESC`).bind(season.id, uid).all(),
-      db.prepare(`SELECT * FROM stop_orders WHERE season_id=? AND uid=? AND status<>'armed' ORDER BY updated_at DESC LIMIT 20`).bind(season.id, uid).all()
-    ]);
-    return { items: [...(armed.results || []), ...(done.results || [])].map(S.publicStop) };
-  }
-  if (path === '/stops' && method === 'POST') {
-    const input = await body();
-    if (!isCode(input.code)) throw new HttpError(400, '종목코드가 올바르지 않습니다');
-    const quote = await naver.getQuote(input.code).catch(() => null);
-    const kind = await kindOf(input.code, quote && quote.name);
-    try {
-      return { stop: S.publicStop(await S.createStop(db, season, account, input, quote, kind === 'etf' || kind === 'etn', now)) };
-    } catch (e) {
-      if (e instanceof E.OrderError) throw new HttpError(422, e.message, e.code);
-      throw e;
-    }
-  }
-  const sm = /^\/stops\/([0-9a-f-]{36})$/.exec(path);
-  if (sm && method === 'DELETE') {
-    if (!(await S.cancelStop(db, uid, sm[1], now))) throw new HttpError(409, '이미 발동했거나 취소된 감시주문입니다');
-    return { cancelled: true };
-  }
-
   /* ── 자랑하기 ──────────────────────────────────────────────
    * 커뮤니티 글에 붙일 "내 수익률" 스냅샷.
    * 숫자는 여기(서버)에서 장부를 직접 읽어 만든다 — 클라이언트가 보낸 값은 쓰지 않는다.
@@ -730,7 +703,7 @@ export function mockErrorResponse(e, json) {
 //   - D1 쿼리 50건 (batch 안의 문장도 한 건씩 센다) → 체결 한 건이 5~6문장이라 한 번에 처리하는 체결 수를 자른다.
 //     남은 주문은 다음 분에 이어서 처리하고, 주문 상태를 보고 있는 회원은 화면 폴링(별도 호출)으로 바로 체결된다.
 const MAX_CODES_PER_RUN = 20;
-const FILL_QUERY_BUDGET = 38;      // 크론 한 번의 D1 문장 누계 상한(권리 변동·감시주문·체결 합) — 장 마감 처리 약 10건을 더해도 50 미만
+const FILL_QUERY_BUDGET = 38;      // 크론 한 번의 D1 문장 누계 상한(권리 변동·체결 합) — 장 마감 처리 약 10건을 더해도 50 미만
 const MAX_CLOSES_PER_RUN = 10;     // 15:40~16:30 에는 체결 판정과 종가 저장이 같은 호출에 겹친다 — 외부 요청 합이 50 을 넘지 않게
 
 export async function runCron(env, now = Date.now()) {
@@ -751,15 +724,11 @@ export async function runCron(env, now = Date.now()) {
 
   // 이 호출에서 쓴 D1 문장 수 — 여기까지 약 6건
   const stats = { q: 6 };
-  if (t.hm < E.PRE_FROM + 2 || t.hm >= E.AFTER_TO) await S.expireStops(db, now);
   if (t.hm >= E.PRE_FROM && t.hm < E.AFTER_TO) {
-    // ⑤ 권리 변동을 가장 먼저 — 체결·감시주문이 옛 수량·옛 가격으로 돌지 않게.
+    // ⑤ 권리 변동을 가장 먼저 — 체결이 옛 수량·옛 가격으로 돌지 않게.
     //    반영이 일어난 분에는 쿼리 한도를 넘지 않도록 나머지를 다음 분으로 미룬다
     const applied = await C.runCorpActions(db, season, now, quotesFor, stats).catch((e) => { console.error('corp failed', e && e.message); return 0; });
-    if (!applied) {
-      await S.runStops(db, season, now, quotesFor, stats).catch((e) => console.error('stops failed', e && e.message));
-      await fillOpenOrders(db, season, now, stats);
-    }
+    if (!applied) await fillOpenOrders(db, season, now, stats);
   }
   // 종가 저장·스냅샷은 한 번 끝나면 다시 하지 않는다 (16:30 까지 시도)
   if (t.hm >= 15 * 60 + 40 && t.hm < 16 * 60 + 30) await closeOfDay(db, season, now);
@@ -898,7 +867,6 @@ function finalStatements(db, season, rows) {
             json_extract(value, '$.equity'), json_extract(value, '$.fills') FROM json_each(?)`
   ).bind(season.id, JSON.stringify(rows.map((r) => ({ rank: r.rank, uid: r.uid, nickname: r.nickname, equity: r.equity, fills: r.fills })))));
   out.push(db.prepare(`UPDATE seasons SET status='closed' WHERE id=? AND status='active'`).bind(season.id));
-  out.push(db.prepare(`UPDATE stop_orders SET status='expired', reason='시즌 종료' WHERE season_id=? AND status='armed'`).bind(season.id));
   return out;
 }
 

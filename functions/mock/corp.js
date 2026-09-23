@@ -210,13 +210,9 @@ export async function applyAction(db, season, a, now, stats) {
   }
 
   if (rows.length < ACCOUNTS_PER_RUN) {
-    // 다 반영했다 — 옛 가격 기준으로 걸어 둔 감시주문은 엉뚱하게 발동할 수 있어 해제한다 (실전 증권사도 경고하는 부분)
-    stats.q += 2;
-    await db.batch([
-      db.prepare(`UPDATE corp_actions SET status='applied', applied_at=? WHERE id=? AND status='applying'`).bind(now, a.id),
-      db.prepare(`UPDATE stop_orders SET status='cancelled', updated_at=?, reason=? WHERE season_id=? AND code=? AND status='armed'`)
-        .bind(now, `${KIND_LABEL[a.kind] || '권리 변동'}으로 감시가 해제됐습니다. 새 가격으로 다시 설정해 주세요`, season.id, a.code)
-    ]);
+    // 다 반영했다
+    stats.q += 1;
+    await db.prepare(`UPDATE corp_actions SET status='applied', applied_at=? WHERE id=? AND status='applying'`).bind(now, a.id).run();
   }
   return n;
 }
