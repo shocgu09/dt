@@ -33,7 +33,7 @@ async function initMarketHome() {
   marketLoaded = true;
   await ensureWatchlist();
   renderRecent();
-  loadSectors();
+  loadSectors(true);
   loadRank();
 }
 
@@ -44,6 +44,9 @@ function leaveMarketTab() {
 function startHomePolling() {
   Poller.stopAll();
   Poller.add('index', loadIndex, pollMs(15000, 120000));
+  // 워커 캐시가 랭킹 60초·테마 120초라 그보다 자주 불러도 같은 값이 온다
+  Poller.add('rank', loadRank, pollMs(60000, 600000));
+  Poller.add('sectors', loadSectors, pollMs(120000, 600000));
   if (watchlist.length) {
     Poller.add('watch', loadWatchQuotes, pollMs(5000, 120000));
   } else {
@@ -291,9 +294,11 @@ function onClearRecent() {
 }
 
 /* ===== 지금 뜨는 테마 ===== */
-async function loadSectors() {
+async function loadSectors(force) {
   var el = document.getElementById('themeList');
   if (!el) return;
+  // 테마 상세(종목 목록)를 열어 둔 동안에는 주기 갱신이 그 화면을 덮지 않게 한다
+  if (!force && el.querySelector('.sector-head')) return;
   try {
     var d = await Market.sectors('theme');
     var top = (d.groups || []).filter(function (g) { return /^\d{1,8}$/.test(String(g.no)); }).slice(0, 8);
@@ -317,7 +322,7 @@ async function openSector(no, name) {
     var d = await Market.sectors('theme', no);
     el.innerHTML = '<div class="sector-head">'
       + '<strong>' + escapeHtml(name) + '</strong>'
-      + '<button class="mini-btn" onclick="loadSectors()">← 테마 목록</button></div>'
+      + '<button class="mini-btn" onclick="loadSectors(true)">← 테마 목록</button></div>'
       + (d.items || []).filter(function (s) { return isStockCode(s.code); }).map(function (s) {
         var c = signClass(s.changeRate);
         return '<button class="q-row" onclick="openStock(\'' + s.code + '\',\'' + escapeJsArg(s.name) + '\')">'
@@ -348,9 +353,15 @@ function setRank(type, market) {
 async function loadRank() {
   var el = document.getElementById('rankList');
   if (!el) return;
-  el.innerHTML = '<div class="loading">불러오는 중...</div>';
+  // 주기 갱신에서는 자리를 비우지 않는다 — 탭을 바꿨거나 아직 아무것도 못 그렸을 때만 로딩을 보인다
+  var key = rankType + ':' + rankMarket;
+  if (el.dataset.key !== key || !el.querySelector('.rank-row')) {
+    el.innerHTML = '<div class="loading">불러오는 중...</div>';
+  }
   try {
     var d = await Market.rank(rankType, rankMarket);
+    // 기다리는 사이 다른 세그먼트를 눌렀으면 늦게 온 응답은 버린다
+    if (key !== rankType + ':' + rankMarket) return;
     var items = (d.items || []).filter(function (s) { return isStockCode(s.code); }).slice(0, 15);
     if (!items.length) { el.innerHTML = '<div class="empty">데이터가 없습니다</div>'; return; }
 
@@ -384,10 +395,29 @@ async function loadRank() {
         +   (watched ? '♥' : '♡') + '</button>'
         + '</div>';
     }).join('')
-    + (d.approx ? '<div class="rank-note">거래대금 순위는 시총·급등락 상위 300종목을 합쳐 계산한 근사치입니다</div>' : '');
+    + rankNoteHtml(items, d.approx);
+    el.dataset.key = key;
   } catch (e) {
-    el.innerHTML = '<div class="empty">랭킹을 불러오지 못했습니다</div>';
+    if (!el.querySelector('.rank-row')) el.innerHTML = '<div class="empty">랭킹을 불러오지 못했습니다</div>';
   }
+}
+
+/** 목록 하단 안내 — 기준 시각(있으면)과 거래대금 근사 안내 */
+function rankNoteHtml(items, approx) {
+  var at = rankAsOf(items);
+  var parts = [];
+  if (at) parts.push(escapeHtml(at) + ' 기준');
+  if (approx) parts.push('거래대금 순위는 시총·급등락 상위 300종목을 합쳐 계산한 근사치입니다');
+  return parts.length ? '<div class="rank-note">' + parts.join(' · ') + '</div>' : '';
+}
+
+/** 랭킹 행들이 담고 있는 체결 시각 중 가장 늦은 것 — 목록이 언제 기준인지 밝힌다 */
+function rankAsOf(items) {
+  var latest = null;
+  items.forEach(function (s) {
+    if (s.asOf && (!latest || s.asOf > latest)) latest = s.asOf;
+  });
+  return latest ? shortTime(latest) : '';
 }
 
 /** 랭킹 목록에서 바로 관심종목 토글 */
