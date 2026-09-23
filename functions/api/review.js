@@ -67,18 +67,27 @@ export async function onRequestPost(context) {
   } catch (e) { return json({ error: '요청 형식이 올바르지 않습니다.' }, 400); }
   if (!metrics || typeof metrics !== 'object') return json({ error: '지표가 없습니다.' }, 400);
 
+  // 모델은 환경변수로 바꿀 수 있게 둔다 (되돌릴 때 코드 배포가 필요 없도록)
+  const model = env.REVIEW_MODEL || 'gpt-5.4-nano';
+  const reasoning = /^gpt-5/.test(model);
+
   let res;
   try {
     res = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
       body: JSON.stringify({
-        model: 'gpt-4.1',
+        model,
+        // 추론 모델은 'developer' 역할을 쓴다 (예전 모델의 'system' 자리)
         input: [
-          { role: 'system', content: [{ type: 'input_text', text: SYSTEM }] },
+          { role: reasoning ? 'developer' : 'system', content: [{ type: 'input_text', text: SYSTEM }] },
           { role: 'user', content: [{ type: 'input_text', text: JSON.stringify(metrics) }] }
         ],
-        max_output_tokens: 700
+        text: { format: { type: 'text' }, verbosity: 'medium' },
+        ...(reasoning ? { reasoning: { effort: 'medium' } } : {}),
+        // 추론 모델은 생각하는 토큰도 이 한도에서 깎는다.
+        // 700 으로 두면 생각만 하다 끝나 본문이 비어 돌아온다 — 넉넉히 준다.
+        max_output_tokens: reasoning ? 3000 : 700
       })
     });
   } catch (e) {
@@ -87,17 +96,26 @@ export async function onRequestPost(context) {
 
   if (!res.ok) {
     const detail = (await res.text()).slice(0, 300);
-    console.warn('openai review failed', res.status, detail);
+    console.warn('openai review failed', model, res.status, detail);
     // 401 이면 키 문제다 — 부른 쪽이 구분할 수 있게 상태를 넘긴다
-    return json({ error: 'AI 응답 실패', upstream: res.status }, 502);
+    return json({ error: 'AI 응답 실패', upstream: res.status, detail }, 502);
   }
 
   const data = await res.json();
+  // 추론 모델의 output 에는 reasoning 항목도 섞인다 — 실제 답변(message)만 골라낸다
   const text = String(
     data.output_text
-    || (data.output || []).flatMap((o) => (o.content || []).map((c) => c.text || '')).join('')
+    || (data.output || [])
+        .filter((o) => o.type === 'message')
+        .flatMap((o) => (o.content || []).map((c) => c.text || ''))
+        .join('')
     || ''
   ).trim();
+
+  if (!text && data.status === 'incomplete') {
+    console.warn('openai review incomplete', model, JSON.stringify(data.incomplete_details || {}));
+    return json({ error: 'AI 응답이 잘렸습니다. 잠시 후 다시 시도해 주세요' }, 502);
+  }
   if (!text) return json({ error: 'AI 응답이 비었습니다.' }, 502);
 
   return json({ text });

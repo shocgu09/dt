@@ -344,7 +344,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Review-Secret': env.REVIEW_SECRET },
         body: JSON.stringify({ metrics }),
-        signal: AbortSignal.timeout(30000)
+        signal: AbortSignal.timeout(60000)   // 추론 모델은 생각하는 시간이 있어 넉넉히 준다
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) {
