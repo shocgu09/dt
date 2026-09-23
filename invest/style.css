@@ -270,6 +270,12 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 .idx-cell.fut-first { border-left: 1px solid var(--border); padding-left: 10px; margin-left: 2px; }
 .idx-cell.fut .idx-name { color: var(--text3); }
 .idx-name { font-size: .7rem; color: var(--text3); font-weight: 700; white-space: nowrap; }
+.ix-ico {
+  width: 15px; height: 10px; vertical-align: -1px; margin-right: 4px;
+  flex: 0 0 auto; display: inline-block;
+}
+.ix-pick .ix-ico { margin-right: 2px; }
+
 .idx-delay {
   margin-left: 4px; font-size: .58rem; font-weight: 700; color: var(--text3);
   border: 1px solid var(--border); padding: 0 3px; vertical-align: 1px;

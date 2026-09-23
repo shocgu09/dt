@@ -78,6 +78,36 @@ var FUT_KEYS = {
 // 원/달러는 하나은행 고시라, 한국 국채는 국내 장이라 밤에는 멈춘다 — 여기 넣지 않는다.
 var NIGHT_LIVE = { nasdaq: 1, sp500: 1, dow: 1, vix: 1, sox: 1, gold: 1, oil: 1, us10y: 1 };
 
+/* 항목 아이콘 — 인라인 SVG 로 그린다.
+ * 네이버 로고는 국채가 전부 같은 아이콘이고 금·유가·환율·국내지수는 아예 없어서 쓸 수 없다.
+ * 국기 이모지(🇰🇷)는 윈도우 크롬에서 글자로 깨지므로 쓰지 않는다. */
+var IX_ICON = {
+  kr: '<rect width="16" height="11" rx="1.5" fill="#fff"/>'
+    + '<circle cx="8" cy="5.5" r="3" fill="#0047a0"/>'
+    + '<path d="M5 5.5a3 3 0 0 1 6 0 1.5 1.5 0 0 0-3 0 1.5 1.5 0 0 1-3 0z" fill="#cd2e3a"/>',
+  us: '<rect width="16" height="11" rx="1.5" fill="#fff"/>'
+    + '<g fill="#b22234"><rect y="0" width="16" height="1.57"/><rect y="3.14" width="16" height="1.57"/>'
+    +   '<rect y="6.28" width="16" height="1.57"/><rect y="9.42" width="16" height="1.57"/></g>'
+    + '<rect width="7" height="6.28" fill="#3c3b6e"/>',
+  gold: '<rect x="1" y="3.2" width="14" height="5.6" rx="1" fill="#d9a441"/>'
+    + '<rect x="1" y="3.2" width="14" height="2" rx="1" fill="#f0c978"/>',
+  oil: '<path d="M8 1.4c2.2 2.7 3.4 4.4 3.4 5.8A3.4 3.4 0 0 1 8 10.6 3.4 3.4 0 0 1 4.6 7.2c0-1.4 1.2-3.1 3.4-5.8z" fill="#4a8fd4"/>'
+};
+
+// 어느 나라·무엇인지
+var IX_ICON_OF = {
+  kospi: 'kr', kosdaq: 'kr', kpi200: 'kr', fut: 'kr', kq150: 'kr', kr10y: 'kr', kr3y: 'kr',
+  usd: 'us', nasdaq: 'us', sp500: 'us', dow: 'us', vix: 'us', sox: 'us', us10y: 'us',
+  gold: 'gold', oil: 'oil'
+};
+
+function indexIconHtml(key) {
+  var g = IX_ICON[IX_ICON_OF[key]];
+  if (!g) return '';
+  return '<svg class="ix-ico" viewBox="0 0 16 11" aria-hidden="true">' + g
+    + '<rect width="16" height="11" rx="1.5" fill="none" stroke="rgba(128,128,128,.28)" stroke-width=".6"/></svg>';
+}
+
 /** 밤에도 움직이는 항목을 보고 있는가 — 폴링 주기를 그쪽에 맞추기 위해 */
 function watchingNightLive() {
   return indexPick().some(function (k) { return NIGHT_LIVE[k]; });
@@ -134,7 +164,7 @@ function renderIndexPanel() {
         var on = pick.indexOf(k) !== -1;
         return '<button class="ix-pick' + (on ? ' on' : '') + '" onclick="toggleIndexKey(\'' + k + '\')" aria-pressed="' + on + '">'
           + '<span class="ix-pick-box">' + (on ? '✓' : '') + '</span>'
-          + escapeHtml(INDEX_LABEL[k] || k) + '</button>';
+          + indexIconHtml(k) + escapeHtml(INDEX_LABEL[k] || k) + '</button>';
       }).join('') + '</div>';
 }
 
@@ -167,7 +197,7 @@ async function loadIndex() {
         // 국내 지수와 해외 선물 사이에 선을 하나 둬서 다른 묶음임을 보인다
         var first = FUT_KEYS[k] && !FUT_KEYS[have[have.indexOf(k) - 1]];
         return '<div class="idx-cell' + (FUT_KEYS[k] ? ' fut' : '') + (first ? ' fut-first' : '') + '">'
-          + '<div class="idx-name">' + escapeHtml(INDEX_NAME[k] || x.name)
+          + '<div class="idx-name">' + indexIconHtml(k) + escapeHtml(INDEX_NAME[k] || x.name)
           +   (x.delayMin ? '<span class="idx-delay">' + x.delayMin + '분 지연</span>' : '')
           + '</div>'
           + '<div class="idx-price" id="ixp-' + k + '"></div>'
