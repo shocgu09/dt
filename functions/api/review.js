@@ -86,11 +86,23 @@ export async function onRequestPost(context) {
           { role: reasoning ? 'developer' : 'system', content: [{ type: 'input_text', text: SYSTEM }] },
           { role: 'user', content: [{ type: 'input_text', text: JSON.stringify(metrics) }] }
         ],
-        text: { format: { type: 'text' }, ...(reasoning ? { verbosity: 'medium' } : {}) },
-        ...(reasoning
-          // 추론 모델은 생각하는 토큰도 한도에서 깎는다 — 넉넉히 줘야 본문이 남는다
-          ? { reasoning: { effort: 'medium' }, max_output_tokens: 3000 }
-          : { temperature: 1, top_p: 1, max_output_tokens: 2048 })
+        text: { format: { type: 'text' }, ...(reasoning ? { verbosity: 'low' } : {}) },
+
+        /* 온도 0.6 — 기본값 1 은 이 작업에 너무 헐겁다.
+         * 형식(머리글 네 개)과 "없는 숫자를 쓰지 않는다"를 지켜야 하는데 1 이면 흔들린다.
+         * 0 에 가까우면 '다시 평가받기'가 매번 같은 문장을 뱉어 고장처럼 보인다.
+         * top_p 는 건드리지 않는다 — 둘을 같이 조이면 서로 간섭한다. */
+        ...(reasoning ? {} : { temperature: 0.6 }),
+
+        /* 출력 한도. 프롬프트가 400자 이내를 요구하므로 900 이면 머리글까지 넉넉하다.
+         * 2048 은 폭주를 못 막고, 짧게 잡으면 문장이 중간에 잘린다.
+         * 추론 모델은 생각하는 토큰도 이 한도에서 깎이므로 따로 크게 준다. */
+        max_output_tokens: reasoning ? 2500 : 900,
+
+        /* 회원 계좌 지표를 OpenAI 쪽에 남길 이유가 없다 */
+        store: false,
+
+        ...(reasoning ? { reasoning: { effort: 'low' } } : {})
       })
     });
   } catch (e) {
