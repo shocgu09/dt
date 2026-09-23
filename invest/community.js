@@ -21,6 +21,14 @@ var Community = (function () {
   var PAGE = 20, BLIND_AT = 3, BODY_MAX = 3000, COMMENT_MAX = 1000;
 
   function isCode(c) { return /^[0-9A-Z]{6}$/.test(String(c || '')); }
+
+  /* ===== 자랑하기 =====
+   * 수익률·수익금은 워커가 모의투자 장부에서 직접 읽어 만든다. 글에는 id 만 저장된다.
+   * 그래서 개발자도구로 숫자를 고쳐 올릴 수 없다.
+   */
+  var pendingBrag = null;     // 글쓰기 칸에 붙여 둔 스냅샷
+  var bragCache = {};         // id -> 스냅샷 (한 번 받으면 다시 받지 않는다)
+  var bragMiss = {};          // 못 찾은 id (지워진 스냅샷) — 매번 다시 부르지 않게
   function postsRef() { return db.collection('stock_boards').doc(code).collection('posts'); }
   function panel() { return document.getElementById('sdCommunity'); }
   function mine(x) { return currentUser && x.authorUid === currentUser.uid; }
@@ -29,6 +37,7 @@ var Community = (function () {
   function reset() {
     code = null; name = null; posts = []; loadedFor = null; lastDoc = null; hasMore = false;
     openC = {}; cCache = {}; shown = {}; expanded = {};
+    pendingBrag = null;     // 다른 종목 게시판으로 첨부가 딸려가면 안 된다
   }
 
   /** 커뮤니티 탭을 열 때 — 같은 종목이면 다시 받지 않는다 */
@@ -71,7 +80,10 @@ var Community = (function () {
     var h = '<div class="cm-write">'
       + '<textarea class="comment-input cm-input" id="cmBody" maxlength="' + BODY_MAX + '" placeholder="' + escapeHtml(name || '') + ' 에 대한 생각을 남겨 보세요 (투자 판단은 각자의 몫입니다)"'
       +   ' oninput="Community.count(this)"></textarea>'
+      + '<div id="cmBragSlot">' + pendingBragHtml() + '</div>'
       + '<div class="comment-submit-row"><span class="comment-count-hint" id="cmCount">0 / ' + fmtNum(BODY_MAX) + '</span>'
+      + (window.Mock && Mock.isOn() && !pendingBrag
+          ? '<button class="mini-btn cm-brag-btn" onclick="Community.attachBrag(this)">📊 내 수익률</button>' : '')
       + '<button class="btn-submit" onclick="Community.submitPost(this)">글 올리기</button></div>'
       + '<div class="cm-guide">매수·매도 권유, 리딩방 홍보, 근거 없는 루머는 신고 대상입니다.</div>'
       + '</div>';
@@ -86,6 +98,7 @@ var Community = (function () {
     el.innerHTML = h;
     // 펼쳐 둔 댓글 복원
     Object.keys(openC).forEach(function (id) { if (openC[id]) renderComments(id); });
+    fillBrags();
   }
 
   function postHtml(p) {
@@ -106,6 +119,7 @@ var Community = (function () {
     var long = body.length > 300 && !expanded[p.id];
     h += '<div class="comment-body cm-body" id="cpb-' + p.id + '">' + linkifyBody(escapeHtml(long ? body.slice(0, 300) + '…' : body)) + '</div>';
     if (long) h += '<button class="comment-action" onclick="Community.expand(\'' + p.id + '\')">더보기 ▾</button>';
+    if (p.bragId) h += '<div class="brag-slot" id="bg-' + p.id + '">' + bragCardHtml(bragCache[p.bragId]) + '</div>';
     h += '<div class="comment-edit" id="cpe-' + p.id + '" style="display:none"></div>';
     var liked = Array.isArray(p.likedBy) && currentUser && p.likedBy.indexOf(currentUser.uid) !== -1;
     h += '<div class="comment-actions" id="cpa-' + p.id + '">'
@@ -119,6 +133,89 @@ var Community = (function () {
     h += '<div class="comment-section cm-comments" id="cpcs-' + p.id + '" style="' + (openC[p.id] ? '' : 'display:none') + '"></div>';
     h += '</div>';
     return h;
+  }
+
+  /** 글쓰기 칸에 붙여 둔 스냅샷 미리보기 */
+  function pendingBragHtml() {
+    if (!pendingBrag) return '';
+    return '<div class="brag-pending">' + bragCardHtml(pendingBrag)
+      + '<button class="brag-remove" onclick="Community.removeBrag()" aria-label="첨부 취소">✕</button></div>';
+  }
+
+  /** 자랑 카드 — 스냅샷이 아직 없으면 자리만 잡아 둔다 */
+  function bragCardHtml(b) {
+    if (!b) return '<div class="brag-card loading-sm">수익률 불러오는 중...</div>';
+    if (b.gone) return '';
+    var cls = b.pnl > 0 ? 'up' : (b.pnl < 0 ? 'down' : 'flat');
+    var sign = b.pnl > 0 ? '+' : '';
+    return '<div class="brag-card ' + cls + '">'
+      + '<div class="brag-top">'
+      +   '<span class="brag-name">' + escapeHtml(b.name) + '</span>'
+      +   '<span class="brag-qty">' + fmtNum(b.qty) + '주</span>'
+      + '</div>'
+      + '<div class="brag-pnl ' + cls + '">' + sign + fmtNum(b.pnl) + '원'
+      +   '<span class="brag-rate">' + sign + Number(b.pnlRate).toFixed(2) + '%</span>'
+      + '</div>'
+      + '<div class="brag-sub">평단 ' + fmtNum(b.avgPrice) + ' → ' + fmtNum(b.price)
+      +   ' · ' + escapeHtml(b.nickname)
+      +   (b.seasonName ? ' · ' + escapeHtml(b.seasonName) : '')
+      +   ' · ' + bragTime(b.createdAt) + ' 기준</div>'
+      + '</div>';
+  }
+
+  function bragTime(ms) {
+    var d = new Date(Number(ms) || 0);
+    if (isNaN(d)) return '';
+    try {
+      return d.toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Seoul' });
+    } catch (e) { return ''; }
+  }
+
+  /** [📊 내 수익률] — 워커가 장부를 읽어 스냅샷을 만들어 준다 */
+  async function attachBrag(btn) {
+    if (!window.Mock || !Mock.isOn() || !code) return;
+    btn.disabled = true;
+    var label = btn.textContent;
+    btn.textContent = '불러오는 중...';
+    try {
+      var r = await Mock.brag(code);
+      pendingBrag = r.brag;
+      bragCache[pendingBrag.id] = pendingBrag;
+      var slot = document.getElementById('cmBragSlot');
+      if (slot) slot.innerHTML = pendingBragHtml();
+      btn.remove();
+      return;
+    } catch (e) {
+      alert(e && e.message ? e.message : '수익률을 가져오지 못했습니다.');
+    } finally {
+      if (btn.isConnected) { btn.disabled = false; btn.textContent = label; }
+    }
+  }
+
+  function removeBrag() {
+    pendingBrag = null;
+    render();
+  }
+
+  /** 화면에 있는 자랑 카드 중 아직 못 받은 것들을 한 번에 받아 채운다 */
+  async function fillBrags() {
+    var need = posts.filter(function (p) { return p.bragId && !bragCache[p.bragId] && !bragMiss[p.bragId]; })
+      .map(function (p) { return p.bragId; });
+    need = need.filter(function (v, i) { return need.indexOf(v) === i; }).slice(0, 30);
+    if (!need.length || !window.Mock) return;
+    try {
+      var r = await Mock.brags(need);
+      (r.items || []).forEach(function (b) { bragCache[b.id] = b; });
+      // 응답에 없는 id 는 지워진 스냅샷 — 카드를 비우고 다시 부르지 않는다
+      need.forEach(function (id) { if (!bragCache[id]) bragMiss[id] = true; });
+    } catch (e) {
+      return;      // 다음 렌더에서 다시 — '불러오는 중'이 남지만 숫자를 지어내지는 않는다
+    }
+    posts.forEach(function (p) {
+      if (!p.bragId) return;
+      var slot = document.getElementById('bg-' + p.id);
+      if (slot) slot.innerHTML = bragCardHtml(bragCache[p.bragId] || { gone: true });
+    });
   }
 
   function count(ta) {
@@ -144,10 +241,12 @@ var Community = (function () {
         code: code, stockName: name || code,
         authorUid: currentUser.uid, authorName: myName, isAdmin: isAdmin,
         body: body, likes: 0, likedBy: [], commentCount: 0, reportCount: 0,
+        bragId: pendingBrag ? pendingBrag.id : '',
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
       _lastPostAt = Date.now();
       ta.value = '';
+      pendingBrag = null;
       loadedFor = null;
       await load(false);
     } catch (e) {
@@ -443,6 +542,7 @@ var Community = (function () {
   }
 
   return {
+    attachBrag: attachBrag, removeBrag: removeBrag,
     open: open, reset: reset, reload: reload, loadMore: loadMore, count: count, reveal: reveal, expand: expand,
     submitPost: submitPost, startEdit: startEdit, cancelEdit: cancelEdit, saveEdit: saveEdit, remove: remove, like: like, report: report,
     toggleComments: toggleComments, submitComment: submitComment, removeComment: removeComment, likeComment: likeComment,

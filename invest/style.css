@@ -790,6 +790,35 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
   border: 1px solid var(--border); font-size: .66rem; color: var(--text3); line-height: 1.6;
 }
 
+/* ── 커뮤니티 자랑하기 카드 ── */
+.brag-card {
+  margin: 8px 0 2px; padding: 11px 13px;
+  background: var(--bg); border: 1px solid var(--border); border-left: 3px solid var(--text3);
+}
+.brag-card.up { border-left-color: var(--stock-up); background: var(--bull-bg); }
+.brag-card.down { border-left-color: var(--stock-down); background: var(--bear-bg); }
+.brag-card.loading-sm { font-size: .76rem; color: var(--text3); border-left-color: var(--border); }
+.brag-top { display: flex; align-items: baseline; gap: 8px; }
+.brag-name { font-size: .84rem; font-weight: 800; }
+.brag-qty { font-size: .74rem; color: var(--text2); font-weight: 700; }
+.brag-pnl {
+  margin-top: 4px; font-size: 1.12rem; font-weight: 800;
+  font-variant-numeric: tabular-nums; letter-spacing: -.3px;
+}
+.brag-rate { margin-left: 7px; font-size: .86rem; font-weight: 800; }
+.brag-sub { margin-top: 4px; font-size: .68rem; color: var(--text3); font-weight: 600; line-height: 1.5; }
+
+/* 글쓰기 칸에 붙여 둔 미리보기 */
+.brag-pending { position: relative; }
+.brag-pending .brag-card { margin-bottom: 0; padding-right: 44px; }   /* ✕ 버튼 자리 */
+.brag-remove {
+  position: absolute; top: 12px; right: 8px;
+  background: var(--bg2); border: 1px solid var(--border); color: var(--text2);
+  font-size: .74rem; font-weight: 700; padding: 2px 7px; cursor: pointer; line-height: 1.4;
+}
+.brag-remove:hover { color: var(--accent); border-color: var(--accent); }
+.cm-brag-btn { margin-right: 6px; white-space: nowrap; }
+
 /* ── 뉴스·공시 탭의 공시 목록 ── */
 .nd-seg { margin-bottom: 10px; }
 .dc-item { border: 1px solid var(--border); border-bottom: none; background: var(--bg2); }

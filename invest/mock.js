@@ -809,6 +809,9 @@ var Mock = (function () {
     setMode: setMode, onTab: onTab, renderTradeBar: renderTradeBar, onEscape: onEscape,
     join: join, openJoinFlow: openJoinFlow, joinStep2: joinStep2, closeJoin: closeJoin, cancel: cancel, loadHistory: loadHistory,
     openSheet: openSheet, closeSheet: closeSheet, setSheet: setSheet, input: input, step: step, pct: pct, submit: submit,
-    saveSeason: saveSeason
+    saveSeason: saveSeason,
+    // 커뮤니티 자랑하기 — 숫자는 워커가 장부에서 직접 만든다 (community.js 가 쓴다)
+    brag: function (code) { return api('/brag', 'POST', { code: code }); },
+    brags: function (ids) { return api('/brag?ids=' + encodeURIComponent(ids.join(','))); }
   };
 })();

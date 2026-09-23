@@ -489,7 +489,9 @@ service cloud.firestore {
         && request.resource.data.get('likedBy', []).size() == 0
         && request.resource.data.get('commentCount', 0) == 0
         && request.resource.data.get('reportCount', 0) == 0
-        && (request.resource.data.get('isAdmin', false) == false || isAdmin());
+        && (request.resource.data.get('isAdmin', false) == false || isAdmin())
+        && request.resource.data.get('bragId', '') is string
+        && request.resource.data.get('bragId', '').size() <= 40;
       allow update: if isAdmin()
         || (isRealUser() && resource.data.authorUid == request.auth.uid
             && request.resource.data.diff(resource.data)

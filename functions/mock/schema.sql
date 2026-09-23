@@ -129,3 +129,24 @@ CREATE TABLE IF NOT EXISTS audit_log (
   action TEXT NOT NULL,
   detail TEXT
 );
+
+-- ── 자랑하기 스냅샷 ────────────────────────────────────────────
+-- 종목 커뮤니티에 붙이는 "내 수익률" 카드.
+-- 숫자를 글(Firestore)에 저장하면 개발자도구로 고칠 수 있으므로, 워커가 장부에서 직접 읽어
+-- 여기에 박아 두고 글에는 id 만 남긴다. 클라이언트를 거치지 않아 위조할 수 없다.
+-- 자랑한 순간으로 고정한다 — 나중에 주가가 변해도 그때 그 숫자를 보여 준다.
+CREATE TABLE IF NOT EXISTS brags (
+  id         TEXT PRIMARY KEY,
+  season_id  TEXT NOT NULL,
+  uid        TEXT NOT NULL,
+  nickname   TEXT NOT NULL,
+  code       TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  qty        INTEGER NOT NULL,
+  avg_price  INTEGER NOT NULL,          -- cost / qty (반올림)
+  price      INTEGER NOT NULL,          -- 자랑한 순간의 현재가
+  pnl        INTEGER NOT NULL,          -- 평가손익(원) — 손실이면 음수
+  pnl_rate   REAL NOT NULL,             -- 수익률(%)
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_brags_uid ON brags(uid, created_at DESC);

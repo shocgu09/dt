@@ -129,6 +129,12 @@ function sessionInfo(now) {
   return { canOrder, phase, limitOnly: phase === 'pre_market' || phase === 'after_market', holiday: weekday && !tradingDay, serverTime: now };
 }
 
+const publicBrag = (b, seasonName) => ({
+  id: b.id, code: b.code, name: b.name, nickname: b.nickname,
+  qty: b.qty, avgPrice: b.avg_price, price: b.price,
+  pnl: b.pnl, pnlRate: b.pnl_rate, seasonName: seasonName || null, createdAt: b.created_at
+});
+
 const publicOrder = (o) => o && ({
   id: o.id, code: o.code, name: o.name, side: o.side, type: o.type, qty: o.qty, limitPrice: o.limit_price,
   filledQty: o.filled_qty, status: o.status, reason: o.reason, acceptedAt: o.accepted_at, updatedAt: o.updated_at
@@ -173,6 +179,19 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
        WHERE f.rank <= 10 ORDER BY s.end_date DESC, f.rank ASC`
     ).all()).results || [];
     return { items: rows };
+  }
+
+  // 글을 그릴 때 여러 개를 한 번에 — 글마다 따로 부르면 화면 하나에 수십 번이 된다
+  if (path === '/brag' && method === 'GET') {
+    const ids = String(url.searchParams.get('ids') || '')
+      .split(',').map((x) => x.trim()).filter((x) => /^[0-9a-f-]{36}$/i.test(x)).slice(0, 30);
+    if (!ids.length) return { items: [] };
+    const rows = (await db.prepare(
+      `SELECT b.*, s.name AS season_name FROM brags b
+       LEFT JOIN seasons s ON s.id = b.season_id
+       WHERE b.id IN (${ids.map(() => '?').join(',')})`
+    ).bind(...ids).all()).results || [];
+    return { items: rows.map((r) => publicBrag(r, r.season_name)) };
   }
 
   const season = await E.activeSeason(db, now);
@@ -258,6 +277,40 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     const ok = await E.cancelOrder(db, uid, m[1], now);
     if (!ok) throw new HttpError(409, '이미 체결되었거나 취소된 주문입니다');
     return { cancelled: true };
+  }
+
+  /* ── 자랑하기 ──────────────────────────────────────────────
+   * 커뮤니티 글에 붙일 "내 수익률" 스냅샷.
+   * 숫자는 여기(서버)에서 장부를 직접 읽어 만든다 — 클라이언트가 보낸 값은 쓰지 않는다.
+   * 글에는 이 id 만 저장되므로 수익률을 고쳐 쓸 수 없다.
+   */
+  if (path === '/brag' && method === 'POST') {
+    const input = await body();
+    if (!isCode(input.code)) throw new HttpError(400, '종목코드가 올바르지 않습니다');
+    const pos = await db.prepare(
+      `SELECT code, name, qty, cost FROM positions WHERE season_id=? AND uid=? AND code=?`
+    ).bind(season.id, uid, input.code).first();
+    if (!pos || pos.qty <= 0) throw new HttpError(409, '보유 중인 종목만 자랑할 수 있습니다', 'no_position');
+
+    const quote = await naver.getQuote(pos.code).catch(() => null);
+    if (!quote || quote.price == null) throw new HttpError(503, '시세를 가져오지 못했습니다. 잠시 후 다시 시도하세요');
+
+    const nick = profile.name || account.nickname;
+    const avg = Math.round(pos.cost / pos.qty);
+    const value = quote.price * pos.qty;
+    const pnl = value - pos.cost;
+    const rate = pos.cost > 0 ? Math.round((pnl / pos.cost) * 10000) / 100 : 0;
+    const id = crypto.randomUUID();
+
+    await db.prepare(
+      `INSERT INTO brags (id, season_id, uid, nickname, code, name, qty, avg_price, price, pnl, pnl_rate, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+    ).bind(id, season.id, uid, nick, pos.code, pos.name, pos.qty, avg, quote.price, pnl, rate, now).run();
+
+    return { brag: publicBrag({
+      id, season_id: season.id, nickname: nick, code: pos.code, name: pos.name,
+      qty: pos.qty, avg_price: avg, price: quote.price, pnl, pnl_rate: rate, created_at: now
+    }, season.name) };
   }
 
   if (path === '/history' && method === 'GET') {
