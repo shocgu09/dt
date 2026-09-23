@@ -43,7 +43,12 @@ function leaveMarketTab() {
 
 function startHomePolling() {
   Poller.stopAll();
-  Poller.add('index', loadIndex, pollMs(15000, 120000));
+  // 국장이 닫혀도 나스닥 선물·VIX·SOX 는 계속 움직인다.
+  // 그 항목을 켜 뒀으면 밤에도 30초로 돈다 (안 켰으면 예전대로 2분).
+  Poller.add('index', loadIndex, function () {
+    if (isMarketOpen()) return 15000;
+    return watchingNightLive() ? 30000 : 120000;
+  });
   // 워커 캐시가 랭킹 60초·테마 120초라 그보다 자주 불러도 같은 값이 온다
   Poller.add('rank', loadRank, pollMs(60000, 600000));
   // 순위·거래대금은 1분마다면 충분하지만 가격은 관심종목과 같은 속도로 맞춘다 (같은 /api/quotes)
@@ -68,6 +73,15 @@ var FUT_KEYS = {
   usd: 1, nasdaq: 1, sp500: 1, dow: 1, vix: 1, sox: 1,
   gold: 1, oil: 1, us10y: 1, kr10y: 1, kr3y: 1
 };
+
+// 국장이 닫힌 뒤에도 계속 움직이는 항목 (CME 선물·미국 지표).
+// 원/달러는 하나은행 고시라, 한국 국채는 국내 장이라 밤에는 멈춘다 — 여기 넣지 않는다.
+var NIGHT_LIVE = { nasdaq: 1, sp500: 1, dow: 1, vix: 1, sox: 1, gold: 1, oil: 1, us10y: 1 };
+
+/** 밤에도 움직이는 항목을 보고 있는가 — 폴링 주기를 그쪽에 맞추기 위해 */
+function watchingNightLive() {
+  return indexPick().some(function (k) { return NIGHT_LIVE[k]; });
+}
 
 // 열 개를 다 켜면 가로로 너무 길다 — 처음엔 다섯 개만 보이고, 회원이 체크리스트로 고른다
 var INDEX_DEFAULT = ['kospi', 'kosdaq', 'fut', 'usd', 'nasdaq', 'sp500'];
