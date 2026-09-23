@@ -876,12 +876,11 @@ var Mock = (function () {
   /* ===== 관리자: 시즌 만들기·고치기 ===== */
   function adminHtml() {
     if (!season || !season.isAdmin) return '';
-    var cur = season.season || season.next;
     return '<details class="mk-admin" ontoggle="if(this.open) Mock.loadSeasons()"><summary>⚙️ 시즌 관리 (운영진)</summary>'
       + '<div class="form-grid">'
-      + (cur ? '<p class="mk-note" style="margin-top:0">현재 시즌 <b>' + escapeHtml(cur.name) + '</b> (' + escapeHtml(cur.id) + ') 값이 채워져 있습니다. '
-          + (season.season ? '진행 중인 시즌은 이름 · 종료일 · 전달사항만 바꿀 수 있습니다.' : '시작 전이라 모든 값을 바꿀 수 있습니다.') + '</p>' : '')
-      + '<input class="f-input" id="mkSid" placeholder="시즌 ID (예: 2026PRE, 2027Q1)" aria-label="시즌 ID">'
+      + '<p class="mk-note" style="margin-top:0" id="mkSformNote"></p>'
+      + '<input class="f-input" id="mkSid" placeholder="시즌 ID (예: 2026PRE, 2027Q1)" aria-label="시즌 ID"'
+      +   ' oninput="Mock.onSeasonIdInput()">'
       + '<input class="f-input" id="mkSname" placeholder="이름 (예: 프리시즌, 2027년 1분기)" aria-label="시즌 이름">'
       + '<div class="form-row"><input type="date" class="f-input" id="mkSstart" aria-label="시작일">'
       + '<input type="date" class="f-input" id="mkSend" aria-label="종료일"></div>'
@@ -910,6 +909,7 @@ var Mock = (function () {
       var r = await api('/admin/seasons');
       _seasons = r.items || [];
       renderSeasons();
+      updateFormNote();
     } catch (e) {
       box.innerHTML = '<div class="empty">시즌 목록을 불러오지 못했습니다</div>';
     }
@@ -940,36 +940,37 @@ var Mock = (function () {
             +     ' · 참가 ' + fmtNum(x.participants || 0) + '명'
             +     ' · 시드 ' + fmtCompact(x.seed) + '원'
             +     (x.finals ? ' · 최종순위 확정' : '') + '</span>'
-            + '</button>'
-            + statusBtns(x)
-            + '</div>';
+            + '</button></div>';
         }).join('')
       + '<p class="mk-note">행을 누르면 위 폼에 값이 채워집니다. 시작일이 되면 자동으로 열리고 종료일 장 마감 후 자동으로 확정되므로, 상태는 보통 건드릴 필요가 없습니다.</p>';
   }
 
-  /** 상태 수동 변경 — 예외 상황용이라 확인을 받는다 */
-  function statusBtns(x) {
-    var next = { upcoming: 'active', active: 'settling', settling: 'closed' }[x.status];
-    if (!next) return '';
-    var label = (SEASON_STATUS[next] || {}).text || next;
-    return '<button class="mk-season-st" onclick="Mock.setSeasonStatus(\'' + escapeAttr(x.id) + '\',\'' + next + '\')">'
-      + '→ ' + escapeHtml(label) + '</button>';
+  /* 상태 변경 버튼은 두지 않는다 — 시작(시작일 도달)과 종료(종료일 장 마감)가 모두 자동이라
+     운영진이 손댈 일이 없고, 잘못 누르면 최종 순위 확정을 건너뛴다. */
+
+  /** 폼에 어떤 시즌이 들어 있는지에 맞춰 안내를 고친다 — 고정 문구면 다른 시즌을 채웠을 때 어긋난다 */
+  function updateFormNote() {
+    var el = document.getElementById('mkSformNote');
+    if (!el) return;
+    var idEl = document.getElementById('mkSid');
+    var id = idEl ? idEl.value.trim() : '';
+    if (!id) {
+      el.innerHTML = '새 시즌을 만들려면 쓰지 않은 ID 를 넣으세요. 아래 목록에서 행을 누르면 그 시즌을 고칠 수 있습니다.';
+      return;
+    }
+    var x = (_seasons || []).filter(function (s) { return s.id === id; })[0];
+    if (!x) {
+      el.innerHTML = '<b>' + escapeHtml(id) + '</b> — 새 시즌으로 만들어집니다.';
+      return;
+    }
+    var st = (SEASON_STATUS[x.status] || {}).text || x.status;
+    var rule = x.status === 'closed' ? '종료된 시즌은 수정할 수 없습니다.'
+      : x.status === 'upcoming' ? '시작 전이라 모든 값을 바꿀 수 있습니다.'
+      : '진행 중인 시즌은 이름 · 종료일 · 전달사항만 바꿀 수 있습니다.';
+    el.innerHTML = '<b>' + escapeHtml(x.name) + '</b> (' + escapeHtml(x.id) + ' · ' + escapeHtml(st) + ') 값이 채워져 있습니다. ' + rule;
   }
 
-  async function setSeasonStatus(id, status) {
-    var warn = status === 'closed'
-      ? '종료로 바꾸면 더 이상 수정할 수 없고 주문도 막힙니다.\n최종 순위는 종료일 장 마감에 자동으로 확정되므로 보통은 그대로 두면 됩니다.\n\n계속할까요?'
-      : '시즌 ' + id + ' 상태를 "' + ((SEASON_STATUS[status] || {}).text || status) + '" 로 바꿉니다. 계속할까요?';
-    if (!confirm(warn)) return;
-    try {
-      await api('/admin/seasons/status', 'POST', { id: id, status: status });
-      await loadSeasons();
-      await refreshSeason();
-      renderAccount();
-    } catch (e) {
-      alert(e && e.message ? e.message : '상태를 바꾸지 못했습니다.');
-    }
-  }
+  function onSeasonIdInput() { updateFormNote(); }
 
   /** 목록에서 고른 시즌을 폼에 채운다 (입력 중이던 값은 덮어쓴다 — 고르는 행동 자체가 의도다) */
   function pickSeason(id) {
@@ -988,6 +989,7 @@ var Mock = (function () {
         : '<span class="ok">' + escapeHtml(x.name) + ' 값을 채웠습니다.'
           + (x.status !== 'upcoming' ? ' 진행 중이라 이름 · 종료일 · 전달사항만 바뀝니다.' : '') + '</span>';
     }
+    updateFormNote();
     var f = document.getElementById('mkSid');
     if (f) f.scrollIntoView({ block: 'nearest' });
   }
@@ -1000,6 +1002,7 @@ var Mock = (function () {
     });
     var st = document.getElementById('mkSstatus');
     if (st) st.innerHTML = '<span class="ok">새 시즌 정보를 입력하세요. 새 ID 로 저장하면 만들어집니다.</span>';
+    updateFormNote();
     var f = document.getElementById('mkSid');
     if (f) f.focus();
   }
@@ -1012,6 +1015,7 @@ var Mock = (function () {
     set('mkSid', cur.id); set('mkSname', cur.name);
     set('mkSstart', cur.startDate || cur.start_date); set('mkSend', cur.endDate || cur.end_date);
     set('mkSnotice', cur.notice || '');
+    updateFormNote();
   }
 
   async function saveSeason(btn) {
@@ -1035,7 +1039,7 @@ var Mock = (function () {
     openSheet: openSheet, closeSheet: closeSheet, setSheet: setSheet, input: input, step: step, pct: pct, submit: submit,
     askReview: askReview,
     saveSeason: saveSeason, loadSeasons: loadSeasons, pickSeason: pickSeason,
-    newSeasonForm: newSeasonForm, setSeasonStatus: setSeasonStatus,
+    newSeasonForm: newSeasonForm, onSeasonIdInput: onSeasonIdInput,
     // 커뮤니티 자랑하기 — 숫자는 워커가 장부에서 직접 만든다 (community.js 가 쓴다)
     brag: function (code) { return api('/brag', 'POST', { code: code }); },
     brags: function (ids) { return api('/brag?ids=' + encodeURIComponent(ids.join(','))); }

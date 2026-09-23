@@ -215,11 +215,6 @@
   display: block; margin-top: 3px; font-size: .68rem; color: var(--text3);
   font-weight: 600; line-height: 1.5;
 }
-.mk-season-st {
-  flex: 0 0 auto; background: var(--bg2); border: none; color: var(--text3);
-  font-size: .68rem; font-weight: 700; padding: 0 10px; cursor: pointer; white-space: nowrap;
-}
-.mk-season-st:hover { color: var(--text); background: var(--bg3); }
 
 /* ── AI 계좌 평가 ── */
 .mk-rv-empty {

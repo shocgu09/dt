@@ -452,6 +452,18 @@ async function handleAdmin(db, actor, path, method, body, now) {
     if (!/^[0-9A-Za-z_-]{3,20}$/.test(b.id || '') || !b.name || !okDate(b.startDate) || !okDate(b.endDate) || b.endDate < b.startDate) {
       throw new HttpError(400, '시즌 ID·이름·시작일·종료일을 확인해 주세요');
     }
+    // 기간이 겹치면 안 된다 — 같은 날 두 시즌이 열리면 activeSeason() 이 하나만 집어 장부가 갈린다.
+    // 겹침 = (새 시작 <= 기존 종료) AND (새 종료 >= 기존 시작). 자기 자신은 제외한다.
+    const clash = await db.prepare(
+      `SELECT id, name, start_date, end_date FROM seasons
+       WHERE id <> ? AND start_date <= ? AND end_date >= ? LIMIT 1`
+    ).bind(b.id, b.endDate, b.startDate).first();
+    if (clash) {
+      throw new HttpError(409,
+        `기간이 "${clash.name}"(${clash.start_date} ~ ${clash.end_date}) 과 겹칩니다. 날짜를 조정해 주세요`,
+        'overlap');
+    }
+
     const existing = await db.prepare(`SELECT * FROM seasons WHERE id=?`).bind(b.id).first();
     if (existing) {
       // 이미 시작한 시즌은 이름·종료일·전달사항만 고칠 수 있다 — 시드·요율·시작일이 바뀌면 참가자 장부와 어긋난다
@@ -485,6 +497,8 @@ async function handleAdmin(db, actor, path, method, body, now) {
     await log('season.create', b);
     return { ok: true, created: true };
   }
+  // 상태 수동 변경 — 화면에는 두지 않는다. 시작(시작일 도달)과 종료(종료일 장 마감)는 자동이다.
+  // 상태가 꼬인 예외 상황에서 운영진이 직접 부를 수 있게 엔드포인트만 남긴다.
   if (path === '/admin/seasons/status' && method === 'POST') {
     const b = await body();
     if (!['upcoming', 'active', 'settling', 'closed'].includes(b.status)) throw new HttpError(400, '상태 값이 올바르지 않습니다');
