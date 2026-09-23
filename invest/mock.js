@@ -1004,20 +1004,46 @@ var Mock = (function () {
   function renderHolidays() {
     var box = document.getElementById('mkHolidays');
     if (!box) return;
-    var up = _holidays || [];        // 워커가 오늘 이후만, 날짜순으로 준다
-    var next = up[0];
-    box.innerHTML = '<div class="mk-hol-box">'
-      + '<div class="mk-hol-head">휴장일 <b>자동</b></div>'
-      + '<div class="mk-hol-line">'
-      +   (next ? '다음 휴장일 <b>' + fmtYmd(next.ymd) + '</b>' + (next.name ? ' (' + escapeHtml(next.name) + ')' : '')
-              : '앞으로 등록된 휴장일 없음')
-      +   '<span class="mk-dim"> · 앞으로 ' + fmtNum(up.length) + '일</span>'
+    var up = _holidays || [];
+    box.innerHTML = '<div class="mk-seasons-head">휴장일 <span>앞으로 ' + fmtNum(up.length) + '일</span></div>'
+      + '<div class="form-row mk-hol-add">'
+      +   '<input type="date" class="f-input" id="mkHolDate" aria-label="휴장일 날짜">'
+      +   '<input type="text" class="f-input" id="mkHolName" maxlength="40" placeholder="설명 (선택)" aria-label="휴장일 설명">'
+      +   '<button class="mini-btn" onclick="Mock.addHoliday(this)">추가</button>'
       + '</div>'
-      + '</div>';
+      + (up.length
+          ? up.map(function (x) {
+              return '<div class="mk-hol">'
+                + '<span class="mk-hol-d">' + fmtYmd(x.ymd) + '</span>'
+                + '<span class="mk-hol-n">' + escapeHtml(x.name || '') + '</span>'
+                + '<button class="mk-hol-x" onclick="Mock.removeHoliday(\'' + escapeAttr(x.ymd) + '\')" aria-label="삭제">✕</button>'
+                + '</div>';
+            }).join('')
+          : '<div class="empty">등록된 휴장일이 없습니다</div>');
   }
 
   function fmtYmd(y) {
     return String(y || '').replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3');
+  }
+
+  async function addHoliday(btn) {
+    var d = document.getElementById('mkHolDate'), nm = document.getElementById('mkHolName');
+    if (!d || !d.value) { alert('날짜를 골라 주세요.'); return; }
+    btn.disabled = true;
+    try {
+      await api('/admin/holidays', 'POST', { ymd: d.value, name: nm ? nm.value.trim() : '' });
+      d.value = ''; if (nm) nm.value = '';
+      await loadHolidays();
+    } catch (e) { alert(e && e.message ? e.message : '추가하지 못했습니다.'); }
+    btn.disabled = false;
+  }
+
+  async function removeHoliday(ymd) {
+    if (!confirm(fmtYmd(ymd) + ' 을 휴장일에서 빼시겠습니까?')) return;
+    try {
+      await api('/admin/holidays?ymd=' + encodeURIComponent(ymd), 'DELETE');
+      await loadHolidays();
+    } catch (e) { alert(e && e.message ? e.message : '삭제하지 못했습니다.'); }
   }
 
   /** 폼에 어떤 시즌이 들어 있는지에 맞춰 안내를 고친다 — 고정 문구면 다른 시즌을 채웠을 때 어긋난다 */
@@ -1112,6 +1138,7 @@ var Mock = (function () {
     askReview: askReview,
     saveSeason: saveSeason, loadSeasons: loadSeasons, pickSeason: pickSeason,
     newSeasonForm: newSeasonForm, onSeasonIdInput: onSeasonIdInput,
+    addHoliday: addHoliday, removeHoliday: removeHoliday,
     // 커뮤니티 자랑하기 — 숫자는 워커가 장부에서 직접 만든다 (community.js 가 쓴다)
     brag: function (code) { return api('/brag', 'POST', { code: code }); },
     brags: function (ids) { return api('/brag?ids=' + encodeURIComponent(ids.join(','))); }

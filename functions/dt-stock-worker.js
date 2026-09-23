@@ -7,7 +7,7 @@ import { naver, daum, yahoo } from './providers/naver.js';
 import { verifyIdToken, bearerToken } from './lib/verify-id-token.js';
 import { profileOf } from './lib/profile.js';
 import { handleMock, mockErrorResponse, runCron } from './mock/api.js';
-import { holidaySet, catchHolidayFromQuote } from './mock/holidays.js';
+import { holidaySet } from './mock/holidays.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -266,20 +266,6 @@ async function handleIndex(env) {
       naver.getWorldFutures().catch(() => ({})),
       naver.getMarketExtras().catch(() => ({}))
     ]);
-    // 삼성전자 시세가 CLOSE 면 아직 모르는 휴장일일 수 있다 — 그 자리에서 기록한다
-    if (env.MOCK_DB && ref) {
-      const k = new Date(Date.now() + 9 * 3600e3);
-      const p2 = (n) => String(n).padStart(2, '0');
-      const t = {
-        dow: k.getUTCDay(),
-        hm: k.getUTCHours() * 60 + k.getUTCMinutes(),
-        ymd: `${k.getUTCFullYear()}${p2(k.getUTCMonth() + 1)}${p2(k.getUTCDate())}`
-      };
-      if (await catchHolidayFromQuote(env.MOCK_DB, ref, t, Date.now()).catch(() => false)) {
-        holidays.push(t.ymd);
-      }
-    }
-
     return {
       ...idx, ...fut, ...extra,
       holidays,
