@@ -198,9 +198,9 @@ var Mock = (function () {
       return '<button class="mk-pos" onclick="openStock(\'' + p.code + '\',\'' + escapeJsArg(p.name) + '\')">'
         + stockLogoHtml(p.code, p.name, null, 'sm')
         + '<span class="mk-pos-main"><span class="mk-pos-name">' + escapeHtml(p.name) + (p.halted ? ' <i class="mk-tag">정지</i>' : '') + '</span>'
-        +   '<span class="mk-pos-sub">' + fmtNum(p.qty) + '주 · 평단 ' + fmtNum(p.avgPrice) + '</span></span>'
-        + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(p.value) + '</span>'
-        +   '<span class="mk-pos-pnl ' + signClass(p.pnl) + '">' + (p.pnl > 0 ? '+' : '') + fmtNum(p.pnl) + ' (' + fmtRate(p.pnlRate) + ')</span></span>'
+        +   '<span class="mk-pos-sub">' + fmtNum(p.qty) + '주 · 평단 ' + fmtNum(p.avgPrice) + '원</span></span>'
+        + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(p.value) + '원</span>'
+        +   '<span class="mk-pos-pnl ' + signClass(p.pnl) + '">' + (p.pnl > 0 ? '+' : '') + fmtNum(p.pnl) + '원 (' + fmtRate(p.pnlRate) + ')</span></span>'
         + '</button>';
     }).join('') : '<div class="empty">보유 종목이 없습니다.<br>시세 탭에서 종목을 선택해 매수할 수 있습니다.</div>';
     h += '</section>';
@@ -332,7 +332,7 @@ var Mock = (function () {
     return '<div class="mk-ord">'
       + '<span class="mk-side ' + (o.side === 'buy' ? 'buy' : 'sell') + '">' + sideTxt + '</span>'
       + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(o.name) + '</span>'
-      +   '<span class="mk-pos-sub">' + (o.type === 'market' ? '시장가' : '지정가 ' + fmtNum(o.limitPrice))
+      +   '<span class="mk-pos-sub">' + (o.type === 'market' ? '시장가' : '지정가 ' + fmtNum(o.limitPrice) + '원')
       +   ' · ' + fmtNum(o.filledQty) + '/' + fmtNum(o.qty) + '주</span></span>'
       + '<button class="mini-btn danger" onclick="Mock.cancel(\'' + escapeJsArg(o.id) + '\', this)">취소</button>'
       + '</div>';
@@ -480,8 +480,8 @@ var Mock = (function () {
         return '<div class="mk-ord">'
           + '<span class="mk-side ' + (f.side === 'buy' ? 'buy' : 'sell') + '">' + (f.side === 'buy' ? '매수' : '매도') + '</span>'
           + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(f.name) + '</span>'
-          +   '<span class="mk-pos-sub">' + escapeHtml(kstHM(f.at)) + ' · ' + fmtNum(f.qty) + '주 × ' + fmtNum(f.price) + '</span></span>'
-          + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(f.qty * f.price) + '</span>'
+          +   '<span class="mk-pos-sub">' + escapeHtml(kstHM(f.at)) + ' · ' + fmtNum(f.qty) + '주 × ' + fmtNum(f.price) + '원</span></span>'
+          + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(f.qty * f.price) + '원</span>'
           +   '<span class="mk-pos-sub">' + costText(f) + '</span></span>'
           + '</div>';
       }).join('');
@@ -496,9 +496,9 @@ var Mock = (function () {
 
   /** 체결 한 건의 비용 — 매수는 수수료만, 매도는 수수료와 거래세가 따로 붙는다 */
   function costText(f) {
-    if (f.side === 'buy') return '수수료 ' + fmtNum(f.fee);
-    if (!f.tax) return '수수료 ' + fmtNum(f.fee) + ' · 세금 면제';   // ETF·ETN
-    return '수수료 ' + fmtNum(f.fee) + ' · 세금 ' + fmtNum(f.tax);
+    if (f.side === 'buy') return '수수료 ' + fmtNum(f.fee) + '원';
+    if (!f.tax) return '수수료 ' + fmtNum(f.fee) + '원 · 세금 면제';   // ETF·ETN
+    return '수수료 ' + fmtNum(f.fee) + '원 · 세금 ' + fmtNum(f.tax) + '원';
   }
 
   /* ===== 랭킹 ===== */
