@@ -256,4 +256,3 @@
 .mk-hol-head b { background: var(--bull-bg); color: var(--stock-up); font-size: .64rem; padding: 2px 6px; margin-left: 4px; }
 .mk-hol-line { font-size: .82rem; font-weight: 700; }
 .mk-hol-line b { font-variant-numeric: tabular-nums; }
-.mk-hol-note { margin-top: 6px; font-size: .68rem; color: var(--text3); line-height: 1.6; }
