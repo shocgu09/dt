@@ -4,6 +4,7 @@
 // KV: STOCK_KV
 
 import { naver, daum, yahoo } from './providers/naver.js';
+import { upbit, isCoinMarket } from './providers/upbit.js';
 import { verifyIdToken, bearerToken } from './lib/verify-id-token.js';
 import { profileOf } from './lib/profile.js';
 import { handleMock, mockErrorResponse, runCron } from './mock/api.js';
@@ -181,6 +182,12 @@ export default {
       if (path === '/api/profile') return json(await handleProfile(env, q.get('code')));
       if (path === '/api/disclosure') return json(await handleDisclosure(env, q.get('code'), q.get('id')));
       if (path === '/api/spark')   return json(await handleSpark(env, q.get('code')));
+      if (path === '/api/coin/markets') return json(await handleCoinMarkets());
+      if (path === '/api/coin/list')    return json(await handleCoinList(q.get('sort'), q.get('limit'), q.get('markets')));
+      if (path === '/api/coin/quote')   return json(await handleCoinQuote(q.get('market')));
+      if (path === '/api/coin/book')    return json(await handleCoinBook(q.get('market')));
+      if (path === '/api/coin/trades')  return json(await handleCoinTrades(q.get('market')));
+      if (path === '/api/coin/candles') return json(await handleCoinCandles(q.get('market'), q.get('tf')));
     } catch (e) {
       // 업스트림 URL·내부 예외 원문은 로그에만 남긴다 (회원에게 그대로 보이면 내부 구조가 드러난다)
       console.warn('quote api failed', path, String((e && e.message) || e).slice(0, 200));
@@ -263,14 +270,15 @@ async function handleIndex(env) {
     // 휴장일에는 CLOSE 가 와서 시계만 보고 "실시간"이라 표시하던 문제도 없어진다.
     // 해외 지수선물은 국내 장중에도 돌아간다 — 지수 스트립에 같이 실어 보낸다.
     // 선물이 죽어도 국내 지수는 그려야 하므로 실패는 삼킨다.
-    const [idx, ref, fut, extra] = await Promise.all([
+    const [idx, ref, fut, extra, coins] = await Promise.all([
       naver.getIndex(),
       naver.getQuote('005930').catch(() => null),
       naver.getWorldFutures().catch(() => ({})),
-      naver.getMarketExtras().catch(() => ({}))
+      naver.getMarketExtras().catch(() => ({})),
+      coinIndexCells().catch(() => ({}))
     ]);
     return {
-      ...idx, ...fut, ...extra,
+      ...idx, ...fut, ...extra, ...coins,
       holidays,
       marketStatus: ref ? ref.marketStatus : null,
       sessionType: ref ? ref.sessionType : null
@@ -418,3 +426,92 @@ function etfList(env) {
   return cached(env, 'etf:list:v1', 43200, async () => ({ items: await naver.getEtfList() })).then((d) => d.items || []);
 }
 
+
+// ── 코인 (업비트 원화 마켓) ─────────────────────────────────────
+// 시세 표시만 한다(모의투자 없음). 목록·현재가·지수 스트립은 모두 ticker/all 한 번(3초 캐시)에서 나온다 —
+// 화면마다 출처가 달라 같은 코인이 다른 값으로 보이지 않게 한다.
+const COIN_TTL = { tickers: 3, markets: 600, book: 2, trades: 2, candleMin: 10, candleDay: 60 };
+
+function coinTickers() {
+  return memo('coin:tickers', COIN_TTL.tickers, async () => ({ items: await upbit.getTickers(), at: Date.now() }));
+}
+function coinMarkets() {
+  return memo('coin:markets', COIN_TTL.markets, async () => ({ items: await upbit.getMarkets() }));
+}
+// 이름·시장경보는 부가 정보다 — 목록 호출이 실패해도 시세는 내려보낸다
+async function coinInfoMap() {
+  try { return new Map((await coinMarkets()).items.map((m) => [m.market, m])); }
+  catch (e) { return new Map(); }
+}
+
+function coinRow(t, info) {
+  return {
+    market: t.market,
+    name: info ? info.name : t.market.slice(4),
+    price: t.price, change: t.change, changeRate: t.changeRate, value24h: t.value24h,
+    warning: !!(info && info.warning), caution: info ? info.caution : []
+  };
+}
+
+/** 원화 마켓 이름·시장경보 — 24시간 거래대금 순 (검색 결과를 많이 거래되는 코인부터 보이게) */
+async function handleCoinMarkets() {
+  const [d, t] = await Promise.all([coinMarkets(), coinTickers().catch(() => ({ items: [] }))]);
+  const val = new Map(t.items.map((r) => [r.market, r.value24h || 0]));
+  const items = d.items.slice().sort((x, y) => (val.get(y.market) || 0) - (val.get(x.market) || 0));
+  return { items, source: 'upbit' };
+}
+
+/** 코인 목록 — sort(value 24시간 거래대금 · up · down) 상위 limit 개, 또는 markets 로 지정한 것만 */
+async function handleCoinList(sort, limit, markets) {
+  const [t, info] = await Promise.all([coinTickers(), coinInfoMap()]);
+  let rows = t.items;
+  const s = ['value', 'up', 'down'].includes(sort) ? sort : 'value';
+  if (markets) {
+    const want = new Set(String(markets).split(',').map((x) => x.trim()).filter(isCoinMarket).slice(0, MAX_BATCH));
+    rows = rows.filter((r) => want.has(r.market));
+  } else {
+    const key = s === 'value' ? (r) => -(r.value24h || 0) : (s === 'up' ? (r) => -(r.changeRate || 0) : (r) => (r.changeRate || 0));
+    const lim = Math.min(Math.max(parseInt(limit, 10) || 15, 1), 300);
+    rows = rows.slice().sort((a, b) => key(a) - key(b)).slice(0, lim);
+  }
+  return { sort: markets ? null : s, total: t.items.length, items: rows.map((r) => coinRow(r, info.get(r.market))),
+           asOf: new Date(t.at).toISOString(), source: 'upbit' };
+}
+
+async function handleCoinQuote(market) {
+  if (!isCoinMarket(market)) return { error: '코인 코드가 올바르지 않습니다' };
+  const [t, info] = await Promise.all([coinTickers(), coinInfoMap()]);
+  const r = t.items.find((x) => x.market === market);
+  if (!r) return { error: '거래되지 않는 코인입니다' };
+  const m = info.get(market);
+  return { ...r, name: m ? m.name : market.slice(4), en: m ? m.en : null,
+           warning: !!(m && m.warning), caution: m ? m.caution : [], source: 'upbit' };
+}
+
+async function handleCoinBook(market) {
+  if (!isCoinMarket(market)) return { error: '코인 코드가 올바르지 않습니다' };
+  return memo(`coin:b:${market}`, COIN_TTL.book, () => upbit.getOrderBook(market));
+}
+
+async function handleCoinTrades(market) {
+  if (!isCoinMarket(market)) return { error: '코인 코드가 올바르지 않습니다' };
+  return memo(`coin:t:${market}`, COIN_TTL.trades, async () => ({ market, items: await upbit.getTrades(market, 40), source: 'upbit' }));
+}
+
+async function handleCoinCandles(market, tf) {
+  if (!isCoinMarket(market)) return { error: '코인 코드가 올바르지 않습니다' };
+  const t = ['m', 'm5', 'm15', 'm60', 'D', 'W', 'M'].includes(tf) ? tf : 'D';
+  const ttl = t.startsWith('m') ? COIN_TTL.candleMin : COIN_TTL.candleDay;
+  return memo(`coin:c:${market}:${t}`, ttl, async () => ({ market, tf: t, bars: await upbit.getCandles(market, t), source: 'upbit' }));
+}
+
+/** 지수 스트립의 비트코인·이더리움 칸 — 24시간 움직인다 */
+async function coinIndexCells() {
+  const t = await coinTickers();
+  const out = {};
+  for (const [key, market, name] of [['btc', 'KRW-BTC', '비트코인'], ['eth', 'KRW-ETH', '이더리움']]) {
+    const r = t.items.find((x) => x.market === market);
+    if (r && r.price != null) out[key] = { name, price: r.price, change: r.change, changeRate: r.changeRate, decimals: 0 };
+  }
+  return out;
+}

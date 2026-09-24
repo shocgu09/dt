@@ -573,11 +573,14 @@ service cloud.firestore {
 
     // ── stock_watchlist 컬렉션 (내 관심종목) ──────────────────
     // - 본인 것만 읽기/쓰기 (관리자는 열람만), 최대 50종목 (클라이언트 WATCHLIST_MAX 와 동일)
+    // - coins: 관심 코인(업비트 원화 마켓 코드) — 주식 codes 와 따로, 같은 상한
     match /stock_watchlist/{uid} {
       allow read: if isOwner(uid) || isAdmin();
       allow write: if isOwner(uid)
         && request.resource.data.get('codes', []) is list
-        && request.resource.data.get('codes', []).size() <= 50;
+        && request.resource.data.get('codes', []).size() <= 50
+        && request.resource.data.get('coins', []) is list
+        && request.resource.data.get('coins', []).size() <= 50;
     }
 
     // ── stock_reports 컬렉션 (게시글 신고) ────────────────────

@@ -69,6 +69,14 @@ var Market = {
     return marketApi('/api/disclosure', p);
   },
   // DT 회원 보유 현황 (모의투자 참가자 집계) — 종목 하나 / 많이 보유·오늘 많이 산 상위 10
+  // 코인 (업비트 원화 마켓) — 시세 표시만
+  coinMarkets: function () { return marketApi('/api/coin/markets'); },
+  coinList:    function (sort, limit) { return marketApi('/api/coin/list', { sort: sort, limit: limit || 15 }); },
+  coinListOf:  function (markets) { return marketApi('/api/coin/list', { markets: markets.join(',') }); },
+  coinQuote:   function (market) { return marketApi('/api/coin/quote', { market: market }); },
+  coinBook:    function (market) { return marketApi('/api/coin/book', { market: market }); },
+  coinTrades:  function (market) { return marketApi('/api/coin/trades', { market: market }); },
+  coinCandles: function (market, tf) { return marketApi('/api/coin/candles', { market: market, tf: tf }); },
   crowd:    function (code) { return crowdApi('/crowd', { code: code }); },
   crowdTop: function (type) { return crowdApi('/crowd/top', { type: type === 'bought' ? 'bought' : 'held' }); }
 };
@@ -371,6 +379,7 @@ function purgeLegacyRecent() {
 
 /* ===== 관심종목 (Firestore stock_watchlist/{uid}) ===== */
 var watchlist = [];
+var coinWatchlist = [];      // 관심 코인 — 같은 문서의 coins 필드 (주식 codes 와 섞지 않는다)
 var _watchlistReady = null;
 
 /** 관심종목을 1회만 불러온다 — 시세 홈을 거치지 않고 종목 상세로 바로 들어와도 하트가 맞도록 */
@@ -384,7 +393,8 @@ async function loadWatchlist() {
   try {
     var doc = await db.collection('stock_watchlist').doc(currentUser.uid).get();
     watchlist = (doc.exists && Array.isArray(doc.data().codes)) ? doc.data().codes : [];
-  } catch (e) { watchlist = []; }
+    coinWatchlist = (doc.exists && Array.isArray(doc.data().coins)) ? doc.data().coins : [];
+  } catch (e) { watchlist = []; coinWatchlist = []; }
   return watchlist;
 }
 
@@ -408,6 +418,27 @@ async function toggleWatch(code) {
   } catch (e) {
     // 실패하면 로컬 상태를 되돌린다
     watchlist = on ? watchlist.filter(function (c) { return c !== code; }) : watchlist.concat([code]);
+    throw e;
+  }
+  return on;
+}
+
+/** 관심 코인 토글 — 주식과 같은 방식(원소 단위 arrayUnion/arrayRemove) */
+async function toggleCoinWatch(market) {
+  if (!db || !currentUser) return false;
+  if (!/^KRW-[A-Z0-9]{1,15}$/.test(String(market || ''))) throw new Error('코인 코드가 올바르지 않습니다');
+  await ensureWatchlist();
+  var on = coinWatchlist.indexOf(market) === -1;
+  if (on && coinWatchlist.length >= WATCHLIST_MAX) throw new Error('관심 코인은 ' + WATCHLIST_MAX + '개까지 담을 수 있습니다');
+  coinWatchlist = on ? coinWatchlist.concat([market]) : coinWatchlist.filter(function (c) { return c !== market; });
+  var FV = firebase.firestore.FieldValue;
+  try {
+    await db.collection('stock_watchlist').doc(currentUser.uid).set({
+      coins: on ? FV.arrayUnion(market) : FV.arrayRemove(market),
+      updatedAt: FV.serverTimestamp()
+    }, { merge: true });
+  } catch (e) {
+    coinWatchlist = on ? coinWatchlist.filter(function (c) { return c !== market; }) : coinWatchlist.concat([market]);
     throw e;
   }
   return on;
@@ -492,7 +523,8 @@ function movingAverage(bars, n) {
  * 점은 해당 봉의 종가 선 위에 찍고, 글자는 그 봉의 실제 고가/저가를 쓴다 (상단 "최고/최저" 라벨과 일치).
  * 글자는 차트 그리는 영역 안으로 밀어 넣는다 — 첫 봉·마지막 봉에 걸려도 "129,000"이 "29,000"으로 잘리지 않는다.
  */
-function makeHiLoOverlay(container, chart, series, upColor, downColor) {
+function makeHiLoOverlay(container, chart, series, upColor, downColor, fmt) {
+  fmt = fmt || function (p) { return Math.round(p).toLocaleString('ko-KR'); };
   var bars = [], hiIdx = -1, loIdx = -1, raf = 0, dead = false;
 
   if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
@@ -563,8 +595,8 @@ function makeHiLoOverlay(container, chart, series, upColor, downColor) {
         if (b.l < bars[loIdx].l) loIdx = i;
       });
       if (bars.length) {
-        hi.tag.textContent = '최고 ' + Math.round(bars[hiIdx].h).toLocaleString('ko-KR');
-        lo.tag.textContent = '최저 ' + Math.round(bars[loIdx].l).toLocaleString('ko-KR');
+        hi.tag.textContent = '최고 ' + fmt(bars[hiIdx].h);
+        lo.tag.textContent = '최저 ' + fmt(bars[loIdx].l);
       }
       refresh();
     },
@@ -582,7 +614,15 @@ function makeHiLoOverlay(container, chart, series, upColor, downColor) {
  * @param mode 'simple' = 라인 + 최고/최저 (토스 기본) · 'detail' = 캔들 + 거래량 + 이동평균
  * 반환: { dispose, updateLast }
  */
-async function renderChart(container, bars, tf, mode) {
+/**
+ * @param opts.precision  가격 소수 자릿수 (코인은 1원 미만 가격이 있다 — 주식은 0)
+ * @param opts.fmt        가격 표시 함수 (축·최고/최저 라벨)
+ */
+async function renderChart(container, bars, tf, mode, opts) {
+  opts = opts || {};
+  var precision = opts.precision || 0;
+  var minMove = precision ? Math.pow(10, -precision) : 1;
+  var fmtPrice = opts.fmt || function (p) { return Math.round(p).toLocaleString('ko-KR'); };
   await ensureChartLib();
   container.innerHTML = '';
   mode = mode === 'detail' ? 'detail' : 'simple';
@@ -605,12 +645,16 @@ async function renderChart(container, bars, tf, mode) {
     timeScale: { borderColor: grid, timeVisible: tf === 'm' || tf === 'm5', secondsVisible: false },
     crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
     handleScale: { axisPressedMouseMove: false },
-    localization: {
-      locale: 'ko-KR',
-      // 여백 때문에 축이 0 아래로 내려가도 음수 가격은 찍지 않는다 (주가에 음수는 없다)
-      priceFormatter: function (p) { return p < 0 ? '' : Math.round(p).toLocaleString('ko-KR'); }
-    }
+    // 여백 때문에 축이 0 아래로 내려가도 음수 가격은 찍지 않는다 (주가에 음수는 없다).
+    // 가격 형식을 따로 받으면(코인) 전역 대신 가격 시리즈에만 건다 — 전역 포매터는 거래량 칸에도 걸려
+    // 거래량이 소수 여섯 자리로 찍힌다.
+    localization: opts.fmt
+      ? { locale: 'ko-KR' }
+      : { locale: 'ko-KR', priceFormatter: function (p) { return p < 0 ? '' : fmtPrice(p); } }
   });
+  var priceFormat = opts.fmt
+    ? { type: 'custom', minMove: minMove, formatter: function (p) { return p < 0 ? '' : fmtPrice(p); } }
+    : { type: 'price', precision: precision, minMove: minMove };
 
   bars.forEach(function (b) { b._t = toChartTime(b.t, tf); });
 
@@ -625,19 +669,19 @@ async function renderChart(container, bars, tf, mode) {
     mainSeries = chart.addAreaSeries({
       lineColor: lineColor, lineWidth: 2,
       topColor: lineColor + '44', bottomColor: lineColor + '05',
-      priceLineVisible: true, priceFormat: { type: 'price', precision: 0, minMove: 1 }
+      priceLineVisible: true, priceFormat: priceFormat
     });
     mainSeries.setData(bars.map(function (b) { return { time: b._t, value: b.c }; }));
 
     // 최고·최저 지점 표시 (토스 차용)는 아래 hiloOverlay 가 직접 그린다.
     // 라이브러리 마커는 글자를 봉 중앙에 고정해서, 첫 봉·마지막 봉에 걸리면 차트 밖으로 잘린다.
-    hiloOverlay = makeHiLoOverlay(container, chart, mainSeries, up, down);
+    hiloOverlay = makeHiLoOverlay(container, chart, mainSeries, up, down, fmtPrice);
     hiloOverlay.setBars(bars);
   } else {
     mainSeries = chart.addCandlestickSeries({
       upColor: up, downColor: down, borderUpColor: up, borderDownColor: down,
       wickUpColor: up, wickDownColor: down,
-      priceFormat: { type: 'price', precision: 0, minMove: 1 }
+      priceFormat: priceFormat
     });
     mainSeries.setData(bars.map(function (b) {
       return { time: b._t, open: b.o, high: b.h, low: b.l, close: b.c };

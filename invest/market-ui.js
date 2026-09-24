@@ -21,15 +21,21 @@ var _backToHome = false;         // "← 시세" 로 닫는 중 (다른 탭에�
 // 뒤로 가기 때 브라우저가 스크롤을 제멋대로 옮기지 않게 한다 — 시세 홈 위치는 직접 되돌린다
 try { if ('scrollRestoration' in history) history.scrollRestoration = 'manual'; } catch (e) {}
 
+/** 종목 또는 코인 상세를 보는 중인가 (시세 홈이 가려져 있는가) */
+function detailOpen() {
+  return !!curStock || !!(window.Coin && Coin.current());
+}
+
 /* ===== 시세 탭 진입 ===== */
 async function enterMarketTab() {
   // 종목 상세 보는 중이면 화면은 유지하되, 탭을 떠날 때 멈춘 폴링은 다시 돌린다
   if (curStock) { startStockPolling(); return; }
+  if (window.Coin && Coin.current()) { Coin.startPolling(); return; }
   document.getElementById('stockDetail').style.display = 'none';
   document.getElementById('marketHome').style.display = '';
 
   await initMarketHome();
-  if (curStock || currentTab !== 'market') return;   // 기다리는 사이 화면이 바뀌었으면 중단
+  if (detailOpen() || currentTab !== 'market') return;   // 기다리는 사이 화면이 바뀌었으면 중단
   startHomePolling();
 }
 
@@ -61,6 +67,8 @@ function startHomePolling() {
   Poller.add('crowdTop', loadCrowdTop, 300000);
   // 관심종목·랭킹·테마·회원 픽 종목의 가격은 한 번의 /api/quotes 로 함께 받는다 (관심종목이 비어 있어도 1회는 그린다)
   Poller.add('quotes', refreshListQuotes, pollMs(5000, 120000));
+  // 코인은 24시간 — 장 시간과 무관하게 5초 (전체 목록을 펼쳤을 때는 10초)
+  if (window.Coin) Poller.add('coins', Coin.loadList, Coin.pollMs);
 }
 
 /* ===== 지수 스트립 ===== */
@@ -68,17 +76,20 @@ function startHomePolling() {
 // 뒤쪽 셋은 CME 해외 지수선물 — 국내 장중에도 돌아가서 "지금 미국이 어디로 가는지"를 보여준다
 var INDEX_KEYS = [
   'kospi', 'kosdaq', 'kpi200', 'fut', 'kq150',
-  'usd', 'nasdaq', 'sp500', 'dow', 'vix', 'sox', 'gold', 'oil', 'us10y', 'kr10y', 'kr3y'
+  'usd', 'nasdaq', 'sp500', 'dow', 'vix', 'sox', 'gold', 'oil', 'us10y', 'kr10y', 'kr3y',
+  'btc', 'eth'
 ];
 // 국내 지수가 아닌 것들 — 스트립에서 선 하나로 갈라 놓는다 (분봉이 없어 스파크라인도 없다)
 var FUT_KEYS = {
   usd: 1, nasdaq: 1, sp500: 1, dow: 1, vix: 1, sox: 1,
-  gold: 1, oil: 1, us10y: 1, kr10y: 1, kr3y: 1
+  gold: 1, oil: 1, us10y: 1, kr10y: 1, kr3y: 1, btc: 1, eth: 1
 };
+// 누르면 코인 상세로 가는 칸 (업비트 원화 마켓)
+var COIN_CELL = { btc: 'KRW-BTC', eth: 'KRW-ETH' };
 
 // 국장이 닫힌 뒤에도 계속 움직이는 항목 (CME 선물·미국 지표).
 // 원/달러는 하나은행 고시라, 한국 국채는 국내 장이라 밤에는 멈춘다 — 여기 넣지 않는다.
-var NIGHT_LIVE = { nasdaq: 1, sp500: 1, dow: 1, vix: 1, sox: 1, gold: 1, oil: 1, us10y: 1 };
+var NIGHT_LIVE = { nasdaq: 1, sp500: 1, dow: 1, vix: 1, sox: 1, gold: 1, oil: 1, us10y: 1, btc: 1, eth: 1 };
 
 /* 항목 아이콘 — 인라인 SVG 로 그린다.
  * 네이버 로고는 국채가 전부 같은 아이콘이고 금·유가·환율·국내지수는 아예 없어서 쓸 수 없다.
@@ -93,14 +104,18 @@ var IX_ICON = {
     + '<rect width="7" height="6.28" fill="#3c3b6e"/>',
   gold: '<rect x="1" y="3.2" width="14" height="5.6" rx="1" fill="#d9a441"/>'
     + '<rect x="1" y="3.2" width="14" height="2" rx="1" fill="#f0c978"/>',
-  oil: '<path d="M8 1.4c2.2 2.7 3.4 4.4 3.4 5.8A3.4 3.4 0 0 1 8 10.6 3.4 3.4 0 0 1 4.6 7.2c0-1.4 1.2-3.1 3.4-5.8z" fill="#4a8fd4"/>'
+  oil: '<path d="M8 1.4c2.2 2.7 3.4 4.4 3.4 5.8A3.4 3.4 0 0 1 8 10.6 3.4 3.4 0 0 1 4.6 7.2c0-1.4 1.2-3.1 3.4-5.8z" fill="#4a8fd4"/>',
+  btc: '<circle cx="8" cy="5.5" r="5.2" fill="#f7931a"/>'
+    + '<text x="8" y="8.1" text-anchor="middle" font-size="7.2" font-weight="800" fill="#fff" font-family="Arial,sans-serif">B</text>',
+  eth: '<circle cx="8" cy="5.5" r="5.2" fill="#627eea"/>'
+    + '<path d="M8 1.9 5.6 5.7 8 7.1l2.4-1.4zM5.6 6.2 8 9.2l2.4-3L8 7.6z" fill="#fff"/>'
 };
 
 // 어느 나라·무엇인지
 var IX_ICON_OF = {
   kospi: 'kr', kosdaq: 'kr', kpi200: 'kr', fut: 'kr', kq150: 'kr', kr10y: 'kr', kr3y: 'kr',
   usd: 'us', nasdaq: 'us', sp500: 'us', dow: 'us', vix: 'us', sox: 'us', us10y: 'us',
-  gold: 'gold', oil: 'oil'
+  gold: 'gold', oil: 'oil', btc: 'btc', eth: 'eth'
 };
 
 function indexIconHtml(key) {
@@ -116,7 +131,7 @@ function watchingNightLive() {
 }
 
 // 열 개를 다 켜면 가로로 너무 길다 — 처음엔 다섯 개만 보이고, 회원이 체크리스트로 고른다
-var INDEX_DEFAULT = ['kospi', 'kosdaq', 'fut', 'usd', 'nasdaq', 'sp500'];
+var INDEX_DEFAULT = ['kospi', 'kosdaq', 'fut', 'usd', 'nasdaq', 'sp500', 'btc'];
 var INDEX_PICK_KEY = 'dt-invest-index-pick';
 var _indexPick = null;
 var _indexSpark = null;      // key -> 당일 분봉 종가 배열
@@ -177,7 +192,8 @@ var INDEX_LABEL = {
   kospi: '코스피', kosdaq: '코스닥', kpi200: '코스피 200', fut: '코스피 200 선물', kq150: '코스닥 150',
   usd: '원/달러 환율', nasdaq: '나스닥 선물', sp500: 'S&P 선물', dow: '다우 선물',
   vix: 'VIX (공포지수)', sox: '필라델피아 반도체', gold: '금', oil: 'WTI 유가',
-  us10y: '미국 국채 10년', kr10y: '한국 국채 10년', kr3y: '한국 국채 3년'
+  us10y: '미국 국채 10년', kr10y: '한국 국채 10년', kr3y: '한국 국채 3년',
+  btc: '비트코인', eth: '이더리움'
 };
 
 async function loadIndex() {
@@ -198,7 +214,9 @@ async function loadIndex() {
         if (!x) return '';
         // 국내 지수와 해외 선물 사이에 선을 하나 둬서 다른 묶음임을 보인다
         var first = FUT_KEYS[k] && !FUT_KEYS[have[have.indexOf(k) - 1]];
-        return '<div class="idx-cell' + (FUT_KEYS[k] ? ' fut' : '') + (first ? ' fut-first' : '') + '">'
+        var coinM = COIN_CELL[k];
+        return '<div class="idx-cell' + (FUT_KEYS[k] ? ' fut' : '') + (first ? ' fut-first' : '') + (coinM ? ' coin' : '') + '"'
+          + (coinM ? ' role="button" tabindex="0" onclick="Coin.open(\'' + coinM + '\',\'' + escapeJsArg(INDEX_LABEL[k]) + '\')"' : '') + '>'
           + '<div class="idx-name">' + indexIconHtml(k) + escapeHtml(INDEX_NAME[k] || x.name)
           +   (x.delayMin ? '<span class="idx-delay">' + x.delayMin + '분 지연</span>' : '')
           + '</div>'
@@ -273,7 +291,7 @@ function paintIndexSparks(have, d) {
       _indexSpark = r.series || {};
       _indexSparkAt = Date.now();
       _indexSparkLoading = false;
-      if (currentTab === 'market' && !curStock) paintIndexSparks(have, d);
+      if (currentTab === 'market' && !detailOpen()) paintIndexSparks(have, d);
     }).catch(function () {
       _indexSparkLoading = false;      // 다음 폴링에서 다시 — 선 없이 숫자만 보인다
     });
@@ -312,8 +330,10 @@ async function doSearch(q) {
   var paint = function (d) {
     if (seq !== _searchSeq) return;
     var items = (d.items || []).filter(function (i) { return isStockCode(i.code); });
-    if (!items.length) { box.innerHTML = '<div class="sr-empty">검색 결과가 없습니다</div>'; return; }
-    box.innerHTML = items.map(function (i) {
+    // 코인(업비트 원화 마켓)은 이름·심볼·초성으로 화면에서 찾아 맨 위에 붙인다
+    var coinHtml = window.Coin ? Coin.searchHtml(q) : '';
+    if (!items.length && !coinHtml) { box.innerHTML = '<div class="sr-empty">검색 결과가 없습니다</div>'; return; }
+    box.innerHTML = coinHtml + items.map(function (i) {
       return '<button class="sr-item" role="option" onclick="openStock(\'' + i.code + '\',\'' + escapeJsArg(i.name) + '\')">'
         + stockLogoHtml(i.code, i.name, null, 'sm')
         + '<span class="sr-name">' + escapeHtml(i.name) + '</span>'
@@ -766,7 +786,7 @@ async function onFavToggle(code) {
     var on = await toggleWatch(code);
     syncFavButtons(code, on);
     // 시세 홈에 있을 때만 다시 칠한다. 폴러는 다시 만들지 않는다 — 5개를 한꺼번에 즉시 재실행하게 된다
-    if (!curStock && currentTab === 'market') {
+    if (!detailOpen() && currentTab === 'market') {
       paintWatch();                           // 뺀 종목은 바로 사라진다
       if (on && !freshQuote(code)) refreshListQuotes();    // 새로 담은 종목은 시세를 받아야 그릴 수 있다
     }
@@ -789,7 +809,7 @@ async function openStock(code, name, opts) {
   var nameKnown = !!name;
   name = String(name || code);
   // 시세 홈에서 들어가면 스크롤 위치를 기억해 둔다 — 돌아올 때 그 자리로
-  if (!curStock) {
+  if (!detailOpen()) {
     _detailFrom = currentTab;
     if (currentTab === 'market') _homeScrollY = window.pageYOffset || 0;
   }
@@ -809,6 +829,7 @@ async function openStock(code, name, opts) {
   _dayBars = null;
   _lastQuote = null;
 
+  if (window.Coin) Coin.reset();              // 코인 상세에서 넘어왔으면 그쪽 폴러·차트를 정리한다
   Poller.stopAll();
   if (chartHandle) { chartHandle.dispose(); chartHandle = null; }
 
@@ -847,6 +868,7 @@ function stockUrl(code) {
   if (code) u.searchParams.set('code', code);
   else u.searchParams.delete('code');
   u.searchParams.delete('briefing');
+  u.searchParams.delete('coin');
   return u.pathname + u.search + u.hash;
 }
 
@@ -865,18 +887,24 @@ function setStockUrl(code, name, replace) {
 window.addEventListener('popstate', function (e) {
   if (typeof isMember === 'undefined' || !isMember) return;
   var st = e.state || {};
-  var code = st.dtStock || new URLSearchParams(location.search).get('code');
+  var sp = new URLSearchParams(location.search);
+  var code = st.dtStock || sp.get('code');
+  var coin = st.dtCoin || sp.get('coin');
+  var isCoin = !!(window.Coin && Coin.isMarket(coin));
   if (_backToHome) {
     // "← 시세" 로 돌아왔는데 앞 기록도 종목이면(상세에서 다른 종목으로 건너간 경우) 그 기록을 홈으로 바꿔 쓴다
     _backToHome = false;
-    if (isStockCode(code)) { try { history.replaceState(null, '', stockUrl(null)); } catch (x) {} }
+    if (isStockCode(code) || isCoin) { try { history.replaceState(null, '', stockUrl(null)); } catch (x) {} }
     closeDetail(true);
     return;
   }
   if (isStockCode(code)) {
     if (!curStock || curStock.code !== code) openStock(code, st.dtName || '', { fromPop: true });
     else if (currentTab !== 'market') switchTab('market');
-  } else if (curStock) {
+  } else if (isCoin) {
+    if (Coin.current() !== coin) Coin.open(coin, st.dtName || '', { fromPop: true });
+    else if (currentTab !== 'market') switchTab('market');
+  } else if (detailOpen()) {
     closeDetail(false);
   }
 });
@@ -923,6 +951,7 @@ function closeDetail(toHome) {
   var from = _detailFrom;
   _detailFrom = null;
   curStock = null;
+  if (window.Coin) Coin.reset();
   Poller.remove('quote'); Poller.remove('bars'); Poller.remove('book'); Poller.remove('crowd');
   if (chartHandle) { chartHandle.dispose(); chartHandle = null; }
   var tb = document.getElementById('mkTradeBar');
@@ -938,7 +967,7 @@ function closeDetail(toHome) {
   Poller.stopAll();
   window.scrollTo(0, _homeScrollY || 0);
   initMarketHome().then(function () {
-    if (curStock || currentTab !== 'market') return;
+    if (detailOpen() || currentTab !== 'market') return;
     renderRecent();
     startHomePolling();
   });
@@ -1192,6 +1221,7 @@ var _chartBars = null;      // 마지막으로 그린 봉 — 테마 전환 시 
  * 배경·격자·글자뿐 아니라 상승/하락 색도 테마마다 달라서 옵션만 바꾸지 않고 통째로 다시 그린다.
  */
 async function onThemeChanged() {
+  if (window.Coin) Coin.onThemeChanged();
   if (!curStock || !chartHandle || !_chartBars) return;
   var box = document.getElementById('chartBox');
   if (!box) return;
@@ -1579,7 +1609,7 @@ async function loadCrowdTop() {
     el.dataset.key = key;
   }
   // 받아 둔 시세가 없는 종목만 바로 받는다 — 나머지는 'quotes' 폴러가 같은 주기로 갱신한다
-  if (!curStock && _crowdCodes.some(function (c) { return !freshQuote(c); })) refreshListQuotes();
+  if (!detailOpen() && _crowdCodes.some(function (c) { return !freshQuote(c); })) refreshListQuotes();
 }
 
 /* ===== 투자자별 매매동향 ===== */

@@ -1032,3 +1032,54 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 @media (max-width: 420px) {
   .cw-count { min-width: 34px; font-size: .72rem; }
 }
+
+/* ── 코인 (업비트 원화 마켓) ── */
+.cn-badge {
+  display: inline-block; margin-left: 5px; padding: 0 4px; vertical-align: 1px;
+  font-size: .6rem; font-weight: 800; line-height: 1.5; border: 1px solid currentColor;
+}
+.cn-badge.warn { color: var(--stock-up); }
+.cn-badge.caution { color: #f59e0b; }
+.cn-more {
+  display: block; width: 100%; padding: 10px; cursor: pointer;
+  background: var(--bg2); border: 1px solid var(--border); border-top: none;
+  color: var(--text2); font-size: .8rem; font-weight: 700;
+}
+.cn-more:hover { color: var(--text); background: var(--bg3); }
+.cn-empty-sub { font-size: .76rem; }
+.cn-alert {
+  margin: 8px 0 4px; padding: 8px 11px; font-size: .78rem; line-height: 1.55; color: var(--text2);
+  background: rgba(245,158,11,.1); border-left: 3px solid #f59e0b;
+}
+.cn-chart-note { margin-top: 6px; font-size: .68rem; color: var(--text3); text-align: right; }
+.cn-tf { flex-wrap: wrap; }
+.cn-tf .tf-btn { flex: 1 0 12%; }
+.idx-cell.coin { cursor: pointer; }
+.idx-cell.coin:hover .idx-name { color: var(--text2); }
+
+/* 호가 — 코인 가격은 자릿수가 커서 가격 칸을 넓히고 등락률을 아래에 붙인다 */
+#cxBook .bk-head, #cxBook .bk-row { grid-template-columns: 1fr 118px 1fr; }
+#cxBook .bk-price { font-variant-numeric: tabular-nums; line-height: 1.25; }
+#cxBook .bk-price.up { color: var(--stock-up); }
+#cxBook .bk-price.down { color: var(--stock-down); }
+#cxBook .bk-price em { display: block; font-style: normal; font-size: .62rem; font-weight: 600; opacity: .85; }
+#cxBook .bk-price.cn-now { outline: 2px solid var(--text); outline-offset: -2px; }
+#cxBook .bk-qty b { font-variant-numeric: tabular-nums; }
+
+/* 체결 */
+.cn-tr-head, .cn-tr-row {
+  display: grid; grid-template-columns: 72px 1fr 1fr 64px; gap: 6px; align-items: center;
+  padding: 6px 10px; font-variant-numeric: tabular-nums;
+}
+.cn-tr-head {
+  background: var(--bg3); border: 1px solid var(--border);
+  font-size: .68rem; color: var(--text3); font-weight: 700;
+}
+.cn-tr-head span:not(:first-child), .cn-tr-row span:not(:first-child) { text-align: right; }
+.cn-tr-row {
+  background: var(--bg2); border: 1px solid var(--border); border-top: none;
+  font-size: .78rem; font-weight: 700;
+}
+.cn-tr-time { color: var(--text3); font-weight: 600; font-size: .72rem; }
+.cn-tr-amt { color: var(--text2); font-size: .72rem; }
+#cxTrades .bk-note { border: 1px solid var(--border); border-top: none; background: var(--bg2); }

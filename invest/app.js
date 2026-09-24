@@ -81,15 +81,16 @@ function showMain() {
 // 함수로 둔다 — Firebase 초기화가 실패하면 이 줄이 실행되기 전에 showGate 가 불린다
 function deepLinkKey() { return 'dt-invest-deeplink'; }
 
-function parseDeepLink(code, bid) {
+function parseDeepLink(code, bid, coin) {
   if (code && /^[0-9A-Z]{6}$/.test(code)) return { code: code };
+  if (coin && /^KRW-[A-Z0-9]{1,15}$/.test(coin)) return { coin: coin };
   if (bid && isDocId(bid)) return { briefing: bid };
   return null;
 }
 
 function readDeepLink() {
   var p = new URLSearchParams(location.search);
-  return parseDeepLink(p.get('code'), p.get('briefing'));
+  return parseDeepLink(p.get('code'), p.get('briefing'), p.get('coin'));
 }
 
 function rememberDeepLink() {
@@ -107,7 +108,7 @@ function takeDeepLink() {
   var link = readDeepLink();
   if (link) return link;
   if (saved && saved.link && Date.now() - (saved.at || 0) < 3600000) {
-    return parseDeepLink(saved.link.code, saved.link.briefing);
+    return parseDeepLink(saved.link.code, saved.link.briefing, saved.link.coin);
   }
   return null;
 }
@@ -116,6 +117,7 @@ function applyDeepLink() {
   var link = takeDeepLink();
   if (!link) return;
   if (link.code && typeof openStock === 'function') openStock(link.code, '', { replace: true });
+  else if (link.coin && window.Coin) Coin.open(link.coin, '', { replace: true });
   else if (link.briefing) openBriefing(link.briefing);
 }
 
