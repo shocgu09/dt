@@ -193,6 +193,8 @@ body {
   background: var(--bg2); border: 1px solid var(--border); padding: 16px 18px; margin-bottom: 14px;
 }
 .admin-section h3 { font-size: .94rem; font-weight: 800; margin-bottom: 12px; }
+/* 모의투자 관리(시즌·휴장일·권리 변동) 묶음 — 마지막 칸이 아래 브리핑 작성 칸에 붙지 않게 */
+#mkAdminMount > :last-child { margin-bottom: 14px; }
 .form-grid { display: flex; flex-direction: column; gap: 9px; }
 .form-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .form-row > * { flex: 1; min-width: 120px; }
