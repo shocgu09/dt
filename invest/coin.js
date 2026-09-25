@@ -210,10 +210,12 @@ var Coin = (function () {
   function listFootHtml(d, sort) {
     var more = '';
     if (sort !== 'fav' && d.total > LIST_LIMIT) {
-      more = '<button class="cn-more" onclick="Coin.toggleAll()">'
-        + (listAll ? '접기' : '전체 ' + d.total + '개 보기') + '</button>';
+      more = '<button class="cn-more" onclick="Coin.toggleAll()" aria-expanded="' + listAll + '">'
+        + (listAll ? '접기<span class="cn-more-ico" aria-hidden="true">▲</span>'
+                   : '전체 ' + d.total + '개 보기<span class="cn-more-ico" aria-hidden="true">▼</span>')
+        + '</button>';
     }
-    return more + '<div class="rank-note">업비트 원화 마켓 · 등락률은 오늘 오전 9시 대비 · 거래대금은 최근 24시간</div>';
+    return '<div class="rank-note">업비트 원화 마켓 · 등락률은 오늘 오전 9시 대비 · 거래대금은 최근 24시간</div>' + more;
   }
 
   function paintRows(items) {
