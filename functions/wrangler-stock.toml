@@ -16,7 +16,8 @@ AI_WORKER_URL = "https://dt-1js.pages.dev"
 binding = "STOCK_KV"
 id = "4a2b6f90383f4e46b7a2808599a2c892"
 
-# 시세 소스에 API 키가 필요 없으므로 secret 없음
+# Secrets: KIS_APP_KEY·KIS_APP_SECRET(한국투자증권 Open API — 야간선물), REVIEW_SECRET
+# 등록: pbpaste | tr -d "[:space:]" | npx wrangler secret put KIS_APP_KEY --config functions/wrangler-stock.toml
 
 # 모의투자 장부 (D1) — 이 워커만 접근한다
 # 스키마 적용: npx wrangler d1 execute dt-mock --remote --file mock/schema.sql --config wrangler-stock.toml

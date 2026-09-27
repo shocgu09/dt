@@ -1,10 +1,11 @@
 // DT 재테크 시세 Worker
-// 네이버 증권(무인증)을 프록시 + KV 캐시. 전부 표준 443이라 fetch()로 충분하다.
-// Secrets: FIREBASE_PROJECT_ID(vars), 없음(시세 소스에 키 불필요)
+// 네이버 증권(무인증)을 프록시 + KV 캐시. 야간선물만 한국투자증권 KIS Open API(9443 포트)를 쓴다.
+// Secrets: KIS_APP_KEY·KIS_APP_SECRET(코스피200 야간선물, providers/kis.js), REVIEW_SECRET
 // KV: STOCK_KV
 
 import { naver, daum, yahoo } from './providers/naver.js';
 import { upbit, isCoinMarket } from './providers/upbit.js';
+import { kis, frontMonthCode } from './providers/kis.js';
 import { verifyIdToken, bearerToken } from './lib/verify-id-token.js';
 import { profileOf } from './lib/profile.js';
 import { handleMock, mockErrorResponse, runCron } from './mock/api.js';
@@ -146,6 +147,34 @@ export default {
         probes: results,
         ts: new Date().toISOString()
       }, primaryOk ? 200 : 503);
+    }
+
+    // TEMP KIS 야간선물 관측 — 롤오버 시점 확인용. 확인 후 삭제 (KIS_PROBE_KEY 헤더가 있어야 열린다)
+    if (path === '/api/_kisprobe') {
+      if (!env.KIS_PROBE_KEY || request.headers.get('x-probe-key') !== env.KIS_PROBE_KEY) return json({ error: 'Not Found' }, 404);
+      const code = q.get('c') || frontMonthCode();
+      const st = kstStamp();
+      const out = { at: st.full, code };
+      const pick = (o, ks) => Object.fromEntries(ks.map((k) => [k, o[k]]));
+      const PK = ['futs_prpr', 'futs_prdy_vrss', 'futs_prdy_ctrt', 'futs_prdy_clpr', 'acml_vol', 'prdy_vol',
+        'futs_oprc', 'futs_hgpr', 'futs_lwpr', 'futs_prdy_oprc', 'futs_prdy_hgpr', 'futs_prdy_lwpr', 'futs_sdpr', 'hts_thpr', 'kospi200_nmix'];
+      const wait = () => new Promise((r) => setTimeout(r, 1100));
+      const steps = [
+        ['F_price', () => kis.futuresRaw(env, 'F', code).then((j) => pick(j.output1 || {}, PK))],
+        ['CM_price', () => kis.futuresRaw(env, 'CM', code).then((j) => pick(j.output1 || {}, PK))]
+      ];
+      for (const m of ['F', 'CM']) for (const pw of ['N', 'Y']) {
+        steps.push([`${m}_chart${pw}`, () => kis.rawGet(env, '/uapi/domestic-futureoption/v1/quotations/inquire-time-fuopchartprice', 'FHKIF03020200', {
+          FID_COND_MRKT_DIV_CODE: m, FID_INPUT_ISCD: code, FID_HOUR_CLS_CODE: '60', FID_PW_DATA_INCU_YN: pw, FID_FAKE_TICK_INCU_YN: 'N',
+          FID_INPUT_DATE_1: st.ymd, FID_INPUT_HOUR_1: '300000' }).then((j) => ({
+            n: (j.output2 || []).length,
+            head: (j.output2 || []).slice(0, 3).map((b) => [b.stck_bsop_date, b.stck_cntg_hour, b.futs_prpr, b.cntg_vol]) })) ]);
+      }
+      for (const [k, fn] of steps) {
+        try { out[k] = await fn(); } catch (e) { out[k] = { error: String(e.message).slice(0, 160) }; }
+        await wait();
+      }
+      return json(out);
     }
 
     // 회원 전용 게이트 — health 제외한 모든 엔드포인트
