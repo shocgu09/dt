@@ -789,6 +789,9 @@ var Mock = (function () {
       document.body.classList.add('mk-noscroll');
     }
     var isBuy = s.side === 'buy';
+    // 보유가 없으면 매도 탭을 막는다 — 종목 상세 하단 바의 매도 버튼과 같은 기준
+    // (매도 중에 전량 체결돼 보유가 0이 된 경우는 지금 보고 있는 탭이라 그대로 둔다)
+    var noHolding = !holding(s.code);
     var limitOnly = phaseInfo().limitOnly;
     if (limitOnly) s.type = 'limit';            // 시간외에는 실전과 같이 지정가만
     el.innerHTML = '<div class="mk-sheet-dim" onclick="Mock.closeSheet()"></div>'
@@ -797,7 +800,7 @@ var Mock = (function () {
       +   '<button class="mini-btn" onclick="Mock.closeSheet()" aria-label="닫기">✕</button></div>'
       + '<div class="seg-row mk-seg2" role="group" aria-label="매매 구분">'
       +   '<button class="seg' + (isBuy ? ' on buy' : '') + '" aria-pressed="' + isBuy + '" onclick="Mock.setSheet(\'side\',\'buy\')">매수</button>'
-      +   '<button class="seg' + (!isBuy ? ' on sell' : '') + '" aria-pressed="' + !isBuy + '" onclick="Mock.setSheet(\'side\',\'sell\')">매도</button>'
+      +   '<button class="seg' + (!isBuy ? ' on sell' : '') + '" aria-pressed="' + !isBuy + '" onclick="Mock.setSheet(\'side\',\'sell\')"' + (isBuy && noHolding ? ' disabled title="보유한 주식이 없습니다"' : '') + '>매도</button>'
       + '</div>'
       + '<div class="seg-row sub mk-seg2" role="group" aria-label="주문 종류">'
       +   '<button class="seg' + (s.type === 'limit' ? ' on' : '') + '" aria-pressed="' + (s.type === 'limit') + '" onclick="Mock.setSheet(\'type\',\'limit\')">지정가</button>'
@@ -839,6 +842,7 @@ var Mock = (function () {
 
   function setSheet(key, val) {
     if (!sheet || sheet.busy) return;
+    if (key === 'side' && val === 'sell' && sheet.side !== 'sell' && !holding(sheet.code)) return;
     sheet[key] = val;
     if (key === 'side') sheet.qty = '';
     renderSheet();
