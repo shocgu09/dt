@@ -5,7 +5,7 @@
 
 import { naver, daum, yahoo } from './providers/naver.js';
 import { upbit, isCoinMarket } from './providers/upbit.js';
-import { kis, frontMonthCode } from './providers/kis.js';
+import { kis } from './providers/kis.js';
 import { verifyIdToken, bearerToken } from './lib/verify-id-token.js';
 import { profileOf } from './lib/profile.js';
 import { handleMock, mockErrorResponse, runCron } from './mock/api.js';
@@ -110,7 +110,7 @@ function kstStamp(d = new Date()) {
 
 // ── 라우팅 ────────────────────────────────────────────────────
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
 
     const url = new URL(request.url);
@@ -122,7 +122,7 @@ export default {
       // 값은 싣지 않고 성공/지연/에러만 보고 — 무인증 엔드포인트이므로.
       const probe = async (name, fn) => {
         const t0 = Date.now();
-        try { await fn(); return [name, { ok: true, ms: Date.now() - t0 }]; }
+        try { const v = await fn(); return [name, { ok: true, ms: Date.now() - t0, ...(typeof v === 'string' ? { state: v } : {}) }]; }
         catch (e) { return [name, { ok: false, ms: Date.now() - t0, error: String((e && e.message) || e).slice(0, 120) }]; }
       };
       // 결과를 60초 공유한다 — 무인증이라 누가 반복 호출해도 외부 호출은 분당 5건을 넘지 않는다
@@ -134,7 +134,14 @@ export default {
           probe('daum.quote',  () => daum.getQuote('005930')),
           probe('yahoo.quote', () => yahoo.getQuote('005930', 'KOSPI')),
           // ETF 목록은 EUC-KR 디코딩이 필요하다 — 런타임에서 되는지 여기서 확인된다
-          probe('naver.etfList', async () => { const l = await naver.getEtfList(); if (l.length < 500) throw new Error('etf list too short: ' + l.length); })
+          probe('naver.etfList', async () => { const l = await naver.getEtfList(); if (l.length < 500) throw new Error('etf list too short: ' + l.length); }),
+          // KIS 야간선물 — 값 대신 상태(pre/live/closed)만 싣는다. 지수 칸과 같은 캐시를 쓴다
+          probe('kis.night', async () => {
+            if (!kis.enabled(env)) throw new Error('no key');
+            const r = await nightFutCell(env);
+            if (!r.nightfut) throw new Error(lastNightErr || 'unavailable');
+            return r.nightfut.state;
+          })
         ]))
       }));
       const primaryOk = results['naver.quote'].ok && results['naver.book'].ok;
@@ -147,34 +154,6 @@ export default {
         probes: results,
         ts: new Date().toISOString()
       }, primaryOk ? 200 : 503);
-    }
-
-    // TEMP KIS 야간선물 관측 — 롤오버 시점 확인용. 확인 후 삭제 (KIS_PROBE_KEY 헤더가 있어야 열린다)
-    if (path === '/api/_kisprobe') {
-      if (!env.KIS_PROBE_KEY || request.headers.get('x-probe-key') !== env.KIS_PROBE_KEY) return json({ error: 'Not Found' }, 404);
-      const code = q.get('c') || frontMonthCode();
-      const st = kstStamp();
-      const out = { at: st.full, code };
-      const pick = (o, ks) => Object.fromEntries(ks.map((k) => [k, o[k]]));
-      const PK = ['futs_prpr', 'futs_prdy_vrss', 'futs_prdy_ctrt', 'futs_prdy_clpr', 'acml_vol', 'prdy_vol',
-        'futs_oprc', 'futs_hgpr', 'futs_lwpr', 'futs_prdy_oprc', 'futs_prdy_hgpr', 'futs_prdy_lwpr', 'futs_sdpr', 'hts_thpr', 'kospi200_nmix'];
-      const wait = () => new Promise((r) => setTimeout(r, 1100));
-      const steps = [
-        ['F_price', () => kis.futuresRaw(env, 'F', code).then((j) => pick(j.output1 || {}, PK))],
-        ['CM_price', () => kis.futuresRaw(env, 'CM', code).then((j) => pick(j.output1 || {}, PK))]
-      ];
-      for (const m of ['F', 'CM']) for (const pw of ['N', 'Y']) {
-        steps.push([`${m}_chart${pw}`, () => kis.rawGet(env, '/uapi/domestic-futureoption/v1/quotations/inquire-time-fuopchartprice', 'FHKIF03020200', {
-          FID_COND_MRKT_DIV_CODE: m, FID_INPUT_ISCD: code, FID_HOUR_CLS_CODE: '60', FID_PW_DATA_INCU_YN: pw, FID_FAKE_TICK_INCU_YN: 'N',
-          FID_INPUT_DATE_1: st.ymd, FID_INPUT_HOUR_1: '300000' }).then((j) => ({
-            n: (j.output2 || []).length,
-            head: (j.output2 || []).slice(0, 3).map((b) => [b.stck_bsop_date, b.stck_cntg_hour, b.futs_prpr, b.cntg_vol]) })) ]);
-      }
-      for (const [k, fn] of steps) {
-        try { out[k] = await fn(); } catch (e) { out[k] = { error: String(e.message).slice(0, 160) }; }
-        await wait();
-      }
-      return json(out);
     }
 
     // 회원 전용 게이트 — health 제외한 모든 엔드포인트
@@ -201,7 +180,7 @@ export default {
       if (path === '/api/quotes') return json(await handleQuotes(env, q.get('codes')));
       if (path === '/api/book')   return json(await handleBook(env, q.get('code')));
       if (path === '/api/ohlc')   return json(await handleOhlc(env, q.get('code'), q.get('tf') || 'D'));
-      if (path === '/api/index')  return json(await handleIndex(env));
+      if (path === '/api/index')  return json(await handleIndex(env, ctx));
       if (path === '/api/indexspark') return json(await handleIndexSpark(env));
       if (path === '/api/search') return json(await handleSearch(env, q.get('q')));
       if (path === '/api/rank')    return json(await handleRank(env, q.get('type'), q.get('market')));
@@ -289,7 +268,7 @@ async function handleOhlc(env, code, tf) {
   }));
 }
 
-async function handleIndex(env) {
+async function handleIndex(env, ctx) {
   return memo('idx', TTL.index, async () => {
     // 휴장일 목록을 함께 내려보낸다 — 화면이 같은 목록을 쓰게 해서 출처를 하나로 둔다.
     // (예전에는 invest/market.js 에 같은 목록을 복붙해 뒀다)
@@ -299,20 +278,52 @@ async function handleIndex(env) {
     // 휴장일에는 CLOSE 가 와서 시계만 보고 "실시간"이라 표시하던 문제도 없어진다.
     // 해외 지수선물은 국내 장중에도 돌아간다 — 지수 스트립에 같이 실어 보낸다.
     // 선물이 죽어도 국내 지수는 그려야 하므로 실패는 삼킨다.
-    const [idx, ref, fut, extra, coins] = await Promise.all([
+    const [idx, ref, fut, extra, coins, night] = await Promise.all([
       naver.getIndex(),
       naver.getQuote('005930').catch(() => null),
       naver.getWorldFutures().catch(() => ({})),
       naver.getMarketExtras().catch(() => ({})),
-      coinIndexCells().catch(() => ({}))
+      coinIndexCells().catch(() => ({})),
+      nightFutCell(env, ctx)
     ]);
     return {
-      ...idx, ...fut, ...extra, ...coins,
+      ...idx, ...fut, ...extra, ...coins, ...night,
       holidays,
       marketStatus: ref ? ref.marketStatus : null,
       sessionType: ref ? ref.sessionType : null
     };
   });
+}
+
+/* 코스피200 야간선물 칸 (KIS). 지수 캐시(15초)와 따로 둔다 — KIS 는 초당 호출 한도가 낮아 두 번 부르는 데 2~3초 걸린다.
+ * 그래서 지수 응답을 기다리게 하지 않는다: 갖고 있는 값을 바로 싣고 새 값은 뒤에서 받는다(10분 넘게 묵은 값만 기다린다).
+ * 야간장 중(18:00~06:00)에는 30초, 그 밖에는 5분마다 새로 받는다. 실패하면 마지막 성공값을 쓰고 30초 뒤 다시 시도한다. */
+let lastNight = null;
+let nightAt = 0;
+let nightBusy = null;
+let lastNightErr = '';
+async function nightFutCell(env, ctx) {
+  if (!kis.enabled(env)) return {};
+  const h = new Date(Date.now() + 9 * 3600 * 1000).getUTCHours();
+  const ttl = (h >= 18 || h < 6 ? 30 : 300) * 1000;
+  const age = Date.now() - nightAt;
+  if (lastNight && age < ttl) return { nightfut: lastNight };
+  if (!nightBusy) {
+    nightBusy = kis.nightCell(env)
+      .then((c) => { lastNight = c; nightAt = Date.now(); lastNightErr = ''; })
+      .catch((e) => {
+        lastNightErr = String((e && e.message) || e).slice(0, 120);
+        console.warn('kis night failed', lastNightErr);
+        nightAt = Date.now() - ttl + 30000;
+      })
+      .finally(() => { nightBusy = null; });
+  }
+  if (lastNight && age < 600000) {
+    if (ctx && ctx.waitUntil) ctx.waitUntil(nightBusy);
+    return { nightfut: lastNight };
+  }
+  await nightBusy;
+  return lastNight ? { nightfut: lastNight } : {};
 }
 
 /**

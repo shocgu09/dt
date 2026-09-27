@@ -75,7 +75,7 @@ function startHomePolling() {
 // 표시 순서 — 워커가 내려준 것만 그린다 (구버전 캐시 응답에는 뒤의 것이 없을 수 있다)
 // 뒤쪽 셋은 CME 해외 지수선물 — 국내 장중에도 돌아가서 "지금 미국이 어디로 가는지"를 보여준다
 var INDEX_KEYS = [
-  'kospi', 'kosdaq', 'kpi200', 'fut', 'kq150',
+  'kospi', 'kosdaq', 'kpi200', 'fut', 'nightfut', 'kq150',
   'usd', 'nasdaq', 'sp500', 'dow', 'vix', 'sox', 'gold', 'oil', 'us10y', 'kr10y', 'kr3y',
   'btc', 'eth'
 ];
@@ -89,7 +89,7 @@ var COIN_CELL = { btc: 'KRW-BTC', eth: 'KRW-ETH' };
 
 // 국장이 닫힌 뒤에도 계속 움직이는 항목 (CME 선물·미국 지표).
 // 원/달러는 하나은행 고시라, 한국 국채는 국내 장이라 밤에는 멈춘다 — 여기 넣지 않는다.
-var NIGHT_LIVE = { nasdaq: 1, sp500: 1, dow: 1, vix: 1, sox: 1, gold: 1, oil: 1, us10y: 1, btc: 1, eth: 1 };
+var NIGHT_LIVE = { nightfut: 1, nasdaq: 1, sp500: 1, dow: 1, vix: 1, sox: 1, gold: 1, oil: 1, us10y: 1, btc: 1, eth: 1 };
 
 /* 항목 아이콘 — 인라인 SVG 로 그린다.
  * 네이버 로고는 국채가 전부 같은 아이콘이고 금·유가·환율·국내지수는 아예 없어서 쓸 수 없다.
@@ -113,7 +113,7 @@ var IX_ICON = {
 
 // 어느 나라·무엇인지
 var IX_ICON_OF = {
-  kospi: 'kr', kosdaq: 'kr', kpi200: 'kr', fut: 'kr', kq150: 'kr', kr10y: 'kr', kr3y: 'kr',
+  kospi: 'kr', kosdaq: 'kr', kpi200: 'kr', fut: 'kr', nightfut: 'kr', kq150: 'kr', kr10y: 'kr', kr3y: 'kr',
   usd: 'us', nasdaq: 'us', sp500: 'us', dow: 'us', vix: 'us', sox: 'us', us10y: 'us',
   gold: 'gold', oil: 'oil', btc: 'btc', eth: 'eth'
 };
@@ -131,8 +131,9 @@ function watchingNightLive() {
 }
 
 // 열 개를 다 켜면 가로로 너무 길다 — 처음엔 다섯 개만 보이고, 회원이 체크리스트로 고른다
-var INDEX_DEFAULT = ['kospi', 'kosdaq', 'fut', 'usd', 'nasdaq', 'sp500', 'btc'];
+var INDEX_DEFAULT = ['kospi', 'kosdaq', 'fut', 'nightfut', 'usd', 'nasdaq', 'sp500', 'btc'];
 var INDEX_PICK_KEY = 'dt-invest-index-pick';
+var NIGHTFUT_ADDED_KEY = 'dt-invest-index-nightfut';
 var _indexPick = null;
 var _indexSpark = null;      // key -> 당일 분봉 종가 배열
 var _indexSparkLoading = false;
@@ -148,6 +149,17 @@ function indexPick() {
     if (Array.isArray(arr)) _indexPick = arr.filter(function (k) { return INDEX_KEYS.indexOf(k) !== -1; });
   } catch (e) { /* 무시 */ }
   if (!_indexPick || !_indexPick.length) _indexPick = INDEX_DEFAULT.slice();
+  // 야간선물은 나중에 생긴 항목이다 — 이미 고른 목록이 저장된 회원에게도 한 번은 켜서 보여 준다 (끄면 그대로 둔다)
+  try {
+    if (!localStorage.getItem(NIGHTFUT_ADDED_KEY)) {
+      if (_indexPick.indexOf('nightfut') === -1) {
+        var at = _indexPick.indexOf('fut');
+        _indexPick.splice(at === -1 ? _indexPick.length : at + 1, 0, 'nightfut');
+        localStorage.setItem(INDEX_PICK_KEY, JSON.stringify(_indexPick));
+      }
+      localStorage.setItem(NIGHTFUT_ADDED_KEY, '1');
+    }
+  } catch (e) { /* 무시 */ }
   return _indexPick;
 }
 
@@ -186,10 +198,10 @@ function renderIndexPanel() {
 }
 
 // 네이버 이름이 길어 좁은 셀에서 두 줄이 된다 ("나스닥 100 선물")
-var INDEX_NAME = { nasdaq: '나스닥 선물', sp500: 'S&P 선물', dow: '다우 선물', sox: '필라델피아 반도체' };
+var INDEX_NAME = { nightfut: '야간선물', nasdaq: '나스닥 선물', sp500: 'S&P 선물', dow: '다우 선물', sox: '필라델피아 반도체' };
 // 체크리스트용 이름 (셀 이름은 네이버 값을 쓰지만 목록에서는 항상 같은 말로 보인다)
 var INDEX_LABEL = {
-  kospi: '코스피', kosdaq: '코스닥', kpi200: '코스피 200', fut: '코스피 200 선물', kq150: '코스닥 150',
+  kospi: '코스피', kosdaq: '코스닥', kpi200: '코스피 200', fut: '코스피 200 선물', nightfut: '코스피 200 야간선물', kq150: '코스닥 150',
   usd: '원/달러 환율', nasdaq: '나스닥 선물', sp500: 'S&P 선물', dow: '다우 선물',
   vix: 'VIX (공포지수)', sox: '필라델피아 반도체', gold: '금', oil: 'WTI 유가',
   us10y: '미국 국채 10년', kr10y: '한국 국채 10년', kr3y: '한국 국채 3년',
@@ -219,6 +231,7 @@ async function loadIndex() {
           + (coinM ? ' role="button" tabindex="0" onclick="Coin.open(\'' + coinM + '\',\'' + escapeJsArg(INDEX_LABEL[k]) + '\')"' : '') + '>'
           + '<div class="idx-name">' + indexIconHtml(k) + escapeHtml(INDEX_NAME[k] || x.name)
           +   (x.delayMin ? '<span class="idx-delay">' + x.delayMin + '분 지연</span>' : '')
+          +   (x.tag !== undefined ? '<span class="idx-delay" id="ixt-' + k + '"></span>' : '')
           + '</div>'
           + '<div class="idx-price" id="ixp-' + k + '"></div>'
           + '<div class="idx-chg" id="ixc-' + k + '"></div>'
@@ -247,8 +260,11 @@ async function loadIndex() {
           + (x.unit || '');
       setTextFlash(pEl, pTxt, dirOf('ix:' + k, x.price));
       pEl.className = 'idx-price ' + cls;
-      cEl.textContent = signMark(x.change) + ' ' + fmtRate(x.changeRate);
+      // 값이 없는 칸(야간장 개장 전)은 등락 줄을 비운다 — "– -" 가 남지 않게
+      cEl.textContent = x.price == null ? '' : signMark(x.change) + ' ' + fmtRate(x.changeRate);
       cEl.className = 'idx-chg ' + cls;
+      var tEl = document.getElementById('ixt-' + k);
+      if (tEl) tEl.textContent = x.tag || '';
     });
 
     paintIndexSparks(have, d);

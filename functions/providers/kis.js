@@ -7,6 +7,9 @@ const BASE = 'https://openapi.koreainvestment.com:9443';
 const FETCH_MS = 8000;
 const TOKEN_KEY = 'kis:token';
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const GAP_MS = 1100;          // 연달아 부를 때 간격
+
 let memToken = null;          // { token, exp(ms) } — KV 왕복을 줄이는 아이솔레이트 캐시
 let tokenInflight = null;
 
@@ -46,7 +49,8 @@ async function getToken(env) {
   return tokenInflight;
 }
 
-async function getJson(env, path, trId, params) {
+// 신규 계정은 초당 호출 한도가 낮다(EGW00201). 한도에 걸리면 한 번만 쉬었다 다시 부른다.
+async function getJson(env, path, trId, params, retry = true) {
   const token = await getToken(env);
   const r = await fetch(BASE + path + '?' + new URLSearchParams(params), {
     headers: {
@@ -62,6 +66,7 @@ async function getJson(env, path, trId, params) {
   const j = await r.json().catch(() => ({}));
   // 토큰이 서버에서 먼저 무효가 된 경우 — 다음 호출에서 새로 받게 비운다
   if (j.msg_cd === 'EGW00123' || j.msg_cd === 'EGW00121') { memToken = null; env.STOCK_KV && env.STOCK_KV.delete(TOKEN_KEY).catch(() => {}); }
+  if (retry && j.msg_cd === 'EGW00201') { await sleep(1200); return getJson(env, path, trId, params, false); }
   if (!r.ok || j.rt_cd !== '0') throw new Error(`kis ${r.status} ${j.msg_cd || ''} ${String(j.msg1 || '').slice(0, 80)}`);
   return j;
 }
@@ -97,7 +102,75 @@ function mapFutures(o, code, session) {
   };
 }
 
+const CHART_PATH = '/uapi/domestic-futureoption/v1/quotations/inquire-time-fuopchartprice';
+
+function kstNow(d = new Date()) {
+  const k = new Date(d.getTime() + 9 * 3600 * 1000);
+  const p = (x) => String(x).padStart(2, '0');
+  return { ymd: `${k.getUTCFullYear()}${p(k.getUTCMonth() + 1)}${p(k.getUTCDate())}`, ms: k.getTime() };
+}
+// "20260922" + "300000" → KST 기준 ms (야간 분봉은 자정 이후를 24~30시로 적는다)
+function barMs(ymd, hms) {
+  const h = Number(hms.slice(0, 2)), m = Number(hms.slice(2, 4));
+  return Date.UTC(Number(ymd.slice(0, 4)), Number(ymd.slice(4, 6)) - 1, Number(ymd.slice(6, 8)), h, m);
+}
+
+/** 가장 최근 1분봉 하나 — 과거 포함(Y)으로 불러 세션이 끝난 뒤에도 마지막 봉이 온다 */
+async function lastBar(env, mrkt, code, ymd) {
+  const j = await getJson(env, CHART_PATH, 'FHKIF03020200', {
+    FID_COND_MRKT_DIV_CODE: mrkt, FID_INPUT_ISCD: code, FID_HOUR_CLS_CODE: '60',
+    FID_PW_DATA_INCU_YN: 'Y', FID_FAKE_TICK_INCU_YN: 'N', FID_INPUT_DATE_1: ymd, FID_INPUT_HOUR_1: '300000'
+  });
+  const b = (j.output2 || [])[0];
+  if (!b || !b.stck_bsop_date || !n(b.futs_prpr)) return null;
+  return { date: b.stck_bsop_date, hour: b.stck_cntg_hour, price: n(b.futs_prpr) };
+}
+
+/* 코스피200 야간선물 지수 스트립 칸.
+ * KIS 시세 API 의 "당일/전일" 값은 언제 다음 세션으로 넘어가는지 알 수 없어서, 날짜가 찍혀 오는 분봉으로 판단한다.
+ *   - 야간장은 주간장이 끝난 날 18:00 에 시작해 다음 날 06:00 에 끝난다. 분봉 날짜는 시작한 날이다.
+ *   - 야간 분봉 날짜 == 최근 주간 분봉 날짜 → 그 주간장 뒤의 야간장이다. 기준가는 그 주간장 종가.
+ *   - 주간 날짜가 더 늦으면 야간장 이후 주간장이 이미 열렸다 → 지난 값이라 숫자를 보이지 않는다.
+ * 주말·연휴에는 금요일(연휴 전) 야간장 종가가 남는다 — 다음 시초가를 가늠하는 값이다. */
+async function nightCell(env) {
+  const code = frontMonthCode();
+  const now = kstNow();
+  const day = await lastBar(env, 'F', code, now.ymd);
+  await sleep(GAP_MS);
+  const bar = await lastBar(env, 'CM', code, now.ymd);
+  const base = { code, name: '코스피 200 야간선물', decimals: 2, source: 'kis' };
+  const pre = { ...base, price: null, change: null, changeRate: null, tag: '개장 전', state: 'pre' };
+  if (!day) return pre;
+
+  let price = null, live = false;
+  if (bar && bar.date === day.date) {
+    price = bar.price;
+    live = now.ms < barMs(bar.date, '300000') && bar.hour < '300000';
+  } else {
+    // 진행 중인 세션이 분봉(과거 포함)에 아직 안 잡히는 경우 — 시세 API 로 받는다.
+    // 거래가 있고 기준가가 최근 주간 종가와 같을 때만 그 주간장 뒤의 야간장이다.
+    await sleep(GAP_MS);
+    const o = (await kis.futuresRaw(env, 'CM', code)).output1 || {};
+    if (!(n(o.acml_vol) > 0) || n(o.futs_sdpr) !== day.price || !n(o.futs_prpr)) return pre;
+    price = n(o.futs_prpr);
+    const hm = new Date(now.ms).getUTCHours() * 100 + new Date(now.ms).getUTCMinutes();
+    live = hm >= 1800 || hm < 600;
+  }
+  const change = Math.round((price - day.price) * 100) / 100;
+  return {
+    ...base,
+    price,
+    change,
+    changeRate: Math.round((change / day.price) * 10000) / 100,
+    basePrice: day.price,
+    tag: live ? '' : '마감',
+    state: live ? 'live' : 'closed',
+    session: day.date
+  };
+}
+
 export const kis = {
+  nightCell,
   name: 'kis',
   enabled: (env) => !!(env.KIS_APP_KEY && env.KIS_APP_SECRET),
   getToken,

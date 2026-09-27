@@ -281,6 +281,7 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
   margin-left: 4px; font-size: .58rem; font-weight: 700; color: var(--text3);
   border: 1px solid var(--border); padding: 0 3px; vertical-align: 1px;
 }
+.idx-delay:empty { display: none; }     /* 야간선물 진행 중에는 태그가 비어 있다 */
 .idx-price { font-size: 1rem; font-weight: 800; margin-top: 2px; letter-spacing: -.3px; }
 .idx-chg { font-size: .72rem; font-weight: 700; margin-top: 1px; }
 /* 폭을 고정한다 — 비워 두면 기기에 따라 셀 폭까지 늘어나 선이 길게 뭉개진다 */
