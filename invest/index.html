@@ -5,7 +5,9 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <title>재테크 - DT Club</title>
-  <meta name="description" content="DT Club 회원 전용 재테크 공간. 국내주식·코인 시세, 시황 브리핑과 종목별 커뮤니티.">
+  <meta name="description" content="DT Club 회원 전용 재테크 공간. 국내·미국 주식과 코인 시세, 모의투자, 시황 브리핑과 종목별 커뮤니티.">
+  <!-- 테마를 CSS 보다 먼저 정한다 — app.js(맨 끝)에서 정하면 라이트 테마 회원에게 매번 어두운 화면이 한 번 번쩍였다 -->
+  <script>try { document.documentElement.setAttribute('data-theme', localStorage.getItem('dt-theme') || 'dark'); } catch (e) {}</script>
   <meta name="robots" content="noindex, nofollow">
   <meta property="og:type" content="website" />
   <meta property="og:title" content="재테크 - DT Club" />
@@ -19,7 +21,7 @@
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"></noscript>
-  <link rel="stylesheet" href="style.css?v=41">
+  <link rel="stylesheet" href="style.css?v=42">
   <link rel="icon" href="../icon-192.png?v=2">
 </head>
 <body>
@@ -156,7 +158,7 @@
           <section class="m-section" id="usSection">
             <div class="m-head">
               <h3>🇺🇸 미국 주식</h3>
-              <span class="m-hint">나스닥 · 뉴욕 · 달러</span>
+              <span class="m-hint">나스닥 · 뉴욕 · 아멕스 · 달러</span>
             </div>
             <div class="seg-row">
               <button class="seg" data-usort="fav" onclick="Us.setSort('fav')">관심</button>
@@ -268,11 +270,11 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="market.js?v=28"></script>
-  <script src="market-ui.js?v=44"></script>
-  <script src="coin.js?v=5"></script>
-  <script src="us.js?v=4"></script>
-  <script src="community.js?v=5"></script>
-  <script src="app.js?v=47"></script>
+  <script src="market.js?v=29"></script>
+  <script src="market-ui.js?v=45"></script>
+  <script src="coin.js?v=6"></script>
+  <script src="us.js?v=5"></script>
+  <script src="community.js?v=6"></script>
+  <script src="app.js?v=48"></script>
 </body>
 </html>

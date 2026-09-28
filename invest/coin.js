@@ -32,6 +32,11 @@ var Coin = (function () {
 
   /* ── 숫자 ── */
   // 업비트 원화 마켓 호가 단위를 따른 소수 자릿수 (100원 이상은 정수, 그 아래는 가격대마다 한 자리씩)
+  /** 업비트 등락률·고가·저가의 기준 시각 — 매일 09:00(KST)에 새로 시작한다. 00:00~08:59 에는 '어제' 9시다 */
+  function refText() {
+    return new Date(Date.now() + 9 * 3600e3).getUTCHours() < 9 ? '어제 오전 9시' : '오늘 오전 9시';
+  }
+
   function digits(p) {
     var a = Math.abs(Number(p));
     if (a >= 100) return 0;
@@ -96,13 +101,17 @@ var Coin = (function () {
     return infosLoading;
   }
 
-  /** 검색 결과 맨 위에 붙일 코인 (최대 5개). 목록을 아직 못 받았으면 빈 문자열.
-   *  같은 등급 안에서는 목록 순서(= 24시간 거래대금 순)를 따른다 */
-  function searchHtml(q) {
-    if (!infos) { ensureInfos(); return ''; }
+  /** 검색 결과에 붙일 코인 (최대 5개). 목록을 아직 못 받았으면 빈 값 (받으면 화면이 다시 그린다).
+   *  같은 등급 안에서는 목록 순서(= 24시간 거래대금 순)를 따른다.
+   *  top — 심볼·이름이 딱 맞는 코인만 국내 종목 위에 둔다. 나머지(부분·초성·영문 일치)는 국내 종목 아래로 —
+   *  'sk'·'lg'·'ㅅㅅ' 같은 검색에서 리스크(lisk)·알고랜드·서싱트가 SK하이닉스·LG전자·삼성전자를 밀어냈다 */
+  function searchHtml(q) { var p = searchParts(q); return p.top + p.rest; }
+  function searchParts(q) {
+    var none = { top: '', rest: '' };
+    if (!infos) { ensureInfos(); return none; }
     var raw = String(q || '').trim();
     var t = raw.toLowerCase().replace(/\s+/g, '');
-    if (!t) return '';
+    if (!t) return none;
     var up = t.toUpperCase();
     var scored = [];
     infos.forEach(function (x, i) {
@@ -113,20 +122,26 @@ var Coin = (function () {
       if (sym === up) s = 0;
       else if (name === t) s = 1;
       else if (name.indexOf(t) === 0 || sym.indexOf(up) === 0) s = 2;
-      else if (name.indexOf(t) !== -1 || (t.length >= 2 && en.indexOf(t) !== -1)) s = 3;
+      // 영문 이름은 앞부분이 맞거나 세 글자 이상일 때만 — 두 글자 중간 일치는 엉뚱한 코인이 너무 많이 걸린다
+      else if (name.indexOf(t) !== -1 || (t.length >= 2 && en.indexOf(t) === 0) || (t.length >= 3 && en.indexOf(t) !== -1)) s = 3;
       else if (/^[ㄱ-ㅎ]+$/.test(t) && x._cho.indexOf(t) === 0) s = 4;
       else if (/^[ㄱ-ㅎ]+$/.test(t) && x._cho.indexOf(t) !== -1) s = 5;
       if (s !== -1) scored.push({ s: s, i: i, x: x });
     });
     scored.sort(function (a, b) { return a.s - b.s || a.i - b.i; });
-    return scored.slice(0, 5).map(function (r) {
+    var html = function (r) {
       var x = r.x;
       return '<button class="sr-item" role="option" onclick="Coin.open(\'' + x.market + '\',\'' + escapeJsArg(x.name) + '\')">'
         + logoHtml(x.market, x.name, 'sm')
         + '<span class="sr-name">' + escapeHtml(x.name) + '</span>' + badgesHtml(x)
         + '<span class="sr-meta">코인 · ' + escapeHtml(symbolOf(x.market)) + '</span>'
         + '</button>';
-    }).join('');
+    };
+    var picked = scored.slice(0, 5);
+    return {
+      top: picked.filter(function (r) { return r.s <= 1; }).map(html).join(''),
+      rest: picked.filter(function (r) { return r.s > 1; }).map(html).join('')
+    };
   }
 
   /* ===== 시세 홈 — 🪙 코인 섹션 ===== */
@@ -213,7 +228,7 @@ var Coin = (function () {
       more = '<button class="cn-more" onclick="Coin.toggleAll()" aria-expanded="' + listAll + '">'
         + (listAll ? '접기' : '전체 ' + d.total + '개 보기') + '</button>';
     }
-    return more + '<div class="rank-note">업비트 원화 마켓 · 등락률은 오늘 오전 9시 대비 · 거래대금은 최근 24시간</div>';
+    return more + '<div class="rank-note">업비트 원화 마켓 · 등락률은 ' + refText() + ' 대비 · 거래대금은 최근 24시간</div>';
   }
 
   function paintRows(items) {
@@ -302,10 +317,12 @@ var Coin = (function () {
     // 종목 상세를 보다가 넘어오면 그쪽 폴러·차트를 정리한다
     if (curStock) {
       curStock = null;
-      if (chartHandle) { chartHandle.dispose(); chartHandle = null; }
       var tb = document.getElementById('mkTradeBar');
       if (tb) tb.remove();
     }
+    // 국내 차트 — 받는 중이던 차트가 도착해 떨어진 화면에 붙지 않게 세대를 올리고, 남은 것은 언제나 치운다
+    if (typeof _chartSeq !== 'undefined') _chartSeq++;
+    if (chartHandle) { chartHandle.dispose(); chartHandle = null; }
     if (window.Us) Us.reset();
     reset();
     Poller.stopAll();
@@ -440,7 +457,7 @@ var Coin = (function () {
       vEl.className = 'sd-price ' + cls;
       var cEl = document.getElementById('cxChg');
       cEl.innerHTML = signMark(q.change) + ' ' + fmtPrice(Math.abs(q.change || 0), dg)
-        + ' (' + fmtRate(q.changeRate) + ') <span class="vs">오늘 9시보다</span>';
+        + ' (' + fmtRate(q.changeRate) + ') <span class="vs">' + refText().replace('오전 ', '') + '보다</span>';
       cEl.className = 'sd-chg ' + cls;
       var stale = isFeedStale('coin');
       document.getElementById('cxAsOf').innerHTML = escapeHtml(shortTime(q.asOf)) + ' 기준 · 업비트 '
@@ -461,15 +478,15 @@ var Coin = (function () {
       document.getElementById('cxStats').innerHTML = [
         ['거래대금(24시간)', fmtCompact(q.value24h) + '원'],
         ['거래량(24시간)', fmtQty(q.volume24h) + ' ' + escapeHtml(symbolOf(market))],
-        ['고가', fmtPrice(q.high, dg)],
-        ['저가', fmtPrice(q.low, dg)]
+        ['고가', fmtPrice(q.high)],
+        ['저가', fmtPrice(q.low)]
       ].map(function (r) {
         return '<div class="stat"><span class="stat-k">' + r[0] + '</span><span class="stat-v">' + r[1] + '</span></div>';
       }).join('');
 
       document.getElementById('cxRange').innerHTML =
-          rangeRow('오늘 범위', q.low, q.high, q.price, dg)
-        + rangeRow('52주 범위', q.low52, q.high52, q.price, dg);
+          rangeRow(refText().indexOf('어제') === 0 ? '어제 9시 이후' : '오늘 범위', q.low, q.high, q.price)
+        + rangeRow('52주 범위', q.low52, q.high52, q.price);
 
       if (chart) chart.updateLast(q.price, bucketTime(), null, tf.charAt(0) === 'm' || tf === 'D');
     } catch (e) {
@@ -483,9 +500,9 @@ var Coin = (function () {
     return '<div class="range-row">'
       + '<div class="range-label">' + label + '</div>'
       + '<div class="range-bar-wrap">'
-      +   '<span class="range-lo">' + fmtPrice(lo, dg) + '</span>'
+      +   '<span class="range-lo">' + fmtPrice(lo, dg == null ? digits(lo) : dg) + '</span>'
       +   '<span class="range-bar">' + (pct == null ? '' : '<i style="left:' + pct.toFixed(1) + '%"></i>') + '</span>'
-      +   '<span class="range-hi">' + fmtPrice(hi, dg) + '</span>'
+      +   '<span class="range-hi">' + fmtPrice(hi, dg == null ? digits(hi) : dg) + '</span>'
       + '</div></div>';
   }
 
@@ -667,6 +684,7 @@ var Coin = (function () {
     isMarket: isMarket,
     ensureInfos: ensureInfos,
     searchHtml: searchHtml,
+    searchParts: searchParts,
     loadList: loadList,
     pollMs: listPollMs,
     setSort: setSort,

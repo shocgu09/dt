@@ -352,6 +352,7 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 .sr-name { font-size: .88rem; font-weight: 700; }
 .sr-meta { font-size: .72rem; color: var(--text3); margin-left: auto; }
 .sr-empty { padding: 14px; text-align: center; font-size: .82rem; color: var(--text3); }
+.sr-empty.sr-more { padding: 8px 14px; font-size: .74rem; }
 
 /* 섹션 */
 .m-section { margin-bottom: 18px; }

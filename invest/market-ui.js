@@ -231,7 +231,8 @@ async function loadIndex() {
         var first = FUT_KEYS[k] && !FUT_KEYS[have[have.indexOf(k) - 1]];
         var coinM = COIN_CELL[k];
         return '<div class="idx-cell' + (FUT_KEYS[k] ? ' fut' : '') + (first ? ' fut-first' : '') + (coinM ? ' coin' : '') + '"'
-          + (coinM ? ' role="button" tabindex="0" onclick="Coin.open(\'' + coinM + '\',\'' + escapeJsArg(INDEX_LABEL[k]) + '\')"' : '') + '>'
+          + (coinM ? ' role="button" tabindex="0" onclick="Coin.open(\'' + coinM + '\',\'' + escapeJsArg(INDEX_LABEL[k]) + '\')"'
+                   + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click()}"' : '') + '>'
           + '<div class="idx-name">' + indexIconHtml(k) + escapeHtml(INDEX_NAME[k] || x.name)
           +   (x.delayMin ? '<span class="idx-delay">' + x.delayMin + '분 지연</span>' : '')
           +   (x.tag !== undefined ? '<span class="idx-delay" id="ixt-' + k + '"></span>' : '')
@@ -344,46 +345,62 @@ function onSearchInput(v) {
 function isStockCode(c) { return /^[0-9A-Z]{6}$/.test(String(c || '')); }
 
 var _searchSeq = 0;
+/**
+ * 국내(종목 마스터 + 서버 자동완성) · 코인(업비트 목록, 화면에서 찾음) · 미국(서버 자동완성)을 한 목록으로.
+ * 코인·미국은 국내 검색을 기다리지 않고 바로 그린다 — 예전에는 국내 서버 검색이 끝나야(최대 6초) 그려서
+ * '비트코인'·'AAPL' 처럼 마스터에 없는 말은 한참 '검색 중'이었고, 국내 검색이 실패하면 코인 결과까지 사라졌다.
+ */
 async function doSearch(q) {
   var box = document.getElementById('searchResults');
   var seq = ++_searchSeq;             // 느린 이전 검색 응답이 최신 입력의 결과를 덮지 않게
   box.style.display = '';
   box.innerHTML = '<div class="sr-empty">검색 중...</div>';
   box.setAttribute('aria-busy', 'true');
-  var lastD = null;
+  var lastD = null, krDone = false, krErr = null;
   var paint = function (d) {
     if (seq !== _searchSeq) return;
-    lastD = d;
-    var items = (d.items || []).filter(function (i) { return isStockCode(i.code); });
-    // 코인(업비트 원화 마켓)은 이름·심볼·초성으로 화면에서 찾아 맨 위에 붙인다
-    var coinHtml = window.Coin ? Coin.searchHtml(q) : '';
-    // 미국 주식은 서버 자동완성을 따로 받는다 — 도착하면 국내 결과 아래에 붙여 다시 그린다
+    if (d) lastD = d;
+    var items = ((lastD && lastD.items) || []).filter(function (i) { return isStockCode(i.code); });
+    // 코인: 심볼·이름이 딱 맞는 것만 맨 위, 나머지는 국내 종목 아래
+    var coin = window.Coin ? (Coin.searchParts ? Coin.searchParts(q) : { top: Coin.searchHtml(q), rest: '' }) : { top: '', rest: '' };
+    // 미국 주식은 서버 자동완성을 따로 받는다 — 티커가 딱 맞으면 위, 아니면 아래
     var usHtml = window.Us ? Us.searchHtml(q) : '';
     var usFirst = !!usHtml && Us.exactMatch(q);
-    if (!items.length && !coinHtml && !usHtml) { box.innerHTML = '<div class="sr-empty">검색 결과가 없습니다</div>'; return; }
-    box.innerHTML = coinHtml + (usFirst ? usHtml : '') + items.map(function (i) {
+    if (!items.length && !coin.top && !coin.rest && !usHtml) {
+      box.innerHTML = '<div class="sr-empty">' + (krErr ? escapeHtml(krErr) : (krDone ? '검색 결과가 없습니다' : '검색 중...')) + '</div>';
+      return;
+    }
+    box.innerHTML = coin.top + (usFirst ? usHtml : '') + items.map(function (i) {
       return '<button class="sr-item" role="option" onclick="openStock(\'' + i.code + '\',\'' + escapeJsArg(i.name) + '\')">'
         + stockLogoHtml(i.code, i.name, null, 'sm')
         + '<span class="sr-name">' + escapeHtml(i.name) + '</span>'
         + '<span class="sr-meta">' + escapeHtml(i.market || '') + ' · ' + i.code + '</span>'
         + '</button>';
-    }).join('') + (usFirst ? '' : usHtml);
+    }).join('') + coin.rest + (usFirst ? '' : usHtml)
+      + (krDone ? '' : '<div class="sr-empty sr-more">국내 종목 찾는 중...</div>');
   };
-  if (window.Us) Us.fetchSearch(q).then(function (changed) {
-    if (changed && lastD && seq === _searchSeq) paint(lastD);
-  });
+  // 코인 목록이 아직 없으면(첫 검색) 받아지는 대로, 미국 결과는 도착하는 대로 다시 그린다
+  if (window.Coin && Coin.ensureInfos) Coin.ensureInfos().then(function () { paint(null); });
+  if (window.Us) Us.fetchSearch(q).then(function (changed) { if (changed) paint(null); });
+  paint(null);
   try {
     // 마스터 결과는 즉시, 서버 보강 결과는 도착하면 다시 그린다
-    paint(await Market.search(q, paint));
+    var d = await Market.search(q, function (u) { paint(u); });
+    krDone = true;
+    paint(d);
   } catch (e) {
-    if (seq !== _searchSeq) return;
-    box.innerHTML = '<div class="sr-empty">' + escapeHtml(e.message) + '</div>';
+    krDone = true;
+    krErr = e.message;               // 국내 검색만 실패 — 코인·미국 결과가 있으면 그대로 보여 준다
+    paint(null);
   } finally {
     if (seq === _searchSeq) box.removeAttribute('aria-busy');
   }
 }
 
 function clearSearch() {
+  // 250ms 입력 대기 중이거나 도착 전인 검색이 비운 뒤에 목록을 다시 열지 않게 끊는다
+  clearTimeout(searchTimer);
+  _searchSeq++;
   document.getElementById('stockSearch').value = '';
   var box = document.getElementById('searchResults');
   box.innerHTML = ''; box.style.display = 'none';
@@ -515,7 +532,8 @@ function paintWatch() {
   if (!watchlist.length) {
     el.dataset.built = ''; el.dataset.key = '';
     el.className = '';
-    el.innerHTML = '<div class="empty">관심종목이 없습니다.<br>종목을 검색해 ⭐를 눌러보세요.</div>';
+    el.innerHTML = '<div class="empty">국내 관심종목이 없습니다.<br>종목 상세에서 ♡ 를 누르면 여기에 모입니다.'
+      + ((coinWatchlist.length || usWatchlist.length) ? '<br><span class="cn-empty-sub">관심 코인·미국 주식은 아래 각 목록의 \'관심\'에서 볼 수 있습니다</span>' : '') + '</div>';
     return;
   }
   var rows = watchlist.map(function (c) { return _quoteMap[c]; }).filter(function (q) { return q && isStockCode(q.code); });
@@ -995,6 +1013,7 @@ function closeDetail(toHome) {
   var from = _detailFrom;
   _detailFrom = null;
   curStock = null;
+  _chartSeq++;                 // 받는 중이던 차트가 닫힌 화면에 그려지지 않게
   if (window.Coin) Coin.reset();
   if (window.Us) Us.reset();
   Poller.remove('quote'); Poller.remove('bars'); Poller.remove('book'); Poller.remove('crowd');

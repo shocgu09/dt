@@ -82,7 +82,7 @@ var Community = (function () {
     // 좋아요·더보기·그래도 보기도 목록을 다시 그린다 — 쓰던 글(글쓰기·댓글 칸)은 챙겨 두었다가 돌려놓는다
     var drafts = saveDrafts(el);
     var h = '<div class="cm-write">'
-      + '<textarea class="comment-input cm-input" id="cmBody" maxlength="' + BODY_MAX + '" placeholder="' + escapeAttr((name || '') + ' 에 대한 생각을 남겨 보세요 · $종목명으로 종목을 연결할 수 있습니다') + '"'
+      + '<textarea class="comment-input cm-input" id="cmBody" maxlength="' + BODY_MAX + '" placeholder="' + escapeAttr((name || '') + ' 에 대한 생각을 남겨 보세요 · $종목명으로 국내 종목을 연결할 수 있습니다') + '"'
       +   ' oninput="Community.count(this)"></textarea>'
       + '<div id="cmBragSlot">' + pendingBragHtml() + '</div>'
       + '<div class="comment-submit-row"><span class="comment-count-hint" id="cmCount">0 / ' + fmtNum(BODY_MAX) + '</span>'
@@ -581,12 +581,15 @@ var Community = (function () {
     var seq = ++_reportSeq;
     el.innerHTML = '<div class="loading">불러오는 중...</div>';
     try {
-      // status 조건과 정렬을 함께 걸면 복합 색인이 필요하다 — 최근 50건을 받아 화면에서 거른다
-      var snap = await db.collection('stock_reports').orderBy('createdAt', 'desc').limit(50).get();
+      // 처리 대기(open)만 받는다 — 예전에는 최근 50건을 받아 화면에서 걸러서, 처리한 신고가 50건 넘게 쌓이면
+      // 그보다 오래된 미처리 신고가 관리 화면에서 영영 사라졌다. 정렬까지 걸면 복합 색인이 필요해 정렬은 화면에서 한다
+      var snap = await db.collection('stock_reports').where('status', '==', 'open').limit(200).get();
       if (seq !== _reportSeq) return;
+      var ms = function (t) { return t && t.toMillis ? t.toMillis() : (Number(t) || 0); };
       // postId·code 는 아래 onclick 인자로 들어간다 — 형식이 맞지 않는 신고는 목록에 올리지 않는다
       var rows = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); })
-        .filter(function (r) { return (r.status || 'open') === 'open' && isDocId(r.postId) && isCode(r.code); });
+        .filter(function (r) { return isDocId(r.postId) && isCode(r.code); })
+        .sort(function (a, b) { return ms(b.createdAt) - ms(a.createdAt); });
       if (!rows.length) { el.innerHTML = '<div class="empty">처리할 신고가 없습니다.</div>'; return; }
       // 같은 글에 대한 신고는 묶어서 보여 준다
       var byPost = {};
@@ -605,7 +608,7 @@ var Community = (function () {
           + '</div>'
           + '<button class="mini-btn" onclick="Community.gotoPost(\'' + g.code + '\',\'' + escapeJsArg(g.stockName || g.code) + '\')">글 보기</button>'
           + '<button class="mini-btn danger" onclick="Community.adminDelete(\'' + g.code + '\',\'' + g.postId + '\')">글 삭제</button>'
-          + '<button class="mini-btn" onclick="Community.dismiss(\'' + g.postId + '\')">무시</button>'
+          + '<button class="mini-btn" onclick="Community.dismiss(\'' + g.code + '\',\'' + g.postId + '\')">무시</button>'
           + '</div>';
       }).join('');
     } catch (e) {
@@ -638,9 +641,18 @@ var Community = (function () {
     } catch (e) { alert('삭제에 실패했습니다.'); }
   }
 
-  async function dismiss(postId) {
+  /** 신고 무시 — 문제없는 글로 판단했으니 신고 누적으로 가려진 것도 푼다 (예전에는 신고만 닫혀 글은 계속 가려져 있었다) */
+  async function dismiss(c, postId) {
     if (!isAdmin) return;
-    try { await markReports(postId, 'dismissed'); loadReports(); }
+    if (postId == null) { postId = c; c = null; }      // 옛 호출 형태 (postId 만)
+    try {
+      await markReports(postId, 'dismissed');
+      if (c && isCode(c) && isDocId(postId)) {
+        await db.collection('stock_boards').doc(c).collection('posts').doc(postId).update({ reportCount: 0 }).catch(function () { /* 이미 지워진 글 */ });
+        if (code === c) { posts.forEach(function (p) { if (p.id === postId) p.reportCount = 0; }); if (loadedFor === c) render(); }
+      }
+      loadReports();
+    }
     catch (e) { alert('처리에 실패했습니다.'); }
   }
 

@@ -17,7 +17,7 @@ var Us = (function () {
   var searchCache = {};            // 검색어 → 결과 (서버 5분 캐시와 같은 수명이면 충분)
 
   var LIST_LIMIT = 15, LIST_MORE = 50;
-  var TF_LIST = [['m5', '1일'], ['D', '일'], ['W', '주'], ['M', '월']];
+  var TF_LIST = [['m5', '5분'], ['D', '일'], ['W', '주'], ['M', '월']];      // 5분 — 오늘(최근) 정규장 5분봉
   var EX_LABEL = { NASDAQ: '나스닥', NYSE: '뉴욕', AMEX: '아멕스' };
 
   function isCode(c) { return /^[A-Za-z0-9]{1,8}(_[a-z])?(\.[A-Z])?$/.test(String(c || '')); }
@@ -84,7 +84,7 @@ var Us = (function () {
       + '</span>';
   }
   function exLabel(ex) { return EX_LABEL[ex] || ex || ''; }
-  function sessionLabel(o) { return o && o.session === 'pre' ? '프리마켓' : '애프터마켓'; }
+  function sessionLabel(o) { return !o ? '' : o.session === 'pre' ? '프리마켓' : (o.session === 'after' ? '애프터마켓' : '장외거래'); }
 
   /* ===== 검색 — 서버 자동완성에서 미국 종목만. 국내 결과를 기다리게 하지 않는다 ===== */
   function searchKey(q) { return String(q || '').trim().toLowerCase().replace(/\s+/g, ''); }
@@ -150,7 +150,7 @@ var Us = (function () {
       if (sort === 'fav') {
         await ensureWatchlist();
         if (!usWatchlist.length) {
-          el.innerHTML = '<div class="empty">관심 종목이 없습니다<br><span class="cn-empty-sub">목록의 ♡ 를 누르면 여기에 모입니다</span></div>';
+          el.innerHTML = '<div class="empty">관심종목이 없습니다<br><span class="cn-empty-sub">목록의 ♡ 를 누르면 여기에 모입니다</span></div>';
           listKey = '';
           return;
         }
@@ -198,7 +198,7 @@ var Us = (function () {
       +   '<span class="rank-tv"><span id="usv-' + id + '"></span></span>'
       + '</button>'
       + '<button class="fav-btn' + (on ? ' on' : '') + '" data-ufav="' + escapeAttr(x.code) + '"'
-      +   ' onclick="Us.toggleFav(\'' + escapeJsArg(x.code) + '\')" aria-label="' + (on ? '관심 종목에서 빼기' : '관심 종목에 담기') + '">'
+      +   ' onclick="Us.toggleFav(\'' + escapeJsArg(x.code) + '\')" aria-label="' + (on ? '관심종목에서 빼기' : '관심종목에 담기') + '">'
       +   (on ? '♥' : '♡') + '</button>'
       + '</div>';
   }
@@ -239,11 +239,11 @@ var Us = (function () {
       document.querySelectorAll(sel).forEach(function (b) {
         b.classList.toggle('on', on);
         b.textContent = on ? '♥' : '♡';
-        b.setAttribute('aria-label', on ? '관심 종목에서 빼기' : '관심 종목에 담기');
+        b.setAttribute('aria-label', on ? '관심종목에서 빼기' : '관심종목에 담기');
       });
       if (listSort === 'fav' && !cur) { listKey = ''; loadList(); }
     } catch (e) {
-      alert(e && e.message ? e.message : '관심 종목 저장에 실패했습니다.');
+      alert(e && e.message ? e.message : '관심종목 저장에 실패했습니다.');
     } finally {
       favBusy[code] = false;
       document.querySelectorAll(sel).forEach(function (b) { b.disabled = false; });
@@ -296,10 +296,12 @@ var Us = (function () {
     // 종목·코인 상세를 보다가 넘어오면 그쪽 폴러·차트를 정리한다
     if (curStock) {
       curStock = null;
-      if (chartHandle) { chartHandle.dispose(); chartHandle = null; }
       var tb = document.getElementById('mkTradeBar');
       if (tb) tb.remove();
     }
+    // 국내 차트 — 받는 중이던 차트가 도착해 떨어진 화면에 붙지 않게 세대를 올리고, 남은 것은 언제나 치운다
+    if (typeof _chartSeq !== 'undefined') _chartSeq++;
+    if (chartHandle) { chartHandle.dispose(); chartHandle = null; }
     if (window.Coin) Coin.reset();
     reset();
     Poller.stopAll();
@@ -359,7 +361,7 @@ var Us = (function () {
       +   '<span class="sd-title" id="sdTitle">' + escapeHtml(name) + '</span>'
       +   '<button class="share-btn sd-share" onclick="Us.share()" aria-label="종목 공유">↗</button>'
       +   '<button class="fav-btn sd-fav' + (on ? ' on' : '') + '" id="usStar" data-ufav="' + escapeAttr(code) + '"'
-      +     ' onclick="Us.toggleFav(\'' + escapeJsArg(code) + '\')" aria-label="관심 종목">' + (on ? '♥' : '♡') + '</button>'
+      +     ' onclick="Us.toggleFav(\'' + escapeJsArg(code) + '\')" aria-label="관심종목">' + (on ? '♥' : '♡') + '</button>'
       + '</div>'
       + '<div class="sd-sub" id="sdSub">' + escapeHtml(symbolOf(code)) + ' · 미국</div>'
       + '<div class="sd-price-block" id="uxPrice"><div class="loading">시세 불러오는 중...</div></div>'
