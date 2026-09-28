@@ -1056,6 +1056,11 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
   background: rgba(245,158,11,.1); border-left: 3px solid #f59e0b;
 }
 .cn-chart-note { margin-top: 6px; font-size: .68rem; color: var(--text3); text-align: right; }
+
+/* 미국 주식 — 프리·애프터마켓 가격 줄 (us.js) */
+.us-over { margin-top: 4px; font-size: .78rem; font-weight: 700; color: var(--text2); }
+.us-over-k { font-size: .66rem; font-weight: 800; color: var(--text3); border: 1px solid var(--border); padding: 0 4px; margin-right: 2px; }
+.us-over-t { font-size: .68rem; font-weight: 600; color: var(--text3); }
 .cn-tf { flex-wrap: wrap; }
 .cn-tf .tf-btn { flex: 1 0 12%; }
 .idx-cell.coin { cursor: pointer; }

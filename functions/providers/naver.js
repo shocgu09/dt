@@ -6,14 +6,14 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 const HEADERS = { 'User-Agent': UA, 'Referer': 'https://m.stock.naver.com/', 'Accept': 'application/json' };
 
 // "248,000" → 248000 / null 안전
-function num(v) {
+export function num(v) {
   if (v == null) return null;
   const n = Number(String(v).replace(/,/g, ''));
   return Number.isFinite(n) ? n : null;
 }
 
 // 전일대비 부호코드: 1 상한 2 상승 3 보합 4 하한 5 하락
-function signOf(code) {
+export function signOf(code) {
   if (code === '1' || code === '2') return 1;
   if (code === '4' || code === '5') return -1;
   return 0;
@@ -29,7 +29,7 @@ const INDEX_CODES = { KOSPI: 'kospi', KOSDAQ: 'kosdaq', KPI200: 'kpi200', FUT: '
 const FETCH_MS = 8000;
 const withTimeout = (init) => ({ ...(init || {}), signal: AbortSignal.timeout(FETCH_MS) });
 
-async function getJson(url) {
+export async function getJson(url) {
   const r = await fetch(url, withTimeout({ headers: HEADERS }));
   if (!r.ok) throw new Error(`naver ${r.status} ${url}`);
   return r.json();

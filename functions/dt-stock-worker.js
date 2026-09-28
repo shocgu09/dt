@@ -6,6 +6,7 @@
 import { naver, daum, yahoo } from './providers/naver.js';
 import { upbit, isCoinMarket } from './providers/upbit.js';
 import { kis } from './providers/kis.js';
+import { naverUs, isUsCode, isUsDst, US_EXCHANGES } from './providers/naver-us.js';
 import { verifyIdToken, bearerToken } from './lib/verify-id-token.js';
 import { profileOf } from './lib/profile.js';
 import { handleMock, mockErrorResponse, runCron } from './mock/api.js';
@@ -196,6 +197,10 @@ export default {
       if (path === '/api/coin/book')    return json(await handleCoinBook(q.get('market')));
       if (path === '/api/coin/trades')  return json(await handleCoinTrades(q.get('market')));
       if (path === '/api/coin/candles') return json(await handleCoinCandles(q.get('market'), q.get('tf')));
+      if (path === '/api/us/list')    return json(await handleUsList(q.get('sort'), q.get('limit'), q.get('codes')));
+      if (path === '/api/us/quote')   return json(await handleUsQuote(q.get('code')));
+      if (path === '/api/us/candles') return json(await handleUsCandles(q.get('code'), q.get('tf')));
+      if (path === '/api/us/search')  return json(await handleUsSearch(q.get('q')));
     } catch (e) {
       // 업스트림 URL·내부 예외 원문은 로그에만 남긴다 (회원에게 그대로 보이면 내부 구조가 드러난다)
       console.warn('quote api failed', path, String((e && e.message) || e).slice(0, 200));
@@ -543,6 +548,77 @@ async function handleCoinCandles(market, tf) {
   const t = ['m', 'm5', 'm15', 'm60', 'D', 'W', 'M'].includes(tf) ? tf : 'D';
   const ttl = t.startsWith('m') ? COIN_TTL.candleMin : COIN_TTL.candleDay;
   return memo(`coin:c:${market}:${t}`, ttl, async () => ({ market, tf: t, bars: await upbit.getCandles(market, t), source: 'upbit' }));
+}
+
+// ── 미국 주식 (네이버 해외주식) ────────────────────────────────
+// 시세 표시만 한다(모의투자 없음). 프리마켓 04:00 ~ 애프터마켓 20:00 (뉴욕 시각, 평일)에는 짧게, 그 밖에는 길게 캐시한다.
+function usActive(d = new Date()) {
+  // 뉴욕 벽시계 — 서머타임이면 UTC-4, 아니면 UTC-5
+  const u = new Date(d.getTime() - 4 * 3600 * 1000);
+  const off = isUsDst(u.getUTCFullYear(), u.getUTCMonth() + 1, u.getUTCDate(), u.getUTCHours()) ? 4 : 5;
+  const et = new Date(d.getTime() - off * 3600 * 1000);
+  const day = et.getUTCDay();
+  if (day === 0 || day === 6) return false;
+  const h = et.getUTCHours();
+  return h >= 4 && h < 20;
+}
+const usTtl = (live, idle) => (usActive() ? live : idle);
+
+async function usFx() {
+  const r = await memo('us:fx', 300, async () => ({ rate: await naverUs.getUsdKrw() }));
+  return r.rate;
+}
+
+/** 미국 주식 목록 — sort(value 거래대금 · cap 시가총액 · up · down) 상위 limit 개, 또는 codes 로 지정한 것만.
+ *  네이버 순위는 거래소별이라 나스닥·뉴욕·아멕스를 받아 합친다.
+ *  급등락 순위는 권리증서·1달러 미만·거래대금 1천만 달러 미만을 뺀다 (그대로 두면 동전주가 목록을 채운다). */
+async function handleUsList(sort, limit, codes) {
+  if (codes) {
+    const want = [...new Set(String(codes).split(',').map((x) => x.trim()).filter(isUsCode))].slice(0, MAX_BATCH);
+    if (!want.length) return { items: [] };
+    return memo(`us:q:${want.join(',')}`, usTtl(5, 60), async () => ({ items: await naverUs.getQuotes(want), source: 'naver' }));
+  }
+  const s = ['value', 'cap', 'up', 'down'].includes(sort) ? sort : 'value';
+  const lim = Math.min(Math.max(parseInt(limit, 10) || 15, 1), 50);
+  return memo(`us:l:${s}:${lim}`, usTtl(20, 300), async () => {
+    const movers = s === 'up' || s === 'down';
+    const lists = await Promise.all(US_EXCHANGES.map((ex) => naverUs.getRank(ex, s, movers ? 100 : lim).catch(() => [])));
+    let rows = lists.flat();
+    if (!rows.length) throw new Error('us rank empty');
+    if (movers) rows = rows.filter((r) => r.price >= 1 && (r.valueUsd || 0) >= 1e7 && !/_/.test(r.code));
+    const key = { value: (r) => -(r.valueUsd || 0), cap: (r) => -(r.marketCap || 0),
+                  up: (r) => -(r.changeRate || 0), down: (r) => (r.changeRate || 0) }[s];
+    rows.sort((a, b) => key(a) - key(b));
+    return { sort: s, items: rows.slice(0, lim), source: 'naver' };
+  });
+}
+
+async function handleUsQuote(code) {
+  if (!isUsCode(code)) return { error: '종목코드가 올바르지 않습니다' };
+  const [rows, basic, fx] = await Promise.all([
+    memo(`us:q:${code}`, usTtl(3, 60), async () => ({ items: await naverUs.getQuotes([code]) })),
+    memo(`us:b:${code}`, 1800, () => naverUs.getBasic(code)).catch(() => null),
+    usFx().catch(() => null)
+  ]);
+  const r = rows.items && rows.items[0];
+  if (!r) return { error: '시세를 찾을 수 없는 종목입니다' };
+  const { cached: _c, ...b } = basic || {};
+  return { ...r, ...(basic ? { en: b.en, industry: b.industry, isEtf: b.isEtf, prevClose: b.prevClose, high52: b.high52, low52: b.low52,
+           per: b.per, pbr: b.pbr, eps: b.eps, dividendYield: b.dividendYield, marketValue: b.marketValue } : {}),
+           usdKrw: fx };
+}
+
+async function handleUsCandles(code, tf) {
+  if (!isUsCode(code)) return { error: '종목코드가 올바르지 않습니다' };
+  const t = ['m5', 'D', 'W', 'M'].includes(tf) ? tf : 'D';
+  const ttl = t === 'm5' ? usTtl(60, 600) : usTtl(600, 3600);
+  return memo(`us:c:${code}:${t}`, ttl, async () => ({ code, tf: t, ...(await naverUs.getBars(code, t)), source: 'naver' }));
+}
+
+async function handleUsSearch(term) {
+  const t = String(term || '').trim().slice(0, 40);
+  if (!t) return { items: [] };
+  return memo(`us:s:${t.toLowerCase().replace(/\s+/g, '')}`, 300, async () => ({ query: t, items: await naverUs.search(t) }));
 }
 
 /** 지수 스트립의 비트코인·이더리움 칸 — 24시간 움직인다 */

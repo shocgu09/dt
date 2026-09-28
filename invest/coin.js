@@ -282,6 +282,7 @@ var Coin = (function () {
     else u.searchParams.delete('coin');
     u.searchParams.delete('code');
     u.searchParams.delete('briefing');
+    u.searchParams.delete('us');
     return u.pathname + u.search + u.hash;
   }
 
@@ -305,6 +306,7 @@ var Coin = (function () {
       var tb = document.getElementById('mkTradeBar');
       if (tb) tb.remove();
     }
+    if (window.Us) Us.reset();
     reset();
     Poller.stopAll();
     cur = { market: market, name: String(name || symbolOf(market)) };

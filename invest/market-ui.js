@@ -21,9 +21,9 @@ var _backToHome = false;         // "← 시세" 로 닫는 중 (다른 탭에�
 // 뒤로 가기 때 브라우저가 스크롤을 제멋대로 옮기지 않게 한다 — 시세 홈 위치는 직접 되돌린다
 try { if ('scrollRestoration' in history) history.scrollRestoration = 'manual'; } catch (e) {}
 
-/** 종목 또는 코인 상세를 보는 중인가 (시세 홈이 가려져 있는가) */
+/** 종목·코인·미국 주식 상세를 보는 중인가 (시세 홈이 가려져 있는가) */
 function detailOpen() {
-  return !!curStock || !!(window.Coin && Coin.current());
+  return !!curStock || !!(window.Coin && Coin.current()) || !!(window.Us && Us.current());
 }
 
 /* ===== 시세 탭 진입 ===== */
@@ -31,6 +31,7 @@ async function enterMarketTab() {
   // 종목 상세 보는 중이면 화면은 유지하되, 탭을 떠날 때 멈춘 폴링은 다시 돌린다
   if (curStock) { startStockPolling(); return; }
   if (window.Coin && Coin.current()) { Coin.startPolling(); return; }
+  if (window.Us && Us.current()) { Us.startPolling(); return; }
   document.getElementById('stockDetail').style.display = 'none';
   document.getElementById('marketHome').style.display = '';
 
@@ -69,6 +70,8 @@ function startHomePolling() {
   Poller.add('quotes', refreshListQuotes, pollMs(5000, 120000));
   // 코인은 24시간 — 장 시간과 무관하게 5초 (전체 목록을 펼쳤을 때는 10초)
   if (window.Coin) Poller.add('coins', Coin.loadList, Coin.pollMs);
+  // 미국 주식 — 미국 장(프리~애프터) 중 10초, 그 밖에는 2분
+  if (window.Us) Poller.add('usList', Us.loadList, Us.pollMs);
 }
 
 /* ===== 지수 스트립 ===== */
@@ -343,20 +346,28 @@ async function doSearch(q) {
   box.style.display = '';
   box.innerHTML = '<div class="sr-empty">검색 중...</div>';
   box.setAttribute('aria-busy', 'true');
+  var lastD = null;
   var paint = function (d) {
     if (seq !== _searchSeq) return;
+    lastD = d;
     var items = (d.items || []).filter(function (i) { return isStockCode(i.code); });
     // 코인(업비트 원화 마켓)은 이름·심볼·초성으로 화면에서 찾아 맨 위에 붙인다
     var coinHtml = window.Coin ? Coin.searchHtml(q) : '';
-    if (!items.length && !coinHtml) { box.innerHTML = '<div class="sr-empty">검색 결과가 없습니다</div>'; return; }
-    box.innerHTML = coinHtml + items.map(function (i) {
+    // 미국 주식은 서버 자동완성을 따로 받는다 — 도착하면 국내 결과 아래에 붙여 다시 그린다
+    var usHtml = window.Us ? Us.searchHtml(q) : '';
+    var usFirst = !!usHtml && Us.exactMatch(q);
+    if (!items.length && !coinHtml && !usHtml) { box.innerHTML = '<div class="sr-empty">검색 결과가 없습니다</div>'; return; }
+    box.innerHTML = coinHtml + (usFirst ? usHtml : '') + items.map(function (i) {
       return '<button class="sr-item" role="option" onclick="openStock(\'' + i.code + '\',\'' + escapeJsArg(i.name) + '\')">'
         + stockLogoHtml(i.code, i.name, null, 'sm')
         + '<span class="sr-name">' + escapeHtml(i.name) + '</span>'
         + '<span class="sr-meta">' + escapeHtml(i.market || '') + ' · ' + i.code + '</span>'
         + '</button>';
-    }).join('');
+    }).join('') + (usFirst ? '' : usHtml);
   };
+  if (window.Us) Us.fetchSearch(q).then(function (changed) {
+    if (changed && lastD && seq === _searchSeq) paint(lastD);
+  });
   try {
     // 마스터 결과는 즉시, 서버 보강 결과는 도착하면 다시 그린다
     paint(await Market.search(q, paint));
@@ -846,6 +857,7 @@ async function openStock(code, name, opts) {
   _lastQuote = null;
 
   if (window.Coin) Coin.reset();              // 코인 상세에서 넘어왔으면 그쪽 폴러·차트를 정리한다
+  if (window.Us) Us.reset();                  // 미국 주식 상세도 마찬가지
   Poller.stopAll();
   if (chartHandle) { chartHandle.dispose(); chartHandle = null; }
 
@@ -885,6 +897,7 @@ function stockUrl(code) {
   else u.searchParams.delete('code');
   u.searchParams.delete('briefing');
   u.searchParams.delete('coin');
+  u.searchParams.delete('us');
   return u.pathname + u.search + u.hash;
 }
 
@@ -907,10 +920,12 @@ window.addEventListener('popstate', function (e) {
   var code = st.dtStock || sp.get('code');
   var coin = st.dtCoin || sp.get('coin');
   var isCoin = !!(window.Coin && Coin.isMarket(coin));
+  var us = st.dtUs || sp.get('us');
+  var isUs = !!(window.Us && Us.isCode(us)) && !isStockCode(code) && !isCoin;
   if (_backToHome) {
     // "← 시세" 로 돌아왔는데 앞 기록도 종목이면(상세에서 다른 종목으로 건너간 경우) 그 기록을 홈으로 바꿔 쓴다
     _backToHome = false;
-    if (isStockCode(code) || isCoin) { try { history.replaceState(null, '', stockUrl(null)); } catch (x) {} }
+    if (isStockCode(code) || isCoin || isUs) { try { history.replaceState(null, '', stockUrl(null)); } catch (x) {} }
     closeDetail(true);
     return;
   }
@@ -919,6 +934,9 @@ window.addEventListener('popstate', function (e) {
     else if (currentTab !== 'market') switchTab('market');
   } else if (isCoin) {
     if (Coin.current() !== coin) Coin.open(coin, st.dtName || '', { fromPop: true });
+    else if (currentTab !== 'market') switchTab('market');
+  } else if (isUs) {
+    if (Us.current() !== us) Us.open(us, st.dtName || '', { fromPop: true });
     else if (currentTab !== 'market') switchTab('market');
   } else if (detailOpen()) {
     closeDetail(false);
@@ -968,6 +986,7 @@ function closeDetail(toHome) {
   _detailFrom = null;
   curStock = null;
   if (window.Coin) Coin.reset();
+  if (window.Us) Us.reset();
   Poller.remove('quote'); Poller.remove('bars'); Poller.remove('book'); Poller.remove('crowd');
   if (chartHandle) { chartHandle.dispose(); chartHandle = null; }
   var tb = document.getElementById('mkTradeBar');
@@ -1238,6 +1257,7 @@ var _chartBars = null;      // 마지막으로 그린 봉 — 테마 전환 시 
  */
 async function onThemeChanged() {
   if (window.Coin) Coin.onThemeChanged();
+  if (window.Us) Us.onThemeChanged();
   if (!curStock || !chartHandle || !_chartBars) return;
   var box = document.getElementById('chartBox');
   if (!box) return;

@@ -81,16 +81,17 @@ function showMain() {
 // 함수로 둔다 — Firebase 초기화가 실패하면 이 줄이 실행되기 전에 showGate 가 불린다
 function deepLinkKey() { return 'dt-invest-deeplink'; }
 
-function parseDeepLink(code, bid, coin) {
+function parseDeepLink(code, bid, coin, us) {
   if (code && /^[0-9A-Z]{6}$/.test(code)) return { code: code };
   if (coin && /^KRW-[A-Z0-9]{1,15}$/.test(coin)) return { coin: coin };
+  if (us && /^[A-Za-z0-9]{1,8}(_[a-z])?(\.[A-Z])?$/.test(us)) return { us: us };
   if (bid && isDocId(bid)) return { briefing: bid };
   return null;
 }
 
 function readDeepLink() {
   var p = new URLSearchParams(location.search);
-  return parseDeepLink(p.get('code'), p.get('briefing'), p.get('coin'));
+  return parseDeepLink(p.get('code'), p.get('briefing'), p.get('coin'), p.get('us'));
 }
 
 function rememberDeepLink() {
@@ -108,7 +109,7 @@ function takeDeepLink() {
   var link = readDeepLink();
   if (link) return link;
   if (saved && saved.link && Date.now() - (saved.at || 0) < 3600000) {
-    return parseDeepLink(saved.link.code, saved.link.briefing, saved.link.coin);
+    return parseDeepLink(saved.link.code, saved.link.briefing, saved.link.coin, saved.link.us);
   }
   return null;
 }
@@ -118,6 +119,7 @@ function applyDeepLink() {
   if (!link) return;
   if (link.code && typeof openStock === 'function') openStock(link.code, '', { replace: true });
   else if (link.coin && window.Coin) Coin.open(link.coin, '', { replace: true });
+  else if (link.us && window.Us) Us.open(link.us, '', { replace: true });
   else if (link.briefing) openBriefing(link.briefing);
 }
 

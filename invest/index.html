@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"></noscript>
-  <link rel="stylesheet" href="style.css?v=39">
+  <link rel="stylesheet" href="style.css?v=40">
   <link rel="icon" href="../icon-192.png?v=2">
 </head>
 <body>
@@ -90,7 +90,7 @@
 
           <div class="search-wrap">
             <input type="text" id="stockSearch" class="search-input" autocomplete="off" aria-label="종목 검색"
-                   placeholder="종목 · 코인 검색 (예: ㅅㅅㅈㅈ, 비트코인)"
+                   placeholder="종목 · 코인 검색 (예: ㅅㅅㅈㅈ, 엔비디아, 비트코인)"
                    onfocus="loadMaster(); Coin.ensureInfos()" oninput="onSearchInput(this.value)">
             <button class="search-clear" onclick="clearSearch()" aria-label="검색어 지우기">✕</button>
             <div class="search-results" id="searchResults" role="listbox" aria-label="검색 결과" style="display:none"></div>
@@ -152,6 +152,22 @@
             <div id="rankList"><div class="loading">불러오는 중...</div></div>
           </section>
 
+          <!-- 미국 주식 — 네이버 해외주식 시세 (us.js) -->
+          <section class="m-section" id="usSection">
+            <div class="m-head">
+              <h3>🇺🇸 미국 주식</h3>
+              <span class="m-hint">나스닥 · 뉴욕 · 달러</span>
+            </div>
+            <div class="seg-row">
+              <button class="seg" data-usort="fav" onclick="Us.setSort('fav')">관심</button>
+              <button class="seg on" data-usort="value" onclick="Us.setSort('value')">거래대금</button>
+              <button class="seg" data-usort="cap" onclick="Us.setSort('cap')">시가총액</button>
+              <button class="seg" data-usort="up" onclick="Us.setSort('up')">급상승</button>
+              <button class="seg" data-usort="down" onclick="Us.setSort('down')">급하락</button>
+            </div>
+            <div id="usList"><div class="loading">불러오는 중...</div></div>
+          </section>
+
           <!-- 코인 — 업비트 원화 마켓 시세 (coin.js) -->
           <section class="m-section" id="coinSection">
             <div class="m-head">
@@ -168,7 +184,7 @@
           </section>
 
           <div class="disclaimer">
-            ⚠️ 주식 네이버 증권 · 코인 업비트 시세 · 투자 참고용 · 지연·오류가 있을 수 있습니다.
+            ⚠️ 주식(국내·미국) 네이버 증권 · 코인 업비트 시세 · 투자 참고용 · 지연·오류가 있을 수 있습니다.
           </div>
         </div>
       </div>
@@ -252,10 +268,11 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="market.js?v=26"></script>
-  <script src="market-ui.js?v=40"></script>
-  <script src="coin.js?v=3"></script>
+  <script src="market.js?v=27"></script>
+  <script src="market-ui.js?v=42"></script>
+  <script src="coin.js?v=4"></script>
+  <script src="us.js?v=3"></script>
   <script src="community.js?v=5"></script>
-  <script src="app.js?v=43"></script>
+  <script src="app.js?v=44"></script>
 </body>
 </html>

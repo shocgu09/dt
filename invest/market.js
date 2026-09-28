@@ -77,6 +77,12 @@ var Market = {
   coinBook:    function (market) { return marketApi('/api/coin/book', { market: market }); },
   coinTrades:  function (market) { return marketApi('/api/coin/trades', { market: market }); },
   coinCandles: function (market, tf) { return marketApi('/api/coin/candles', { market: market, tf: tf }); },
+  // 미국 주식 (네이버 해외주식) — 코드는 reuters 코드(AAPL.O, BRKb)
+  usList:      function (sort, limit) { return marketApi('/api/us/list', { sort: sort, limit: limit || 15 }); },
+  usListOf:    function (codes) { return marketApi('/api/us/list', { codes: codes.join(',') }); },
+  usQuote:     function (code) { return marketApi('/api/us/quote', { code: code }); },
+  usCandles:   function (code, tf) { return marketApi('/api/us/candles', { code: code, tf: tf }); },
+  usSearch:    function (q) { return marketApi('/api/us/search', { q: q }); },
   crowd:    function (code) { return crowdApi('/crowd', { code: code }); },
   crowdTop: function (type) { return crowdApi('/crowd/top', { type: type === 'bought' ? 'bought' : 'held' }); }
 };
@@ -380,6 +386,7 @@ function purgeLegacyRecent() {
 /* ===== 관심종목 (Firestore stock_watchlist/{uid}) ===== */
 var watchlist = [];
 var coinWatchlist = [];      // 관심 코인 — 같은 문서의 coins 필드 (주식 codes 와 섞지 않는다)
+var usWatchlist = [];        // 관심 미국 주식 — 같은 문서의 us 필드
 var _watchlistReady = null;
 
 /** 관심종목을 1회만 불러온다 — 시세 홈을 거치지 않고 종목 상세로 바로 들어와도 하트가 맞도록 */
@@ -394,7 +401,8 @@ async function loadWatchlist() {
     var doc = await db.collection('stock_watchlist').doc(currentUser.uid).get();
     watchlist = (doc.exists && Array.isArray(doc.data().codes)) ? doc.data().codes : [];
     coinWatchlist = (doc.exists && Array.isArray(doc.data().coins)) ? doc.data().coins : [];
-  } catch (e) { watchlist = []; coinWatchlist = []; }
+    usWatchlist = (doc.exists && Array.isArray(doc.data().us)) ? doc.data().us : [];
+  } catch (e) { watchlist = []; coinWatchlist = []; usWatchlist = []; }
   return watchlist;
 }
 
@@ -439,6 +447,27 @@ async function toggleCoinWatch(market) {
     }, { merge: true });
   } catch (e) {
     coinWatchlist = on ? coinWatchlist.filter(function (c) { return c !== market; }) : coinWatchlist.concat([market]);
+    throw e;
+  }
+  return on;
+}
+
+/** 관심 미국 주식 토글 — 주식·코인과 같은 방식(원소 단위 arrayUnion/arrayRemove) */
+async function toggleUsWatch(code) {
+  if (!db || !currentUser) return false;
+  if (!/^[A-Za-z0-9]{1,8}(_[a-z])?(\.[A-Z])?$/.test(String(code || ''))) throw new Error('종목코드가 올바르지 않습니다');
+  await ensureWatchlist();
+  var on = usWatchlist.indexOf(code) === -1;
+  if (on && usWatchlist.length >= WATCHLIST_MAX) throw new Error('관심 미국 주식은 ' + WATCHLIST_MAX + '개까지 담을 수 있습니다');
+  usWatchlist = on ? usWatchlist.concat([code]) : usWatchlist.filter(function (c) { return c !== code; });
+  var FV = firebase.firestore.FieldValue;
+  try {
+    await db.collection('stock_watchlist').doc(currentUser.uid).set({
+      us: on ? FV.arrayUnion(code) : FV.arrayRemove(code),
+      updatedAt: FV.serverTimestamp()
+    }, { merge: true });
+  } catch (e) {
+    usWatchlist = on ? usWatchlist.filter(function (c) { return c !== code; }) : usWatchlist.concat([code]);
     throw e;
   }
   return on;
