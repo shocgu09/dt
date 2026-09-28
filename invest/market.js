@@ -15,27 +15,38 @@ async function marketApi(path, params) {
   // 워커가 응답을 붙들면 화면이 "불러오는 중"에 갇힌다 — 15초에 끊어 오류로 돌리고 다음 폴링이 다시 부른다
   var init = { headers: { Authorization: 'Bearer ' + token } };
   if (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) init.signal = AbortSignal.timeout(15000);
+  var feed = feedOf(path);
   var res;
   try { res = await fetch(url, init); }
   catch (e) {
-    _apiFailStreak++;
+    if (feed) feed.fail++;
     throw new Error(e && e.name === 'TimeoutError' ? '시세 서버 응답이 늦습니다. 잠시 후 다시 시도합니다' : '네트워크 오류로 시세를 가져오지 못했습니다');
   }
   if (res.status === 401) throw new Error('인증이 만료되었습니다. 새로고침해 주세요');
-  if (!res.ok) { if (res.status >= 500) _apiFailStreak++; throw new Error('시세를 가져오지 못했습니다 (' + res.status + ')'); }
+  if (!res.ok) { if (feed && res.status >= 500) feed.fail++; throw new Error('시세를 가져오지 못했습니다 (' + res.status + ')'); }
   var data = await res.json();
   if (data && data.error) throw new Error(data.error);
-  _apiFailStreak = 0;
-  _apiOkAt = Date.now();
+  if (feed) { feed.fail = 0; feed.okAt = Date.now(); }
   return data;
 }
 
 /* 연결 상태 — 요청이 연달아 실패하면 화면의 '실시간' 배지를 '연결 끊김'으로 바꾼다.
- * 서버 장 상태(marketStatus)는 5분 동안 믿기 때문에, 이게 없으면 네트워크가 끊겨도 5분간 '실시간'으로 남았다. */
-var _apiFailStreak = 0, _apiOkAt = 0;
-function isFeedStale() {
+ * 서버 장 상태(marketStatus)는 5분 동안 믿기 때문에, 이게 없으면 네트워크가 끊겨도 5분간 '실시간'으로 남았다.
+ * 시세 출처마다 따로 센다 — 예전에는 하나라도 성공하면(5초마다 도는 코인 목록 등) 실패 횟수가 0 으로 돌아가,
+ * 네이버 국내 시세가 끊겨도 업비트가 살아 있으면 '국내 실시간'이 계속 떠 있었다. */
+var _feeds = { kr: { fail: 0, okAt: 0 }, coin: { fail: 0, okAt: 0 }, us: { fail: 0, okAt: 0 } };
+function feedOf(path) {
+  if (path.indexOf('/api/coin/') === 0) return _feeds.coin;
+  if (path.indexOf('/api/us/') === 0) return _feeds.us;
+  // 국내 배지는 현재가·지수만 본다 (호가·차트·랭킹은 따로 실패해도 현재가가 살아 있으면 실시간이다)
+  if (path === '/api/quote' || path === '/api/quotes' || path === '/api/index') return _feeds.kr;
+  return null;
+}
+/** @param kind 'kr'(기본) | 'coin' | 'us' */
+function isFeedStale(kind) {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
-  return _apiFailStreak >= 2 && Date.now() - _apiOkAt > 15000;
+  var f = _feeds[kind || 'kr'] || _feeds.kr;
+  return f.fail >= 2 && Date.now() - f.okAt > 15000;
 }
 
 var Market = {
@@ -269,14 +280,19 @@ function isMarketStateGuessed() {
 
 // 배지는 확정된 사실만 쓴다 — "(추정)" 같은 단서를 화면에 달지 않는다.
 // 시계로만 판정 중일 때는 "실시간" 대신 "장중"으로만 표시한다.
+// 닫혀 있을 때는 이유를 가른다 — 새벽·주말·휴장일까지 '장 마감'이라 쓰면 오늘 장이 이미 끝난 것처럼 읽힌다.
 function marketStateLabel() {
   if (isFeedStale()) return { cls: 'stale', text: '연결 끊김' };
-  if (!isMarketOpen()) return { cls: 'closed', text: '장 마감' };
+  if (!isMarketOpen()) {
+    if (!isTradingDayKst()) return { cls: 'closed', text: '휴장' };
+    if (kstParts().hm < 9 * 60) return { cls: 'closed', text: '장 시작 전' };
+    return { cls: 'closed', text: '장 마감' };
+  }
   return { cls: 'live', text: isMarketStateGuessed() ? '장중' : '실시간' };
 }
 
 /* ===== 폴링 스케줄러 =====
- * - 장외에는 돌지 않는다 (네이버 트래픽 최소화)
+ * - 장외에는 느리게 돈다 (pollMs 의 장외 주기 — 네이버 트래픽 최소화)
  * - 탭이 백그라운드면 멈춘다 (모바일 배터리)
  * - 화면 전환 시 stopAll()로 확실히 정리
  */
@@ -345,6 +361,8 @@ document.addEventListener('visibilitychange', function () {
   if (document.hidden) Poller.pause();
   else Poller.resume();
 });
+// 백그라운드 탭으로 열렸으면(링크를 새 탭으로) 처음 볼 때까지 멈춰 둔다 — 첫 1회만 돌고 다음 주기를 걸지 않는다
+if (document.hidden) Poller.pause();
 
 /* ===== 최근 본 종목 (localStorage — 서버 비용 0) ===== */
 /* 같은 기기를 여러 회원이 쓰면 최근 본 종목이 섞이므로 uid로 분리한다.

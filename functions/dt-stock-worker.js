@@ -22,9 +22,9 @@ const CORS = {
   'Content-Type': 'application/json; charset=utf-8'
 };
 
-// 캐시 TTL(초) — 네이버 권장 폴링이 7초라 그보다 짧게 잡을 이유가 없다
+// 캐시 TTL(초) — 현재가·호가는 화면 폴링(장중 3초)에 맞춰 짧게, 하루 단위로 바뀌는 값은 길게
 const TTL = { quote: 3, book: 3, index: 15, ohlcIntra: 30, ohlcDay: 43200, search: 86400,
-              rank: 60, sectors: 120, news: 300, spark: 60, trend: 600, profile: 900,
+              rank: 60, sectors: 120, news: 300, spark: 60, trend: 900, profile: 900,
               disclosure: 300, disclosureBody: 86400 };
 
 const KV_MIN_TTL = 600;
@@ -260,8 +260,28 @@ async function handleOhlc(env, code, tf) {
   if (!isCode(code)) return { error: '종목코드는 6자리 숫자입니다' };
   const st = kstStamp();
   if (tf === '1m') {
-    return memo(`o:${code}:1m:${st.ymd}`, TTL.ohlcIntra, async () => ({
-      code, tf, bars: await naver.getOhlc(code, '1m', { start: `${st.ymd}0800`, end: st.full }), source: 'naver'
+    // 네이버 분봉은 09:00 봉부터 있다(NXT 프리마켓 날에도). 그 전·주말·휴장일에는 오늘 봉이 없어 1분·5분 차트가
+    // 통째로 비었다 — 직전 거래일 분봉을 준다 (지난 날 봉은 바뀌지 않으므로 길게 캐시)
+    const hm = Number(st.full.slice(8, 10)) * 60 + Number(st.full.slice(10, 12));
+    const hol = env.MOCK_DB ? await holidaySet(env.MOCK_DB).catch(() => new Set()) : new Set();
+    const tradingToday = (ymd) => { const w = new Date(Date.UTC(+ymd.slice(0, 4), +ymd.slice(4, 6) - 1, +ymd.slice(6, 8))).getUTCDay(); return w >= 1 && w <= 5 && !hol.has(ymd); };
+    if (tradingToday(st.ymd) && hm >= 9 * 60) {
+      return memo(`o:${code}:1m:${st.ymd}`, TTL.ohlcIntra, async () => ({
+        code, tf, day: st.ymd, bars: await naver.getOhlc(code, '1m', { start: `${st.ymd}0800`, end: st.full }), source: 'naver'
+      }));
+    }
+    let d = Date.UTC(+st.ymd.slice(0, 4), +st.ymd.slice(4, 6) - 1, +st.ymd.slice(6, 8));
+    let prev = null;
+    for (let i = 0; i < 15 && !prev; i++) {
+      d -= 86400e3;
+      const k = new Date(d);
+      const y = `${k.getUTCFullYear()}${String(k.getUTCMonth() + 1).padStart(2, '0')}${String(k.getUTCDate()).padStart(2, '0')}`;
+      if (tradingToday(y)) prev = y;
+    }
+    if (!prev) return { code, tf, bars: [], source: 'naver' };
+    return memo(`o:${code}:1m:${prev}`, 600, async () => ({
+      code, tf, day: prev, previous: true,
+      bars: await naver.getOhlc(code, '1m', { start: `${prev}0800`, end: `${prev}2000` }), source: 'naver'
     }));
   }
   const startY = String(Number(st.ymd.slice(0, 4)) - 2) + '0101';
@@ -294,7 +314,8 @@ async function handleIndex(env, ctx) {
     return {
       ...idx, ...fut, ...extra, ...coins, ...night,
       holidays,
-      marketStatus: ref ? ref.marketStatus : null,
+      // KRX 는 NXT 프리·애프터마켓(08:00~08:50 · 15:40~) 동안 CLOSE 다 — 거래가 도는 동안은 열림으로 싣는다
+      marketStatus: ref ? (ref.session ? 'OPEN' : ref.marketStatus) : null,
       sessionType: ref ? ref.sessionType : null
     };
   });
@@ -307,27 +328,29 @@ let lastNight = null;
 let nightAt = 0;
 let nightBusy = null;
 let lastNightErr = '';
+let nightRetryAt = 0;      // 실패 뒤 다시 부를 수 있는 시각 — 값을 한 번도 못 받은 인스턴스에도 적용한다
 async function nightFutCell(env, ctx) {
   if (!kis.enabled(env)) return {};
   const h = new Date(Date.now() + 9 * 3600 * 1000).getUTCHours();
   const ttl = (h >= 18 || h < 6 ? 30 : 300) * 1000;
   const age = Date.now() - nightAt;
   if (lastNight && age < ttl) return { nightfut: lastNight };
-  if (!nightBusy) {
+  if (!nightBusy && Date.now() >= nightRetryAt) {
     nightBusy = kis.nightCell(env)
       .then((c) => { lastNight = c; nightAt = Date.now(); lastNightErr = ''; })
       .catch((e) => {
         lastNightErr = String((e && e.message) || e).slice(0, 120);
         console.warn('kis night failed', lastNightErr);
         nightAt = Date.now() - ttl + 30000;
+        nightRetryAt = Date.now() + 30000;   // KIS 는 토큰 발급이 분당 1회라 실패 직후 연달아 부르면 계속 실패한다
       })
       .finally(() => { nightBusy = null; });
   }
-  if (lastNight && age < 600000) {
-    if (ctx && ctx.waitUntil) ctx.waitUntil(nightBusy);
-    return { nightfut: lastNight };
-  }
-  await nightBusy;
+  if (nightBusy && ctx && ctx.waitUntil) ctx.waitUntil(nightBusy);
+  if (lastNight && age < 600000) return { nightfut: lastNight };
+  // 새 인스턴스(값 없음)이거나 10분 넘게 묵었다 — 잠깐만 기다린다.
+  // 예전에는 끝까지 기다려서 KIS 가 막히면 15초마다 지수 응답(장 상태·휴장일 포함)이 수 초씩 붙들렸다
+  if (nightBusy) await Promise.race([nightBusy, new Promise((r) => setTimeout(r, 2500))]);
   return lastNight ? { nightfut: lastNight } : {};
 }
 
@@ -399,7 +422,8 @@ async function handleSectors(env, kind, no) {
 /** 투자자별 매매동향 (개인·외국인·기관) */
 async function handleTrend(env, code) {
   if (!isCode(code)) return { error: '종목코드는 6자리 숫자입니다' };
-  return cached(env, `dt:${code}:${kstStamp().ymd}`, TTL.trend, async () => ({
+  // 종목마다 KV 에 쓰면 보는 종목 수만큼 쓰기가 늘어난다 — 하루 단위 값이라 워커 메모리 캐시로 충분하다
+  return memo(`dt:${code}:${kstStamp().ymd}`, TTL.trend, async () => ({
     code, rows: await naver.getDealTrend(code), source: 'naver'
   }));
 }
@@ -422,7 +446,8 @@ async function handleProfile(env, code) {
  */
 async function handleIndexSpark(env) {
   const st = kstStamp();
-  return cached(env, `ixsp:${st.ymd}`, marketOpen() ? 60 : 600, async () => ({
+  // 장이 닫힌 동안에는 값이 바뀌지 않는다 — KV 에 10분마다 쓰면 밤·주말에만 하루 수백 건을 썼다 (무료 한도 1,000건)
+  return memo(`ixsp:${st.ymd}`, marketOpen() ? 60 : 1800, async () => ({
     series: await naver.getIndexSparks(), span: 'intraday', source: 'naver'
   }));
 }

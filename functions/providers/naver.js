@@ -698,13 +698,18 @@ export const daum = {
     }));
     if (!r.ok) throw new Error(`daum ${r.status}`);
     const d = await r.json();
+    // 다음은 등락을 이미 부호가 붙은 값으로 준다 (2026-09-29 실측: FALL · changePrice −15500 · changeRate −0.0543).
+    // 예전처럼 FALL 이면 한 번 더 뒤집으면 하락 종목이 '▲ +5.43%' 로 보였다 — 방향 문자열로 부호를 정하고 크기만 쓴다
+    const dir = /FALL|LOWER/.test(d.change || '') ? -1 : (/RISE|UPPER/.test(d.change || '') ? 1 : Math.sign(Number(d.changePrice) || 0));
+    const ts = d.timestamp ? new Date(d.timestamp) : null;
     return {
       code, name: d.name, market: d.market,
-      price: d.tradePrice, change: d.change === 'FALL' ? -d.changePrice : d.changePrice,
-      changeRate: (d.changeRate || 0) * 100 * (d.change === 'FALL' ? -1 : 1),
+      price: d.tradePrice, change: dir * Math.abs(Number(d.changePrice) || 0),
+      changeRate: dir * Math.abs(Number(d.changeRate) || 0) * 100,
       open: d.openingPrice, high: d.highPrice, low: d.lowPrice,
       volume: d.accTradeVolume, delayed: true,
-      asOf: d.date || new Date().toISOString(), source: 'daum'
+      // d.date 는 날짜뿐이라("2026-09-28") 화면에 '09:00 기준'으로 찍혔다
+      asOf: ts && !isNaN(ts) ? ts.toISOString() : new Date().toISOString(), source: 'daum'
     };
   }
 };
@@ -731,7 +736,8 @@ export const yahoo = {
     const m = d.chart.result[0].meta;
     const prev = m.chartPreviousClose || m.previousClose;
     return {
-      code, name: m.symbol, market: m.exchangeName,
+      // 이름을 모른다 (m.symbol 은 '005930.KS') — 딥링크로 들어온 화면 제목·최근 본 종목에 코드가 이름처럼 박히지 않게 비운다
+      code, name: null, market: m.exchangeName,
       price: m.regularMarketPrice,
       change: prev ? m.regularMarketPrice - prev : null,
       changeRate: prev ? ((m.regularMarketPrice - prev) / prev) * 100 : null,

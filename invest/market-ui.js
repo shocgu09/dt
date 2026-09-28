@@ -231,7 +231,8 @@ async function loadIndex() {
         var first = FUT_KEYS[k] && !FUT_KEYS[have[have.indexOf(k) - 1]];
         var coinM = COIN_CELL[k];
         return '<div class="idx-cell' + (FUT_KEYS[k] ? ' fut' : '') + (first ? ' fut-first' : '') + (coinM ? ' coin' : '') + '"'
-          + (coinM ? ' role="button" tabindex="0" onclick="Coin.open(\'' + coinM + '\',\'' + escapeJsArg(INDEX_LABEL[k]) + '\')"' : '') + '>'
+          + (coinM ? ' role="button" tabindex="0" onclick="Coin.open(\'' + coinM + '\',\'' + escapeJsArg(INDEX_LABEL[k]) + '\')"'
+                   + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click()}"' : '') + '>'
           + '<div class="idx-name">' + indexIconHtml(k) + escapeHtml(INDEX_NAME[k] || x.name)
           +   (x.delayMin ? '<span class="idx-delay">' + x.delayMin + '분 지연</span>' : '')
           +   (x.tag !== undefined ? '<span class="idx-delay" id="ixt-' + k + '"></span>' : '')
@@ -264,7 +265,11 @@ async function loadIndex() {
       setTextFlash(pEl, pTxt, dirOf('ix:' + k, x.price));
       pEl.className = 'idx-price ' + cls;
       // 값이 없는 칸(야간장 개장 전)은 등락 줄을 비운다 — "– -" 가 남지 않게
-      cEl.textContent = x.price == null ? '' : signMark(x.change) + ' ' + fmtRate(x.changeRate);
+      // 금리(단위 %)는 등락률로 쓰면 '▲ +3.06%'가 금리 3%p 상승처럼 읽힌다 — 변화폭을 %p 로 쓴다
+      cEl.textContent = x.price == null ? ''
+        : (x.unit === '%' && x.change != null
+            ? signMark(x.change) + ' ' + (x.change > 0 ? '+' : '') + Number(x.change).toFixed(dg) + '%p'
+            : signMark(x.change) + ' ' + fmtRate(x.changeRate));
       cEl.className = 'idx-chg ' + cls;
       var tEl = document.getElementById('ixt-' + k);
       if (tEl) tEl.textContent = x.tag || '';
@@ -340,46 +345,62 @@ function onSearchInput(v) {
 function isStockCode(c) { return /^[0-9A-Z]{6}$/.test(String(c || '')); }
 
 var _searchSeq = 0;
+/**
+ * 국내(종목 마스터 + 서버 자동완성) · 코인(업비트 목록, 화면에서 찾음) · 미국(서버 자동완성)을 한 목록으로.
+ * 코인·미국은 국내 검색을 기다리지 않고 바로 그린다 — 예전에는 국내 서버 검색이 끝나야(최대 6초) 그려서
+ * '비트코인'·'AAPL' 처럼 마스터에 없는 말은 한참 '검색 중'이었고, 국내 검색이 실패하면 코인 결과까지 사라졌다.
+ */
 async function doSearch(q) {
   var box = document.getElementById('searchResults');
   var seq = ++_searchSeq;             // 느린 이전 검색 응답이 최신 입력의 결과를 덮지 않게
   box.style.display = '';
   box.innerHTML = '<div class="sr-empty">검색 중...</div>';
   box.setAttribute('aria-busy', 'true');
-  var lastD = null;
+  var lastD = null, krDone = false, krErr = null;
   var paint = function (d) {
     if (seq !== _searchSeq) return;
-    lastD = d;
-    var items = (d.items || []).filter(function (i) { return isStockCode(i.code); });
-    // 코인(업비트 원화 마켓)은 이름·심볼·초성으로 화면에서 찾아 맨 위에 붙인다
-    var coinHtml = window.Coin ? Coin.searchHtml(q) : '';
-    // 미국 주식은 서버 자동완성을 따로 받는다 — 도착하면 국내 결과 아래에 붙여 다시 그린다
+    if (d) lastD = d;
+    var items = ((lastD && lastD.items) || []).filter(function (i) { return isStockCode(i.code); });
+    // 코인: 심볼·이름이 딱 맞는 것만 맨 위, 나머지는 국내 종목 아래
+    var coin = window.Coin ? (Coin.searchParts ? Coin.searchParts(q) : { top: Coin.searchHtml(q), rest: '' }) : { top: '', rest: '' };
+    // 미국 주식은 서버 자동완성을 따로 받는다 — 티커가 딱 맞으면 위, 아니면 아래
     var usHtml = window.Us ? Us.searchHtml(q) : '';
     var usFirst = !!usHtml && Us.exactMatch(q);
-    if (!items.length && !coinHtml && !usHtml) { box.innerHTML = '<div class="sr-empty">검색 결과가 없습니다</div>'; return; }
-    box.innerHTML = coinHtml + (usFirst ? usHtml : '') + items.map(function (i) {
+    if (!items.length && !coin.top && !coin.rest && !usHtml) {
+      box.innerHTML = '<div class="sr-empty">' + (krErr ? escapeHtml(krErr) : (krDone ? '검색 결과가 없습니다' : '검색 중...')) + '</div>';
+      return;
+    }
+    box.innerHTML = coin.top + (usFirst ? usHtml : '') + items.map(function (i) {
       return '<button class="sr-item" role="option" onclick="openStock(\'' + i.code + '\',\'' + escapeJsArg(i.name) + '\')">'
         + stockLogoHtml(i.code, i.name, null, 'sm')
         + '<span class="sr-name">' + escapeHtml(i.name) + '</span>'
         + '<span class="sr-meta">' + escapeHtml(i.market || '') + ' · ' + i.code + '</span>'
         + '</button>';
-    }).join('') + (usFirst ? '' : usHtml);
+    }).join('') + coin.rest + (usFirst ? '' : usHtml)
+      + (krDone ? '' : '<div class="sr-empty sr-more">국내 종목 찾는 중...</div>');
   };
-  if (window.Us) Us.fetchSearch(q).then(function (changed) {
-    if (changed && lastD && seq === _searchSeq) paint(lastD);
-  });
+  // 코인 목록이 아직 없으면(첫 검색) 받아지는 대로, 미국 결과는 도착하는 대로 다시 그린다
+  if (window.Coin && Coin.ensureInfos) Coin.ensureInfos().then(function () { paint(null); });
+  if (window.Us) Us.fetchSearch(q).then(function (changed) { if (changed) paint(null); });
+  paint(null);
   try {
     // 마스터 결과는 즉시, 서버 보강 결과는 도착하면 다시 그린다
-    paint(await Market.search(q, paint));
+    var d = await Market.search(q, function (u) { paint(u); });
+    krDone = true;
+    paint(d);
   } catch (e) {
-    if (seq !== _searchSeq) return;
-    box.innerHTML = '<div class="sr-empty">' + escapeHtml(e.message) + '</div>';
+    krDone = true;
+    krErr = e.message;               // 국내 검색만 실패 — 코인·미국 결과가 있으면 그대로 보여 준다
+    paint(null);
   } finally {
     if (seq === _searchSeq) box.removeAttribute('aria-busy');
   }
 }
 
 function clearSearch() {
+  // 250ms 입력 대기 중이거나 도착 전인 검색이 비운 뒤에 목록을 다시 열지 않게 끊는다
+  clearTimeout(searchTimer);
+  _searchSeq++;
   document.getElementById('stockSearch').value = '';
   var box = document.getElementById('searchResults');
   box.innerHTML = ''; box.style.display = 'none';
@@ -511,7 +532,8 @@ function paintWatch() {
   if (!watchlist.length) {
     el.dataset.built = ''; el.dataset.key = '';
     el.className = '';
-    el.innerHTML = '<div class="empty">관심종목이 없습니다.<br>종목을 검색해 ⭐를 눌러보세요.</div>';
+    el.innerHTML = '<div class="empty">국내 관심종목이 없습니다.<br>종목 상세에서 ♡ 를 누르면 여기에 모입니다.'
+      + ((coinWatchlist.length || usWatchlist.length) ? '<br><span class="cn-empty-sub">관심 코인·미국 주식은 아래 각 목록의 \'관심\'에서 볼 수 있습니다</span>' : '') + '</div>';
     return;
   }
   var rows = watchlist.map(function (c) { return _quoteMap[c]; }).filter(function (q) { return q && isStockCode(q.code); });
@@ -962,6 +984,12 @@ function startStockPolling() {
 function allowNewBarNow() {
   if (curTf === 'm' || curTf === 'm5') return isMarketOpen();
   if (curTf === 'D') return isTradingDayKst() && isMarketOpen();
+  // 주·월봉: 같은 주·달이면 마지막 봉을 갱신하는 게 맞다. 월요일·월초에는 그 봉이 지난주·지난달 것이라
+  // 프리마켓 틱이 지난 봉의 종가·고가·저가를 덮었다 — 기간이 바뀌었을 때만 새 봉을 연다
+  if ((curTf === 'W' || curTf === 'M') && isTradingDayKst() && isMarketOpen() && _chartBars && _chartBars.length) {
+    var last = String(_chartBars[_chartBars.length - 1].t), today = kstParts().ymd;
+    return curTf === 'W' ? isoWeekKey(last) !== isoWeekKey(today) : last.slice(0, 6) !== today.slice(0, 6);
+  }
   return false;
 }
 
@@ -985,6 +1013,7 @@ function closeDetail(toHome) {
   var from = _detailFrom;
   _detailFrom = null;
   curStock = null;
+  _chartSeq++;                 // 받는 중이던 차트가 닫힌 화면에 그려지지 않게
   if (window.Coin) Coin.reset();
   if (window.Us) Us.reset();
   Poller.remove('quote'); Poller.remove('bars'); Poller.remove('book'); Poller.remove('crowd');
@@ -1043,6 +1072,7 @@ function stockShellHtml(code, name) {
     +   '</div>'
     +   '<div class="chart-hilo" id="chartHiLo" style="display:none"></div>'
     +   '<div class="ma-legend" id="maLegend" style="display:none"></div>'
+    +   '<div class="chart-note" id="chartNote" style="display:none"></div>'
     +   '<div class="chart-box" id="chartBox"><div class="loading">차트 불러오는 중...</div></div>'
     +   '<button class="book-toggle" id="bookToggle" onclick="toggleBook()">▾ 호가 보기 (20분 지연)</button>'
     +   '<div class="book-wrap" id="bookWrap" style="display:none"></div>'
@@ -1097,6 +1127,17 @@ async function onToggleWatch() {
   }
 }
 
+/**
+ * 시세 틱으로 차트 마지막 봉을 갱신할 때 넘길 거래량.
+ * q.volume 은 KRX+NXT 통합 '하루 누적'이라, 1분·5분봉(그 분의 거래량)이나 주·월봉(기간 합)에 넣으면
+ * 마지막 막대만 수백 배로 솟아 나머지 막대가 바닥에 깔렸다. 일봉만 네이버 일봉과 같은 기준(KRX 누적)으로 맞추고
+ * 나머지는 봉 데이터 갱신(1분 주기)에 맡긴다.
+ */
+function tickVolume(q) {
+  if (!q || curTf !== 'D') return null;
+  return (q.krx && q.krx.volume != null) ? q.krx.volume : null;
+}
+
 /** 지금 시각이 속한 봉의 시간값 (차트 마지막 봉 갱신용) */
 function currentBucketTime() {
   var now = new Date();
@@ -1121,7 +1162,9 @@ async function loadStockQuote() {
     if (!curStock || curStock.code !== code) return;
     box = document.getElementById('sdPrice');
     if (!box) return;
-    setMarketStatus(q.marketStatus);        // 시계 대신 서버 상태를 신뢰
+    // 시계 대신 서버 상태를 신뢰 — 단 KRX 상태는 NXT 프리·애프터마켓(08:00~08:50 · 15:40~) 동안 CLOSE 라
+    // 거래가 도는데 '장 마감'으로 보이고 폴링이 60초로 느려졌다. NXT 세션이 열려 있으면 열린 것으로 본다
+    setMarketStatus(q.session ? 'OPEN' : q.marketStatus);
     // 딥링크로 코드만 알고 들어왔으면 이름을 시세 응답으로 채운다 (제목·최근 본 종목·공유 문구)
     if (q.name && curStock.name === code) {
       curStock.name = String(q.name);
@@ -1153,16 +1196,22 @@ async function loadStockQuote() {
     setTextFlash(vEl, fmtNum(q.price), dirOf('px:' + q.code, q.price));
     vEl.className = 'sd-price ' + cls;
     cEl.innerHTML = signMark(q.change) + ' ' + fmtNum(Math.abs(q.change))
-      + ' (' + fmtRate(q.changeRate) + ') <span class="vs">어제보다</span>';
+      + ' (' + fmtRate(q.changeRate) + ') <span class="vs">전일 대비</span>';
     cEl.className = 'sd-chg ' + cls;
     // 프리/애프터마켓에는 KRX 가 닫혀 있어 넥스트레이드(NXT) 체결가를 보여준다 — 어느 시장 값인지 밝힌다
     var sess = q.session === 'AFTER_MARKET' ? '애프터마켓(NXT)' : (q.session === 'PRE_MARKET' ? '프리마켓(NXT)' : '');
-    aEl.innerHTML = escapeHtml(shortTime(q.asOf)) + ' 기준 · 네이버 ' + (sess ? '· ' + sess + ' ' : '')
+    // 네이버가 막혀 대체 출처(다음·야후)로 받은 값은 지연됐을 수 있다 — '네이버 · 실시간'으로 쓰지 않는다
+    var alt = q.source && q.source !== 'naver';
+    var src = alt ? (q.source === 'daum' ? '다음' : '야후') + '(대체)' : '네이버';
+    if (alt && st.cls === 'live') st = { cls: 'closed', text: '지연 가능' };
+    aEl.innerHTML = escapeHtml(shortTime(q.asOf)) + ' 기준 · ' + src + ' ' + (sess ? '· ' + sess + ' ' : '')
       + '<span class="state-dot ' + st.cls + '">' + st.text + '</span>';
 
+    // 상·하한가 — 프리·애프터마켓에는 NXT 가격을 보여 주므로 그 시장의 상태로 (KRX 값은 전날 것이 밤새 남아 있다)
+    var ls = q.session ? (q.nxt && q.nxt.limitState) : q.limitState;
     document.getElementById('sdSub').textContent =
       q.code + ' · ' + (q.market || '') + (q.halted ? ' · 거래정지' : '')
-      + (q.limitState === 'upper' ? ' · 상한가' : (q.limitState === 'lower' ? ' · 하한가' : ''));
+      + (ls === 'upper' ? ' · 상한가' : (ls === 'lower' ? ' · 하한가' : ''));
 
     document.getElementById('sdStats').innerHTML = [
       [q.integrated ? '거래량(통합)' : '거래량', fmtCompact(q.volume)],
@@ -1175,10 +1224,12 @@ async function loadStockQuote() {
 
     renderRange(q);
     syncTargetUpside();          // 목표가 카드가 열려 있으면 상승여력을 현재가에 맞춘다
+    // 모의투자 — 보유 손익·주문창 계산을 지금 보이는 현재가에 맞춘다 (계좌 응답은 수십 초 간격이다)
+    if (window.Mock && Mock.onQuote) Mock.onQuote(q);
 
     // ★ 차트 마지막 봉을 새로고침 없이 갱신.
     // 장 마감 후에도 한 번은 맞춰야 종가가 차트에 반영된다 (상단 시세와 끝점 불일치 방지).
-    if (chartHandle) chartHandle.updateLast(q.price, currentBucketTime(), q.volume, allowNewBarNow());
+    if (chartHandle) chartHandle.updateLast(q.price, currentBucketTime(), tickVolume(q), allowNewBarNow());
   } catch (e) {
     if (!box.dataset.built) box.innerHTML = '<div class="empty">' + escapeHtml(e.message) + '</div>';
     paintStateBadges();          // 실패가 이어지면 '실시간' 대신 '연결 끊김'
@@ -1269,24 +1320,26 @@ async function onThemeChanged() {
     chartHandle = handle;
     updateHiLoLabel();
     // 다시 그린 봉의 끝점을 현재가에 맞춘다 (다음 시세 폴링까지 어긋나 보이지 않게)
-    if (_lastQuote) chartHandle.updateLast(_lastQuote.price, currentBucketTime(), _lastQuote.volume, allowNewBarNow());
+    if (_lastQuote) chartHandle.updateLast(_lastQuote.price, currentBucketTime(), tickVolume(_lastQuote), allowNewBarNow());
   } catch (e) { if (seq === _chartSeq) loadStockChart(); }
 }
 
-async function loadStockChart() {
+/** @param quiet 봉 갱신 주기에 다시 시도할 때 — '불러오는 중'으로 깜빡이지 않게 지금 화면을 둔다 */
+async function loadStockChart(quiet) {
   if (!curStock) return;
   var box = document.getElementById('chartBox');
   if (!box) return;
   // 기간 버튼 연타·종목 전환 시 마지막 요청만 그린다 (차트가 겹쳐 생성·누수되는 것 방지)
   var seq = ++_chartSeq;
   syncChartModeBtn();
-  box.innerHTML = '<div class="loading">차트 불러오는 중...</div>';
+  if (!quiet) box.innerHTML = '<div class="loading">차트 불러오는 중...</div>';
   if (chartHandle) { chartHandle.dispose(); chartHandle = null; }
   try {
     var isMin = (curTf === 'm' || curTf === 'm5');
     var d = await Market.ohlc(curStock.code, isMin ? '1m' : 'D');
     if (seq !== _chartSeq) return;
     var bars = d.bars || d.candles || [];
+    syncChartNote(isMin && d);
     if (!bars.length) { box.innerHTML = '<div class="empty">차트 데이터가 없습니다</div>'; return; }
 
     if (!isMin) { _dayBars = bars; if (_lastQuote) renderRange(_lastQuote); }
@@ -1324,7 +1377,11 @@ async function loadStockChart() {
 
 /** 봉 데이터만 다시 받아 교체한다 (차트를 재생성하지 않아 줌/스크롤이 유지됨) */
 async function refreshChartBars() {
-  if (!curStock || !chartHandle || !chartHandle.replaceData) return;
+  if (!curStock) return;
+  // 첫 로드가 비었거나(장 시작 전 1분봉) 실패했으면 차트가 없다 — 예전에는 여기서 그냥 끝나 기간을 다시 누를 때까지
+  // '차트 데이터가 없습니다'가 남았다. 봉 갱신 주기마다 조용히 다시 그려 본다
+  if (!chartHandle) { if (document.getElementById('chartBox')) return loadStockChart(true); return; }
+  if (!chartHandle.replaceData) return;
   try {
     var isMin = (curTf === 'm' || curTf === 'm5');
     var seq = _chartSeq, handle = chartHandle;
@@ -1333,6 +1390,7 @@ async function refreshChartBars() {
     if (seq !== _chartSeq || handle !== chartHandle) return;
     var bars = d.bars || d.candles || [];
     if (!bars.length) return;
+    syncChartNote(isMin && d);
     if (!isMin) _dayBars = bars;
 
     var use = bars;
@@ -1346,10 +1404,19 @@ async function refreshChartBars() {
     updateHiLoLabel();
     // 교체한 봉은 워커 캐시(최대 3분) 시점의 값이라 상단 현재가보다 늦다 — 끝점을 현재가에 다시 맞춘다
     if (_lastQuote && _lastQuote.code === curStock.code) {
-      chartHandle.updateLast(_lastQuote.price, currentBucketTime(), _lastQuote.volume, allowNewBarNow());
+      chartHandle.updateLast(_lastQuote.price, currentBucketTime(), tickVolume(_lastQuote), allowNewBarNow());
       renderRange(_lastQuote);
     }
   } catch (e) { /* 다음 주기에 재시도 */ }
+}
+
+/** 장 시작 전·주말에는 워커가 직전 거래일 분봉을 준다 — 오늘 봉으로 오해하지 않게 날짜를 밝힌다 */
+function syncChartNote(d) {
+  var el = document.getElementById('chartNote');
+  if (!el) return;
+  var day = d && d.previous && /^\d{8}$/.test(String(d.day || '')) ? String(d.day) : null;
+  el.style.display = day ? '' : 'none';
+  el.textContent = day ? '📅 ' + Number(day.slice(4, 6)) + '/' + Number(day.slice(6, 8)) + ' 분봉 · 오늘 분봉은 09:00 부터 쌓입니다' : '';
 }
 
 /** 차트 위 최고/최저 라벨 갱신 */
@@ -1397,8 +1464,7 @@ function toggleBook() {
   if (!bookOpen) { wrap.dataset.built = ''; resetDirs('bk:'); }
   btn.textContent = bookOpen ? '▴ 호가 접기' : '▾ 호가 보기 (20분 지연)';
   if (bookOpen) {
-    loadBook();
-    Poller.add('book', loadBook, pollMs(3000, 60000));
+    Poller.add('book', loadBook, pollMs(3000, 60000));      // 추가하는 즉시 1회 실행된다
   } else {
     Poller.remove('book');
   }

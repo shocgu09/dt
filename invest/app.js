@@ -1,4 +1,5 @@
-/* ===== DT 재테크 — 국내주식 (시황 브리핑 + 댓글 / 시세는 market*.js) ===== */
+/* ===== DT 재테크 — 앱 뼈대 (회원 확인 · 탭 · 시황 브리핑 + 댓글 · 관리) =====
+ * 시세(국내·미국·코인)는 market*.js · us.js · coin.js, 모의투자는 mock.js, 종목 커뮤니티는 community.js */
 
 var db = null;
 var currentUser = null;
@@ -20,13 +21,15 @@ function toggleTheme() {
   var current = document.documentElement.getAttribute('data-theme');
   var next = current === 'light' ? 'dark' : 'light';
   document.documentElement.setAttribute('data-theme', next);
-  localStorage.setItem('dt-theme', next);
+  try { localStorage.setItem('dt-theme', next); } catch (e) { /* 사이트 데이터 차단 — 이번 방문에만 적용 */ }
   document.getElementById('themeToggle').textContent = next === 'light' ? '☀️' : '🌙';
   // 차트(canvas)는 CSS 변수를 따라가지 못한다 — 그릴 때 읽은 색이 굳어 있으므로 다시 그리게 한다
   if (typeof onThemeChanged === 'function') onThemeChanged();
 }
 (function() {
-  var saved = localStorage.getItem('dt-theme') || 'dark';
+  // 저장소 접근이 막힌 환경(사이트 데이터 차단)에서 여기서 예외가 나면 app.js 전체가 멈춰 '불러오는 중'에 갇혔다
+  var saved = 'dark';
+  try { saved = localStorage.getItem('dt-theme') || 'dark'; } catch (e) {}
   document.documentElement.setAttribute('data-theme', saved);
   var btn = document.getElementById('themeToggle');
   if (btn) btn.textContent = saved === 'light' ? '☀️' : '🌙';
@@ -36,7 +39,12 @@ function toggleTheme() {
 try {
   firebase.initializeApp(firebaseConfig);
   db = firebase.firestore();
+  var _authUid = null;
   firebase.auth().onAuthStateChanged(function(user) {
+    // 다른 탭에서 계정을 바꾸면 이 탭도 새 회원으로 다시 그린다 — 앞 회원의 관심종목·권한이 남지 않게
+    var uid = user && !user.isAnonymous ? user.uid : null;
+    if (_authUid && uid !== _authUid) { location.reload(); return; }
+    _authUid = uid;
     currentUser = user;
     if (!user || user.isAnonymous) { showGate(); return; }
     db.collection('users').doc(user.uid).get().then(function(doc) {
@@ -56,6 +64,8 @@ try {
 }
 
 function showGate() {
+  isMember = false; isAdmin = false;
+  if (typeof Poller !== 'undefined') Poller.stopAll();    // 로그아웃·권한 상실 — 뒤에서 시세를 계속 부르지 않게
   document.getElementById('bootLoading').style.display = 'none';
   document.getElementById('gate').style.display = '';
   document.getElementById('main').style.display = 'none';
@@ -234,7 +244,7 @@ function showToast(text) {
 /* ===== 모의투자 모드 =====
  * 코드(mock.js · mock.css)는 모드를 켤 때 처음 불러온다 — 쓰지 않는 회원에게는 아무 변화가 없다.
  */
-var MOCK_VER = '35';
+var MOCK_VER = '37';
 var _mockLoading = null;
 
 function loadMockAssets() {

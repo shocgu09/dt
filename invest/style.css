@@ -352,6 +352,7 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 .sr-name { font-size: .88rem; font-weight: 700; }
 .sr-meta { font-size: .72rem; color: var(--text3); margin-left: auto; }
 .sr-empty { padding: 14px; text-align: center; font-size: .82rem; color: var(--text3); }
+.sr-empty.sr-more { padding: 8px 14px; font-size: .74rem; }
 
 /* 섹션 */
 .m-section { margin-bottom: 18px; }
@@ -639,6 +640,7 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 
 /* 기간 최고/최저 (차트 상단) */
 .chart-hilo { display: flex; gap: 10px; align-items: center; margin-bottom: 5px; font-size: .72rem; font-weight: 800; }
+.chart-note { margin-bottom: 5px; font-size: .72rem; font-weight: 600; color: var(--text3); }
 .hl-hi { color: var(--stock-up); }
 .hl-lo { color: var(--stock-down); }
 
