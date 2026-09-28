@@ -360,7 +360,13 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       fill = await E.tryFill(db, season, order, { quote, bars }, now);
       if (fill) { mem.delete(`lb:${season.id}`); order = await db.prepare(`SELECT * FROM orders WHERE id=?`).bind(m[1]).first(); }
     }
-    return { order: publicOrder(order), fill };
+    // 체결 알림에 쓸 평균 체결가 — 크론이 체결했거나 여러 번에 나눠 체결됐으면 위 fill 만으로는 가격을 알 수 없다
+    let fillAvg = null, fillCount = 0;
+    if (order.filled_qty > 0 && order.status !== 'open' && order.status !== 'partial') {
+      const s = await db.prepare(`SELECT COUNT(*) AS n, SUM(qty) AS q, SUM(qty * price) AS amt FROM fills WHERE order_id=? AND uid=?`).bind(order.id, uid).first();
+      if (s && s.q > 0) { fillAvg = Math.round(s.amt / s.q); fillCount = s.n; }
+    }
+    return { order: publicOrder(order), fill, fillAvg, fillCount };
   }
   if (m && method === 'DELETE') {
     const ok = await E.cancelOrder(db, uid, m[1], now);

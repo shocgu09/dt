@@ -121,7 +121,7 @@ var Mock = (function () {
   }
 
   async function refreshSeason() {
-    try { season = await api('/season'); }
+    try { season = await api('/season'); season._recvAt = Date.now(); }
     catch (e) { season = { error: e.message }; }
     if (season && season.joined) await refreshAccount();
     else renderBar();
@@ -132,6 +132,7 @@ var Mock = (function () {
   async function refreshAccount() {
     try {
       account = await api('/account');
+      account._recvAt = _accAt = Date.now();
       renderBar();
       if (currentTab === 'account') renderAccount();
       renderTradeBar();
@@ -171,6 +172,17 @@ var Mock = (function () {
     }
   }
   function refreshAccountOrSeason() { return (season && season.joined) ? refreshAccount() : refreshSeason(); }
+
+  /* 헤더 아래 '내 자산' 줄과 종목 상세의 보유 줄은 계좌 응답으로 그린다. 계좌 탭 밖에서는 계좌를 다시 받지 않아
+   * 시세가 움직여도 자산·순위가 몇십 분씩 멈춰 있었다 — 장중 30초 · 장외 5분마다 조용히 다시 받는다.
+   * (계좌 탭은 자기 폴러가 10초마다 받는다. Poller 는 화면 전환 때 stopAll 로 지워지므로 따로 둔다) */
+  var _accAt = 0;
+  setInterval(function () {
+    if (!on || !season || !season.joined || !account || document.hidden) return;
+    if (typeof currentTab !== 'undefined' && currentTab === 'account') return;
+    var gap = (typeof isMarketOpen === 'function' && isMarketOpen()) ? 30000 : 300000;
+    if (Date.now() - _accAt >= gap) { _accAt = Date.now(); refreshAccount(); }
+  }, 10000);
 
   /* ===== 계좌 ===== */
   /**
@@ -688,36 +700,75 @@ var Mock = (function () {
     return account.positions.filter(function (p) { return p.code === code; })[0] || null;
   }
 
+  /** 종목 상세에 떠 있는 시세(market-ui.js 의 _lastQuote) — 그 종목일 때만 */
+  function liveQuote(code) {
+    return (typeof _lastQuote !== 'undefined' && _lastQuote && _lastQuote.code === code) ? _lastQuote : null;
+  }
+  /** 평가 가격 — 서버 평가(pricer)와 같은 기준: 화면에 보이는 현재가(시간외에는 그 시장 가격) */
+  function livePrice(code) {
+    var q = liveQuote(code);
+    return q ? (q.price != null ? q.price : (q.krx && q.krx.price)) : null;
+  }
+
+  /** 보유 한 줄 — 계좌 응답은 수십 초 간격이라 손익은 지금 보이는 현재가로 다시 계산한다 (상단 시세와 어긋나지 않게) */
+  function holdHtml(pos) {
+    var px = livePrice(pos.code);
+    if (px == null) px = pos.price;
+    var value = px != null ? px * pos.qty : pos.cost;
+    var pnl = value - pos.cost, rate = pos.cost ? pnl / pos.cost * 100 : 0;
+    return '보유 <b>' + fmtNum(pos.qty) + '주</b> · 평단 ' + fmtNum(pos.avgPrice) + '원'
+      + ' · 평가손익 <span class="' + signClass(pnl) + '">' + (pnl > 0 ? '+' : '') + fmtNum(pnl) + '원 (' + fmtRate(rate) + ')</span>';
+  }
+
   function renderTradeBar() {
     var old = document.getElementById('mkTradeBar');
-    if (old) old.remove();
-    if (!on || !curStock || !season || !season.season) return;
+    if (!on || !curStock || !season || !season.season) { if (old) old.remove(); return; }
     var host = document.getElementById('stockDetail');
-    if (!host || host.style.display === 'none') return;
+    if (!host || host.style.display === 'none') { if (old) old.remove(); return; }
     var pos = holding(curStock.code);
+    // 계좌를 새로 받을 때마다 불린다 — 버튼 구성이 그대로면 보유 줄만 고친다 (누르는 중인 버튼이 사라지지 않게)
+    var key = [curStock.code, season.joined ? 1 : 0, pos ? pos.qty + ':' + pos.cost : ''].join('|');
+    if (old && old.dataset.key === key && old.parentNode === host) { paintHold(); return; }
+    if (old) old.remove();
     var bar = document.createElement('div');
     bar.id = 'mkTradeBar';
     bar.className = 'mk-tradebar';
-    bar.innerHTML = (pos
-        ? '<div class="mk-hold">보유 <b>' + fmtNum(pos.qty) + '주</b> · 평단 ' + fmtNum(pos.avgPrice)
-          + ' · <span class="' + signClass(pos.pnl) + '">' + (pos.pnl > 0 ? '+' : '') + fmtNum(pos.pnl) + ' (' + fmtRate(pos.pnlRate) + ')</span></div>'
-        : '')
+    bar.dataset.key = key;
+    bar.innerHTML = (pos ? '<div class="mk-hold" id="mkHold">' + holdHtml(pos) + '</div>' : '')
       + '<div class="mk-tb-btns">'
       + (season.joined
           ? '<button class="mk-buy" onclick="Mock.openSheet(\'buy\')">매수</button>'
-            + '<button class="mk-sell" onclick="Mock.openSheet(\'sell\')"' + (pos ? '' : ' disabled') + '>매도</button>'
+            + '<button class="mk-sell" onclick="Mock.openSheet(\'sell\')"' + (pos ? '' : ' disabled title="보유한 주식이 없습니다"') + '>매도</button>'
           : '<button class="mk-buy" onclick="switchTab(\'account\'); Mock.openJoinFlow()">모의투자 참가하고 매수하기</button>')
       + '</div>';
     host.appendChild(bar);
   }
 
+  function paintHold() {
+    var el = document.getElementById('mkHold');
+    if (!el || !curStock) return;
+    var pos = holding(curStock.code);
+    if (pos) el.innerHTML = holdHtml(pos);
+  }
+
+  /** 종목 상세의 시세 틱마다 (market-ui.js loadStockQuote 가 부른다) — 보유 손익과 시장가 주문창 계산을 현재가에 맞춘다 */
+  function onQuote(q) {
+    if (!on || !q) return;
+    if (curStock && q.code === curStock.code) paintHold();
+    // 주문창 — 시장가 예상 금액·최대 수량, 그리고 시간대 안내(08:30·15:40 등을 넘기는 순간)를 맞춘다
+    if (sheet && sheet.code === q.code && !sheet.busy) refreshSheetParts();
+  }
+
   /* ===== 주문창 ===== */
   async function openSheet(side) {
     if (!curStock) return;
-    var q = (typeof _lastQuote !== 'undefined' && _lastQuote && _lastQuote.code === curStock.code) ? _lastQuote : null;
+    if (side === 'sell' && !holding(curStock.code)) side = 'buy';
+    var q = liveQuote(curStock.code);
     // 시간외에는 화면에 보이는 그 시장의 가격(q.price), 정규장에는 KRX 가격을 기본값으로
     var px = q ? (phaseInfo().limitOnly ? (q.price || (q.krx && q.krx.price)) : ((q.krx && q.krx.price) || q.price)) : 0;
-    sheet = { code: curStock.code, name: curStock.name, side: side, type: 'limit', price: px || 0, qty: '', taxFree: false, busy: false, orderId: null };
+    // ETF·ETN 여부를 이미 알면 바로 쓴다 — 모르면 일반 주식 호가단위로 시작하고 아래에서 받아 고친다
+    var tf = _kind[curStock.code];
+    sheet = { code: curStock.code, name: curStock.name, side: side, type: 'limit', price: px || 0, qty: '', taxFree: tf != null ? tf : false, busy: false, orderId: null };
     renderSheet();
     var mySheet = sheet;
     // 장 구간(정규장·시간외)이 바뀌었을 수 있으니 열 때마다 최신 상태를 받는다 — 통째로 다시 그리지 않고 안내·계산 부분만 갱신
@@ -737,10 +788,31 @@ var Mock = (function () {
     syncNoScroll();
   }
 
-  /** 지금이 어느 구간인지 — 계좌 응답이 더 최신이면 그쪽을 쓴다 */
+  /** 지금이 어느 구간인지 — 계좌 응답이 더 최신이면 그쪽을 쓴다.
+   * 응답은 받은 순간의 구간이라, 주문창을 연 채 08:00·08:30·15:30·15:40·20:00 을 넘기면 틀린 안내로 막았다.
+   * 서버 시각을 기준으로 흐른 시간만큼 시계를 돌려 같은 규칙(api.js sessionInfo)으로 다시 매긴다.
+   * 거래일 여부(휴장일)는 서버만 알므로, 날짜가 바뀌었으면 서버 값을 그대로 둔다 (다음 계좌 갱신이 고친다). */
   function phaseInfo() {
     var src = (account && account.phase) ? account : (season || {});
-    return { phase: src.phase || 'closed', canOrder: !!src.canOrder, limitOnly: !!src.limitOnly, holiday: !!src.holiday };
+    var base = { phase: src.phase || 'closed', canOrder: !!src.canOrder, limitOnly: !!src.limitOnly, holiday: !!src.holiday };
+    if (!src.serverTime || !src._recvAt) return base;
+    var then = kstClock(src.serverTime), now = kstClock(src.serverTime + (Date.now() - src._recvAt));
+    if (then.ymd !== now.ymd) return base;
+    var hm = now.hm, phase = 'closed';
+    if (now.dow >= 1 && now.dow <= 5 && !base.holiday) {
+      if (hm >= 480 && hm < 510) phase = 'pre_market';            // 08:00~08:30 NXT 프리마켓
+      else if (hm >= 510 && hm < 540) phase = 'pre_open';         // 08:30~09:00 장전 → 시가
+      else if (hm >= 540 && hm < 920) phase = 'continuous';       // 09:00~15:20
+      else if (hm >= 920 && hm < 930) phase = 'close_auction';    // 15:20~15:30 → 종가
+      else if (hm >= 930 && hm < 940) phase = 'break';            // 15:30~15:40
+      else if (hm >= 940 && hm < 1200) phase = 'after_market';    // 15:40~20:00
+    }
+    return { phase: phase, canOrder: phase !== 'closed' && phase !== 'break',
+             limitOnly: phase === 'pre_market' || phase === 'after_market', holiday: base.holiday };
+  }
+  function kstClock(ms) {
+    var k = new Date(ms + 9 * 3600000);
+    return { ymd: k.getUTCFullYear() * 10000 + (k.getUTCMonth() + 1) * 100 + k.getUTCDate(), hm: k.getUTCHours() * 60 + k.getUTCMinutes(), dow: k.getUTCDay() };
   }
 
   function sessionNote() {
@@ -755,9 +827,17 @@ var Mock = (function () {
     return '';
   }
 
+  /** 시장가 주문의 기준 가격 — 시장가는 정규장에만 받고, 서버도 접수 순간의 KRX 현재가로 증거금을 잡는다 */
+  function marketPx(code) {
+    var q = liveQuote(code);
+    return q ? ((q.krx && q.krx.price) || q.price || null) : null;
+  }
+
   function sheetNumbers() {
     var s = sheet, a = account, fr = a ? a.season.feeRate : 0.00015, tr = a ? a.season.taxRate : 0.002;
-    var price = Number(s.price) || 0, qty = Math.floor(Number(s.qty)) || 0;
+    // 시장가는 주문창을 연 순간의 가격이 아니라 지금 시세로 계산한다 (틱마다 onQuote 가 다시 그린다)
+    var price = (s.type === 'market' ? marketPx(s.code) : null) || Number(s.price) || 0;
+    var qty = Math.floor(Number(s.qty)) || 0;
     var amount = price * qty;
     var fee = Math.floor(amount * fr + 1e-6);
     var tax = (s.side === 'sell' && !s.taxFree) ? Math.floor(amount * tr + 1e-6) : 0;
@@ -766,12 +846,19 @@ var Mock = (function () {
       ? (price > 0 && a ? Math.floor(a.available / (price * (1 + fr))) : 0)
       : (pos ? pos.qty - (a ? a.openOrders.filter(function (o) { return o.code === s.code && o.side === 'sell'; })
                                   .reduce(function (t, o) { return t + (o.qty - o.filledQty); }, 0) : 0) : 0);
-    return { price: price, qty: qty, amount: amount, fee: fee, tax: tax, maxQty: Math.max(0, maxQty) };
+    return { price: price, qty: qty, amount: amount, fee: fee, tax: tax, maxQty: Math.max(0, maxQty), held: pos ? pos.qty : 0 };
+  }
+
+  /** 수량 옆 안내 — 매도는 '보유'가 아니라 미체결 매도를 뺀 '매도 가능' 수량이다 */
+  function maxText(n) {
+    if (sheet.side === 'buy') return '최대 ' + fmtNum(n.maxQty) + '주';
+    return '매도 가능 ' + fmtNum(n.maxQty) + '주' + (n.held !== n.maxQty ? ' (보유 ' + fmtNum(n.held) + '주)' : '');
   }
 
   function calcHtml(n) {
     var isBuy = sheet.side === 'buy', a = account;
-    return row('주문 금액', won(n.amount))
+    // 시장가는 체결가가 정해지지 않았다 — 지금 시세로 어림한 값임을 밝힌다
+    return row(sheet.type === 'market' ? '예상 주문 금액' : '주문 금액', won(n.amount))
       + row('수수료' + (n.tax || !isBuy ? ' · 세금' : ''), won(n.fee + n.tax))
       + (a ? row(isBuy ? '주문 후 주문 가능 금액' : '받을 금액', won(isBuy ? a.available - n.amount - n.fee : n.amount - n.fee - n.tax)) : '');
   }
@@ -793,7 +880,11 @@ var Mock = (function () {
     // (매도 중에 전량 체결돼 보유가 0이 된 경우는 지금 보고 있는 탭이라 그대로 둔다)
     var noHolding = !holding(s.code);
     var limitOnly = phaseInfo().limitOnly;
-    if (limitOnly) s.type = 'limit';            // 시간외에는 실전과 같이 지정가만
+    s._limitOnly = limitOnly;
+    if (limitOnly && s.type === 'market') {     // 시간외에는 실전과 같이 지정가만
+      s.type = 'limit';
+      if (!s.price) s.price = livePrice(s.code) || 0;
+    }
     el.innerHTML = '<div class="mk-sheet-dim" onclick="Mock.closeSheet()"></div>'
       + '<div class="mk-sheet ' + s.side + '" role="dialog" aria-modal="true" aria-label="주문" tabindex="-1">'
       + '<div class="mk-sheet-head"><span class="mk-sheet-title">' + escapeHtml(s.name) + ' <i>' + escapeHtml(s.code) + '</i></span>'
@@ -819,7 +910,7 @@ var Mock = (function () {
       + '</div>'
       + '<div class="mk-pct">' + [10, 25, 50, 100].map(function (p) {
           return '<button type="button" class="mini-btn" onclick="Mock.pct(' + p + ')">' + (p === 100 ? '최대' : p + '%') + '</button>';
-        }).join('') + '<span class="mk-dim" id="mkMaxQty">' + (isBuy ? '최대 ' : '보유 ') + fmtNum(n.maxQty) + '주</span></div>'
+        }).join('') + '<span class="mk-dim" id="mkMaxQty">' + maxText(n) + '</span></div>'
       + '<div class="mk-calc">' + calcHtml(n) + '</div>'
       + '<div class="mk-sheet-msg" id="mkMsg" role="alert"></div>'
       + '<button class="mk-submit ' + s.side + '" id="mkSubmit" onclick="Mock.submit()"' + (s.busy ? ' disabled' : '') + '>'
@@ -831,12 +922,13 @@ var Mock = (function () {
 
   /** 입력 중에 바뀔 수 있는 부분만 갱신 — 안내문·최대 수량·계산 행 (포커스와 키보드는 그대로) */
   function refreshSheetParts() {
-    if (!sheet || !document.getElementById('mkSheet')) return;
+    if (!sheet || !document.getElementById('mkSheet') || document.getElementById('mkPending')) return;
     var limitOnly = phaseInfo().limitOnly;
-    if (limitOnly && sheet.type === 'market') { renderSheet(); return; }     // 구간이 바뀌어 시장가가 막히면 통째로
+    // 구간이 바뀌어 시장가가 막히거나 풀리면 버튼 상태가 달라지므로 통째로 다시 그린다 (하루 몇 번뿐)
+    if (sheet._limitOnly != null && sheet._limitOnly !== limitOnly) { sheet._limitOnly = limitOnly; renderSheet(); return; }
     var n = sheetNumbers();
     var note = document.getElementById('mkSessionNote'); if (note) note.innerHTML = sessionNote();
-    var mx = document.getElementById('mkMaxQty'); if (mx) mx.textContent = (sheet.side === 'buy' ? '최대 ' : '보유 ') + fmtNum(n.maxQty) + '주';
+    var mx = document.getElementById('mkMaxQty'); if (mx) mx.textContent = maxText(n);
     var calc = document.querySelector('#mkSheet .mk-calc'); if (calc) calc.innerHTML = calcHtml(n);
   }
 
@@ -856,7 +948,7 @@ var Mock = (function () {
     el.value = v ? fmtNum(v) : '';
     msg('');
     var n = sheetNumbers();
-    var mx = document.getElementById('mkMaxQty'); if (mx) mx.textContent = (sheet.side === 'buy' ? '최대 ' : '보유 ') + fmtNum(n.maxQty) + '주';
+    var mx = document.getElementById('mkMaxQty'); if (mx) mx.textContent = maxText(n);
     var calc = document.querySelector('#mkSheet .mk-calc'); if (calc) calc.innerHTML = calcHtml(n);
   }
 
@@ -941,7 +1033,10 @@ var Mock = (function () {
     } catch (e) {
       if (sheet !== mySheet) return;
       sheet.busy = false;
-      msg(e.message, 'err');
+      // 시장가 '최대'는 화면의 현재가로 셈한다 — 접수 순간 시세가 한 호가만 올라도 금액이 모자랄 수 있다
+      msg(e.message + (e.code === 'cash' && sheet.type === 'market' && sheet.side === 'buy'
+        ? ' · 시장가는 접수 순간의 현재가로 계산합니다. 수량을 조금 줄여 다시 시도하세요' : ''), 'err');
+      if (e.code === 'cash' || e.code === 'qty') refreshAccount().then(function () { if (sheet === mySheet && !sheet.busy) refreshSheetParts(); });
       if (btn) { btn.disabled = false; btn.textContent = (sheet.side === 'buy' ? '매수' : '매도') + ' 주문'; }
     }
   }
@@ -976,9 +1071,14 @@ var Mock = (function () {
         var o = d.order;
         if (o.status === 'filled' || o.status === 'cancelled' || o.status === 'expired' || o.status === 'rejected') {
           await refreshAccount();
+          var sideTxt = o.side === 'buy' ? '매수' : '매도';
+          var endTxt = o.status === 'cancelled' ? '취소' : (o.status === 'rejected' ? '거부' : '만료');
+          // 체결가 — 여러 번에 나눠 체결됐으면 평균가 (서버가 fillAvg·fillCount 를 준다. 옛 워커면 이번 판정의 체결가)
+          var px = d.fillAvg || (d.fill && d.fill.price);
           var done = o.filledQty > 0
-            ? (o.name + ' ' + (o.side === 'buy' ? '매수' : '매도') + ' 체결 · ' + fmtNum(o.filledQty) + '주' + (d.fill ? ' · ' + fmtNum(d.fill.price) + '원' : ''))
-            : (o.name + ' 주문이 ' + (o.status === 'cancelled' ? '취소' : '만료') + '되었습니다' + (o.reason ? ' (' + o.reason + ')' : ''));
+            ? (o.name + ' ' + sideTxt + ' 체결 · ' + fmtNum(o.filledQty) + '주' + (px ? ' · ' + (d.fillCount > 1 ? '평균 ' : '') + fmtNum(px) + '원' : '')
+               + (o.filledQty < o.qty ? ' · 나머지 ' + fmtNum(o.qty - o.filledQty) + '주 ' + endTxt + (o.reason ? ' (' + o.reason + ')' : '') : ''))
+            : (o.name + ' 주문이 ' + endTxt + '되었습니다' + (o.reason ? ' (' + o.reason + ')' : ''));
           if (mine()) closeSheet();
           toast(done, o.filledQty > 0 ? o.side : '');
           return;
@@ -1635,7 +1735,7 @@ var Mock = (function () {
 
   return {
     isOn: function () { return on; },
-    setMode: setMode, onTab: onTab, renderTradeBar: renderTradeBar, onEscape: onEscape,
+    setMode: setMode, onTab: onTab, renderTradeBar: renderTradeBar, onQuote: onQuote, onEscape: onEscape,
     join: join, openJoinFlow: openJoinFlow, joinStep2: joinStep2, closeJoin: closeJoin, cancel: cancel, loadHistory: loadHistory,
     openSheet: openSheet, closeSheet: closeSheet, setSheet: setSheet, input: input, step: step, pct: pct, submit: submit,
     askReview: askReview,

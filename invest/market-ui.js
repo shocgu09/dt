@@ -1175,6 +1175,8 @@ async function loadStockQuote() {
 
     renderRange(q);
     syncTargetUpside();          // 목표가 카드가 열려 있으면 상승여력을 현재가에 맞춘다
+    // 모의투자 — 보유 손익·주문창 계산을 지금 보이는 현재가에 맞춘다 (계좌 응답은 수십 초 간격이다)
+    if (window.Mock && Mock.onQuote) Mock.onQuote(q);
 
     // ★ 차트 마지막 봉을 새로고침 없이 갱신.
     // 장 마감 후에도 한 번은 맞춰야 종가가 차트에 반영된다 (상단 시세와 끝점 불일치 방지).
