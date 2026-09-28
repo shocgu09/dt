@@ -502,12 +502,15 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     const mm = /^(\d{1,15})(?:_([0-9a-f-]{36}))?$/i.exec(cur);
     const bAt = mm ? Number(mm[1]) : now + 1;
     const bId = mm && mm[2] ? mm[2] : (mm ? '' : 'ffffffff');
+    // taxFree — 매도 세금 0원이 ETF·ETN 면제인지, 소액이라 원 미만이 버려진 것인지 화면이 가를 수 있게
     const rows = (await db.prepare(
-      `SELECT id, code, name, side, qty, price, fee, tax, at FROM fills
-       WHERE season_id=? AND uid=? AND (at < ? OR (at = ? AND id < ?)) ORDER BY at DESC, id DESC LIMIT 50`
+      `SELECT f.id, f.code, f.name, f.side, f.qty, f.price, f.fee, f.tax, f.at, COALESCE(o.tax_free, 0) AS tax_free
+       FROM fills f LEFT JOIN orders o ON o.id = f.order_id
+       WHERE f.season_id=? AND f.uid=? AND (f.at < ? OR (f.at = ? AND f.id < ?)) ORDER BY f.at DESC, f.id DESC LIMIT 50`
     ).bind(season.id, uid, bAt, bAt, bId).all()).results || [];
     const last = rows[rows.length - 1];
-    return { items: rows, next: rows.length === 50 ? `${last.at}_${last.id}` : null };
+    const items = rows.map(({ tax_free, ...r }) => ({ ...r, taxFree: !!tax_free }));
+    return { items, next: rows.length === 50 ? `${last.at}_${last.id}` : null };
   }
 
   throw new HttpError(404, 'Not Found');
@@ -641,12 +644,12 @@ async function handleAdmin(db, actor, path, method, body, now, url) {
     if (existing) {
       // 이미 시작한 시즌은 이름·종료일·전달사항만 고칠 수 있다 — 시드·요율·시작일이 바뀌면 참가자 장부와 어긋난다
       if (existing.status !== 'upcoming') {
+        if (existing.status === 'closed') throw new HttpError(409, '종료된 시즌은 수정할 수 없습니다');
         if (b.startDate !== existing.start_date) throw new HttpError(409, '진행 중인 시즌의 시작일은 바꿀 수 없습니다');
         if ((b.seed != null && Number(b.seed) !== existing.seed) || (b.feeRate != null && Number(b.feeRate) !== existing.fee_rate)
             || (b.taxRate != null && Number(b.taxRate) !== existing.tax_rate)) {
           throw new HttpError(409, '진행 중인 시즌의 시드·수수료·세율은 바꿀 수 없습니다');
         }
-        if (existing.status === 'closed') throw new HttpError(409, '종료된 시즌은 수정할 수 없습니다');
       }
       // 보내지 않은 값은 기존 값을 유지한다 (화면 폼이 시드·요율을 안 보내도 기본값으로 덮이지 않게)
       await db.prepare(

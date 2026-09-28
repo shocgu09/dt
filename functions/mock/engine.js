@@ -132,6 +132,11 @@ export async function acceptOrder(db, season, account, input, quote, taxFree, no
     if (t.dow >= 1 && t.dow <= 5 && !tradingDay) throw new OrderError('오늘은 휴장일입니다. 다음 거래일 08:00 부터 주문할 수 있습니다', 'holiday');
     throw new OrderError('주문 가능 시간이 아닙니다 (거래일 08:00~20:00, 15:30~15:40 제외)', 'closed');
   }
+  // 시즌 마지막 날의 애프터마켓 — 최종 순위는 보유 종목을 15:30 종가로 평가하는데 현금은 그 뒤 체결까지 반영된다.
+  // 15:30 종가보다 싸게 NXT 에서 사 종가로 평가받는(또는 비싸게 파는) 차익이 생겨 순위가 바뀔 수 있다
+  if (session === 'after' && season.end_date && t.iso >= season.end_date) {
+    throw new OrderError('시즌 마지막 날은 15:30 정규장으로 매매가 끝납니다 (최종 순위는 15:30 종가 기준)', 'season_end');
+  }
   if (!quote || quote.krx == null || quote.krx.price == null) throw new OrderError('시세를 확인할 수 없는 종목입니다');
   if (session !== 'regular') {
     // 시간외는 실전에서도 지정가만 받는다 (거래가 얇아 시장가는 위험하다)
@@ -267,7 +272,13 @@ export async function amendOrder(db, season, account, orderId, input, quote, tax
   const remaining = order.qty - order.filled_qty;
   const qty = input.qty == null ? remaining : Number(input.qty);
   if (!Number.isInteger(qty) || qty <= 0) throw new OrderError('수량은 1주 이상의 정수여야 합니다');
-  if (qty > remaining) throw new OrderError('수량을 늘리는 정정은 없습니다. 추가 수량은 새 주문으로 내 주세요', 'qty_up');
+  if (qty > remaining) {
+    // 화면이 정정 창을 연 뒤에 일부 체결됐으면 남은 수량이 줄어 있다 — '늘리는 정정'이 아니라 경합이다
+    if (input.filledQty != null && Number(input.filledQty) < order.filled_qty) {
+      throw new OrderError(`그 사이 ${order.filled_qty - Number(input.filledQty)}주가 체결되어 남은 수량이 ${remaining}주입니다. 주문 상태를 확인한 뒤 다시 정정해 주세요`, 'raced');
+    }
+    throw new OrderError('수량을 늘리는 정정은 없습니다. 추가 수량은 새 주문으로 내 주세요', 'qty_up');
+  }
   const type = input.type || order.type;
   if (type !== 'market' && type !== 'limit') throw new OrderError('주문 종류가 올바르지 않습니다');
   const limitPrice = type === 'limit' ? Number(input.limitPrice != null ? input.limitPrice : order.limit_price) : null;
