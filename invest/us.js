@@ -439,7 +439,7 @@ var Us = (function () {
       }
 
       var st = stateOf(q);
-      var stale = isFeedStale();
+      var stale = isFeedStale('us');
       document.getElementById('uxAsOf').innerHTML = escapeHtml(kstStamp(q.asOf)) + ' 기준(한국 시각) · 네이버 '
         + '<span class="state-dot ' + (stale ? 'stale' : st.cls) + '">' + (stale ? '연결 끊김' : st.text) + '</span>';
 

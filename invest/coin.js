@@ -442,7 +442,7 @@ var Coin = (function () {
       cEl.innerHTML = signMark(q.change) + ' ' + fmtPrice(Math.abs(q.change || 0), dg)
         + ' (' + fmtRate(q.changeRate) + ') <span class="vs">오늘 9시보다</span>';
       cEl.className = 'sd-chg ' + cls;
-      var stale = isFeedStale();
+      var stale = isFeedStale('coin');
       document.getElementById('cxAsOf').innerHTML = escapeHtml(shortTime(q.asOf)) + ' 기준 · 업비트 '
         + '<span class="state-dot ' + (stale ? 'stale' : 'live') + '">' + (stale ? '연결 끊김' : '24시간') + '</span>';
 
