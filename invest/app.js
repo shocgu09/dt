@@ -310,6 +310,7 @@ function switchTab(tab) {
 // 주문창·참가 절차 같은 모달이 열려 있으면 Esc 로 닫는다 (mock.js 가 핸들러를 등록한다)
 document.addEventListener('keydown', function (e) {
   if (e.key !== 'Escape') return;
+  if (document.getElementById('wgPage')) { closeWgPage(); e.preventDefault(); return; }      // 그룹 이름 페이지
   if (document.getElementById('wgSheet')) { closeWgSheet(); e.preventDefault(); return; }     // 관심 그룹 창
   if (window.Mock && Mock.onEscape && Mock.onEscape()) e.preventDefault();
 });
