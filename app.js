@@ -158,18 +158,12 @@ function initAuth() {
       if (userDoc.exists) {
         const data = userDoc.data();
         state.currentUserRole = data.role;
-        // 마지막 접속 시간 + 위치 갱신
-        const _doRedirect = state._wasGuest;
-        const _uid = user.uid;
-        fetch('https://ipapi.co/json/').then(r => { if (!r.ok) throw new Error(); return r.json(); })
-          .then(d => [d.city, d.region].filter(Boolean).join(', ') || d.country_name || '')
-          .catch(() => fetch('https://api.ip.sb/geoip').then(r => r.json()).then(d => [d.city, d.region].filter(Boolean).join(', ') || d.country || '').catch(() => ''))
-          .then(loc => {
-            var update = { lastSeen: new Date().toISOString() };
-            if (loc) update.lastLocation = loc;
-            return state.db.collection('users').doc(_uid).update(update);
-          })
-          .then(() => { if (_doRedirect) location.href = '/'; });
+        // 마지막 접속 시간·위치는 last-seen.js 가 모든 페이지에서 갱신한다.
+        // 게스트에서 막 로그인했으면 그 기록이 끝난 뒤 홈으로 (먼저 이동하면 요청이 취소된다)
+        if (state._wasGuest) {
+          (window.DtLastSeen ? DtLastSeen.touch(user.uid) : Promise.resolve())
+            .then(() => { location.href = '/'; });
+        }
       } else {
         if (state.isSigningUp) {
           // 회원가입 직후 race condition - 역할만 임시 설정
@@ -1035,17 +1029,20 @@ function previewNotice() {
 }
 
 /* ===== ADMIN PAGE ===== */
+// 실제 시각(한국 시간)을 늘 보여 주고, 일주일 안이면 "몇 시간 전"을 덧붙인다
 function formatLastSeen(iso) {
-  if (!iso) return '기록 없음';
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return '방금 전';
-  if (m < 60) return `${m}분 전`;
+  const t = iso ? new Date(iso) : null;
+  if (!t || isNaN(t)) return '기록 없음';
+  const kstYear = date => date.toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric' });
+  const sameYear = kstYear(t) === kstYear(new Date());
+  const at = t.toLocaleString('ko-KR', sameYear
+    ? { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric', weekday: 'short', hour: 'numeric', minute: '2-digit' }
+    : { timeZone: 'Asia/Seoul', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const m = Math.floor((Date.now() - t.getTime()) / 60000);
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}시간 전`;
   const d = Math.floor(h / 24);
-  if (d < 7) return `${d}일 전`;
-  return new Date(iso).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
+  const ago = m < 1 ? '방금 전' : m < 60 ? `${m}분 전` : h < 24 ? `${h}시간 전` : d < 7 ? `${d}일 전` : '';
+  return ago ? `${at} (${ago})` : at;
 }
 
 async function renderAdminBlacklist() {
