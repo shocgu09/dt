@@ -903,7 +903,7 @@ var Mock = (function () {
         if (total > ps.length && shown === ps.length) h += '<div class="mk-sc-none">외 ' + fmtNum(total - ps.length) + '종목</div>';
         if (ps.length > SHARE_POS_PREVIEW) {
           h += '<button type="button" class="mk-sc-all" onclick="Mock.fullShare(\'' + s.id + '\')" aria-expanded="' + full + '">'
-            + (full ? '접기 ▴' : '나머지 ' + fmtNum(ps.length - SHARE_POS_PREVIEW) + '종목 더 보기 ▾') + '</button>';
+            + (full ? '접기 ▴' : '나머지 종목 보기 ▾') + '</button>';
         }
       }
     } else if (c.position) {
