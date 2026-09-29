@@ -55,6 +55,19 @@ export function classify(prev, base, taxFree, titles) {
   return { kind: null, ratio: r, review: '공시에서 사건 종류를 찾지 못함' };
 }
 
+/**
+ * 09:00 전(NXT 프리마켓)에 본 기준가가 사건처럼 보이는가.
+ * 2026-09-14 KRX 애프터마켓(16:00~20:00) 개설 뒤로, 장 시작 전 네이버의 기준가 자리에는 전날 애프터마켓
+ * 마지막 체결가가 들어와 있다 (2026-09-29 SK스퀘어: 15:30 종가 1,100,000 · 애프터마켓 1,092,000 → 비율 1.0073 오감지).
+ * 애프터마켓 가격이 움직일 수 있는 폭으로는 만들 수 없는 값 — 딱 떨어지는 분할·병합 — 만 장 전에 사건으로 본다.
+ * @returns 'event' (장 전에 확정해도 되는 분할·병합) · 'suspect' (10% 넘게 차이 — 매도만 막고 09:00 에 다시 본다) · null
+ */
+export function preMarketSignal(prev, base) {
+  const c = classify(prev, base, false, null);
+  if (c.kind === 'split' || c.kind === 'merge') return 'event';
+  return Math.abs(prev / base - 1) >= 0.1 ? 'suspect' : null;
+}
+
 /** 전 거래일 (YYYYMMDD) — 주말·휴장일을 건너뛴다 */
 function prevTradingYmd(t) {
   let d = Date.UTC(+t.ymd.slice(0, 4), +t.ymd.slice(4, 6) - 1, +t.ymd.slice(6, 8));
@@ -104,7 +117,8 @@ export async function runCorpActions(db, season, now, quotesFor, stats) {
   try { quotes = await quotesFor(codes); } catch (e) { return 0; }     // 시세 장애 — 다음 분에
   stats.q += 1;
   const prev = await prevCloses(db, codes, t);
-  // 09:00 전(프리마켓)에는 기준가가 아직 어제 값일 수 있어 '이상 없음'으로 확정하지 않는다 — 사건만 잡는다
+  // 09:00 전(프리마켓)에는 기준가 자리에 어제 값(애프터마켓 체결가)이 있을 수 있다 — '이상 없음'으로 확정하지 않고,
+  // 사건도 딱 떨어지는 분할·병합만 잡는다 (preMarketSignal). 나머지는 정규장 기준가가 나온 뒤 다시 본다
   const settle = t.hm >= E.OPEN_AT;
   const checks = [];
   const events = [];
@@ -117,6 +131,7 @@ export async function runCorpActions(db, season, now, quotesFor, stats) {
     const c = classify(p, base, false, null);
     if (c.none || (!c.kind && !c.needTitles && !c.review)) { if (settle) checks.push({ code: h.code, result: 'ok' }); continue; }
     if (Math.abs(p - base) < E.tickSize(base, false)) { if (settle) checks.push({ code: h.code, result: 'ok' }); continue; }
+    if (!settle && preMarketSignal(p, base) !== 'event') continue;
     events.push({ code: h.code, name: q.name || h.name, prev: p, base, c });
   }
 
@@ -262,7 +277,10 @@ export async function sellBlocked(db, season, uid, quote, now) {
   if (base == null || quote.halted) return false;
   const p = (await prevCloses(db, [quote.code], t))[quote.code];
   if (p == null) return false;
-  return Math.abs(p - base) >= E.tickSize(base, false) && Math.abs(p / base - 1) >= 0.005;
+  if (Math.abs(p - base) < E.tickSize(base, false) || Math.abs(p / base - 1) < 0.005) return false;
+  // 장 전에는 기준가가 전날 애프터마켓 체결가일 수 있다 — 그 정도 차이로는 막지 않는다
+  if (t.hm < E.OPEN_AT) return preMarketSignal(p, base) !== null;
+  return true;
 }
 
 // ── 관리자 ───────────────────────────────────────────────

@@ -349,7 +349,19 @@
 .mk-rk-seg .seg.on { background: none; color: var(--text); border-bottom-color: var(--primary); }
 .mk-rk-dot { display: inline-block; width: 6px; height: 6px; margin-left: 5px; vertical-align: 5px; background: var(--accent); }
 .mk-rk-dot[hidden] { display: none; }
-.mk-share .m-head .m-hint { margin-left: 0; }
+/* 커뮤니티 머리 — 무엇을 하는 곳인지와 [글쓰기]를 먼저 보이게 */
+.mk-cm-hero { display: flex; align-items: center; gap: 14px; background: var(--bg2); border: 1px solid var(--border);
+  border-left: 4px solid var(--primary); padding: 16px; margin-bottom: 14px; }
+.mk-cm-txt { flex: 1; min-width: 0; }
+.mk-cm-txt h3 { font-size: 1.05rem; font-weight: 800; margin: 0 0 4px; }
+.mk-cm-txt p { font-size: .88rem; color: var(--text); line-height: 1.55; margin: 0; word-break: keep-all; }
+.mk-cm-sub { display: block; word-break: keep-all; font-size: .72rem; color: var(--text3); font-weight: 600; margin-top: 6px; }
+.mk-cm-write { flex-shrink: 0; padding: 12px 18px; font-size: .92rem; font-weight: 800; box-shadow: 3px 3px 0 rgba(var(--primary-rgb),.35); }
+.mk-cm-write:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 rgba(var(--primary-rgb),.35); }
+@media (max-width: 480px) {
+  .mk-cm-hero { flex-direction: column; align-items: stretch; }
+  .mk-cm-write { width: 100%; padding: 13px; }
+}
 .mk-share .m-head .mk-share-btn { margin-left: auto; border-color: var(--primary); color: var(--primary-light); font-weight: 800; }
 .mk-share-empty { font-size: .82rem; color: var(--text3); padding: 18px 14px; border: 1px dashed var(--border); text-align: center; }
 .mk-share-more { display: block; margin: 10px auto 0; }
