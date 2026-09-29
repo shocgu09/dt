@@ -795,7 +795,7 @@ var Mock = (function () {
    * 읽기·댓글은 시즌에 참가하지 않은 회원도 할 수 있고, 공유는 참가자만 할 수 있다.
    */
   var SHARE_PREVIEW = 3, SHARE_POS_PREVIEW = 3, SHARE_MAX = 200, COMMENT_MAX = 300;
-  function newShareState() { return { items: [], next: null, loading: false, err: null, all: false, open: {}, cm: {} }; }
+  function newShareState() { return { items: [], next: null, loading: false, err: null, all: false, open: {}, full: {}, cm: {} }; }
   var _sh = newShareState();
   var _shSheet = null;         // 공유 시트 { kind, code, body, busy }
 
@@ -877,7 +877,8 @@ var Mock = (function () {
     var h = '<article class="mk-sc" id="sc-' + s.id + '">'
       + '<div class="mk-sc-top"><div class="mk-sc-id"><b class="mk-sc-who">' + escapeHtml(s.nickname) + '</b>'
       +   (s.mine ? '<i class="mk-tag">나</i>' : '') + '</div>' + rank + '</div>'
-      + '<div class="mk-sc-meta">' + escapeHtml(kstHM(c.at || s.createdAt) + (c.closing ? ' 종가' : '') + ' 기준') + '</div>';
+      + '<div class="mk-sc-meta">' + (c.seasonName ? '<span class="mk-sc-season">' + escapeHtml(c.seasonName) + '</span>' : '')
+      +   escapeHtml(kstHM(c.at || s.createdAt) + (c.closing ? ' 종가' : '') + ' 기준') + '</div>';
     if (s.body) h += '<div class="mk-sc-body">' + linkText(s.body) + '</div>';
 
     h += '<div class="mk-sc-att">';
@@ -893,11 +894,16 @@ var Mock = (function () {
         + '</div>';
       h += '<div class="mk-sc-k mk-sc-lh">보유 종목 <b>' + fmtNum(total) + '</b></div>';
       if (!ps.length) h += '<div class="mk-sc-none">보유 종목이 없습니다</div>';
-      else h += '<div class="mk-sc-list">' + (open ? ps : ps.slice(0, SHARE_POS_PREVIEW)).map(shareTileHtml).join('') + '</div>';
-      if (!open && total > SHARE_POS_PREVIEW) {
-        h += '<button type="button" class="mk-sc-all" onclick="Mock.toggleShare(\'' + s.id + '\')">' + fmtNum(total) + '종목 모두 보기 ▾</button>';
-      } else if (open && total > ps.length) {
-        h += '<div class="mk-sc-none">외 ' + fmtNum(total - ps.length) + '종목</div>';
+      else {
+        // 보유 종목은 평가금액이 큰 순 — 처음엔 3개만, [모두 보기]로 펼친다 (댓글 펼침과 따로)
+        var full = !!_sh.full[s.id];
+        h += '<div class="mk-sc-list">' + (full ? ps : ps.slice(0, SHARE_POS_PREVIEW)).map(shareTileHtml).join('') + '</div>';
+        var shown = full ? ps.length : Math.min(ps.length, SHARE_POS_PREVIEW);
+        if (total > ps.length && shown === ps.length) h += '<div class="mk-sc-none">외 ' + fmtNum(total - ps.length) + '종목 (평가금액 상위 ' + fmtNum(ps.length) + '개만 담깁니다)</div>';
+        if (ps.length > SHARE_POS_PREVIEW) {
+          h += '<button type="button" class="mk-sc-all" onclick="Mock.fullShare(\'' + s.id + '\')" aria-expanded="' + full + '">'
+            + (full ? '접기 ▴' : '나머지 ' + fmtNum(ps.length - SHARE_POS_PREVIEW) + '종목 더 보기 ▾') + '</button>';
+        }
       }
     } else if (c.position) {
       var p = c.position;
@@ -951,8 +957,15 @@ var Mock = (function () {
 
   function dropShare(id) {
     _sh.items = _sh.items.filter(function (x) { return x.id !== id; });
-    delete _sh.open[id]; delete _sh.cm[id];
+    delete _sh.open[id]; delete _sh.full[id]; delete _sh.cm[id];
     renderShares();
+  }
+
+  function fullShare(id) {
+    _sh.full[id] = !_sh.full[id];
+    renderShares();
+    // 접을 때 긴 목록이 사라지며 화면이 튀지 않게 카드 머리로 돌아간다
+    if (!_sh.full[id]) { var el = document.getElementById('sc-' + id); if (el && el.getBoundingClientRect().top < 0) el.scrollIntoView({ block: 'start' }); }
   }
 
   function toggleShare(id) {
@@ -2204,6 +2217,6 @@ var Mock = (function () {
     newSeasonForm: newSeasonForm, onSeasonIdInput: onSeasonIdInput,
     addHoliday: addHoliday, removeHoliday: removeHoliday,
     openShare: openShare, closeShare: closeShare, shareKind: shareKind, shareCode: shareCode, shareInput: shareInput, submitShare: submitShare,
-    toggleShare: toggleShare, moreShares: moreShares, deleteShare: deleteShare, submitComment: submitComment, deleteComment: deleteComment
+    toggleShare: toggleShare, fullShare: fullShare, moreShares: moreShares, deleteShare: deleteShare, submitComment: submitComment, deleteComment: deleteComment
   };
 })();

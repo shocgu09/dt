@@ -351,7 +351,9 @@
 .mk-sc-rank { margin-left: auto; flex-shrink: 0; font-size: .8rem; font-weight: 800; color: var(--primary-light);
   background: rgba(var(--primary-rgb),.12); border: 1px solid rgba(var(--primary-rgb),.45); padding: 2px 8px; font-variant-numeric: tabular-nums; }
 .mk-sc-rank i { font-style: normal; font-weight: 700; color: var(--text3); font-size: .72rem; }
-.mk-sc-meta { font-size: .74rem; color: var(--text3); font-weight: 600; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.mk-sc-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: .74rem; color: var(--text3); font-weight: 600;
+  margin-top: 4px; font-variant-numeric: tabular-nums; }
+.mk-sc-season { font-size: .7rem; font-weight: 800; color: var(--primary-light); border: 1px solid rgba(var(--primary-rgb),.45); padding: 0 6px; line-height: 1.6; }
 .mk-sc-body { font-size: .92rem; color: var(--text); line-height: 1.65; margin-top: 12px; white-space: pre-wrap; word-break: break-word; }
 
 /* 계좌 박스 (첨부) */
