@@ -25,19 +25,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+  <link rel="stylesheet" href="tokens.css?v=1">
   <style>
     :root {
-      --bg:           #0f0f13;
-      --bg2:          #18181f;
-      --bg3:          #22222c;
-      --border:       #2e2e3a;
-      --primary:      #d97706;
-      --primary-light:#f59e0b;
-      --primary-dark: #b45309;
-      --accent:       #ff6b6b;
-      --text:         #e8e8f0;
-      --text2:        #9090a8;
-      --text3:        #5a5a72;
       --card-radius:  14px;
     }
 
@@ -91,13 +81,13 @@
     }
     .hero-badge {
       display: inline-block;
-      background: rgba(108,99,255,.18);
+      background: rgba(var(--primary-rgb),.18);
       color: var(--primary-light);
       font-size: .8rem;
       font-weight: 600;
       padding: 4px 14px;
       border-radius: 0;
-      border: 1px solid rgba(108,99,255,.35);
+      border: 1px solid rgba(var(--primary-rgb),.35);
       margin-bottom: 18px;
     }
     .hero h1 {
@@ -191,7 +181,7 @@
     }
     input:focus, select:focus, textarea:focus {
       border-color: var(--primary);
-      box-shadow: 0 0 0 3px rgba(108,99,255,.18);
+      box-shadow: 0 0 0 3px rgba(var(--primary-rgb),.18);
     }
     textarea { resize: vertical; min-height: 130px; line-height: 1.6; }
     select option { background: var(--bg3); }

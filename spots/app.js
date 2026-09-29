@@ -15,7 +15,7 @@ var _editingCourseId = null;
 
 var CATEGORY_COLOR = { '맛집': '#e74c5a', '카페': '#c0772a', '명소': '#4a90d9', '기타': '#888888' };
 var CATEGORY_EMOJI = { '맛집': '🍽️', '카페': '☕', '명소': '🏛️', '기타': '📍' };
-var COURSE_COLOR = '#7c6fff';
+var COURSE_COLOR = '#d97706';  // 코스 선·마커 — 메인 컬러(앰버)
 var ROUTE_WORKER = 'https://dt-route.shocguna.workers.dev';
 
 
@@ -412,7 +412,7 @@ function openCourseDetail(course) {
   document.getElementById('detailTitle').textContent = course.name;
   var html = '';
   if (course.photo) html += '<img class="detail-photo" src="' + escapeHtml(course.photo) + '" alt="" onerror="this.style.display=\'none\'">';
-  html += '<div class="detail-category" style="background:#7c6fff20;color:#7c6fff">🛣️ 드라이브 코스</div>';
+  html += '<div class="detail-category" style="background:' + COURSE_COLOR + '20;color:' + COURSE_COLOR + '">🛣️ 드라이브 코스</div>';
   html += '<div class="detail-name">' + escapeHtml(course.name) + '</div>';
   if (course.distance || course.duration) {
     html += '<div class="route-info">';

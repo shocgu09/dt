@@ -1,15 +1,6 @@
+/* 공통 색 토큰은 /tokens.css — index.html 에서 이 파일보다 먼저 불러온다 */
 :root {
-  --bg: #1a1a2e; --bg2: #22223a; --bg3: #2a2a45;
-  --text: #e8e8f0; --text2: #a0a0b8; --text3: #6b6b85;
-  --primary: #d97706; --primary-light: #f59e0b;
-  --border: #333355; --accent: #e74c5a;
   --transition: all .15s;
-}
-[data-theme="light"] {
-  --bg: #f5f5fa; --bg2: #fff; --bg3: #eee;
-  --text: #1a1a2e; --text2: #555; --text3: #999;
-  --primary: #b45309; --primary-light: #d97706;
-  --border: #ddd; --accent: #e74c5a;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -91,7 +82,7 @@ body {
 }
 .map-marker:hover { transform: scale(1.2); }
 .map-marker.course-wp {
-  background: #7c6fff; color: #fff; font-size: .75rem; font-weight: 700; border-color: #fff;
+  background: var(--primary); color: var(--on-primary); font-size: .75rem; font-weight: 700; border-color: #fff;
 }
 
 /* FAB */
@@ -120,8 +111,8 @@ body {
   display: flex; gap: 12px; background: var(--bg2); border: 1px solid var(--border);
   padding: 12px; cursor: pointer; transition: var(--transition); position: relative;
 }
-.spot-card:hover { border-color: var(--primary); transform: translate(-2px,-2px); box-shadow: 3px 3px 0 rgba(124,111,255,.2); }
-.spot-card.active { border-color: var(--primary); background: rgba(124,111,255,.06); }
+.spot-card:hover { border-color: var(--primary); transform: translate(-2px,-2px); box-shadow: 3px 3px 0 rgba(var(--primary-rgb),.2); }
+.spot-card.active { border-color: var(--primary); background: rgba(var(--primary-rgb),.06); }
 .spot-card-img {
   width: 72px; height: 72px; object-fit: cover; flex-shrink: 0;
   background: var(--bg3); border: 1px solid var(--border);
@@ -263,3 +254,6 @@ body {
   .modal-box { padding: 16px 14px; }
 }
 @keyframes fadeOut { 0%{opacity:1} 70%{opacity:1} 100%{opacity:0} }
+
+/* 한글 제목은 어절 단위로 줄바꿈 (넘칠 때만 단어 안에서 끊는다) */
+h1, h2, h3, h4 { word-break: keep-all; overflow-wrap: break-word; }

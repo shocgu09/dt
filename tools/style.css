@@ -1,35 +1,14 @@
+/* 공통 색 토큰은 /tokens.css — index.html 에서 이 파일보다 먼저 불러온다 */
 :root {
-  --bg: #1a1a2e;
-  --bg2: #22223a;
-  --bg3: #2a2a45;
-  --text: #e8e8f0;
-  --text2: #a0a0b8;
-  --text3: #6b6b85;
-  --primary: #d97706;
-  --primary-light: #f59e0b;
-  --accent: #e74c5a;
-  --border: #333355;
   --transition: all .15s;
   --success: #4ade80;
   --warning: #fbbf24;
   --danger: #ef4444;
   --info: #60a5fa;
 }
-[data-theme="light"] {
-  --bg: #f5f5fa;
-  --bg2: #fff;
-  --bg3: #eee;
-  --text: #1a1a2e;
-  --text2: #555;
-  --text3: #999;
-  --primary: #b45309;
-  --primary-light: #d97706;
-  --border: #ddd;
-  --accent: #e74c5a;
-}
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
-  font-family: 'Pretendard Variable', -apple-system, sans-serif;
+  font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
@@ -136,7 +115,7 @@ select.input-field {
 }
 .result-title {
   font-size: .8rem; font-weight: 700; color: var(--text2);
-  margin-bottom: 12px; text-transform: uppercase; letter-spacing: .5px;
+  margin-bottom: 12px;
 }
 .result-row {
   display: flex; justify-content: space-between; align-items: center;
@@ -178,3 +157,6 @@ select.input-field {
   .radio-btn { font-size: .72rem; padding: 7px 4px; }
   .tab-btn { font-size: .78rem; padding: 10px 6px; }
 }
+
+/* 한글 제목은 어절 단위로 줄바꿈 (넘칠 때만 단어 안에서 끊는다) */
+h1, h2, h3, h4 { word-break: keep-all; overflow-wrap: break-word; }

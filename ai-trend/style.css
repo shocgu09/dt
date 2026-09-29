@@ -1,15 +1,4 @@
-:root {
-  --bg: #1a1a2e; --bg2: #22223a; --bg3: #2a2a45;
-  --text: #e8e8f0; --text2: #a0a0b8; --text3: #6b6b85;
-  --primary: #d97706; --primary-light: #f59e0b;
-  --border: #333355; --accent: #e74c5a;
-}
-[data-theme="light"] {
-  --bg: #f5f5fa; --bg2: #fff; --bg3: #eee;
-  --text: #1a1a2e; --text2: #555; --text3: #999;
-  --primary: #b45309; --primary-light: #d97706;
-  --border: #ddd; --accent: #e74c5a;
-}
+/* 공통 색 토큰은 /tokens.css — index.html 에서 이 파일보다 먼저 불러온다 */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
   font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', sans-serif;
@@ -33,7 +22,7 @@ body {
 
 /* 탭 */
 .intro-card {
-  background: linear-gradient(135deg, rgba(217,119,6,.1), rgba(124,111,255,.03));
+  background: linear-gradient(135deg, rgba(var(--primary-rgb),.1), rgba(var(--primary-rgb),.03));
   border: 1px solid var(--border); padding: 16px 20px; margin-bottom: 16px;
   font-size: .88rem; color: var(--text2); line-height: 1.6;
 }
@@ -94,7 +83,7 @@ body {
   background: var(--bg2); border: 1px solid var(--border); margin-bottom: 8px;
   text-decoration: none; color: var(--text); transition: all .15s;
 }
-.feed-article:hover { border-color: var(--primary); transform: translate(-2px,-2px); box-shadow: 3px 3px 0 rgba(124,111,255,.2); }
+.feed-article:hover { border-color: var(--primary); transform: translate(-2px,-2px); box-shadow: 3px 3px 0 rgba(var(--primary-rgb),.2); }
 .feed-article-icon { font-size: 1.2rem; flex-shrink: 0; margin-top: 2px; }
 .feed-article-info { flex: 1; min-width: 0; }
 .feed-article-title { font-size: .86rem; font-weight: 600; }
@@ -119,7 +108,6 @@ body {
 .category-section h2 {
   font-size: .92rem; font-weight: 700; color: var(--text2);
   margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border);
-  text-transform: uppercase; letter-spacing: 1px;
 }
 .category-cards { display: flex; flex-direction: column; gap: 8px; }
 .link-card {
@@ -127,7 +115,7 @@ body {
   background: var(--bg2); border: 1px solid var(--border);
   padding: 14px 16px; text-decoration: none; color: var(--text); transition: all .15s;
 }
-.link-card:hover { border-color: var(--primary); transform: translate(-2px,-2px); box-shadow: 3px 3px 0 rgba(124,111,255,.2); }
+.link-card:hover { border-color: var(--primary); transform: translate(-2px,-2px); box-shadow: 3px 3px 0 rgba(var(--primary-rgb),.2); }
 .link-icon { font-size: 1.4rem; flex-shrink: 0; width: 32px; text-align: center; }
 .link-thumb { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
 .link-info { flex: 1; min-width: 0; }
@@ -237,3 +225,6 @@ body {
   .tab-btn { font-size: .78rem; padding: 6px; }
 }
 @keyframes fadeOut { 0%{opacity:1} 70%{opacity:1} 100%{opacity:0} }
+
+/* 한글 제목은 어절 단위로 줄바꿈 (넘칠 때만 단어 안에서 끊는다) */
+h1, h2, h3, h4 { word-break: keep-all; overflow-wrap: break-word; }

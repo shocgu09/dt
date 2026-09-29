@@ -3325,7 +3325,7 @@ function _renderGasMap(stations) {
         infowindow.open(_gasMap, marker);
         // 리스트에서 해당 카드 하이라이트
         var card = document.getElementById('gas-card-' + i);
-        if (card) { card.style.background = 'rgba(124,111,255,.1)'; card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); setTimeout(function() { card.style.background = ''; }, 2000); }
+        if (card) { card.style.background = 'rgba(var(--primary-rgb),.1)'; card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); setTimeout(function() { card.style.background = ''; }, 2000); }
       });
     });
 
@@ -4394,7 +4394,7 @@ function _renderParkingMap(places) {
       _parkingInfoWindows.forEach(function(iw) { iw.infowindow.close(); });
       infowindow.open(_parkingMap, marker);
       var card = document.getElementById('parking-card-' + i);
-      if (card) { card.style.background = 'rgba(124,111,255,.1)'; card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); setTimeout(function() { card.style.background = ''; }, 2000); }
+      if (card) { card.style.background = 'rgba(var(--primary-rgb),.1)'; card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); setTimeout(function() { card.style.background = ''; }, 2000); }
     });
   });
 
@@ -4658,8 +4658,8 @@ function showLoading(msg = '데이터 불러오는 중...') {
   if (!el) {
     el = document.createElement('div');
     el.id = 'loadingOverlay';
-    el.style.cssText = 'position:fixed;bottom:24px;right:24px;background:rgba(24,24,31,.95);border:1px solid #2e2e3a;border-radius:14px;display:flex;align-items:center;justify-content:center;z-index:999;color:#fff;gap:10px;font-size:.88rem;padding:12px 18px;pointer-events:none;';
-    el.innerHTML = `<div style="width:40px;height:40px;border:3px solid rgba(108,99,255,.3);border-top-color:#6c63ff;border-radius:50%;animation:spin .8s linear infinite"></div><span id="loadingMsg">${msg}</span>`;
+    el.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--border);border-radius:14px;display:flex;align-items:center;justify-content:center;z-index:999;color:var(--text);gap:10px;font-size:.88rem;padding:12px 18px;pointer-events:none;';
+    el.innerHTML = `<div style="width:40px;height:40px;border:3px solid rgba(var(--primary-rgb),.3);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite"></div><span id="loadingMsg">${msg}</span>`;
     // @keyframes spin is now in style.css
     document.body.appendChild(el);
   } else {

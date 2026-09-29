@@ -28,6 +28,8 @@ legal.auth.onAuthStateChanged(async function (user) {
   document.getElementById('legalApp').style.display = 'flex';
   document.getElementById('legalUser').textContent =
     user.isAnonymous ? '게스트' : (user.displayName || user.email);
+  // 게스트는 로그아웃할 계정이 없다 — 같은 버튼을 회원 로그인 화면으로 가는 버튼으로 쓴다
+  document.getElementById('legalLogoutBtn').textContent = user.isAnonymous ? '로그인' : '로그아웃';
 });
 
 // --- Auth ---
