@@ -139,7 +139,10 @@ export default {
           // KIS 야간선물 — 값 대신 상태(pre/live/closed)만 싣는다. 지수 칸과 같은 캐시를 쓴다
           probe('kis.night', async () => {
             if (!kis.enabled(env)) throw new Error('no key');
-            const r = await nightFutCell(env);
+            // 지수 응답은 2.5초만 기다리고 나머지는 뒤에서 받는다. 상태 점검은 60초 캐시라 끝까지 기다려도 된다 —
+            // 기다리지 않으면 응답과 함께 KIS 호출이 끊겨 매번 'unavailable' 로 보였다
+            let r = await nightFutCell(env);
+            if (!r.nightfut && nightBusy) { await nightBusy; r = await nightFutCell(env); }
             if (!r.nightfut) throw new Error(lastNightErr || 'unavailable');
             return r.nightfut.state;
           })
