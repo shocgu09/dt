@@ -383,8 +383,16 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 .m-fold:hover { background: var(--bg3); }
 .m-fold[aria-expanded="true"] { border-bottom-color: transparent; }
 .m-fold-title { font-size: .92rem; font-weight: 800; }
-.m-fold-caret { margin-left: 8px; font-size: .74rem; color: var(--text3); transition: transform .15s; }
+/* 펼치기/접기 표시 — 머리 크기는 그대로 두고 오른쪽 표시만 눈에 띄게 (글자는 aria-expanded 로 바꾼다) */
+.m-fold-cta { display: inline-flex; align-items: center; gap: 4px; margin-left: 10px; flex-shrink: 0; padding: 4px 10px;
+  border: 1px solid rgba(var(--primary-rgb),.6); background: rgba(var(--primary-rgb),.1); color: var(--primary-light);
+  font-size: .76rem; font-weight: 800; white-space: nowrap; }
+.m-fold-cta::before { content: '펼치기'; }
+.m-fold[aria-expanded="true"] .m-fold-cta::before { content: '접기'; }
+.m-fold:hover .m-fold-cta { background: rgba(var(--primary-rgb),.2); border-color: var(--primary); }
+.m-fold-caret { display: inline-block; font-size: .7rem; transition: transform .15s; }
 .m-fold[aria-expanded="true"] .m-fold-caret { transform: rotate(180deg); }
+@media (max-width: 420px) { .m-fold .m-hint { display: none; } .m-fold .m-fold-cta { margin-left: auto; } }
 .m-fold + #themeList .theme-row:first-child, .m-fold + #themeList .sector-head:first-child, .m-fold + #themeList > .list-note:first-child { border-top-color: var(--border); }
 
 /* 종목 행 */
