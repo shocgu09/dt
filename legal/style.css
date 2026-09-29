@@ -58,6 +58,8 @@ body {
 
 /* ===== Layout ===== */
 .legal-app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; height: var(--vvh, 100dvh); overflow: hidden; }   /* 키보드가 올라오면 보이는 영역만큼 (kb.js) — 입력줄이 키보드 위에 */
+/* 보이는 영역에 딱 맞춘다 — 키보드가 뜰 때 아이폰이 화면을 끌어올려도(--vvt) 머리글이 잘리지 않게 */
+@media (max-width: 768px), (pointer: coarse) { .legal-app { position: fixed; left: 0; right: 0; top: var(--vvt, 0px); } }
 
 /* ===== Header ===== */
 .legal-header {

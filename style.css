@@ -1274,6 +1274,7 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
 .dm-chat-modal {
   display: flex; flex-direction: column; height: 72vh; max-height: min(620px, calc(var(--vvh, 100vh) - 12px - env(safe-area-inset-top, 0px)));
 }
+.dm-chat-modal > :not(.dm-messages) { flex-shrink: 0; }   /* 줄어드는 건 메시지 목록만 — 머리글·입력줄은 그대로 */
 .dm-messages {
   flex: 1; overflow-y: auto; padding: 14px 16px;
   display: flex; flex-direction: column; gap: 6px;
@@ -1361,6 +1362,8 @@ input[readonly] { background: var(--bg3); color: var(--text2); cursor: default; 
   box-shadow: 3px 3px 0 rgba(var(--primary-rgb),.5);
   transition: transform .15s, box-shadow .15s;
 }
+/* 창(모달)이 열려 있거나 키보드가 올라와 있으면 챗봇 버튼을 숨긴다 — 창 위에 떠서 메시지·입력줄을 가린다 */
+body:has(.modal-overlay.open) #chatbotFab, html.kb-open #chatbotFab { display: none; }
 #chatbotFab:hover { transform: translate(-1px,-1px); box-shadow: 4px 4px 0 rgba(var(--primary-rgb),.6); }
 .chatbot-panel {
   position: fixed; bottom: 80px; right: 20px; z-index: 9999;

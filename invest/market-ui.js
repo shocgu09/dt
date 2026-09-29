@@ -762,7 +762,7 @@ function openWgPage(opts) {
   }
   wgPageKb();
   var inp = document.getElementById('wgPageInput');
-  if (inp) try { inp.focus(); var n = inp.value.length; inp.setSelectionRange(n, n); } catch (e) {}
+  if (inp) try { inp.focus({ preventScroll: true }); var n = inp.value.length; inp.setSelectionRange(n, n); } catch (e) {}
 }
 /** 키보드 높이만큼 [추가] 버튼을 올린다 */
 function wgPageKb() {

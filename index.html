@@ -94,7 +94,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <link rel="stylesheet" href="tokens.css?v=3" />
-  <link rel="stylesheet" href="style.css?v=9" />
+  <link rel="stylesheet" href="style.css?v=10" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css" />
 </head>
 <body>
@@ -521,7 +521,7 @@
       </div>
       <button onclick="toggleChatbot()" style="background:none;border:none;color:var(--text);cursor:pointer;font-size:1.2rem;padding:4px">✕</button>
     </div>
-    <div class="chatbot-messages" id="chatbotMessages">
+    <div class="chatbot-messages" id="chatbotMessages" data-kb-stick>
       <div class="chatbot-msg chatbot-bot">
         <div class="chatbot-bubble">안녕하세요! DT Club AI 어시스턴트입니다. 드라이브 코스, 차량 정보 등 궁금한 점을 물어보세요!<br><span style="font-size:.7rem;color:var(--text3);margin-top:4px;display:inline-block">서비스 개선을 위해 대화 내용이 기록될 수 있습니다.</span></div>
       </div>
@@ -1235,7 +1235,7 @@
         <h3 id="dmChatTitle">대화</h3>
         <button class="modal-close" onclick="closeDMChat()" aria-label="닫기">×</button>
       </div>
-      <div class="dm-messages" id="dmMessages"></div>
+      <div class="dm-messages" id="dmMessages" data-kb-stick></div>
       <div id="dmPhotoPreview" style="display:none;padding:8px 12px;background:var(--bg3);border-top:1px solid var(--border)">
         <img id="dmPhotoPreviewImg" src="" alt="미리보기" style="max-width:100%;max-height:180px;display:block;margin:0 auto 8px;border-radius:6px;object-fit:contain">
         <div style="display:flex;gap:8px">
@@ -1459,7 +1459,7 @@
   <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=4e6bf0a48d4d8a637a18a4ba1d82deaf&libraries=services&autoload=false"></script>
   <script src="app.js?v=17"></script>
   <script src="last-seen.js?v=1"></script>
-  <script src="kb.js?v=1"></script>
+  <script src="kb.js?v=3"></script>
 
   <!-- 공지 팝업 -->
   <div class="modal-overlay" id="noticePopup" style="display:none;z-index:999">
