@@ -64,3 +64,12 @@
   --overlay-text: #fff;
   --shadow: 4px 4px 0px rgba(var(--primary-rgb),0.2);
 }
+
+/* ===== 공통 — 폰에서 입력칸을 누를 때 화면이 확대되지 않게 =====
+ * iOS 사파리는 글자가 16px 보다 작은 입력칸을 누르면 화면을 확대한다 (창·페이지가 잘려 보인다).
+ * 모든 페이지가 이 파일을 먼저 불러오므로 여기서 한 번에 막는다. 인라인 style 의 작은 글자도 덮도록 !important.
+ * (viewport 에 maximum-scale=1 을 거는 방법은 안드로이드에서 손가락 확대까지 막아 쓰지 않는다) */
+@media (max-width: 768px), (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="color"]):not([type="file"]),
+  select, textarea { font-size: 16px !important; }
+}
