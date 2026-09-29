@@ -21,6 +21,7 @@ var Mock = (function () {
    */
   function timeoutFor(path, method) {
     if (method === 'POST' && path === '/review') return 75000;
+    if (method === 'POST' && path === '/shares') return 60000;      // 사진을 올릴 때 (4장 × 수백 KB)
     if (method === 'POST' && /^\/orders/.test(path)) return 30000;
     return 15000;
   }
@@ -577,7 +578,7 @@ var Mock = (function () {
   /** 떠 있는 창이 하나도 없을 때만 뒤 화면 스크롤을 푼다 */
   function syncNoScroll() {
     var any = document.getElementById('mkSheet') || document.getElementById('mkJoin') || document.getElementById('mkAux')
-      || document.getElementById('mkShare');
+      || document.getElementById('mkShare') || document.getElementById('mkPhoto');
     document.body.classList.toggle('mk-noscroll', !!any);
   }
 
@@ -586,6 +587,7 @@ var Mock = (function () {
     if (document.getElementById('mkAux')) { if (!aux || !aux.busy) closeAux(); return true; }
     if (document.getElementById('mkSheet')) { tryCloseSheet(); return true; }
     if (document.getElementById('mkJoin')) { closeJoin(); return true; }
+    if (document.getElementById('mkPhoto')) { closePhoto(); return true; }
     if (document.getElementById('mkShare')) { if (!_shSheet || !_shSheet.busy) closeShare(); return true; }
     return false;
   }
@@ -782,11 +784,51 @@ var Mock = (function () {
     if (currentTab !== 'ranking') return;
     // 순위표는 10초마다 다시 그린다 — 계좌 공유(#rkShare)는 따로 두어 펼친 댓글·입력 중인 글이 날아가지 않게 한다
     var fresh = !document.getElementById('rkBoard');
-    if (fresh) el.innerHTML = '<div id="rkBoard"></div><div id="rkShare"></div><div id="rkHall"></div>';
+    if (fresh) {
+      el.innerHTML = '<div class="seg-row mk-rk-seg" role="tablist" aria-label="랭킹 보기">'
+        +   '<button type="button" class="seg" role="tab" data-rk="board" onclick="Mock.rankView(\'board\')">🏆 순위</button>'
+        +   '<button type="button" class="seg" role="tab" data-rk="share" onclick="Mock.rankView(\'share\')">💬 커뮤니티<i class="mk-rk-dot" hidden></i></button>'
+        + '</div>'
+        + '<div id="rkBoard" role="tabpanel"></div><div id="rkHall"></div><div id="rkShare" role="tabpanel"></div>';
+      applyRankView();
+    }
     document.getElementById('rkBoard').innerHTML = h;
     document.getElementById('rkHall').innerHTML = _hallHtml || '';
-    if (fresh) loadShares(true);
+    if (fresh) loadShares(true);     // 커뮤니티를 열지 않아도 새 글 표시(점)를 위해 받아 둔다
     _rankBuilt = true;
+  }
+
+  /* 랭킹 탭 안의 두 화면 — 순위(순위표·명예의 전당) | 커뮤니티(계좌 공유 글). 한 번에 하나만 보인다 */
+  var _rkView = 'board';
+  function rankView(v) {
+    _rkView = v === 'share' ? 'share' : 'board';
+    applyRankView();
+    if (_rkView === 'share') markSharesSeen();
+  }
+  function applyRankView() {
+    var share = _rkView === 'share';
+    document.querySelectorAll('.mk-rk-seg .seg').forEach(function (b) {
+      var on = b.dataset.rk === _rkView;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-selected', on);
+    });
+    var show = function (id, v) { var e = document.getElementById(id); if (e) e.hidden = !v; };
+    show('rkBoard', !share); show('rkHall', !share); show('rkShare', share);
+  }
+  /* 새 글 표시 — 마지막으로 커뮤니티를 본 뒤 남이 올린 글이 있으면 탭에 점을 찍는다 (이 기기 기준) */
+  function seenKey() { return 'dt-invest-share-seen:' + (currentUser ? currentUser.uid : ''); }
+  function markSharesSeen() {
+    var top = _sh.items[0];
+    if (top) try { localStorage.setItem(seenKey(), String(top.createdAt)); } catch (e) {}
+    updateShareDot();
+  }
+  function updateShareDot() {
+    var dot = document.querySelector('.mk-rk-dot');
+    if (!dot) return;
+    var seen = 0;
+    try { seen = Number(localStorage.getItem(seenKey())) || 0; } catch (e) {}
+    var fresh = _sh.items.some(function (x) { return !x.mine && x.createdAt > seen; });
+    dot.hidden = !fresh || _rkView === 'share';
   }
 
   /* ===== 랭킹 탭 · 계좌 공유 =====
@@ -794,7 +836,7 @@ var Mock = (function () {
    * 공유한 시각의 값으로 고정된 스냅샷이고, 실시간 값은 바로 위 순위표가 보여 준다.
    * 읽기·댓글은 시즌에 참가하지 않은 회원도 할 수 있고, 공유는 참가자만 할 수 있다.
    */
-  var SHARE_PREVIEW = 3, SHARE_POS_PREVIEW = 3, SHARE_POS_FULL = 10, SHARE_MAX = 200, COMMENT_MAX = 300;
+  var SHARE_PREVIEW = 3, SHARE_POS_PREVIEW = 3, SHARE_POS_FULL = 10, COMMENT_MAX = 300;
   function newShareState() { return { items: [], next: null, loading: false, err: null, all: false, open: {}, full: {}, cm: {} }; }
   var _sh = newShareState();
   var _shSheet = null;         // 공유 시트 { kind, code, body, busy }
@@ -825,11 +867,11 @@ var Mock = (function () {
     var focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.cm : null;
 
     var joined = !!(season && season.joined);
-    var h = '<section class="m-section mk-share"><div class="m-head"><h3>📤 계좌 공유</h3>'
-      + (joined ? '<button class="mini-btn mk-share-btn" onclick="Mock.openShare()">내 계좌 공유</button>' : '') + '</div>';
+    var h = '<section class="m-section mk-share"><div class="m-head"><span class="m-hint">회원들의 이야기와 모의투자 계좌</span>'
+      + '<button class="mini-btn mk-share-btn" onclick="Mock.openShare()">✏️ 글쓰기</button></div>';
     if (!_sh.items.length) {
       h += _sh.err ? '<div class="empty">' + escapeHtml(_sh.err) + '</div>'
-        : (_sh.loading ? '<div class="loading">불러오는 중</div>' : '<div class="mk-share-empty">아직 공유된 계좌가 없습니다.</div>');
+        : (_sh.loading ? '<div class="loading">불러오는 중</div>' : '<div class="mk-share-empty">아직 올라온 글이 없습니다.</div>');
     } else {
       h += (_sh.all ? _sh.items : _sh.items.slice(0, SHARE_PREVIEW)).map(shareCardHtml).join('');
       if (!_sh.all && _sh.items.length > SHARE_PREVIEW) {
@@ -840,9 +882,11 @@ var Mock = (function () {
       }
     }
     h += '<div class="mk-note">' + (joined
-      ? '모의투자 계좌를 다른 회원과 나눠 보세요. 카드는 공유한 시각의 값으로 고정됩니다.'
-      : '시즌에 참가하면 계좌를 공유할 수 있습니다. 카드는 공유한 시각의 값으로 고정됩니다.') + '</div></section>';
+      ? '글에 모의투자 계좌를 붙일 수 있습니다 (하루 3번). 계좌 카드는 올린 시각의 값으로 고정됩니다.'
+      : '시즌에 참가하면 글에 모의투자 계좌를 붙일 수 있습니다.') + '</div></section>';
     el.innerHTML = h;
+    hydrateShareImages(el);
+    if (_rkView === 'share') markSharesSeen(); else updateShareDot();
 
     Object.keys(drafts).forEach(function (id) { var t = document.getElementById('cmi-' + id); if (t) t.value = drafts[id]; });
     if (focused) { var f = document.getElementById('cmi-' + focused); if (f) try { f.focus({ preventScroll: true }); } catch (e) {} }
@@ -879,10 +923,11 @@ var Mock = (function () {
       + '<div class="mk-sc-top"><div class="mk-sc-id"><b class="mk-sc-who">' + escapeHtml(s.nickname) + '</b>'
       +   (s.mine ? '<i class="mk-tag">나</i>' : '') + '</div>' + rank + '</div>'
       + '<div class="mk-sc-meta">' + (c.seasonName ? '<span class="mk-sc-season">' + escapeHtml(c.seasonName) + '</span>' : '')
-      +   escapeHtml(kstHM(c.at || s.createdAt) + (c.closing ? ' 종가' : '') + ' 기준') + '</div>';
+      +   escapeHtml(kstHM(c.at || s.createdAt) + (c.kind === 'text' ? '' : (c.closing ? ' 종가' : '') + ' 기준')) + '</div>';
     if (s.body) h += '<div class="mk-sc-body">' + linkText(s.body) + '</div>';
+    h += sharePhotosHtml(s);
 
-    h += '<div class="mk-sc-att">';
+    if (c.kind === 'account' || c.position) h += '<div class="mk-sc-att">';
     if (c.kind === 'account') {
       // 카드에는 평가금액 상위 10종목까지 (20개로 저장된 예전 카드도 10개까지만 보여 준다)
       var ps = (c.positions || []).slice(0, SHARE_POS_FULL), total = c.holdings != null ? c.holdings : (c.positions || []).length;
@@ -918,7 +963,7 @@ var Mock = (function () {
         +   '<div><span class="mk-sc-k">평가금액</span><b>' + won(p.value) + '</b></div>'
         + '</div>';
     }
-    h += '</div>';
+    if (c.kind === 'account' || c.position) h += '</div>';
 
     h += '<div class="mk-sc-act">'
       + '<button type="button" class="mk-sc-btn' + (open ? ' on' : '') + '" onclick="Mock.toggleShare(\'' + s.id + '\')" aria-expanded="' + open + '">'
@@ -1018,12 +1063,15 @@ var Mock = (function () {
     } catch (e) { toast(e.message, 'err'); if (e.code === 'gone') loadShareComments(id); }
   }
 
-  /* ── 공유 시트 ── */
+  /* ── 글쓰기 시트 ──
+   * 글·사진(4장까지)에 계좌를 붙일 수 있다: 없음(일반 글) · 계좌 전체 · 종목 하나.
+   * 계좌를 붙이는 건 시즌 참가자만, 하루 3번까지 (일반 글과 따로 센다).
+   */
+  var PHOTO_MAX = 4, POST_MAX = 2000;
   function openShare() {
-    if (!season || !season.joined) return;
-    _shSheet = { kind: 'account', code: null, body: '', busy: false };
+    _shSheet = { kind: 'text', code: null, body: '', imgs: [], busy: false, reading: 0 };
     renderShareSheet();
-    if (!account) refreshAccount().then(function () { if (_shSheet) renderShareSheet(); }).catch(function () {});
+    if (season && season.joined && !account) refreshAccount().then(function () { if (_shSheet) renderShareSheet(); }).catch(function () {});
   }
 
   function closeShare() {
@@ -1031,6 +1079,13 @@ var Mock = (function () {
     var el = document.getElementById('mkShare');
     if (el) el.remove();
     syncNoScroll();
+  }
+
+  function canPost(st) {
+    if (st.busy || st.reading) return false;
+    if (st.kind === 'stock') return !!st.code;
+    if (st.kind === 'account') return true;
+    return !!(st.body.trim() || st.imgs.length);
   }
 
   function renderShareSheet() {
@@ -1043,58 +1098,128 @@ var Mock = (function () {
       el.className = 'mk-sheet-wrap';
       document.body.appendChild(el);
     }
+    var joined = !!(season && season.joined);
     var pos = (account && account.positions) || [];
+    var h = '<div class="mk-sheet-head"><span class="mk-sheet-title">글쓰기</span>'
+      + '<button class="mini-btn mk-x" onclick="Mock.closeShare()" aria-label="닫기">✕</button></div>'
+      + '<textarea class="comment-input mk-share-text" id="mkShareText" maxlength="' + POST_MAX + '" aria-label="글"'
+      + ' placeholder="자유롭게 이야기를 나눠 보세요" oninput="Mock.shareInput(this)">' + escapeHtml(st.body) + '</textarea>'
+      + '<div class="mk-share-cnt" id="mkShareCnt">' + st.body.length + '/' + POST_MAX + '</div>';
+
+    // 사진
+    h += '<div class="mk-photo-row">' + st.imgs.map(function (u, i) {
+      return '<div class="mk-photo-th"><img src="' + u + '" alt="첨부 사진 ' + (i + 1) + '">'
+        + '<button type="button" onclick="Mock.removePhoto(' + i + ')" aria-label="사진 ' + (i + 1) + ' 빼기">✕</button></div>';
+    }).join('');
+    if (st.imgs.length < PHOTO_MAX) {
+      h += '<label class="mk-photo-add">' + (st.reading ? '줄이는 중' : '📷 사진<em>' + st.imgs.length + '/' + PHOTO_MAX + '</em>')
+        + '<input type="file" accept="image/*" multiple onchange="Mock.sharePhotos(this)"' + (st.reading ? ' disabled' : '') + '></label>';
+    }
+    h += '</div>';
+
+    // 계좌 붙이기
     var seg = function (k, label, dis) {
       var on = st.kind === k;
       return '<button type="button" class="seg' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="Mock.shareKind(\'' + k + '\')"'
         + (dis ? ' disabled' : '') + '>' + label + '</button>';
     };
-    var h = '<div class="mk-sheet-head"><span class="mk-sheet-title">내 계좌 공유</span>'
-      + '<button class="mini-btn mk-x" onclick="Mock.closeShare()" aria-label="닫기">✕</button></div>'
-      + '<div class="seg-row sub mk-seg2" role="group">' + seg('account', '계좌 전체') + seg('stock', '종목 하나', account && !pos.length) + '</div>';
-    if (st.kind === 'account') {
-      h += '<div class="mk-share-desc">총자산·수익률·순위, 보유 종목(수량·평단·현재가·손익)과 현금이 카드에 담깁니다.</div>';
-    } else if (!account) {
-      h += '<div class="mk-share-desc">계좌를 불러오는 중</div>';
+    h += '<div class="mk-share-lbl">계좌 붙이기</div>';
+    if (!joined) {
+      h += '<div class="mk-share-desc">시즌에 참가하면 모의투자 계좌를 함께 공유할 수 있습니다.</div>';
     } else {
-      h += '<div class="mk-share-pick" role="group" aria-label="공유할 종목">' + pos.map(function (p) {
-        var on = st.code === p.code;
-        return '<button type="button" class="mk-share-opt' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="Mock.shareCode(\'' + escapeJsArg(p.code) + '\')">'
-          + '<b>' + escapeHtml(p.name) + '</b><span>' + fmtNum(p.qty) + '주 · ' + rateHtml(p.pnlRate) + '</span></button>';
-      }).join('') + '</div>';
+      h += '<div class="seg-row sub mk-seg2" role="group">' + seg('text', '없음') + seg('account', '계좌 전체') + seg('stock', '종목 하나', account && !pos.length) + '</div>';
+      if (st.kind === 'account') {
+        h += '<div class="mk-share-desc">총자산·수익률·순위, 보유 종목(평가금액 상위 10개)과 현금이 올린 시각의 값으로 붙습니다. 계좌 공유는 하루 3번까지입니다.</div>';
+      } else if (st.kind === 'stock') {
+        h += !account ? '<div class="mk-share-desc">계좌를 불러오는 중</div>'
+          : '<div class="mk-share-pick" role="group" aria-label="공유할 종목">' + pos.map(function (p) {
+              var on = st.code === p.code;
+              return '<button type="button" class="mk-share-opt' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="Mock.shareCode(\'' + escapeJsArg(p.code) + '\')">'
+                + '<b>' + escapeHtml(p.name) + '</b><span>' + fmtNum(p.qty) + '주 · ' + rateHtml(p.pnlRate) + '</span></button>';
+            }).join('') + '</div>';
+      }
     }
-    h += '<textarea class="comment-input mk-share-text" id="mkShareText" maxlength="' + SHARE_MAX + '" aria-label="한마디"'
-      + ' placeholder="한마디 (선택)" oninput="Mock.shareInput(this)">' + escapeHtml(st.body) + '</textarea>'
-      + '<div class="mk-share-cnt" id="mkShareCnt">' + st.body.length + '/' + SHARE_MAX + '</div>'
-      + '<div class="mk-sheet-msg" id="mkShareMsg" role="alert"></div>'
-      + '<button type="button" class="btn-submit mk-share-go" onclick="Mock.submitShare(this)"'
-      + ((st.kind === 'stock' && !st.code) || st.busy ? ' disabled' : '') + '>' + (st.busy ? '공유하는 중' : '공유하기') + '</button>';
+    h += '<div class="mk-sheet-msg" id="mkShareMsg" role="alert"></div>'
+      + '<button type="button" class="btn-submit mk-share-go" onclick="Mock.submitShare(this)"' + (canPost(st) ? '' : ' disabled') + '>'
+      + (st.busy ? '올리는 중' : '올리기') + '</button>';
+    var top = 0, old = el.querySelector('.mk-sheet');
+    if (old) top = old.scrollTop;
     el.innerHTML = '<div class="mk-sheet-dim" onclick="Mock.closeShare()"></div>'
-      + '<div class="mk-sheet mk-share-sheet' + (fresh ? '' : ' still') + '" role="dialog" aria-modal="true" aria-label="내 계좌 공유" tabindex="-1">' + h + '</div>';
+      + '<div class="mk-sheet mk-share-sheet' + (fresh ? '' : ' still') + '" role="dialog" aria-modal="true" aria-label="글쓰기" tabindex="-1">' + h + '</div>';
     syncNoScroll();
     if (fresh) focusDialog(el);
+    else { var nw = el.querySelector('.mk-sheet'); if (nw) nw.scrollTop = top; }
   }
 
-  function shareKind(k) { if (!_shSheet || _shSheet.busy) return; _shSheet.kind = k === 'stock' ? 'stock' : 'account'; renderShareSheet(); }
+  function shareKind(k) {
+    if (!_shSheet || _shSheet.busy) return;
+    _shSheet.kind = k === 'stock' || k === 'account' ? k : 'text';
+    renderShareSheet();
+  }
   function shareCode(code) { if (!_shSheet || _shSheet.busy) return; _shSheet.code = code; renderShareSheet(); }
   function shareInput(t) {
     if (!_shSheet) return;
+    var had = canPost(_shSheet);
     _shSheet.body = t.value;
     var c = document.getElementById('mkShareCnt');
-    if (c) c.textContent = t.value.length + '/' + SHARE_MAX;
+    if (c) c.textContent = t.value.length + '/' + POST_MAX;
+    if (had !== canPost(_shSheet)) { var b = document.querySelector('.mk-share-go'); if (b) b.disabled = !canPost(_shSheet); }
   }
+
+  /** 사진을 긴 변 1280px JPEG 로 줄인다 (서버 한도 1.2MB 안쪽). HEIC 등 못 여는 형식은 거절 */
+  async function compressPhoto(file) {
+    var src;
+    try { src = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+    catch (e) {
+      src = await new Promise(function (res, rej) {
+        var img = new Image();
+        img.onload = function () { res(img); };
+        img.onerror = function () { rej(new Error('이 사진 형식은 올릴 수 없습니다')); };
+        img.src = URL.createObjectURL(file);
+      });
+    }
+    var w = src.width, h = src.height, k = Math.min(1, 1280 / Math.max(w, h));
+    var c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+    c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+    if (src.close) src.close();
+    var q = 0.82, url = c.toDataURL('image/jpeg', q);
+    while (url.length > 1550000 && q > 0.4) { q -= 0.12; url = c.toDataURL('image/jpeg', q); }
+    return url;
+  }
+
+  async function sharePhotos(input) {
+    var st = _shSheet;
+    if (!st || !input.files) return;
+    var files = Array.prototype.slice.call(input.files, 0, PHOTO_MAX - st.imgs.length);
+    if (input.files.length > files.length) toast('사진은 ' + PHOTO_MAX + '장까지 올릴 수 있습니다');
+    st.reading = files.length;
+    renderShareSheet();
+    for (var i = 0; i < files.length; i++) {
+      try { var u = await compressPhoto(files[i]); if (_shSheet === st && st.imgs.length < PHOTO_MAX) st.imgs.push(u); }
+      catch (e) { toast(e.message || '사진을 읽지 못했습니다', 'err'); }
+      st.reading--;
+    }
+    st.reading = 0;
+    if (_shSheet === st) renderShareSheet();
+  }
+  function removePhoto(i) { if (!_shSheet || _shSheet.busy) return; _shSheet.imgs.splice(i, 1); renderShareSheet(); }
 
   async function submitShare() {
     var st = _shSheet;
-    if (!st || st.busy || (st.kind === 'stock' && !st.code)) return;
+    if (!st || !canPost(st)) return;
     st.busy = true;
     renderShareSheet();
     try {
-      var r = await api('/shares', 'POST', { kind: st.kind, code: st.kind === 'stock' ? st.code : undefined, body: st.body.trim() });
+      var r = await api('/shares', 'POST', {
+        kind: st.kind, code: st.kind === 'stock' ? st.code : undefined,
+        body: st.body.trim(), images: st.imgs.length ? st.imgs : undefined
+      });
       closeShare();
       _sh.items.unshift(r.share);
+      if (_rkView !== 'share') rankView('share');
       renderShares();
-      toast(r.left != null ? '공유했습니다 · 오늘 ' + r.left + '번 남음' : '공유했습니다');
+      toast(r.share.kind !== 'text' && r.left != null ? '올렸습니다 · 오늘 계좌 공유 ' + r.left + '번 남음' : '올렸습니다');
     } catch (e) {
       if (!_shSheet) return;
       _shSheet.busy = false;
@@ -1103,6 +1228,47 @@ var Mock = (function () {
       if (m) { m.textContent = e.message; m.className = 'mk-sheet-msg err'; }
     }
   }
+
+  /* ── 사진 보기 — 회원 토큰으로 받아 blob 주소로 띄운다 (주소만으로는 볼 수 없게) ── */
+  var _imgUrl = {};
+  function shareImgUrl(id) {
+    if (!_imgUrl[id]) {
+      _imgUrl[id] = (async function () {
+        var token = await currentUser.getIdToken();
+        var res = await fetch(MARKET_API + '/api/mock/share-images/' + id, { headers: { Authorization: 'Bearer ' + token } });
+        if (!res.ok) throw new Error('사진을 불러오지 못했습니다');
+        return URL.createObjectURL(await res.blob());
+      })();
+      _imgUrl[id].catch(function () { delete _imgUrl[id]; });
+    }
+    return _imgUrl[id];
+  }
+  function hydrateShareImages(root) {
+    (root || document).querySelectorAll('img[data-simg]:not([src])').forEach(function (img) {
+      shareImgUrl(img.dataset.simg).then(function (u) { img.src = u; }).catch(function () { img.classList.add('broken'); img.alt = '사진을 불러오지 못했습니다'; });
+    });
+  }
+  function sharePhotosHtml(s) {
+    var ids = s.images || [];
+    if (!ids.length) return '';
+    return '<div class="mk-sc-photos n' + Math.min(ids.length, 4) + '">' + ids.map(function (id, i) {
+      return '<button type="button" class="mk-sc-ph" onclick="Mock.viewPhoto(\'' + id + '\')" aria-label="사진 ' + (i + 1) + ' 크게 보기">'
+        + '<img data-simg="' + id + '" alt="" loading="lazy"></button>';
+    }).join('') + '</div>';
+  }
+  function viewPhoto(id) {
+    var el = document.createElement('div');
+    el.id = 'mkPhoto';
+    el.className = 'mk-photo-view';
+    el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', '사진');
+    el.innerHTML = '<button type="button" class="mk-photo-x" aria-label="닫기">✕</button><img alt="">';
+    el.onclick = closePhoto;
+    document.body.appendChild(el);
+    syncNoScroll();
+    shareImgUrl(id).then(function (u) { var im = el.querySelector('img'); if (im) im.src = u; }).catch(function () { closePhoto(); toast('사진을 불러오지 못했습니다', 'err'); });
+    try { el.querySelector('.mk-photo-x').focus({ preventScroll: true }); } catch (e) {}
+  }
+  function closePhoto() { var el = document.getElementById('mkPhoto'); if (el) el.remove(); syncNoScroll(); }
 
   /* ===== 종목 상세의 매수·매도 바 ===== */
   function holding(code) {
@@ -2219,6 +2385,7 @@ var Mock = (function () {
     newSeasonForm: newSeasonForm, onSeasonIdInput: onSeasonIdInput,
     addHoliday: addHoliday, removeHoliday: removeHoliday,
     openShare: openShare, closeShare: closeShare, shareKind: shareKind, shareCode: shareCode, shareInput: shareInput, submitShare: submitShare,
-    toggleShare: toggleShare, fullShare: fullShare, moreShares: moreShares, deleteShare: deleteShare, submitComment: submitComment, deleteComment: deleteComment
+    sharePhotos: sharePhotos, removePhoto: removePhoto, viewPhoto: viewPhoto,
+    rankView: rankView, toggleShare: toggleShare, fullShare: fullShare, moreShares: moreShares, deleteShare: deleteShare, submitComment: submitComment, deleteComment: deleteComment
   };
 })();

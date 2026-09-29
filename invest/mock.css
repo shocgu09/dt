@@ -341,6 +341,15 @@
 /* ── 랭킹 탭 · 계좌 공유 (카드는 공유한 시각의 스냅샷) ──
  * 카드 = 머리(누가·언제) → 쓴 글 → 계좌 박스(첨부, 한 단 어둡게) → 댓글·삭제 줄
  * 줄로 나누지 않고 박스·타일로 묶는다 — 글과 숫자가 한눈에 갈리게 */
+/* 랭킹 탭 안 전환: 🏆 순위 | 💬 커뮤니티 — 위의 주 탭(주황 채움)과 층이 갈리게 밑줄형으로 */
+.mk-rk-seg { gap: 0; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+.mk-rk-seg .seg { position: relative; flex: 1; min-height: 44px; background: none; border: none; border-bottom: 3px solid transparent;
+  margin-bottom: -1px; color: var(--text3); font-size: .9rem; font-weight: 800; }
+.mk-rk-seg .seg:hover { color: var(--text); }
+.mk-rk-seg .seg.on { background: none; color: var(--text); border-bottom-color: var(--primary); }
+.mk-rk-dot { display: inline-block; width: 6px; height: 6px; margin-left: 5px; vertical-align: 5px; background: var(--accent); }
+.mk-rk-dot[hidden] { display: none; }
+.mk-share .m-head .m-hint { margin-left: 0; }
 .mk-share .m-head .mk-share-btn { margin-left: auto; border-color: var(--primary); color: var(--primary-light); font-weight: 800; }
 .mk-share-empty { font-size: .82rem; color: var(--text3); padding: 18px 14px; border: 1px dashed var(--border); text-align: center; }
 .mk-share-more { display: block; margin: 10px auto 0; }
@@ -419,7 +428,23 @@
 .mk-sc-cw .comment-input { flex: 1; min-height: 42px; }
 .mk-sc-cw .btn-submit { flex-shrink: 0; padding: 0 16px; }
 
-/* 공유 시트 — 매수(상승색) 주문창과 헷갈리지 않게 위 테두리는 메인 색 */
+/* 글에 붙은 사진 — 1장은 넓게, 2~4장은 2열 */
+.mk-sc-photos { display: grid; gap: 4px; margin-top: 10px; grid-template-columns: 1fr 1fr; }
+.mk-sc-photos.n1 { grid-template-columns: 1fr; }
+.mk-sc-photos.n3 .mk-sc-ph:first-child { grid-column: 1 / -1; }
+.mk-sc-ph { display: block; padding: 0; border: none; background: var(--bg3); cursor: zoom-in; aspect-ratio: 4 / 3; overflow: hidden; }
+.mk-sc-photos.n1 .mk-sc-ph { aspect-ratio: auto; max-height: 420px; }
+.mk-sc-ph img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.mk-sc-photos.n1 .mk-sc-ph img { height: auto; max-height: 420px; object-fit: contain; background: var(--bg3); }
+.mk-sc-ph img:not([src]) { min-height: 120px; }
+.mk-sc-ph img.broken { min-height: 60px; }
+/* 사진 크게 보기 */
+.mk-photo-view { position: fixed; inset: 0; z-index: 60; background: var(--overlay-bg); display: flex; align-items: center; justify-content: center; padding: 16px; cursor: zoom-out; }
+.mk-photo-view img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.mk-photo-x { position: absolute; top: 12px; right: 12px; min-width: 44px; min-height: 44px; background: var(--bg2); border: 1px solid var(--border);
+  color: var(--text); font-size: 1rem; cursor: pointer; }
+
+/* 글쓰기 시트 — 매수(상승색) 주문창과 헷갈리지 않게 위 테두리는 메인 색 */
 .mk-sheet.mk-share-sheet { border-top-color: var(--primary); }
 .mk-share-desc { font-size: .8rem; color: var(--text2); line-height: 1.6; margin-bottom: 10px; }
 .mk-share-pick { display: flex; flex-direction: column; border: 1px solid var(--border); margin-bottom: 10px; max-height: 40vh; overflow-y: auto; }
@@ -429,7 +454,18 @@
 .mk-share-opt:last-child { border-bottom: none; }
 .mk-share-opt span { font-size: .78rem; color: var(--text2); font-weight: 700; flex-shrink: 0; font-variant-numeric: tabular-nums; }
 .mk-share-opt.on { background: var(--bg3); box-shadow: inset 3px 0 0 var(--primary); }
-.mk-share-text { width: 100%; min-height: 70px; }
+.mk-share-text { width: 100%; min-height: 110px; }
+.mk-share-lbl { font-size: .76rem; font-weight: 800; color: var(--text2); margin: 14px 0 6px; }
+.mk-photo-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.mk-photo-th { position: relative; width: 72px; height: 72px; background: var(--bg3); }
+.mk-photo-th img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mk-photo-th button { position: absolute; top: 2px; right: 2px; width: 24px; height: 24px; background: rgba(0,0,0,.65); border: none;
+  color: #fff; font-size: .72rem; cursor: pointer; }
+.mk-photo-add { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 72px; height: 72px;
+  border: 1px dashed var(--border); color: var(--text2); font-size: .74rem; font-weight: 700; cursor: pointer; }
+.mk-photo-add:hover { border-color: var(--primary); color: var(--text); }
+.mk-photo-add em { font-style: normal; font-size: .66rem; color: var(--text3); }
+.mk-photo-add input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .mk-share-cnt { font-size: .7rem; color: var(--text3); text-align: right; margin-top: 4px; }
 .mk-share-go { width: 100%; padding: 13px; font-size: .92rem; }
 

@@ -174,7 +174,15 @@ export default {
     // 모의투자 — 장부(D1)를 다루므로 인증을 끈 개발 모드에서는 열지 않는다
     if (path.startsWith('/api/mock')) {
       if (!user) return json({ error: '회원 전용입니다' }, 401);
-      try { return json(await handleMock(request, env, user, bearerToken(request), url)); }
+      try {
+        const out = await handleMock(request, env, user, bearerToken(request), url);
+        // 커뮤니티 사진처럼 JSON 이 아닌 응답은 그대로 내보내되 CORS 만 붙인다
+        if (out instanceof Response) {
+          for (const [k, v] of Object.entries(CORS)) if (k !== 'Content-Type') out.headers.set(k, v);
+          return out;
+        }
+        return json(out);
+      }
       catch (e) { return mockErrorResponse(e, json); }
     }
     if (request.method !== 'GET') return json({ error: 'Method Not Allowed' }, 405);

@@ -144,10 +144,11 @@ CREATE TABLE IF NOT EXISTS shares (
   season_id     TEXT NOT NULL,
   uid           TEXT NOT NULL,
   nickname      TEXT NOT NULL,
-  kind          TEXT NOT NULL,              -- account | stock
+  kind          TEXT NOT NULL,              -- account | stock (계좌 공유) · text (일반 글)
   code          TEXT,                       -- kind=stock 일 때
   card          TEXT NOT NULL,              -- 스냅샷 JSON
-  body          TEXT NOT NULL DEFAULT '',   -- 한마디 (200자 이하)
+  body          TEXT NOT NULL DEFAULT '',   -- 본문 (2,000자 이하)
+  images        TEXT NOT NULL DEFAULT '[]', -- 사진 id 배열 (share_images)
   comment_count INTEGER NOT NULL DEFAULT 0,
   created_at    INTEGER NOT NULL,
   deleted_at    INTEGER
@@ -166,6 +167,18 @@ CREATE TABLE IF NOT EXISTS share_comments (
 );
 CREATE INDEX IF NOT EXISTS idx_share_comments_share ON share_comments(share_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_share_comments_uid ON share_comments(uid, created_at DESC);
+
+-- 커뮤니티 사진 — 화면이 JPEG 로 줄여 보내고(긴 변 1280px), 워커가 형식·크기를 확인해 base64 로 둔다.
+-- 목록 응답에는 id 만 싣고 사진은 /share-images/:id 로 따로 받는다 (회원 토큰 필요, 글이 지워지면 안 나간다).
+CREATE TABLE IF NOT EXISTS share_images (
+  id         TEXT PRIMARY KEY,
+  share_id   TEXT NOT NULL,
+  uid        TEXT NOT NULL,
+  data       TEXT NOT NULL,                 -- JPEG base64
+  size       INTEGER NOT NULL,              -- 바이트
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_share_images_share ON share_images(share_id);
 
 -- ── AI 계좌 평가 ──────────────────────────────────────────────
 -- 지표는 워커가 D1 에서 직접 계산하고(metrics), AI 는 그걸 문장으로만 푼다(body).
