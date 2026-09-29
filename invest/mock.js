@@ -794,7 +794,7 @@ var Mock = (function () {
    * 공유한 시각의 값으로 고정된 스냅샷이고, 실시간 값은 바로 위 순위표가 보여 준다.
    * 읽기·댓글은 시즌에 참가하지 않은 회원도 할 수 있고, 공유는 참가자만 할 수 있다.
    */
-  var SHARE_PREVIEW = 3, SHARE_POS_PREVIEW = 3, SHARE_MAX = 200, COMMENT_MAX = 300;
+  var SHARE_PREVIEW = 3, SHARE_POS_PREVIEW = 3, SHARE_POS_FULL = 10, SHARE_MAX = 200, COMMENT_MAX = 300;
   function newShareState() { return { items: [], next: null, loading: false, err: null, all: false, open: {}, full: {}, cm: {} }; }
   var _sh = newShareState();
   var _shSheet = null;         // 공유 시트 { kind, code, body, busy }
@@ -883,7 +883,8 @@ var Mock = (function () {
 
     h += '<div class="mk-sc-att">';
     if (c.kind === 'account') {
-      var ps = c.positions || [], total = c.holdings != null ? c.holdings : ps.length;
+      // 카드에는 평가금액 상위 10종목까지 (20개로 저장된 예전 카드도 10개까지만 보여 준다)
+      var ps = (c.positions || []).slice(0, SHARE_POS_FULL), total = c.holdings != null ? c.holdings : (c.positions || []).length;
       h += '<div class="mk-sc-sum"><span class="mk-sc-k">총자산</span>'
         + '<b class="mk-sc-total">' + won(c.equity) + '</b>'
         + '<span class="mk-sc-chg ' + signClass(c.pnl) + '">' + signedWon(c.pnl) + ' · ' + fmtRate(c.returnRate) + '</span></div>'
@@ -899,7 +900,7 @@ var Mock = (function () {
         var full = !!_sh.full[s.id];
         h += '<div class="mk-sc-list">' + (full ? ps : ps.slice(0, SHARE_POS_PREVIEW)).map(shareTileHtml).join('') + '</div>';
         var shown = full ? ps.length : Math.min(ps.length, SHARE_POS_PREVIEW);
-        if (total > ps.length && shown === ps.length) h += '<div class="mk-sc-none">외 ' + fmtNum(total - ps.length) + '종목 (평가금액 상위 ' + fmtNum(ps.length) + '개만 담깁니다)</div>';
+        if (total > ps.length && shown === ps.length) h += '<div class="mk-sc-none">외 ' + fmtNum(total - ps.length) + '종목</div>';
         if (ps.length > SHARE_POS_PREVIEW) {
           h += '<button type="button" class="mk-sc-all" onclick="Mock.fullShare(\'' + s.id + '\')" aria-expanded="' + full + '">'
             + (full ? '접기 ▴' : '나머지 ' + fmtNum(ps.length - SHARE_POS_PREVIEW) + '종목 더 보기 ▾') + '</button>';

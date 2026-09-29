@@ -177,7 +177,7 @@ const SHARE_DAILY_MAX = 3;          // 회원당 하루 공유 (지운 것도 �
 const SHARE_GAP_MS = 60000;         // 연달아 공유 간격
 const SHARE_BODY_MAX = 200;
 const SHARE_PAGE = 20;
-const SHARE_POS_MAX = 20;           // 카드에 넣는 보유 종목 수
+const SHARE_POS_MAX = 10;           // 카드에 넣는 보유 종목 수 (평가금액 상위) — 나머지는 개수만 (holdings)
 const COMMENT_DAILY_MAX = 50;
 const COMMENT_BODY_MAX = 300;
 const round2 = (v) => Math.round(v * 100) / 100;
