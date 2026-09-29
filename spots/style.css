@@ -146,7 +146,7 @@ body {
   padding-bottom: var(--kb, 0px);   /* 키보드가 올라오면 그만큼 위로 (kb.js) */
 }
 .modal-box {
-  background: var(--bg2); width: 100%; max-height: min(85vh, calc(var(--vvh, 100vh) - 12px)); overflow-y: auto;
+  background: var(--bg2); width: 100%; max-height: min(85vh, calc(var(--vvh, 100vh) - 12px - env(safe-area-inset-top, 0px))); overflow-y: auto;
   border-top: 2px solid var(--primary); padding: 20px 16px;
 }
 .modal-header {

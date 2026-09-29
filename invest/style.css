@@ -628,7 +628,7 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 body.wg-noscroll { overflow: hidden; }
 .wg-sheet-wrap { position: fixed; inset: 0; z-index: 55; display: flex; align-items: flex-end; justify-content: center; padding-bottom: var(--kb, 0px); }
 .wg-dim { position: absolute; inset: 0; background: rgba(0,0,0,.55); }
-.wg-sheet { position: relative; width: 100%; max-width: 440px; max-height: min(85vh, calc(var(--vvh, 100vh) - 12px)); overflow-y: auto; background: var(--bg2);
+.wg-sheet { position: relative; width: 100%; max-width: 440px; max-height: min(85vh, calc(var(--vvh, 100vh) - 12px - env(safe-area-inset-top, 0px))); overflow-y: auto; background: var(--bg2);
   border: 1px solid var(--border); border-top: 3px solid var(--primary); padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
 @media (min-width: 600px) { .wg-sheet-wrap { align-items: center; } .wg-sheet { border-bottom: 1px solid var(--border); } }
 .wg-sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
