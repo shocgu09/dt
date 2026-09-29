@@ -98,12 +98,21 @@ async function todayBars(code, now, fromHm) {
  *  - 평소: 시세 탭에 보이는 것과 같은 현재가 (프리·애프터마켓에는 그 시장의 가격). 시간외에도 거래할 수 있으므로
  *    평가도 시간외 가격을 따라간다. 20:00 이후에는 마지막 시간외 가격에서 멈춘다.
  *  - official: 저장해 둔 15:30 종가 — 일일 스냅샷과 시즌 최종 순위는 KRX 정규장 종가로 확정한다.
+ *  - closingYmd: 시즌 마지막 날 15:30 이후. 그날은 시간외 주문을 받지 않고 최종 순위를 15:30 종가로 매기므로,
+ *    평가도 그 종가로 멈춘다. 예전에는 20:00 까지 애프터마켓 가격으로 순위가 움직이다가 확정 순위와 달라졌다.
+ *    크론이 받아 둔 그날 종가를 먼저 쓰고, 아직 없으면 KRX 가격(16:00 KRX 애프터마켓 전까지는 종가)을 쓴다.
  */
-async function pricer(db, codes, now, official, asOfYmd) {
+async function pricer(db, codes, now, official, asOfYmd, closingYmd) {
   const t = E.kstNow(now);
-  const live = !official && E.isTradingDay(t) && t.hm >= E.PRE_FROM && t.hm < E.AFTER_TO;
+  const live = !official && !closingYmd && E.isTradingDay(t) && t.hm >= E.PRE_FROM && t.hm < E.AFTER_TO;
   const quotes = codes.length ? await quotesFor(codes) : {};
   const closes = {};
+  const finals = {};
+  if (closingYmd && codes.length) {
+    // 종가는 보유 종목만 저장하므로 그날 것을 통째로 읽어도 작다 (IN (...) 은 바인딩 100개 한도에 걸린다)
+    const rows = (await db.prepare(`SELECT code, close FROM closes WHERE date=?`).bind(closingYmd).all()).results || [];
+    for (const r of rows) finals[r.code] = r.close;
+  }
   // 시세가 없는 종목(상장폐지 뒤 네이버 응답에서 빠짐 등) — 매입가로 평가하면 손실이 0% 로 보인다.
   // 저장해 둔 마지막 15:30 종가(정리매매 마지막 날 가격)로 평가한다
   const missing = official ? [] : Array.from(new Set(codes)).filter((c) => {
@@ -127,14 +136,23 @@ async function pricer(db, codes, now, official, asOfYmd) {
     for (const r of rows) closes[r.code] = r.close;
   }
   return {
-    live, quotes,
+    live, closing: !!closingYmd, quotes,
     priceOf: (code) => {
       if (official && closes[code] != null) return closes[code];
+      if (finals[code] != null) return finals[code];
       const q = quotes[code];
-      const p = q ? (q.price != null ? q.price : (q.krx ? q.krx.price : null)) : null;
+      const krx = q && q.krx ? q.krx.price : null;
+      const p = q ? (closingYmd && krx != null ? krx : (q.price != null ? q.price : krx)) : null;
       return p != null ? p : (closes[code] != null ? closes[code] : null);
     }
   };
+}
+
+/** 시즌 마지막 날 15:30 이후(마감이 늦어져 다음 날로 넘어간 경우 포함)면 그 종료일(YYYYMMDD) */
+function closingYmd(season, now) {
+  const t = E.kstNow(now);
+  const after = t.iso > season.end_date || (t.iso === season.end_date && t.hm >= E.ACCEPT_TO);
+  return after ? season.end_date.replace(/-/g, '') : null;
 }
 
 function sessionInfo(now) {
@@ -305,7 +323,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     const me = board.rows.find((r) => r.uid === uid);
     return {
       season: { id: season.id, name: season.name, seed: season.seed, endDate: season.end_date },
-      asOf: board.asOf, live: board.live,
+      asOf: board.asOf, live: board.live, closing: board.closing,
       // uid 는 내보내지 않는다 — 순위표에는 닉네임만 (key 는 갱신 간 순위 변동 표시용 해시)
       rows: board.rows.map((r) => ({ key: rowKey(r.uid), rank: r.rank, nickname: r.nickname, equity: r.equity, fills: r.fills, me: r.uid === uid })),
       me: me ? { rank: me.rank, equity: me.equity } : null
@@ -322,10 +340,16 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
 
   if (path === '/account' && method === 'GET') {
     const [view, board, corpActions] = await Promise.all([
-      accountView(db, season, account, now), liveBoard(db, season, now), C.accountActions(db, season, uid, now)
+      // 순위표는 시즌 전체 보유 종목 시세가 필요해 실패할 일이 더 많다 — 실패해도 계좌는 보여 주고 순위만 비운다
+      accountView(db, season, account, now), liveBoard(db, season, now).catch(() => null), C.accountActions(db, season, uid, now)
     ]);
-    const me = board.rows.find((r) => r.uid === uid);
-    return { ...view, rank: me ? me.rank : null, participants: board.rows.length, corpActions };
+    if (!board) return { ...view, rank: null, participants: null, corpActions };
+    // 순위표는 10초 캐시라 방금 계산한 내 자산과 어긋날 수 있다 — 내 줄만 방금 값으로 바꿔 순위를 다시 매긴다.
+    // 안 그러면 '내 자산'은 새 시세인데 순위는 몇 초 전 자산 기준이라, 순위가 바뀌는 순간 둘이 맞지 않았다
+    const rows = board.rows.filter((r) => r.uid !== uid)
+      .concat({ uid, equity: view.equity, joined_at: account.joined_at })
+      .sort((a, b) => (b.equity - a.equity) || (a.joined_at - b.joined_at));
+    return { ...view, rank: rows.findIndex((r) => r.uid === uid) + 1, participants: rows.length, corpActions };
   }
 
   if (path === '/orders' && method === 'POST') {
@@ -518,12 +542,19 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
 
 async function accountView(db, season, account, now) {
   const uid = account.uid;
-  const [posRes, ordRes] = await Promise.all([
-    db.prepare(`SELECT code, name, qty, cost FROM positions WHERE season_id=? AND uid=? ORDER BY cost DESC`).bind(season.id, uid).all(),
-    db.prepare(`SELECT * FROM orders WHERE season_id=? AND uid=? AND status IN ('open','partial') ORDER BY accepted_at DESC`).bind(season.id, uid).all()
+  // 현금·보유·미체결을 한 트랜잭션(batch)으로 읽는다. 따로 읽으면 그 사이 체결이 끼어
+  // 체결 전 현금 + 체결 후 보유가 합쳐져 총자산이 매수 금액만큼 부풀 수 있었다
+  const [accRes, posRes, ordRes, feeRes] = await db.batch([
+    db.prepare(`SELECT cash, realized_pnl, fills FROM accounts WHERE season_id=? AND uid=?`).bind(season.id, uid),
+    db.prepare(`SELECT code, name, qty, cost FROM positions WHERE season_id=? AND uid=? ORDER BY cost DESC`).bind(season.id, uid),
+    db.prepare(`SELECT * FROM orders WHERE season_id=? AND uid=? AND status IN ('open','partial') ORDER BY accepted_at DESC`).bind(season.id, uid),
+    // 매수 수수료는 매입금액에 넣지 않으므로(원가법) 평가손익·실현손익 어디에도 없다 — 합이 총손익과 맞도록 따로 보여 준다
+    db.prepare(`SELECT COALESCE(SUM(fee), 0) AS fee FROM fills WHERE season_id=? AND uid=? AND side='buy'`).bind(season.id, uid)
   ]);
+  const acc = (accRes.results && accRes.results[0]) || account;
   const positions = posRes.results || [], orders = ordRes.results || [];
-  const px = await pricer(db, positions.map((p) => p.code), now);
+  const buyFees = (feeRes.results && feeRes.results[0] && feeRes.results[0].fee) || 0;
+  const px = await pricer(db, positions.map((p) => p.code), now, false, null, closingYmd(season, now));
   let stock = 0;
   const items = positions.map((p) => {
     const price = px.priceOf(p.code);
@@ -537,13 +568,13 @@ async function accountView(db, season, account, now) {
     };
   });
   const reserved = orders.filter((o) => o.side === 'buy').reduce((s, o) => s + o.reserved, 0);
-  const equity = account.cash + stock;
+  const equity = acc.cash + stock;
   return {
     season: { id: season.id, name: season.name, seed: season.seed, endDate: season.end_date, feeRate: season.fee_rate, taxRate: season.tax_rate },
-    cash: account.cash, available: account.cash - reserved, stock, equity,
+    cash: acc.cash, available: acc.cash - reserved, stock, equity,
     returnRate: (equity - season.seed) / season.seed * 100,
-    realizedPnl: account.realized_pnl, fills: account.fills,
-    positions: items, openOrders: orders.map(publicOrder), live: px.live, ...sessionInfo(now)
+    realizedPnl: acc.realized_pnl, buyFees, fills: acc.fills,
+    positions: items, openOrders: orders.map(publicOrder), live: px.live, closing: px.closing, ...sessionInfo(now)
   };
 }
 
@@ -553,13 +584,14 @@ function liveBoard(db, season, now) {
 }
 
 async function leaderboard(db, season, now, official, asOfYmd) {
-  const [accRes, posRes] = await Promise.all([
-    db.prepare(`SELECT uid, nickname, cash, fills, joined_at FROM accounts WHERE season_id=? AND status='active'`).bind(season.id).all(),
-    db.prepare(`SELECT uid, code, qty, cost FROM positions WHERE season_id=?`).bind(season.id).all()
+  // 현금과 보유를 한 트랜잭션(batch)으로 읽는다 — 사이에 체결이 끼면 그 회원 자산이 틀린 채 10초 캐시에 올라갔다
+  const [accRes, posRes] = await db.batch([
+    db.prepare(`SELECT uid, nickname, cash, fills, joined_at FROM accounts WHERE season_id=? AND status='active'`).bind(season.id),
+    db.prepare(`SELECT uid, code, qty, cost FROM positions WHERE season_id=?`).bind(season.id)
   ]);
   const positions = posRes.results || [];
-  const px = await pricer(db, positions.map((p) => p.code), now, official, asOfYmd);
-  return { rows: E.valuate(accRes.results || [], positions, px.priceOf), asOf: now, live: px.live };
+  const px = await pricer(db, positions.map((p) => p.code), now, official, asOfYmd, official ? null : closingYmd(season, now));
+  return { rows: E.valuate(accRes.results || [], positions, px.priceOf), asOf: now, live: px.live, closing: px.closing };
 }
 
 // ── 관리자 ────────────────────────────────────────────────────

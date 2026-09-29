@@ -48,6 +48,10 @@ var Coin = (function () {
     if (a >= 0.0001) return 6;
     return 8;
   }
+  /** 여러 가격을 한 화면에 함께 보일 때의 자릿수 — 가장 작은 값에 맞춘다 */
+  function digitsOf(list) {
+    return list.reduce(function (m, p) { return p == null || isNaN(p) ? m : Math.max(m, digits(p)); }, 0);
+  }
   function fmtPrice(p, dg) {
     if (p == null || isNaN(p)) return '-';
     dg = dg == null ? digits(p) : dg;
@@ -228,7 +232,7 @@ var Coin = (function () {
       more = '<button class="cn-more" onclick="Coin.toggleAll()" aria-expanded="' + listAll + '">'
         + (listAll ? '접기' : '전체 ' + d.total + '개 보기') + '</button>';
     }
-    return more + '<div class="rank-note">업비트 원화 마켓 · 등락률은 ' + refText() + ' 대비 · 거래대금은 최근 24시간</div>';
+    return more + '<div class="rank-note">업비트 원화 마켓 · 등락률은 <span id="cnRef">' + refText() + '</span> 대비 · 거래대금은 최근 24시간</div>';
   }
 
   function paintRows(items) {
@@ -241,8 +245,16 @@ var Coin = (function () {
       c.textContent = fmtRate(x.changeRate);
       c.className = 'q-chg ' + signClass(x.change);
       if (v) v.textContent = x.value24h != null ? fmtCompact(x.value24h) + '원' : '';
+      // 스트립(15~30초)이 목록(5초)보다 늦게 돌아 같은 화면에 비트코인 값이 둘로 보였다 — 목록이 받을 때 함께 칠한다
+      if (STRIP_KEY[x.market] && typeof paintIndexCell === 'function') {
+        paintIndexCell(STRIP_KEY[x.market], { price: x.price, change: x.change, changeRate: x.changeRate, decimals: 0 });
+      }
     });
+    // 오전 9시를 넘기면 등락률 기준이 바뀐다 — 순서가 그대로여서 목록을 다시 안 그려도 문구는 맞춘다
+    var refEl = document.getElementById('cnRef');
+    if (refEl) refEl.textContent = refText();
   }
+  var STRIP_KEY = { 'KRW-BTC': 'btc', 'KRW-ETH': 'eth' };
 
   async function toggleFav(market) {
     if (!isMarket(market) || favBusy[market]) return;
@@ -456,7 +468,7 @@ var Coin = (function () {
       setTextFlash(vEl, fmtPrice(q.price, dg), dirOf('cx:' + market, q.price));
       vEl.className = 'sd-price ' + cls;
       var cEl = document.getElementById('cxChg');
-      cEl.innerHTML = signMark(q.change) + ' ' + fmtPrice(Math.abs(q.change || 0), dg)
+      cEl.innerHTML = signMark(q.change) + ' ' + fmtPrice(Math.abs(q.change || 0), digitsOf([q.price, q.prevClose]))
         + ' (' + fmtRate(q.changeRate) + ') <span class="vs">' + refText().replace('오전 ', '') + '보다</span>';
       cEl.className = 'sd-chg ' + cls;
       var stale = isFeedStale('coin');
@@ -491,6 +503,7 @@ var Coin = (function () {
       if (chart) chart.updateLast(q.price, bucketTime(), null, tf.charAt(0) === 'm' || tf === 'D');
     } catch (e) {
       if (box && !box.dataset.built) box.innerHTML = '<div class="empty">' + escapeHtml(e.message) + '</div>';
+      markFeedStale('#cxAsOf', 'coin');     // 가격이 멈췄는데 '24시간' 배지가 남지 않게
     }
   }
 
@@ -523,7 +536,8 @@ var Coin = (function () {
     // 봉 전체에서 가장 작은 가격 기준으로 자릿수를 잡는다 (축 눈금이 한 코인 안에서 들쭉날쭉하지 않게)
     var ref = lastQuote && lastQuote.price;
     if (ref == null && chartBars && chartBars.length) ref = chartBars[chartBars.length - 1].c;
-    var dg = ref != null ? digits(ref) : 0;
+    var lo = chartBars && chartBars.length ? Math.min.apply(null, chartBars.map(function (b) { return b.l; }).filter(function (v) { return v != null; })) : null;
+    var dg = digitsOf([ref, isFinite(lo) ? lo : null]);
     return { precision: dg, fmt: function (p) { return fmtPrice(p, dg); } };
   }
 
@@ -620,7 +634,7 @@ var Coin = (function () {
       var ask = (b.ask || []).slice(0, BOOK_LEVELS).reverse();     // 높은 매도 호가가 위로
       var bid = (b.bid || []).slice(0, BOOK_LEVELS);
       var max = Math.max.apply(null, ask.concat(bid).map(function (a) { return a.qty || 0; }).concat([0])) || 1;
-      var dg = digits((bid[0] && bid[0].price) || (ask[0] && ask[0].price) || 0);
+      var dg = digitsOf(ask.concat(bid).map(function (a) { return a.price; }));
       var now = lastQuote && lastQuote.market === market ? lastQuote.price : null;
       var ref = lastQuote && lastQuote.market === market ? lastQuote.prevClose : null;
       var pxCell = function (p) {
@@ -639,10 +653,13 @@ var Coin = (function () {
           + '<span class="bk-qty"></span>' + pxCell(a.price)
           + '<span class="bk-qty bid"><i style="width:' + ((a.qty / max) * 100).toFixed(1) + '%"></i><b>' + fmtQty(a.qty) + '</b></span></div>';
       }).join('');
-      var total = (b.askTotal || 0) + (b.bidTotal || 0);
-      var askPct = total ? Math.round((b.askTotal / total) * 100) : 50;
+      // 합계·비율은 화면에 보이는 단계로 — 업비트 total_*_size 는 30단계 전체라 보이는 잔량을 더한 값과 맞지 않았다
+      var sum = function (arr) { return arr.reduce(function (t, a) { return t + (a.qty || 0); }, 0); };
+      var askSum = sum(ask), bidSum = sum(bid);
+      var total = askSum + bidSum;
+      var askPct = total ? Math.round((askSum / total) * 100) : 50;
       h += '<div class="bk-ratio"><span class="bk-ratio-bar"><i style="width:' + askPct + '%"></i></span>'
-        + '<span class="bk-ratio-txt">매도 ' + fmtQty(b.askTotal) + ' · 매수 ' + fmtQty(b.bidTotal)
+        + '<span class="bk-ratio-txt">매도 ' + fmtQty(askSum) + ' · 매수 ' + fmtQty(bidSum)
         + ' (' + askPct + ' : ' + (100 - askPct) + ')</span></div>'
         + '<div class="bk-note">업비트 호가 ' + BOOK_LEVELS + '단계 · 잔량 단위 ' + escapeHtml(symbolOf(market)) + '</div>';
       wrap.innerHTML = h;
@@ -663,7 +680,7 @@ var Coin = (function () {
       if (!wrap) return;
       var items = d.items || [];
       if (!items.length) { wrap.innerHTML = '<div class="empty">체결 내역이 없습니다</div>'; return; }
-      var dg = digits(items[0].price);
+      var dg = digitsOf(items.slice(0, 30).map(function (t) { return t.price; }));
       wrap.innerHTML = '<div class="cn-tr-head"><span>시각</span><span>체결가</span><span>체결량</span><span>금액</span></div>'
         + items.slice(0, 30).map(function (t) {
           var cls = t.side === 'buy' ? 'up' : 'down';

@@ -63,7 +63,9 @@ function mapQuote(s) {
     volume: num((integ || s).accumulatedTradingVolume),
     session,                               // 'PRE_MARKET' | 'AFTER_MARKET' | null(정규장·장외)
     integrated: !!integ,                   // 거래량 등이 KRX+NXT 통합 기준인지
-    marketStatus: s.marketStatus,          // OPEN / CLOSE ...
+    // OPEN / CLOSE — KRX 원문은 NXT 프리·애프터마켓(08:00~08:50 · 15:40~) 동안 CLOSE 인데 가격은 NXT 체결가로 움직인다.
+    // 지수(/api/index)·종목 상세는 이미 '세션 중이면 열림'으로 봐서, 목록 시세만 원문을 쓰면 홈 화면 장 상태가 번갈아 바뀌었다
+    marketStatus: session ? 'OPEN' : s.marketStatus,
     sessionType: s.marketSessionType || null,   // 네이버 원문 (정규장·프리·애프터 구분)
     // 거래정지 — tradeStopType 이 TRADING 이 아니거나 tradableStatus 가 tradable 이 아니면 정지로 본다
     halted: !!((s.tradeStopType && s.tradeStopType.name && s.tradeStopType.name !== 'TRADING')
@@ -198,7 +200,8 @@ export const naver = {
         code: x.itemCode, name: x.stockName,
         price: num(x.closePrice),
         change: sign * Math.abs(num(x.compareToPreviousClosePrice) || 0),
-        changeRate: Number(x.fluctuationsRatio)
+        changeRate: Number(x.fluctuationsRatio),
+        status: x.marketStatus || null        // 지수 자체의 장 상태 (15:30 에 CLOSE — 종목은 애프터마켓 동안 OPEN)
       };
     }
     if (!out.kospi && !out.kosdaq) throw new Error('naver: index empty');
@@ -735,6 +738,8 @@ export const yahoo = {
     if (!d) throw lastErr || new Error('yahoo: not found');
     const m = d.chart.result[0].meta;
     const prev = m.chartPreviousClose || m.previousClose;
+    // 기준 시각은 마지막 체결 시각 — 받아 온 시각을 쓰면 지연된 값이 '방금 기준'처럼 보였다
+    const at = m.regularMarketTime ? new Date(m.regularMarketTime * 1000) : null;
     return {
       // 이름을 모른다 (m.symbol 은 '005930.KS') — 딥링크로 들어온 화면 제목·최근 본 종목에 코드가 이름처럼 박히지 않게 비운다
       code, name: null, market: m.exchangeName,
@@ -742,7 +747,7 @@ export const yahoo = {
       change: prev ? m.regularMarketPrice - prev : null,
       changeRate: prev ? ((m.regularMarketPrice - prev) / prev) * 100 : null,
       open: null, high: null, low: null, volume: m.regularMarketVolume ?? null,
-      delayed: true, asOf: new Date().toISOString(), source: 'yahoo'
+      delayed: true, asOf: at && !isNaN(at) ? at.toISOString() : null, source: 'yahoo'
     };
   }
 };

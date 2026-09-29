@@ -251,29 +251,7 @@ async function loadIndex() {
       renderIndexPanel();
     }
 
-    have.forEach(function (k) {
-      var x = d[k];
-      var pEl = document.getElementById('ixp-' + k);
-      var cEl = document.getElementById('ixc-' + k);
-      if (!pEl || !cEl) return;
-      var cls = signClass(x.change);
-      // 지수는 소수 둘째 자리까지, 국채 금리는 셋째 자리까지 (4.955%). 단위는 항목이 알려 준다.
-      var dg = x.decimals == null ? 2 : x.decimals;
-      var pTxt = x.price == null ? '-'
-        : Number(x.price).toLocaleString('ko-KR', { minimumFractionDigits: dg, maximumFractionDigits: dg })
-          + (x.unit || '');
-      setTextFlash(pEl, pTxt, dirOf('ix:' + k, x.price));
-      pEl.className = 'idx-price ' + cls;
-      // 값이 없는 칸(야간장 개장 전)은 등락 줄을 비운다 — "– -" 가 남지 않게
-      // 금리(단위 %)는 등락률로 쓰면 '▲ +3.06%'가 금리 3%p 상승처럼 읽힌다 — 변화폭을 %p 로 쓴다
-      cEl.textContent = x.price == null ? ''
-        : (x.unit === '%' && x.change != null
-            ? signMark(x.change) + ' ' + (x.change > 0 ? '+' : '') + Number(x.change).toFixed(dg) + '%p'
-            : signMark(x.change) + ' ' + fmtRate(x.changeRate));
-      cEl.className = 'idx-chg ' + cls;
-      var tEl = document.getElementById('ixt-' + k);
-      if (tEl) tEl.textContent = x.tag || '';
-    });
+    have.forEach(function (k) { paintIndexCell(k, d[k]); });
 
     paintIndexSparks(have, d);
     paintStateBadges();
@@ -283,18 +261,46 @@ async function loadIndex() {
   }
 }
 
+/** 지수 스트립 한 칸의 값·등락. 코인 목록(5초)도 비트코인·이더리움 칸을 이걸로 칠해, 15~30초 도는 스트립과 목록이 어긋나지 않게 한다 */
+function paintIndexCell(k, x) {
+  var pEl = document.getElementById('ixp-' + k);
+  var cEl = document.getElementById('ixc-' + k);
+  if (!x || !pEl || !cEl) return;
+  var cls = signClass(x.change);
+  // 지수는 소수 둘째 자리까지, 국채 금리는 셋째 자리까지 (4.955%). 단위는 항목이 알려 준다.
+  var dg = x.decimals == null ? 2 : x.decimals;
+  var pTxt = x.price == null ? '-'
+    : Number(x.price).toLocaleString('ko-KR', { minimumFractionDigits: dg, maximumFractionDigits: dg })
+      + (x.unit || '');
+  setTextFlash(pEl, pTxt, dirOf('ix:' + k, x.price));
+  pEl.className = 'idx-price ' + cls;
+  // 값이 없는 칸(야간장 개장 전)은 등락 줄을 비운다 — "– -" 가 남지 않게
+  // 금리(단위 %)는 등락률로 쓰면 '▲ +3.06%'가 금리 3%p 상승처럼 읽힌다 — 변화폭을 %p 로 쓴다
+  cEl.textContent = x.price == null ? ''
+    : (x.unit === '%' && x.change != null
+        ? signMark(x.change) + ' ' + (x.change > 0 ? '+' : '') + Number(x.change).toFixed(dg) + '%p'
+        : signMark(x.change) + ' ' + fmtRate(x.changeRate));
+  cEl.className = 'idx-chg ' + cls;
+  var tEl = document.getElementById('ixt-' + k);
+  if (tEl) tEl.textContent = x.tag || '';
+}
+
 /**
  * 장 상태 배지 (지수 스트립 · 종목 상세 기준 시각 옆).
  * 요청이 연달아 실패하거나 오프라인이면 '연결 끊김' — 숫자가 멈춰 있는데 '실시간'이라고 쓰지 않는다.
  */
 function paintStateBadges() {
   var st = marketStateLabel();
+  var hs = _listQuotesTried ? marketStateLabel('quotes') : st;     // 시세 홈은 관심·랭킹 목록 시세까지 본다
   var sEl = document.getElementById('ixState');
   // 이 배지는 국장 기준이다. 옆의 나스닥 선물·금·유가는 국장이 닫혀 있어도 돌아간다.
-  if (sEl) { sEl.textContent = st.cls === 'stale' ? st.text : '국내 ' + st.text; sEl.className = 'idx-state ' + st.cls; }
+  if (sEl) { sEl.textContent = hs.cls === 'stale' ? hs.text : '국내 ' + hs.text; sEl.className = 'idx-state ' + hs.cls; }
+  // 상세에 대체 출처(다음·야후) 값이 떠 있으면 '지연 가능'을 지킨다 — 요청이 한 번 실패해 다시 칠할 때 '실시간'으로 바뀌었다
+  var alt = _lastQuote && _lastQuote.source && _lastQuote.source !== 'naver';
+  var ds = alt && st.cls === 'live' ? { cls: 'closed', text: '지연 가능' } : st;
   document.querySelectorAll('#pxAsOf .state-dot').forEach(function (d) {
-    d.textContent = st.text;
-    d.className = 'state-dot ' + st.cls;
+    d.textContent = ds.text;
+    d.className = 'state-dot ' + ds.cls;
   });
 }
 window.addEventListener('online', paintStateBadges);
@@ -470,16 +476,18 @@ async function fetchQuotesInto(codes) {
   var got = await Promise.all(chunks.map(function (c) {
     return Market.quotes(c).catch(function () { return null; });
   }));
-  var now = Date.now(), first = null;
+  var now = Date.now(), first = null, open = false;
   got.forEach(function (d) {
     ((d && d.items) || []).forEach(function (q) {
       if (!q || !isStockCode(q.code)) return;
       q._at = now;
       _quoteMap[q.code] = q;
       if (!first) first = q;
+      // NXT 세션 중인 종목이 하나라도 있으면 열림 — 지수·종목 상세와 같은 규칙 (첫 종목이 NXT 비대상 ETF 여도 뒤집히지 않게)
+      if (q.session || q.marketStatus === 'OPEN') open = true;
     });
   });
-  if (first) setMarketStatus(first.marketStatus);
+  if (first) setMarketStatus(open ? 'OPEN' : first.marketStatus);
 }
 
 /**
@@ -496,6 +504,7 @@ async function refreshListQuotes() {
       if (codes.length) await fetchQuotesInto(codes);
       _listQuotesTried = true;
       paintListQuotes();
+      paintStateBadges();          // 목록 시세가 연달아 실패하면 홈 배지를 '연결 끊김'으로
       if (!_listQuotesAgain) break;
       codes = listQuoteCodes().filter(function (c) { return !freshQuote(c); });
       if (!codes.length) break;
@@ -771,7 +780,8 @@ async function loadRank() {
 function rankNoteHtml(items, approx) {
   var at = rankAsOf(items);
   var parts = [];
-  if (at) parts.push('순위·거래대금은 ' + escapeHtml(at) + ' 기준 · 가격은 실시간');
+  // 가격·등락률 칸은 목록 시세(3초) — 장이 닫혀 있어도 '실시간'이라 쓰지 않고, 순위와 기준이 다름만 밝힌다
+  if (at) parts.push('순위·거래대금은 ' + escapeHtml(at) + ' 기준 · 가격·등락률은 현재가');
   if (approx) parts.push('거래대금 순위는 시총·급등락 상위 300종목을 합쳐 계산한 근사치입니다');
   return parts.length ? '<div class="rank-note">' + parts.join(' · ') + '</div>' : '';
 }
@@ -981,6 +991,11 @@ function startStockPolling() {
  *  - 일봉: 거래일 개장 직후 네이버 일봉에 오늘 봉이 아직 없을 때 전 거래일 봉을 오늘 값으로 덧씌우지 않도록 오늘 봉을 새로 연다
  *  - 주봉·월봉: 버킷의 마지막 거래일이 오늘과 달라도 같은 주·달이면 그 봉을 갱신하는 게 맞으므로 새 봉은 만들지 않는다
  */
+/** 일·주·월봉에서 새 봉을 열 때 쓸 그날 시가·고가·저가 (상단 시세와 같은 통합 기준). 분봉은 그 분의 값이 아니라서 넘기지 않는다 */
+function tickOhl(q) {
+  return !q || curTf === 'm' || curTf === 'm5' ? null : { open: q.open, high: q.high, low: q.low };
+}
+
 function allowNewBarNow() {
   if (curTf === 'm' || curTf === 'm5') return isMarketOpen();
   if (curTf === 'D') return isTradingDayKst() && isMarketOpen();
@@ -1204,7 +1219,7 @@ async function loadStockQuote() {
     var alt = q.source && q.source !== 'naver';
     var src = alt ? (q.source === 'daum' ? '다음' : '야후') + '(대체)' : '네이버';
     if (alt && st.cls === 'live') st = { cls: 'closed', text: '지연 가능' };
-    aEl.innerHTML = escapeHtml(shortTime(q.asOf)) + ' 기준 · ' + src + ' ' + (sess ? '· ' + sess + ' ' : '')
+    aEl.innerHTML = (q.asOf ? escapeHtml(shortTime(q.asOf)) + ' 기준 · ' : '') + src + ' ' + (sess ? '· ' + sess + ' ' : '')
       + '<span class="state-dot ' + st.cls + '">' + st.text + '</span>';
 
     // 상·하한가 — 프리·애프터마켓에는 NXT 가격을 보여 주므로 그 시장의 상태로 (KRX 값은 전날 것이 밤새 남아 있다)
@@ -1229,7 +1244,10 @@ async function loadStockQuote() {
 
     // ★ 차트 마지막 봉을 새로고침 없이 갱신.
     // 장 마감 후에도 한 번은 맞춰야 종가가 차트에 반영된다 (상단 시세와 끝점 불일치 방지).
-    if (chartHandle) chartHandle.updateLast(q.price, currentBucketTime(), tickVolume(q), allowNewBarNow());
+    if (chartHandle) {
+      chartHandle.updateLast(q.price, currentBucketTime(), tickVolume(q), allowNewBarNow(), tickOhl(q));
+      updateHiLoLabel();         // 기간 최고·최저가 끝점을 따라 바뀌었을 수 있다
+    }
   } catch (e) {
     if (!box.dataset.built) box.innerHTML = '<div class="empty">' + escapeHtml(e.message) + '</div>';
     paintStateBadges();          // 실패가 이어지면 '실시간' 대신 '연결 끊김'
@@ -1251,8 +1269,8 @@ function renderRange(q) {
   }
   if (_dayBars && _dayBars.length) {
     var win = _dayBars.slice(-250);
-    var lo = Math.min.apply(null, win.map(function (b) { return b.l; }));
-    var hi = Math.max.apply(null, win.map(function (b) { return b.h; }));
+    var lo = Math.min.apply(null, win.map(function (b) { return b.l; }).concat(q.low != null ? [q.low] : []));
+    var hi = Math.max.apply(null, win.map(function (b) { return b.h; }).concat(q.high != null ? [q.high] : []));
     if (hi > lo) rows.push(rangeRowHtml('52주 범위', lo, hi, q.price));
   }
   el.innerHTML = rows.join('');
@@ -1320,7 +1338,7 @@ async function onThemeChanged() {
     chartHandle = handle;
     updateHiLoLabel();
     // 다시 그린 봉의 끝점을 현재가에 맞춘다 (다음 시세 폴링까지 어긋나 보이지 않게)
-    if (_lastQuote) chartHandle.updateLast(_lastQuote.price, currentBucketTime(), tickVolume(_lastQuote), allowNewBarNow());
+    if (_lastQuote) chartHandle.updateLast(_lastQuote.price, currentBucketTime(), tickVolume(_lastQuote), allowNewBarNow(), tickOhl(_lastQuote));
   } catch (e) { if (seq === _chartSeq) loadStockChart(); }
 }
 
@@ -1354,6 +1372,11 @@ async function loadStockChart(quiet) {
     if (seq !== _chartSeq) { handle.dispose(); return; }
     chartHandle = handle;
     _chartBars = use;
+    // 봉은 워커 캐시(최대 3분) 시점 값이다 — 기간·모드를 바꾼 직후에도 끝점을 상단 현재가에 맞춘다
+    if (_lastQuote && _lastQuote.code === curStock.code) {
+      chartHandle.updateLast(_lastQuote.price, currentBucketTime(), tickVolume(_lastQuote), allowNewBarNow(), tickOhl(_lastQuote));
+      renderRange(_lastQuote);
+    }
 
     // 기간 최고/최저를 차트 위에 텍스트로 — 가장자리 마커가 잘려도 값은 보인다
     updateHiLoLabel();
@@ -1404,7 +1427,7 @@ async function refreshChartBars() {
     updateHiLoLabel();
     // 교체한 봉은 워커 캐시(최대 3분) 시점의 값이라 상단 현재가보다 늦다 — 끝점을 현재가에 다시 맞춘다
     if (_lastQuote && _lastQuote.code === curStock.code) {
-      chartHandle.updateLast(_lastQuote.price, currentBucketTime(), tickVolume(_lastQuote), allowNewBarNow());
+      chartHandle.updateLast(_lastQuote.price, currentBucketTime(), tickVolume(_lastQuote), allowNewBarNow(), tickOhl(_lastQuote));
       renderRange(_lastQuote);
     }
   } catch (e) { /* 다음 주기에 재시도 */ }
@@ -1491,8 +1514,10 @@ async function loadBook() {
     var total = (b.askTotal || 0) + (b.bidTotal || 0);
     var askPct = total ? Math.round((b.askTotal / total) * 100) : 50;
 
-    // 뼈대는 1회만 (5단계 고정이라 구조가 바뀌지 않는다)
-    if (!wrap.dataset.built) {
+    // 뼈대는 단계 수가 바뀔 때만 다시 만든다 — 상한가 등으로 한쪽 호가가 줄거나 비면, 첫 응답 길이로 만든
+    // 뼈대의 남는 줄에 옛 가격·잔량이 그대로 남았다
+    var shape = ask.length + '|' + bid.length;
+    if (wrap.dataset.built !== shape) {
       var h = '<div class="bk-head"><span>매도잔량</span><span>호가</span><span>매수잔량</span></div>';
       h += ask.map(function (a, i) {
         return '<div class="bk-row">'
@@ -1512,7 +1537,8 @@ async function loadBook() {
          + '<div class="bk-note">5단계 · <b>20분 지연</b> — 네이버가 제공하는 호가는 실시간이 아닙니다 (현재가는 실시간).<br>'
          + '실시간 10단계 호가는 증권사 앱에서 확인하세요</div>';
       wrap.innerHTML = h;
-      wrap.dataset.built = '1';
+      wrap.dataset.built = shape;
+      resetDirs('bk:');
     }
 
     var paint = function (side, arr) {

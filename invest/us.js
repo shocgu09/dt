@@ -435,12 +435,14 @@ var Us = (function () {
         oEl.innerHTML = '<span class="us-over-k">' + sessionLabel(o) + '</span> '
           + '<b class="' + signClass(o.change) + '">$' + fmtUsd(o.price) + '</b> '
           + '<span class="' + signClass(o.change) + '">' + signMark(o.change) + ' ' + fmtRate(o.changeRate) + '</span>'
-          + (o.asOf ? ' <span class="us-over-t">' + escapeHtml(kstStamp(o.asOf)) + '</span>' : '');
+          + (o.asOf ? ' <span class="us-over-t">' + escapeHtml(kstStamp(o.asOf)) + '</span>' : '')
+          + (o.open ? ' <span class="state-dot live">거래 중</span>' : '');
       } else {
         oEl.style.display = 'none';
       }
 
-      var st = stateOf(q);
+      // 이 줄은 위 가격(정규장) 기준 — 정규장이 닫혀 있으면 프리·애프터 중이어도 '정규장 마감'
+      var st = q.halted || q.status === 'OPEN' ? stateOf(q) : { text: q.over && q.over.open ? '정규장 마감' : '장 마감', cls: 'closed' };
       var stale = isFeedStale('us');
       document.getElementById('uxAsOf').innerHTML = escapeHtml(kstStamp(q.asOf)) + ' 기준(한국 시각) · 네이버 '
         + '<span class="state-dot ' + (stale ? 'stale' : st.cls) + '">' + (stale ? '연결 끊김' : st.text) + '</span>';
@@ -460,15 +462,18 @@ var Us = (function () {
       }).join('');
 
       document.getElementById('uxRange').innerHTML =
-          rangeRow('오늘 범위', q.low, q.high, q.price)
-        + rangeRow('52주 범위', q.low52, q.high52, q.price);
+          rangeRow(q.status === 'OPEN' ? '오늘 범위' : '최근 거래일 범위', q.low, q.high, q.price)
+        + rangeRow('52주 범위', minOf(q.low52, q.low), maxOf(q.high52, q.high), q.price);
 
       if (chart) updateChartLast();
     } catch (e) {
       if (box && !box.dataset.built) box.innerHTML = '<div class="empty">' + escapeHtml(e.message) + '</div>';
+      markFeedStale('#uxAsOf', 'us');       // 가격이 멈췄는데 '정규장' 배지가 남지 않게
     }
   }
 
+  function minOf(a, b) { return a == null ? b : (b == null ? a : Math.min(a, b)); }
+  function maxOf(a, b) { return a == null ? b : (b == null ? a : Math.max(a, b)); }
   function rangeRow(label, lo, hi, curP) {
     if (lo == null || hi == null || !(hi > lo)) return '';
     var pct = curP != null ? Math.max(0, Math.min(100, ((curP - lo) / (hi - lo)) * 100)) : null;

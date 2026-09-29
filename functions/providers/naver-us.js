@@ -65,7 +65,7 @@ function mapRow(s) {
     low: num(s.lowPriceRaw != null ? s.lowPriceRaw : s.lowPrice),
     volume: num(s.accumulatedTradingVolumeRaw != null ? s.accumulatedTradingVolumeRaw : s.accumulatedTradingVolume),
     valueUsd: num(s.accumulatedTradingValueRaw),
-    marketCap: num(s.marketValueRaw != null ? s.marketValueRaw : s.marketValueFullRaw),   // 순위 목록은 천 달러 단위
+    marketCap: num(s.marketValueRaw != null ? s.marketValueRaw : s.marketValueFullRaw),   // 달러 (순위 목록의 marketValue 문자열만 천 달러 단위)
     marketCapKrw: num(s.marketValueKrwRaw),
     status: s.marketStatus || null,                        // OPEN | CLOSE (정규장 기준)
     halted: !!(s.tradeStopType && s.tradeStopType.code && s.tradeStopType.code !== '1'),

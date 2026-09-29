@@ -74,6 +74,8 @@ var Mock = (function () {
       return p2(k.getMonth() + 1) + '.' + p2(k.getDate()) + ' ' + p2(k.getHours()) + ':' + p2(k.getMinutes());
     }
   }
+  /** 위 형식에서 시각만 ("10:42") */
+  function hmOf(ms) { return kstHM(ms).split(' ').slice(-1)[0]; }
 
   /** KRX 호가단위 — 서버(engine.js)와 같은 표 */
   function tickSize(price, taxFree) {
@@ -150,11 +152,17 @@ var Mock = (function () {
     try {
       var d = await api('/account');
       if (seq !== _accSeq) return;            // 뒤에 보낸 요청이 먼저 왔다 — 옛 응답으로 덮지 않는다
+      var prevFills = account ? account.fills : null;
       account = d;
       account._recvAt = _accAt = Date.now();
       renderBar();
       if (currentTab === 'account') renderAccount();
       renderTradeBar();
+      // 체결이 늘었으면 열어 둔 체결 내역도 다시 받는다 — 위 보유 종목은 바뀌었는데 아래 내역에는 새 체결이 없었다
+      if (prevFills != null && d.fills !== prevFills) {
+        var hist = document.getElementById('mkHistory');
+        if (hist && hist.innerHTML) loadHistory(true);
+      }
     } catch (e) {
       if (seq !== _accSeq) return;
       if (e.code === 'not_joined' || e.code === 'no_season') {
@@ -170,21 +178,29 @@ var Mock = (function () {
         if (currentTab === 'account') renderAccount();
         return;
       }
+      // 시세를 못 받았다 — 옛 값을 실시간처럼 두지 않고 받은 시각을 밝힌다 (다음 갱신이 성공하면 새 응답으로 사라진다)
+      if (account) { account._stale = true; renderBar(); }
       if (currentTab === 'account') renderAccount(e.message);
     }
   }
 
   /* ===== 헤더 아래 한 줄 요약 ===== */
+  /* 랭킹 탭이 받은 내 줄 { seasonId, equity, returnRate, rank, participants }.
+   * 이 줄(/account, 30초)과 순위표(/leaderboard, 10초)는 다른 순간의 시세로 계산돼, 랭킹을 보는 동안
+   * 같은 화면에 내 자산이 두 값으로 보였다(99,033,113 vs 99,083,113). 랭킹 탭에서는 순위표의 내 줄로 그린다. */
+  var _boardMe = null;
   function renderBar() {
     var el = document.getElementById('mockBar');
     if (!el) return;
     if (!on || !account) { el.style.display = 'none'; return; }
+    var src = (typeof currentTab !== 'undefined' && currentTab === 'ranking' && _boardMe
+      && account.season && _boardMe.seasonId === account.season.id) ? _boardMe : account;
     el.style.display = '';
     el.innerHTML = '<span class="mk-bar-label">💼 내 자산</span>'
-      + '<b class="mk-bar-eq">' + won(account.equity) + '</b>'
-      + rateHtml(account.returnRate)
-      + (account.rank ? '<span class="mk-bar-rank">' + account.rank + '위<i>/' + fmtNum(account.participants) + '</i></span>' : '')
-      + '<span class="mk-bar-go">계좌 →</span>';
+      + '<b class="mk-bar-eq">' + won(src.equity) + '</b>'
+      + rateHtml(src.returnRate)
+      + (src.rank ? '<span class="mk-bar-rank">' + src.rank + '위<i>/' + fmtNum(src.participants) + '</i></span>' : '')
+      + '<span class="mk-bar-go">' + (src._stale ? escapeHtml(hmOf(src._recvAt)) + ' 기준' : '계좌 →') + '</span>';
   }
 
   /* ===== 탭 전환 훅 (app.js switchTab 에서 호출) ===== */
@@ -192,6 +208,12 @@ var Mock = (function () {
     Poller.remove('mock-acc');
     Poller.remove('mock-rank');
     if (!on) return;
+    if (tab !== 'ranking' && _boardMe) {
+      // 랭킹에서 나오면 계좌 응답으로 돌아간다 — 그게 순위표보다 오래됐으면 지금 새로 받는다
+      if (_boardMe.at > _accAt) refreshAccount();
+      _boardMe = null;
+      renderBar();
+    }
     if (tab === 'admin') { mountAdmin(); return; }
     if (tab === 'account') {
       renderAccount();
@@ -270,10 +292,14 @@ var Mock = (function () {
       +   cell('주문 가능', won(a.available) + (a.cash > a.available ? '<small class="mk-cell-sub">주문 대기 ' + won(a.cash - a.available) + '</small>' : ''))
       +   cell('보유 주식', won(a.stock))
       +   cell('평가손익', '<span class="' + signClass(evalPnl) + '">' + (evalPnl > 0 ? '+' : '') + fmtNum(evalPnl) + '원</span>')
-      +   cell('실현손익', '<span class="' + signClass(a.realizedPnl) + '">' + (a.realizedPnl > 0 ? '+' : '') + fmtNum(a.realizedPnl) + '원</span>')
+      // 매수 수수료는 매입금액에 넣지 않는다 — 평가손익 + 실현손익 − 매수 수수료 = 위 총손익이 되도록 함께 적는다
+      +   cell('실현손익', '<span class="' + signClass(a.realizedPnl) + '">' + (a.realizedPnl > 0 ? '+' : '') + fmtNum(a.realizedPnl) + '원</span>'
+            + (a.buyFees ? '<small class="mk-cell-sub">매수 수수료 −' + fmtNum(a.buyFees) + '원</small>' : ''))
       + '</div>'
-      + '<div class="mk-note">' + (a.live ? '실시간 평가 (08:00~20:00, 시간외 포함)' : '장 마감 · 최종 체결가 기준 평가')
-      +   ' · 순위 확정은 15:30 종가 기준</div>'
+      + '<div class="mk-note">' + (a._stale ? '<b>' + escapeHtml(hmOf(a._recvAt)) + ' 기준 평가</b> · 최신 시세를 받지 못했습니다'
+          : a.closing ? '시즌 마지막 날 · 15:30 종가 기준 평가 · 최종 순위 집계 중'
+          : (a.live ? '실시간 평가 (08:00~20:00, 시간외 포함)' : '장 마감 · 최종 체결가 기준 평가') + ' · 순위 확정은 15:30 종가 기준')
+      + '</div>'
       + '</div>';
 
     h += corpHtml(a.corpActions);
@@ -683,7 +709,7 @@ var Mock = (function () {
   }
 
   /* ===== 랭킹 ===== */
-  var _rankBuilt = false, _hallHtml = null, _prevRank = {}, _prevSeasonId = null;
+  var _rankBuilt = false, _hallHtml = null, _prevRank = {}, _prevSeasonId = null, _rankSeq = 0;
 
   async function loadRanking() {
     var el = document.getElementById('tab-ranking');
@@ -691,14 +717,24 @@ var Mock = (function () {
     // 갱신할 때마다 "불러오는 중"으로 깜빡이지 않게 첫 번만 표시한다
     if (!_rankBuilt) el.innerHTML = '<div class="loading">순위를 불러오는 중</div>';
     var h = '';
+    var seq = ++_rankSeq;
     try {
       var d = await api('/leaderboard');
+      if (seq !== _rankSeq) return;           // 탭을 오가며 겹친 요청 — 늦게 온 옛 응답으로 덮지 않는다
+      if (currentTab === 'ranking') {
+        _boardMe = d.me ? {
+          seasonId: d.season.id, equity: d.me.equity, returnRate: (d.me.equity - d.season.seed) / d.season.seed * 100,
+          rank: d.me.rank, participants: d.rows.length, at: Date.now()
+        } : null;
+        renderBar();
+      }
       // 시즌이 바뀌었을 때만 이전 평가를 버린다 (10초마다 버리면 계좌 탭이 매번 다시 받았다)
       if (_reviewFor && _reviewFor !== d.season.id) { _review = null; _reviewLeft = null; _reviewFor = null; }
       // 시즌이 바뀌면 이전 시즌의 순위 기억을 버린다
       if (_prevSeasonId !== d.season.id) { _prevRank = {}; _hallHtml = null; _prevSeasonId = d.season.id; }
       h += '<section class="m-section"><div class="m-head"><h3>🏆 ' + escapeHtml(d.season.name) + '</h3>'
-        + '<span class="m-hint">' + escapeHtml(kstHM(d.asOf).split(' ').slice(-1)[0]) + ' 기준 · ' + (d.live ? '장중' : '장 마감') + '</span></div>';
+        + '<span class="m-hint">' + (d.closing ? '15:30 종가 기준 · 최종 순위 집계 중'
+          : escapeHtml(hmOf(d.asOf)) + ' 기준 · ' + (d.live ? '장중' : '장 마감')) + '</span></div>';
       h += d.rows.length ? d.rows.map(function (r) {
         var rr = (r.equity - d.season.seed) / d.season.seed * 100;
         var medal = r.rank === 1 ? '🥇' : (r.rank === 2 ? '🥈' : (r.rank === 3 ? '🥉' : r.rank));
@@ -714,8 +750,14 @@ var Mock = (function () {
           +   '<span class="mk-pos-pnl ' + signClass(rr) + '">' + fmtRate(rr) + '</span></span>'
           + '</div>';
       }).join('') : '<div class="empty">참가자가 없습니다.</div>';
-      h += '<div class="mk-note">실시간 순위 · 장중에는 10초마다 다시 매깁니다 (시간외 가격 포함) · 최종 순위는 ' + escapeHtml(d.season.endDate) + ' KRX 정규장 종가 기준 총자산으로 확정됩니다.</div></section>';
+      h += '<div class="mk-note">' + (d.closing
+          ? '시즌 마지막 날 · ' + escapeHtml(d.season.endDate) + ' KRX 정규장 종가(15:30) 기준 총자산으로 매긴 순위입니다.'
+          : '실시간 순위 · 장중에는 10초마다 다시 매깁니다 (시간외 가격 포함) · 최종 순위는 ' + escapeHtml(d.season.endDate) + ' KRX 정규장 종가 기준 총자산으로 확정됩니다.')
+        + '</div></section>';
     } catch (e) {
+      if (seq !== _rankSeq) return;
+      // 시즌이 막 끝났다 — 한 번 받아 둔 명예의 전당에 방금 끝난 시즌이 빠져 있으니 다시 받는다
+      if (e.code === 'no_season' && _prevSeasonId) { _hallHtml = null; _prevSeasonId = null; }
       if (e.code !== 'no_season') h += '<div class="empty">' + escapeHtml(e.message) + '</div>';
       else h += '<div class="mk-card"><h3>지금은 진행 중인 시즌이 없습니다</h3></div>';
     }
@@ -753,7 +795,9 @@ var Mock = (function () {
   /** 평가 가격 — 서버 평가(pricer)와 같은 기준: 화면에 보이는 현재가(시간외에는 그 시장 가격) */
   function livePrice(code) {
     var q = liveQuote(code);
-    return q ? (q.price != null ? q.price : (q.krx && q.krx.price)) : null;
+    // 네이버가 막혀 대체 출처(다음·야후) 시세가 떠 있으면 계좌 평가(네이버)와 어긋나므로 계좌 응답의 가격을 쓴다
+    if (!q || (q.source && q.source !== 'naver')) return null;
+    return q.price != null ? q.price : (q.krx && q.krx.price);
   }
 
   /** 보유 한 줄 — 계좌 응답은 수십 초 간격이라 손익은 지금 보이는 현재가로 다시 계산한다 (상단 시세와 어긋나지 않게) */
@@ -1153,7 +1197,7 @@ var Mock = (function () {
   /** 주문 직후 2초마다 상태를 물어본다 — 물어볼 때 서버가 체결을 시도한다. 1분 넘으면 크론에 맡긴다.
    *  창은 "이 주문을 접수한 그 창"일 때만 닫는다 — 다른 종목의 새 주문창을 끌어내리지 않게.
    *  창을 닫았거나(주문은 유지된다) 정정으로 새 주문이 생겼으면 창 없이 계속 지켜보다가 끝나면 알림만 띄운다. */
-  function watchOrder(id, tries) {
+  function watchOrder(id, tries, seenFilled) {
     clearTimeout(watching[id]);
     var mine = function () { return sheet && sheet.orderId === id; };
     watching[id] = setTimeout(async function () {
@@ -1178,16 +1222,18 @@ var Mock = (function () {
           return;
         }
         if (o.filledQty > 0 && mine()) showPending(o, o.filledQty);
+        // 일부 체결 — 대기 패널만 바뀌고 헤더·보유 줄·매도 버튼은 다음 계좌 갱신(최대 30~40초)까지 그대로였다
+        if (o.filledQty > (seenFilled || 0)) refreshAccount();
         if (tries >= 30) {
           await refreshAccount();
           if (mine()) { closeSheet(); toast(o.name + ' 주문 대기 중 · 계좌 탭에서 확인할 수 있습니다', ''); }
           return;
         }
-        watchOrder(id, tries + 1);
+        watchOrder(id, tries + 1, o.filledQty);
       } catch (e) {
         // 주문이 없거나 시즌이 끝났다 — 더 물어볼 게 없다
         if (e.status === 404 || e.code === 'no_season' || e.code === 'not_joined') { if (mine()) closeSheet(); refreshAccount(); return; }
-        if (tries < 30) { watchOrder(id, tries + 1); return; }
+        if (tries < 30) { watchOrder(id, tries + 1, seenFilled); return; }
         // 계속 실패 — 스피너에 갇히지 않게 창을 닫고 확인할 곳을 알려 준다
         if (mine()) { closeSheet(); toast('체결 확인이 늦어지고 있습니다 · 계좌 탭의 미체결 주문에서 확인하세요', ''); }
         refreshAccount();

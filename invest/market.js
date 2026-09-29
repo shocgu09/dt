@@ -34,12 +34,17 @@ async function marketApi(path, params) {
  * 서버 장 상태(marketStatus)는 5분 동안 믿기 때문에, 이게 없으면 네트워크가 끊겨도 5분간 '실시간'으로 남았다.
  * 시세 출처마다 따로 센다 — 예전에는 하나라도 성공하면(5초마다 도는 코인 목록 등) 실패 횟수가 0 으로 돌아가,
  * 네이버 국내 시세가 끊겨도 업비트가 살아 있으면 '국내 실시간'이 계속 떠 있었다. */
-var _feeds = { kr: { fail: 0, okAt: 0 }, coin: { fail: 0, okAt: 0 }, us: { fail: 0, okAt: 0 } };
+var _feeds = { kr: { fail: 0, okAt: 0 }, quotes: { fail: 0, okAt: 0 }, coin: { fail: 0, okAt: 0 }, us: { fail: 0, okAt: 0 } };
 function feedOf(path) {
-  if (path.indexOf('/api/coin/') === 0) return _feeds.coin;
-  if (path.indexOf('/api/us/') === 0) return _feeds.us;
+  // 코인·미국도 현재가·목록만 센다 — 호가·체결·차트가 성공할 때마다 실패 횟수가 0 으로 돌아가,
+  // 현재가만 끊겨도 '연결 끊김'이 뜨지 않았다
+  if (path === '/api/coin/quote' || path === '/api/coin/list') return _feeds.coin;
+  if (path === '/api/us/quote' || path === '/api/us/list') return _feeds.us;
   // 국내 배지는 현재가·지수만 본다 (호가·차트·랭킹은 따로 실패해도 현재가가 살아 있으면 실시간이다)
-  if (path === '/api/quote' || path === '/api/quotes' || path === '/api/index') return _feeds.kr;
+  if (path === '/api/quote' || path === '/api/index') return _feeds.kr;
+  // 목록 시세(관심·랭킹·테마)는 따로 센다 — 같이 세면 15초마다 성공하는 지수가 실패 횟수를 지워,
+  // 목록 시세만 끊겨 관심종목이 멈춰도 '국내 실시간'이 남았다
+  if (path === '/api/quotes') return _feeds.quotes;
   return null;
 }
 /** @param kind 'kr'(기본) | 'coin' | 'us' */
@@ -47,6 +52,13 @@ function isFeedStale(kind) {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
   var f = _feeds[kind || 'kr'] || _feeds.kr;
   return f.fail >= 2 && Date.now() - f.okAt > 15000;
+}
+
+/** 시세 요청이 실패했을 때 그 자리의 상태 배지를 '연결 끊김'으로 — 성공하면 그리는 쪽이 원래 배지로 되돌린다.
+ *  (성공한 직후에만 isFeedStale 을 보면 방금 실패 횟수가 0 이 된 뒤라 끊김이 절대 보이지 않았다) */
+function markFeedStale(sel, kind) {
+  var dot = document.querySelector(sel + ' .state-dot');
+  if (dot && isFeedStale(kind)) { dot.className = 'state-dot stale'; dot.textContent = '연결 끊김'; }
 }
 
 var Market = {
@@ -281,8 +293,9 @@ function isMarketStateGuessed() {
 // 배지는 확정된 사실만 쓴다 — "(추정)" 같은 단서를 화면에 달지 않는다.
 // 시계로만 판정 중일 때는 "실시간" 대신 "장중"으로만 표시한다.
 // 닫혀 있을 때는 이유를 가른다 — 새벽·주말·휴장일까지 '장 마감'이라 쓰면 오늘 장이 이미 끝난 것처럼 읽힌다.
-function marketStateLabel() {
-  if (isFeedStale()) return { cls: 'stale', text: '연결 끊김' };
+/** @param alsoFeed 함께 볼 시세 출처 (시세 홈은 목록 시세 'quotes' 도 본다) */
+function marketStateLabel(alsoFeed) {
+  if (isFeedStale() || (alsoFeed && isFeedStale(alsoFeed))) return { cls: 'stale', text: '연결 끊김' };
   if (!isMarketOpen()) {
     if (!isTradingDayKst()) return { cls: 'closed', text: '휴장' };
     if (kstParts().hm < 9 * 60) return { cls: 'closed', text: '장 시작 전' };
@@ -806,12 +819,19 @@ async function renderChart(container, bars, tf, mode, opts) {
      * 틱이 올 때마다 마지막 봉만 갱신 (O(1)).
      * @param allowNewBar 분봉에서만 true — 일/주/월봉은 새 봉을 만들면 안 된다.
      *   (휴장일에 '오늘' 버킷으로 유령 봉이 생기는 것을 막는다)
+     * @param ohl 일·주·월봉에서 새 봉을 열 때 그날의 { open, high, low } — 없으면 현재가 한 점으로 연다.
+     *   프리마켓에 오늘 일봉이 한 점짜리로 생겨 상단 시가·고가·저가와 어긋났다
      */
-    updateLast: function (price, bucketTime, volume, allowNewBar) {
+    updateLast: function (price, bucketTime, volume, allowNewBar, ohl) {
       if (price == null || !isFinite(price) || !lastBar) return;
       var same = JSON.stringify(lastBar.time) === JSON.stringify(bucketTime);
       if (!same && allowNewBar) {
-        lastBar = { time: bucketTime, open: price, high: price, low: price, close: price };
+        var o = ohl && ohl.open != null ? ohl.open : price;
+        lastBar = {
+          time: bucketTime, open: o, close: price,
+          high: Math.max(price, o, ohl && ohl.high != null ? ohl.high : price),
+          low: Math.min(price, o, ohl && ohl.low != null ? ohl.low : price)
+        };
         lastVolV = volume || 0;
       } else {
         // 일/주/월봉은 버킷이 달라도 마지막 봉(= 최근 거래일)의 종가를 현재가로 맞춘다.
@@ -821,6 +841,9 @@ async function renderChart(container, bars, tf, mode, opts) {
         lastBar.close = price;
         if (volume != null) lastVolV = volume;
       }
+      // 기간 최고·최저도 끝점을 따라간다 — 장중 신고가가 나와도 '최고' 표시가 봉을 다시 받을 때까지 옛 값이었다
+      if (handle.periodHigh != null) handle.periodHigh = Math.max(handle.periodHigh, lastBar.high);
+      if (handle.periodLow != null) handle.periodLow = Math.min(handle.periodLow, lastBar.low);
       try {
         if (mode === 'simple') mainSeries.update({ time: lastBar.time, value: lastBar.close });
         else {

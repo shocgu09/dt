@@ -297,6 +297,13 @@ async function handleOhlc(env, code, tf) {
 }
 
 async function handleIndex(env, ctx) {
+  // 비트코인·이더리움 칸은 코인 목록·상세와 같은 ticker(3초 캐시)에서 매번 붙인다 — 15초 지수 캐시 안에 두면
+  // 목록보다 최대 15초 늦어 같은 화면에 두 값이 보였다
+  const [base, coins] = await Promise.all([indexBase(env, ctx), coinIndexCells().catch(() => ({}))]);
+  return { ...base, ...coins };
+}
+
+function indexBase(env, ctx) {
   return memo('idx', TTL.index, async () => {
     // 휴장일 목록을 함께 내려보낸다 — 화면이 같은 목록을 쓰게 해서 출처를 하나로 둔다.
     // (예전에는 invest/market.js 에 같은 목록을 복붙해 뒀다)
@@ -306,16 +313,21 @@ async function handleIndex(env, ctx) {
     // 휴장일에는 CLOSE 가 와서 시계만 보고 "실시간"이라 표시하던 문제도 없어진다.
     // 해외 지수선물은 국내 장중에도 돌아간다 — 지수 스트립에 같이 실어 보낸다.
     // 선물이 죽어도 국내 지수는 그려야 하므로 실패는 삼킨다.
-    const [idx, ref, fut, extra, coins, night] = await Promise.all([
+    const [idx, ref, fut, extra, night] = await Promise.all([
       naver.getIndex(),
       naver.getQuote('005930').catch(() => null),
       naver.getWorldFutures().catch(() => ({})),
       naver.getMarketExtras().catch(() => ({})),
-      coinIndexCells().catch(() => ({})),
       nightFutCell(env, ctx)
     ]);
+    // NXT 프리·애프터마켓 동안 배지는 '국내 실시간'인데 코스피·코스닥 지수는 정규장 값에 멈춰 있다 — 그 칸에 밝힌다
+    for (const k of ['kospi', 'kosdaq', 'kpi200', 'kq150']) {
+      const c = idx[k];
+      if (!c) continue;
+      c.tag = ref && ref.session && c.status !== 'OPEN' ? (ref.session === 'PRE_MARKET' ? '개장 전' : '마감') : '';
+    }
     return {
-      ...idx, ...fut, ...extra, ...coins, ...night,
+      ...idx, ...fut, ...extra, ...night,
       holidays,
       // KRX 는 NXT 프리·애프터마켓(08:00~08:50 · 15:40~) 동안 CLOSE 다 — 거래가 도는 동안은 열림으로 싣는다
       marketStatus: ref ? (ref.session ? 'OPEN' : ref.marketStatus) : null,
@@ -332,15 +344,23 @@ let nightAt = 0;
 let nightBusy = null;
 let lastNightErr = '';
 let nightRetryAt = 0;      // 실패 뒤 다시 부를 수 있는 시각 — 값을 한 번도 못 받은 인스턴스에도 적용한다
+let nightOkAt = 0;         // 마지막으로 새 값을 받은 시각 (실패 때 당기는 nightAt 과 따로 둔다)
+/** 실어 보낼 칸 — KIS 가 계속 실패하면 실패 처리가 nightAt 을 당겨 두어 마지막 성공값이 몇 시간이고
+ *  '실시간'으로 나갔다. 10분 넘게 새 값을 못 받았으면 지연으로 밝힌다 */
+function nightOut() {
+  if (!lastNight) return {};
+  if (lastNight.state === 'live' && Date.now() - nightOkAt > 600000) return { nightfut: { ...lastNight, state: 'closed', tag: '지연' } };
+  return { nightfut: lastNight };
+}
 async function nightFutCell(env, ctx) {
   if (!kis.enabled(env)) return {};
   const h = new Date(Date.now() + 9 * 3600 * 1000).getUTCHours();
   const ttl = (h >= 18 || h < 6 ? 30 : 300) * 1000;
   const age = Date.now() - nightAt;
-  if (lastNight && age < ttl) return { nightfut: lastNight };
+  if (lastNight && age < ttl) return nightOut();
   if (!nightBusy && Date.now() >= nightRetryAt) {
     nightBusy = kis.nightCell(env)
-      .then((c) => { lastNight = c; nightAt = Date.now(); lastNightErr = ''; })
+      .then((c) => { lastNight = c; nightAt = nightOkAt = Date.now(); lastNightErr = ''; })
       .catch((e) => {
         lastNightErr = String((e && e.message) || e).slice(0, 120);
         console.warn('kis night failed', lastNightErr);
@@ -350,11 +370,11 @@ async function nightFutCell(env, ctx) {
       .finally(() => { nightBusy = null; });
   }
   if (nightBusy && ctx && ctx.waitUntil) ctx.waitUntil(nightBusy);
-  if (lastNight && age < 600000) return { nightfut: lastNight };
+  if (lastNight && age < 600000) return nightOut();
   // 새 인스턴스(값 없음)이거나 10분 넘게 묵었다 — 잠깐만 기다린다.
   // 예전에는 끝까지 기다려서 KIS 가 막히면 15초마다 지수 응답(장 상태·휴장일 포함)이 수 초씩 붙들렸다
   if (nightBusy) await Promise.race([nightBusy, new Promise((r) => setTimeout(r, 2500))]);
-  return lastNight ? { nightfut: lastNight } : {};
+  return nightOut();
 }
 
 /**
