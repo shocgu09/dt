@@ -867,11 +867,8 @@ var Mock = (function () {
     var focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.cm : null;
 
     var joined = !!(season && season.joined);
-    var h = '<section class="m-section mk-share">'
-      + '<div class="mk-cm-hero"><div class="mk-cm-txt"><h3>💬 DT 커뮤니티</h3>'
-      +   '<p>투자 이야기와 사진, 모의투자 계좌를 자유롭게 나눠 보세요.</p>'
-      +   '<span class="mk-cm-sub">' + (joined ? '계좌 공유는 하루 3번 · 계좌 카드는 올린 시각의 값으로 고정됩니다' : '시즌에 참가하면 글에 모의투자 계좌를 붙일 수 있습니다') + '</span></div>'
-      + '<button type="button" class="btn-submit mk-cm-write" onclick="Mock.openShare()">✏️ 글쓰기</button></div>';
+    var h = '<section class="m-section mk-share"><div class="m-head"><span class="m-hint">회원들의 이야기와 모의투자 계좌</span>'
+      + '<button class="mini-btn mk-share-btn" onclick="Mock.openShare()">✏️ 글쓰기</button></div>';
     if (!_sh.items.length) {
       h += _sh.err ? '<div class="empty">' + escapeHtml(_sh.err) + '</div>'
         : (_sh.loading ? '<div class="loading">불러오는 중</div>' : '<div class="mk-share-empty">아직 올라온 글이 없습니다.</div>');
@@ -884,7 +881,9 @@ var Mock = (function () {
           + (_sh.loading ? '불러오는 중' : '더 불러오기') + '</button>';
       }
     }
-    h += '</section>';
+    h += '<div class="mk-note">' + (joined
+      ? '글에 모의투자 계좌를 붙일 수 있습니다 (하루 3번). 계좌 카드는 올린 시각의 값으로 고정됩니다.'
+      : '시즌에 참가하면 글에 모의투자 계좌를 붙일 수 있습니다.') + '</div></section>';
     el.innerHTML = h;
     hydrateShareImages(el);
     if (_rkView === 'share') markSharesSeen(); else updateShareDot();
