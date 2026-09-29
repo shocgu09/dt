@@ -848,48 +848,75 @@ var Mock = (function () {
     if (focused) { var f = document.getElementById('cmi-' + focused); if (f) try { f.focus({ preventScroll: true }); } catch (e) {} }
   }
 
-  function sharePosHtml(p, big) {
-    var name = '<button type="button" class="mk-sc-name" onclick="openStock(\'' + escapeJsArg(p.code) + '\',\'' + escapeJsArg(p.name) + '\')">'
+  /** 평단 — 몇십 원짜리 ETF 는 반올림하면 평단과 현재가가 같아 보이므로 소수 둘째 자리까지 */
+  function avgText(p) {
+    var exact = p.qty ? (p.value - p.pnl) / p.qty : p.avgPrice;
+    return exact < 1000 && Math.abs(exact - Math.round(exact)) > 0.004 ? exact.toFixed(2) : fmtNum(p.avgPrice);
+  }
+  function stockBtn(p, cls) {
+    return '<button type="button" class="' + cls + '" onclick="openStock(\'' + escapeJsArg(p.code) + '\',\'' + escapeJsArg(p.name) + '\')">'
       + escapeHtml(p.name) + '</button>';
-    if (big) {
-      return '<div class="mk-sc-big">'
-        + '<div class="mk-sc-row">' + name + '<span class="mk-sc-q">' + fmtNum(p.qty) + '주</span></div>'
-        + '<div class="mk-sc-eq"><b class="' + signClass(p.pnl) + '">' + signedWon(p.pnl) + '</b>' + rateHtml(p.pnlRate) + '</div>'
-        + '<div class="mk-sc-sub">평단 ' + fmtNum(p.avgPrice) + ' → 현재 ' + fmtNum(p.price) + ' · 평가금액 ' + won(p.value) + '</div></div>';
-    }
-    return '<div class="mk-sc-pos">'
-      + '<div class="mk-sc-row">' + name + '<span class="mk-sc-q">' + fmtNum(p.qty) + '주</span>' + rateHtml(p.pnlRate) + '</div>'
-      + '<div class="mk-sc-sub">평단 ' + fmtNum(p.avgPrice) + ' → ' + fmtNum(p.price) + ' · <span class="' + signClass(p.pnl) + '">' + signedWon(p.pnl) + '</span></div></div>';
   }
 
+  /** 보유 종목 한 칸 (계좌 카드 안의 타일) */
+  function shareTileHtml(p) {
+    return '<div class="mk-sc-tile ' + signClass(p.pnl) + '">'
+      + '<div class="mk-sc-tl">' + stockBtn(p, 'mk-sc-name') + '<span class="mk-sc-q">' + fmtNum(p.qty) + '주</span>'
+      +   '<b class="mk-sc-rt ' + signClass(p.pnlRate) + '">' + fmtRate(p.pnlRate) + '</b></div>'
+      + '<div class="mk-sc-tl sub"><span>평단 ' + avgText(p) + ' → ' + (p.price != null ? fmtNum(p.price) : '-') + '</span>'
+      +   '<span class="' + signClass(p.pnl) + '">' + signedWon(p.pnl) + '</span></div>'
+      + '</div>';
+  }
+
+  /** 카드 = 머리(누가·언제) → 글 → 계좌 박스(첨부) → 댓글·삭제 줄 */
   function shareCardHtml(s) {
     var c = s.card || {}, open = !!_sh.open[s.id];
-    var meta = [];
-    if (c.kind === 'account' && c.rank) meta.push(c.rank + '위' + (c.participants ? '/' + fmtNum(c.participants) + '명' : ''));
-    meta.push(kstHM(c.at || s.createdAt) + (c.closing ? ' 종가' : '') + ' 기준');
+    // 모의투자인 건 랭킹 탭이라 자명하다 — 배지 대신 오른쪽에는 공유 시점 순위를 둔다
+    var rank = c.kind === 'account' && c.rank
+      ? '<span class="mk-sc-rank">' + c.rank + '위' + (c.participants ? '<i>/' + fmtNum(c.participants) + '명</i>' : '') + '</span>' : '';
     var h = '<article class="mk-sc" id="sc-' + s.id + '">'
-      + '<div class="mk-sc-top"><b class="mk-sc-who">' + escapeHtml(s.nickname) + (s.mine ? ' <i class="mk-tag">나</i>' : '') + '</b>'
-      +   '<span class="mk-sc-meta">' + escapeHtml(meta.join(' · ')) + '</span><span class="mk-sc-badge">모의투자</span></div>';
+      + '<div class="mk-sc-top"><div class="mk-sc-id"><b class="mk-sc-who">' + escapeHtml(s.nickname) + '</b>'
+      +   (s.mine ? '<i class="mk-tag">나</i>' : '') + '</div>' + rank + '</div>'
+      + '<div class="mk-sc-meta">' + escapeHtml(kstHM(c.at || s.createdAt) + (c.closing ? ' 종가' : '') + ' 기준') + '</div>';
+    if (s.body) h += '<div class="mk-sc-body">' + linkText(s.body) + '</div>';
+
+    h += '<div class="mk-sc-att">';
     if (c.kind === 'account') {
       var ps = c.positions || [], total = c.holdings != null ? c.holdings : ps.length;
-      h += '<div class="mk-sc-eq"><span class="mk-sc-lbl">총자산</span><b>' + won(c.equity) + '</b>'
-        + '<span class="' + signClass(c.pnl) + '">' + signedWon(c.pnl) + ' (' + fmtRate(c.returnRate) + ')</span></div>';
-      h += (open ? ps : ps.slice(0, SHARE_POS_PREVIEW)).map(function (p) { return sharePosHtml(p, false); }).join('');
-      if (!ps.length) h += '<div class="mk-sc-sub">보유 종목 없음</div>';
+      h += '<div class="mk-sc-sum"><span class="mk-sc-k">총자산</span>'
+        + '<b class="mk-sc-total">' + won(c.equity) + '</b>'
+        + '<span class="mk-sc-chg ' + signClass(c.pnl) + '">' + signedWon(c.pnl) + ' · ' + fmtRate(c.returnRate) + '</span></div>'
+        + '<div class="mk-sc-cells">'
+        +   '<div><span class="mk-sc-k">현금</span><b>' + won(c.cash) + '</b>'
+        +     (c.equity > 0 ? '<em>' + (c.cash / c.equity * 100).toFixed(1) + '%</em>' : '') + '</div>'
+        +   '<div><span class="mk-sc-k">실현손익</span><b class="' + signClass(c.realizedPnl) + '">' + signedWon(c.realizedPnl) + '</b></div>'
+        + '</div>';
+      h += '<div class="mk-sc-k mk-sc-lh">보유 종목 <b>' + fmtNum(total) + '</b></div>';
+      if (!ps.length) h += '<div class="mk-sc-none">보유 종목이 없습니다</div>';
+      else h += '<div class="mk-sc-list">' + (open ? ps : ps.slice(0, SHARE_POS_PREVIEW)).map(shareTileHtml).join('') + '</div>';
       if (!open && total > SHARE_POS_PREVIEW) {
-        h += '<button type="button" class="mk-sc-link" onclick="Mock.toggleShare(\'' + s.id + '\')">보유 ' + fmtNum(total) + '종목 모두 보기</button>';
+        h += '<button type="button" class="mk-sc-all" onclick="Mock.toggleShare(\'' + s.id + '\')">' + fmtNum(total) + '종목 모두 보기 ▾</button>';
       } else if (open && total > ps.length) {
-        h += '<div class="mk-sc-sub">외 ' + fmtNum(total - ps.length) + '종목</div>';
+        h += '<div class="mk-sc-none">외 ' + fmtNum(total - ps.length) + '종목</div>';
       }
-      h += '<div class="mk-sc-foot">현금 ' + won(c.cash) + (c.equity > 0 ? ' (' + (c.cash / c.equity * 100).toFixed(1) + '%)' : '')
-        + ' · 실현손익 <span class="' + signClass(c.realizedPnl) + '">' + signedWon(c.realizedPnl) + '</span></div>';
     } else if (c.position) {
-      h += sharePosHtml(c.position, true);
+      var p = c.position;
+      h += '<div class="mk-sc-sum">' + '<span class="mk-sc-k">' + stockBtn(p, 'mk-sc-name big') + ' · ' + fmtNum(p.qty) + '주</span>'
+        + '<b class="mk-sc-total ' + signClass(p.pnl) + '">' + signedWon(p.pnl) + '</b>'
+        + '<span class="mk-sc-chg ' + signClass(p.pnlRate) + '">' + fmtRate(p.pnlRate) + '</span></div>'
+        + '<div class="mk-sc-cells three">'
+        +   '<div><span class="mk-sc-k">평단</span><b>' + avgText(p) + '</b></div>'
+        +   '<div><span class="mk-sc-k">현재가</span><b>' + (p.price != null ? fmtNum(p.price) : '-') + '</b></div>'
+        +   '<div><span class="mk-sc-k">평가금액</span><b>' + won(p.value) + '</b></div>'
+        + '</div>';
     }
-    if (s.body) h += '<div class="mk-sc-body">' + linkText(s.body) + '</div>';
-    h += '<div class="mk-sc-act"><button type="button" class="comment-action" onclick="Mock.toggleShare(\'' + s.id + '\')" aria-expanded="' + open + '">'
-      + '💬 ' + fmtNum(s.commentCount) + '</button>'
-      + (s.canDelete ? '<button type="button" class="comment-action danger" onclick="Mock.deleteShare(\'' + s.id + '\')">삭제</button>' : '') + '</div>';
+    h += '</div>';
+
+    h += '<div class="mk-sc-act">'
+      + '<button type="button" class="mk-sc-btn' + (open ? ' on' : '') + '" onclick="Mock.toggleShare(\'' + s.id + '\')" aria-expanded="' + open + '">'
+      +   '💬 댓글 <b>' + fmtNum(s.commentCount) + '</b><span class="mk-sc-caret" aria-hidden="true">' + (open ? '▴' : '▾') + '</span></button>'
+      + (s.canDelete ? '<button type="button" class="mk-sc-btn danger" onclick="Mock.deleteShare(\'' + s.id + '\')">삭제</button>' : '')
+      + '</div>';
     if (open) h += shareCommentsHtml(s);
     return h + '</article>';
   }
@@ -897,11 +924,12 @@ var Mock = (function () {
   function shareCommentsHtml(s) {
     var list = _sh.cm[s.id];
     var h = '<div class="mk-sc-cm">';
-    if (!list) h += '<div class="mk-sc-sub">댓글을 불러오는 중</div>';
-    else if (list.err) h += '<div class="mk-sc-sub">' + escapeHtml(list.err) + '</div>';
+    if (!list) h += '<div class="mk-sc-none">댓글을 불러오는 중</div>';
+    else if (list.err) h += '<div class="mk-sc-none">' + escapeHtml(list.err) + '</div>';
+    else if (!list.length) h += '<div class="mk-sc-none">첫 댓글을 남겨 보세요</div>';
     else h += list.map(function (c) {
-      return '<div class="mk-sc-c"><div class="mk-sc-row"><b>' + escapeHtml(c.nickname) + '</b><span class="mk-sc-ct">' + escapeHtml(kstHM(c.createdAt)) + '</span>'
-        + (c.canDelete ? '<button type="button" class="comment-action danger" onclick="Mock.deleteComment(\'' + s.id + '\',\'' + c.id + '\')">삭제</button>' : '')
+      return '<div class="mk-sc-c"><div class="mk-sc-ch"><b>' + escapeHtml(c.nickname) + '</b><span class="mk-sc-ct">' + escapeHtml(kstHM(c.createdAt)) + '</span>'
+        + (c.canDelete ? '<button type="button" class="mk-sc-cdel" onclick="Mock.deleteComment(\'' + s.id + '\',\'' + c.id + '\')" aria-label="댓글 삭제">삭제</button>' : '')
         + '</div><div class="mk-sc-cb">' + linkText(c.body) + '</div></div>';
     }).join('');
     h += '<div class="mk-sc-cw"><textarea class="comment-input" id="cmi-' + s.id + '" data-cm="' + s.id + '" maxlength="' + COMMENT_MAX + '" rows="1"'
