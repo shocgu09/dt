@@ -418,7 +418,35 @@ function purgeLegacyRecent() {
 var watchlist = [];
 var coinWatchlist = [];      // 관심 코인 — 같은 문서의 coins 필드 (주식 codes 와 섞지 않는다)
 var usWatchlist = [];        // 관심 미국 주식 — 같은 문서의 us 필드
+// 관심종목 그룹 — 같은 문서의 groups 필드 [{ id, name, codes }]. '기본'은 예전부터 쓰던 codes 필드 그대로.
+// 그룹마다 따로 담는다 (한 종목이 여러 그룹에 들어갈 수 있다). 어느 그룹에든 있으면 ♥ 로 보인다.
+var watchGroups = [];
+var WG_MAX = 10, WG_NAME_MAX = 12;
 var _watchlistReady = null;
+
+function sanitizeGroups(list) {
+  if (!Array.isArray(list)) return [];
+  var seen = {};
+  return list.filter(function (g) {
+    if (!g || typeof g.id !== 'string' || !/^g[0-9a-z]{4,20}$/.test(g.id) || seen[g.id] || typeof g.name !== 'string' || !Array.isArray(g.codes)) return false;
+    seen[g.id] = 1;
+    return true;
+  }).slice(0, WG_MAX).map(function (g) {
+    return { id: g.id, name: g.name.slice(0, WG_NAME_MAX), codes: g.codes.filter(function (c) { return /^[0-9A-Z]{6}$/.test(String(c)); }).slice(0, WATCHLIST_MAX) };
+  });
+}
+
+/** 그룹 목록을 통째로 저장한다 (그룹은 회원 한 명이 편집하므로 원소 단위로 나눌 필요가 없다) */
+async function saveWatchGroups(groups) {
+  if (!db || !currentUser) throw new Error('로그인이 필요합니다');
+  var clean = sanitizeGroups(groups);
+  await db.collection('stock_watchlist').doc(currentUser.uid).set({
+    groups: clean, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  watchGroups = clean;
+  return clean;
+}
+function newGroupId() { return 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
 /** 관심종목을 1회만 불러온다 — 시세 홈을 거치지 않고 종목 상세로 바로 들어와도 하트가 맞도록 */
 function ensureWatchlist() {
@@ -433,7 +461,8 @@ async function loadWatchlist() {
     watchlist = (doc.exists && Array.isArray(doc.data().codes)) ? doc.data().codes : [];
     coinWatchlist = (doc.exists && Array.isArray(doc.data().coins)) ? doc.data().coins : [];
     usWatchlist = (doc.exists && Array.isArray(doc.data().us)) ? doc.data().us : [];
-  } catch (e) { watchlist = []; coinWatchlist = []; usWatchlist = []; }
+    watchGroups = doc.exists ? sanitizeGroups(doc.data().groups) : [];
+  } catch (e) { watchlist = []; coinWatchlist = []; usWatchlist = []; watchGroups = []; }
   return watchlist;
 }
 
@@ -459,6 +488,31 @@ async function toggleWatch(code) {
     watchlist = on ? watchlist.filter(function (c) { return c !== code; }) : watchlist.concat([code]);
     throw e;
   }
+  return on;
+}
+
+/** 어느 그룹(기본 포함)에든 담겨 있으면 관심종목 — ♥ 표시 기준 */
+function isWatched(code) {
+  return watchlist.indexOf(code) !== -1 || watchGroups.some(function (g) { return g.codes.indexOf(code) !== -1; });
+}
+
+/** 한 그룹에 넣거나 뺀다 — 'all' 은 기본(codes). 관심 그룹 창의 체크박스가 쓴다 */
+async function setWatchIn(groupId, code, on) {
+  if (!/^[0-9A-Z]{6}$/.test(String(code || ''))) throw new Error('종목코드가 올바르지 않습니다');
+  await ensureWatchlist();
+  if (groupId === 'all') {
+    if ((watchlist.indexOf(code) !== -1) === on) return on;
+    return toggleWatch(code);
+  }
+  var g = watchGroups.filter(function (x) { return x.id === groupId; })[0];
+  if (!g) throw new Error('그룹을 찾을 수 없습니다');
+  var has = g.codes.indexOf(code) !== -1;
+  if (has === on) return on;
+  if (on && g.codes.length >= WATCHLIST_MAX) throw new Error('한 그룹에는 ' + WATCHLIST_MAX + '종목까지 담을 수 있습니다');
+  await saveWatchGroups(watchGroups.map(function (x) {
+    if (x.id !== groupId) return x;
+    return { id: x.id, name: x.name, codes: on ? x.codes.concat([code]) : x.codes.filter(function (c) { return c !== code; }) };
+  }));
   return on;
 }
 

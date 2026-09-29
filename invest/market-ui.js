@@ -464,7 +464,7 @@ function freshQuote(code) {
 
 function listQuoteCodes() {
   var seen = {}, out = [];
-  watchlist.concat(_rankCodes, _sectorCodes, _crowdCodes).forEach(function (c) {
+  watchlist.concat(wgCodes(), _rankCodes, _sectorCodes, _crowdCodes).forEach(function (c) {
     if (isStockCode(c) && !seen[c]) { seen[c] = 1; out.push(c); }
   });
   return out;
@@ -538,27 +538,32 @@ function paintWatch() {
     b.classList.toggle('on', b.dataset.view === watchView);
   });
 
-  if (!watchlist.length) {
+  renderWatchGroups();
+  var grp = wgCurrent();
+  var codes = wgCodes();
+  if (!codes.length) {
     el.dataset.built = ''; el.dataset.key = '';
     el.className = '';
-    el.innerHTML = '<div class="empty">국내 관심종목이 없습니다.<br>종목 상세에서 ♡ 를 누르면 여기에 모입니다.'
-      + ((coinWatchlist.length || usWatchlist.length) ? '<br><span class="cn-empty-sub">관심 코인·미국 주식은 아래 각 목록의 \'관심\'에서 볼 수 있습니다</span>' : '') + '</div>';
+    el.innerHTML = grp
+      ? '<div class="empty">' + escapeHtml(grp.name) + ' 그룹에 담긴 종목이 없습니다.<br>종목 상세나 목록의 ♡ 를 눌러 이 그룹에 담을 수 있습니다.</div>'
+      : '<div class="empty">국내 관심종목이 없습니다.<br>종목 상세에서 ♡ 를 누르면 여기에 모입니다.'
+        + ((coinWatchlist.length || usWatchlist.length) ? '<br><span class="cn-empty-sub">관심 코인·미국 주식은 아래 각 목록의 \'관심\'에서 볼 수 있습니다</span>' : '') + '</div>';
     return;
   }
-  var rows = watchlist.map(function (c) { return _quoteMap[c]; }).filter(function (q) { return q && isStockCode(q.code); });
+  var rows = codes.map(function (c) { return _quoteMap[c]; }).filter(function (q) { return q && isStockCode(q.code); });
   if (!rows.length) {
     if (!el.dataset.built && _listQuotesTried) el.innerHTML = '<div class="empty">시세를 불러오지 못했습니다</div>';
     return;
   }
 
-  var key = watchView + '|' + rows.map(function (q) { return q.code; }).join(',');
+  var key = watchView + '|' + _wgSel + '|' + rows.map(function (q) { return q.code; }).join(',');
   if (el.dataset.key !== key) {
     el.className = watchView === 'card' ? 'watch-cards' : '';
     el.innerHTML = rows.map(function (q) {
       var open = 'openStock(\'' + q.code + '\',\'' + escapeJsArg(q.name) + '\')';
-      // 관심종목에서 바로 뺄 수 있도록 하트를 단다 — 랭킹에도 같은 종목의 하트가 있어 id 대신 data-fav 로 찾는다
+      // 하트 — 그룹이 있으면 관심 그룹 창을 연다. 랭킹에도 같은 종목의 하트가 있어 id 대신 data-fav 로 찾는다
       var fav = '<button class="fav-btn on" data-fav="' + q.code + '"'
-              + ' onclick="onFavToggle(\'' + q.code + '\')" aria-label="관심종목에서 빼기">♥</button>';
+              + ' onclick="onFavToggle(\'' + q.code + '\')" aria-label="관심종목">♥</button>';
 
       if (watchView === 'list') {
         return '<div class="q-row rank-row">'
@@ -610,6 +615,215 @@ function paintWatch() {
       });
     }
   });
+}
+
+/* ===== 관심종목 그룹 =====
+ * 기본(codes) + 회원이 만든 그룹(최대 10개). 그룹마다 따로 담고, 한 종목이 여러 그룹에 들어갈 수 있다.
+ * 그룹이 하나라도 있으면 ♥ 를 눌렀을 때 '관심 그룹' 창에서 체크박스로 담고 뺀다 (없으면 예전처럼 기본에 바로).
+ * 저장은 market.js (Firestore stock_watchlist.groups). 고른 그룹 탭은 이 기기에 기억한다.
+ */
+var _wgSel = null;
+function wgKey() { return 'dt-invest-wgroup:' + (currentUser ? currentUser.uid : ''); }
+function wgCurrent() {
+  if (_wgSel === null) { try { _wgSel = localStorage.getItem(wgKey()) || 'all'; } catch (e) { _wgSel = 'all'; } }
+  if (_wgSel === 'all') return null;
+  var g = watchGroups.filter(function (x) { return x.id === _wgSel; })[0];
+  if (!g) _wgSel = 'all';
+  return g || null;
+}
+function wgCodes() { var g = wgCurrent(); return g ? g.codes : watchlist; }
+
+function renderWatchGroups() {
+  var el = document.getElementById('watchGroups');
+  if (!el) return;
+  wgCurrent();
+  var sig = _wgSel + '|' + watchlist.length + '|' + JSON.stringify(watchGroups);
+  if (el.dataset.sig === sig) return;
+  el.dataset.sig = sig;
+  var chip = function (id, name, n) {
+    var on = _wgSel === id;
+    return '<button type="button" class="wg-chip' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="selectWatchGroup(\'' + id + '\')">'
+      + escapeHtml(name) + '<em>' + n + '</em></button>';
+  };
+  el.innerHTML = '<div class="wg-chips" role="group" aria-label="관심종목 그룹">'
+    + chip('all', '기본', watchlist.length)
+    + watchGroups.map(function (g) { return chip(g.id, g.name, g.codes.length); }).join('')
+    + (watchGroups.length < WG_MAX ? '<button type="button" class="wg-chip add" onclick="openWatchGroupNew()">+ 그룹 추가</button>' : '')
+    + '</div>'
+    + (watchGroups.length ? '<button type="button" class="wg-edit" onclick="openWatchGroupEdit()">그룹 편집</button>' : '');
+}
+
+function selectWatchGroup(id) {
+  _wgSel = id === 'all' || watchGroups.some(function (g) { return g.id === id; }) ? id : 'all';
+  try { localStorage.setItem(wgKey(), _wgSel); } catch (e) {}
+  var el = document.getElementById('watchList');
+  if (el) { el.dataset.key = ''; el.dataset.built = ''; }
+  paintWatch();
+  if (wgCodes().some(function (c) { return !freshQuote(c); })) refreshListQuotes();
+}
+
+/** 관심 상태가 바뀐 뒤 — 하트들과 관심종목 섹션을 맞춘다 */
+function afterWatchChange(code) {
+  syncFavButtons(code, isWatched(code));
+  var wl = document.getElementById('watchList');
+  if (wl) wl.dataset.key = '';
+  if (!detailOpen() && currentTab === 'market') {
+    paintWatch();
+    if (!freshQuote(code)) refreshListQuotes();
+  }
+}
+
+/* ── 창 (관심 그룹 · 그룹 추가 · 그룹 편집) ── */
+function wgSheet(title, inner, sub) {
+  var el = document.getElementById('wgSheet');
+  if (!el) { el = document.createElement('div'); el.id = 'wgSheet'; el.className = 'wg-sheet-wrap'; document.body.appendChild(el); }
+  el.innerHTML = '<div class="wg-dim" onclick="closeWgSheet()"></div>'
+    + '<div class="wg-sheet" role="dialog" aria-modal="true" aria-label="' + escapeHtml(title) + '">'
+    + '<div class="wg-sheet-head"><b>' + escapeHtml(title) + '</b><button type="button" class="mini-btn" onclick="closeWgSheet()" aria-label="닫기">✕</button></div>'
+    + (sub ? '<div class="wg-hint">' + sub + '</div>' : '')
+    + inner + '<div class="wg-msg" id="wgMsg" role="alert"></div></div>';
+  document.body.classList.add('wg-noscroll');
+}
+function wgFocus(sel) { var f = document.querySelector('#wgSheet ' + sel); if (f) try { f.focus({ preventScroll: true }); } catch (e) {} }
+function closeWgSheet() {
+  var el = document.getElementById('wgSheet');
+  if (el) el.remove();
+  document.body.classList.remove('wg-noscroll');
+  _wgDraft = null; _favSheet = null;
+}
+function wgMsg(t) { var m = document.getElementById('wgMsg'); if (m) m.textContent = t || ''; }
+
+/** 새 그룹 이름 검사 — 통과하면 다듬은 이름, 아니면 null (메시지는 창에 띄운다) */
+function wgCheckName(raw) {
+  var name = String(raw || '').trim().slice(0, WG_NAME_MAX);
+  if (!name) { wgMsg('그룹 이름을 입력하세요'); return null; }
+  if (name === '기본' || watchGroups.some(function (g) { return g.name === name; })) { wgMsg('같은 이름의 그룹이 있습니다'); return null; }
+  if (watchGroups.length >= WG_MAX) { wgMsg('그룹은 ' + WG_MAX + '개까지 만들 수 있습니다'); return null; }
+  return name;
+}
+
+/* 관심 그룹 창 — ♥ 를 누르면. 체크박스를 누르는 즉시 저장한다 */
+var _favSheet = null;          // { code, name, adding, busy }
+function openFavSheet(code, name) {
+  _favSheet = { code: code, name: name || (_quoteMap[code] && _quoteMap[code].name) || code, adding: false, busy: false };
+  renderFavSheet();
+}
+function renderFavSheet() {
+  var st = _favSheet;
+  if (!st) return;
+  var row = function (id, label, n, on) {
+    return '<label class="wg-fav-row"><input type="checkbox"' + (on ? ' checked' : '') + (st.busy ? ' disabled' : '')
+      + ' onchange="onFavGroup(\'' + id + '\', this.checked)"><span>' + escapeHtml(label) + '</span><em>' + n + '개</em></label>';
+  };
+  var inner = '<div class="wg-fav-list">'
+    + row('all', '기본', watchlist.length, watchlist.indexOf(st.code) !== -1)
+    + watchGroups.map(function (g) { return row(g.id, g.name, g.codes.length, g.codes.indexOf(st.code) !== -1); }).join('')
+    + '</div>';
+  if (st.adding) {
+    inner += '<div class="wg-new"><input type="text" class="f-input" id="wgName" maxlength="' + WG_NAME_MAX + '" placeholder="새 그룹 이름"'
+      + ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();favNewGroup()}">'
+      + '<button type="button" class="btn-submit" onclick="favNewGroup()"' + (st.busy ? ' disabled' : '') + '>추가</button></div>';
+  } else if (watchGroups.length < WG_MAX) {
+    inner += '<button type="button" class="wg-add-btn" onclick="_favSheet.adding=true;renderFavSheet();wgFocus(\'#wgName\')">+ 새 그룹 추가</button>';
+  }
+  wgSheet('관심 그룹', inner, escapeHtml(st.name) + ' — 체크박스를 눌러 관심 그룹에 넣거나 뺄 수 있습니다.');
+}
+async function onFavGroup(groupId, on) {
+  var st = _favSheet;
+  if (!st || st.busy) return;
+  st.busy = true;
+  try {
+    await setWatchIn(groupId, st.code, on);
+    afterWatchChange(st.code);
+  } catch (e) { alert(e && e.message ? e.message : '관심종목 저장에 실패했습니다.'); }
+  st.busy = false;
+  if (_favSheet === st) renderFavSheet();
+}
+/** 창에서 새 그룹을 만들면 그 그룹에 이 종목을 바로 담는다 */
+async function favNewGroup() {
+  var st = _favSheet;
+  if (!st || st.busy) return;
+  var name = wgCheckName((document.getElementById('wgName') || {}).value);
+  if (!name) return;
+  st.busy = true;
+  try {
+    await saveWatchGroups(watchGroups.concat([{ id: newGroupId(), name: name, codes: [st.code] }]));
+    st.adding = false;
+    afterWatchChange(st.code);
+  } catch (e) { wgMsg(e && e.message ? e.message : '그룹을 만들지 못했습니다'); }
+  st.busy = false;
+  if (_favSheet === st) renderFavSheet();
+}
+
+/* 그룹 추가 (관심종목 섹션의 [+ 그룹 추가]) */
+function openWatchGroupNew() {
+  wgSheet('그룹 추가',
+    '<div class="wg-new"><input type="text" class="f-input" id="wgName" maxlength="' + WG_NAME_MAX + '" placeholder="그룹 이름 (예: 반도체)"'
+    + ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();createWatchGroup(document.getElementById(\'wgGo\'))}">'
+    + '<button type="button" class="btn-submit" id="wgGo" onclick="createWatchGroup(this)">만들기</button></div>',
+    '만든 뒤에는 종목 상세나 목록의 ♡ 를 눌러 그룹에 담을 수 있습니다.');
+  wgFocus('#wgName');
+}
+async function createWatchGroup(btn) {
+  var name = wgCheckName((document.getElementById('wgName') || {}).value);
+  if (!name) return;
+  var id = newGroupId();
+  btn.disabled = true;
+  try {
+    await saveWatchGroups(watchGroups.concat([{ id: id, name: name, codes: [] }]));
+    closeWgSheet();
+    selectWatchGroup(id);
+  } catch (e) { btn.disabled = false; wgMsg(e && e.message ? e.message : '그룹을 만들지 못했습니다'); }
+}
+
+/* 그룹 편집 — 이름 바꾸기 · 순서 · 삭제를 모아 두었다가 [저장] 에서 한 번에 */
+var _wgDraft = null;
+function openWatchGroupEdit() {
+  _wgDraft = watchGroups.map(function (g) { return { id: g.id, name: g.name, codes: g.codes.slice(), del: false }; });
+  renderWgEdit();
+}
+function renderWgEdit() {
+  if (!_wgDraft) return;
+  var n = _wgDraft.length;
+  wgSheet('그룹 편집', '<div class="wg-edit-list">' + _wgDraft.map(function (g, i) {
+    return '<div class="wg-edit-row' + (g.del ? ' del' : '') + '">'
+      + '<input type="text" class="f-input" maxlength="' + WG_NAME_MAX + '" value="' + escapeHtml(g.name) + '" aria-label="그룹 이름"'
+      + ' oninput="_wgDraft[' + i + '].name=this.value"' + (g.del ? ' disabled' : '') + '>'
+      + '<em>' + g.codes.length + '개</em>'
+      + '<button type="button" class="mini-btn" onclick="wgMove(' + i + ',-1)" aria-label="위로"' + (i === 0 ? ' disabled' : '') + '>▲</button>'
+      + '<button type="button" class="mini-btn" onclick="wgMove(' + i + ',1)" aria-label="아래로"' + (i === n - 1 ? ' disabled' : '') + '>▼</button>'
+      + '<button type="button" class="mini-btn' + (g.del ? '' : ' danger') + '" onclick="wgDel(' + i + ')">' + (g.del ? '되살리기' : '삭제') + '</button>'
+      + '</div>';
+  }).join('') + '</div>'
+    + '<button type="button" class="btn-submit wg-go" onclick="saveWgEdit(this)">저장</button>',
+    '기본 그룹은 바꿀 수 없습니다. 그룹을 지우면 그 그룹에만 담긴 종목은 관심종목에서 빠집니다.');
+}
+function wgMove(i, d) {
+  var j = i + d;
+  if (!_wgDraft || j < 0 || j >= _wgDraft.length) return;
+  var t = _wgDraft[i]; _wgDraft[i] = _wgDraft[j]; _wgDraft[j] = t;
+  renderWgEdit();
+}
+function wgDel(i) { if (_wgDraft && _wgDraft[i]) { _wgDraft[i].del = !_wgDraft[i].del; renderWgEdit(); } }
+async function saveWgEdit(btn) {
+  if (!_wgDraft) return;
+  var keep = _wgDraft.filter(function (g) { return !g.del; });
+  for (var i = 0; i < keep.length; i++) {
+    keep[i].name = String(keep[i].name || '').trim().slice(0, WG_NAME_MAX);
+    if (!keep[i].name) { wgMsg('이름이 빈 그룹이 있습니다'); return; }
+    if (keep[i].name === '기본') { wgMsg('\'기본\'은 그룹 이름으로 쓸 수 없습니다'); return; }
+  }
+  var names = keep.map(function (g) { return g.name; });
+  if (names.some(function (x, k) { return names.indexOf(x) !== k; })) { wgMsg('같은 이름의 그룹이 있습니다'); return; }
+  var removedCodes = [];
+  _wgDraft.filter(function (g) { return g.del; }).forEach(function (g) { removedCodes = removedCodes.concat(g.codes); });
+  btn.disabled = true;
+  try {
+    await saveWatchGroups(keep.map(function (g) { return { id: g.id, name: g.name, codes: g.codes }; }));
+    closeWgSheet();
+    selectWatchGroup(_wgSel);           // 지운 그룹을 보고 있었다면 기본으로
+    removedCodes.forEach(function (c) { syncFavButtons(c, isWatched(c)); });
+  } catch (e) { btn.disabled = false; wgMsg(e && e.message ? e.message : '저장하지 못했습니다'); }
 }
 
 /* ===== 최근 본 종목 =====
@@ -780,7 +994,7 @@ async function loadRank() {
     // 랭킹 API 가격은 워커 캐시로 최대 1분 늦어 1분마다 다시 그릴 때 옛 가격이 잠깐 비쳤다.
     _rankCodes = items.map(function (s) { return s.code; });
     el.innerHTML = items.map(function (s, i) {
-      var watched = watchlist.indexOf(s.code) !== -1;
+      var watched = isWatched(s.code);
       // 거래대금·거래량을 함께 보여주되, 거래량 탭에서는 거래량을 위(주 지표)로 올린다
       var tvTxt = s.tradingValueText || (s.tradingValue != null ? fmtCompact(s.tradingValue) + '원' : '');
       var volTxt = s.volume != null ? fmtCompact(s.volume) + '주' : '';
@@ -878,6 +1092,7 @@ function syncFavButtons(code, on) {
 /** 관심종목·랭킹 목록에서 바로 관심종목 토글 */
 async function onFavToggle(code) {
   if (!isStockCode(code) || _favBusy[code]) return;
+  if (watchGroups.length) { openFavSheet(code); return; }     // 그룹이 있으면 어느 그룹에 담을지 고른다
   _favBusy[code] = true;
   favButtons(code).forEach(function (b) { b.disabled = true; });
   try {
@@ -951,7 +1166,7 @@ async function openStock(code, name, opts) {
   ensureWatchlist().then(function () {
     var btn = document.getElementById('starBtn');
     if (!btn || !curStock || curStock.code !== code) return;
-    var on = watchlist.indexOf(code) !== -1;
+    var on = isWatched(code);
     btn.classList.toggle('on', on);
     btn.textContent = on ? '♥' : '♡';
   });
@@ -1091,7 +1306,7 @@ function closeDetail(toHome) {
 }
 
 function stockShellHtml(code, name) {
-  var watched = watchlist.indexOf(code) !== -1;
+  var watched = isWatched(code);
   return ''
     + '<div class="sd-head">'
     +   '<button class="mini-btn sd-back" onclick="backToMarket()">← 시세</button>'
@@ -1159,6 +1374,7 @@ async function onToggleWatch() {
   if (!curStock) return;
   var code = curStock.code;
   if (_favBusy[code]) return;                // 저장 중에 또 누르면 켰다 꺼진다
+  if (watchGroups.length) { openFavSheet(code, curStock.name); return; }
   _favBusy[code] = true;
   var btn = document.getElementById('starBtn');
   if (btn) btn.disabled = true;
@@ -1748,7 +1964,7 @@ async function loadCrowdTop() {
     resetDirs('ck:');
     el.innerHTML = items.map(function (s, i) {
       var name = String(s.name || s.code);
-      var watched = watchlist.indexOf(s.code) !== -1;
+      var watched = isWatched(s.code);
       return '<div class="q-row rank-row cw-row">'
         + '<button class="rank-main" onclick="openStock(\'' + s.code + '\',\'' + escapeJsArg(name) + '\')">'
         +   '<span class="q-rank">' + (i + 1) + '</span>'

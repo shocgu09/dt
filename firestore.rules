@@ -509,7 +509,10 @@ service cloud.firestore {
         && request.resource.data.get('coins', []) is list
         && request.resource.data.get('coins', []).size() <= 50
         && request.resource.data.get('us', []) is list
-        && request.resource.data.get('us', []).size() <= 50;
+        && request.resource.data.get('us', []).size() <= 50
+        // groups: 관심종목 그룹 [{id, name, codes}] — 최대 10개 (클라이언트 WG_MAX 와 동일, 그룹당 종목 수는 화면이 50개로 막는다)
+        && request.resource.data.get('groups', []) is list
+        && request.resource.data.get('groups', []).size() <= 10;
     }
 
     // ── invest_config 컬렉션 (재테크 설정·면책·상시구독 종목) ──

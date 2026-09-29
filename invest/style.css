@@ -602,6 +602,55 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 
 /* ── 관심종목 보기 토글 ── */
 .view-toggle { margin-left: auto; display: flex; gap: 3px; }
+
+/* 관심종목 그룹 탭 — 한 줄, 넘치면 옆으로 */
+.wg-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.wg-row:empty { display: none; }
+.wg-chips { display: flex; gap: 6px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.wg-chips::-webkit-scrollbar { display: none; }
+.wg-chip { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; padding: 7px 12px; min-height: 36px;
+  background: var(--bg2); border: 1px solid var(--border); color: var(--text2); font: inherit; font-size: .82rem; font-weight: 700;
+  cursor: pointer; white-space: nowrap; }
+.wg-chip em { font-style: normal; font-size: .7rem; font-weight: 800; color: var(--text3); font-variant-numeric: tabular-nums; }
+.wg-chip:hover { border-color: var(--primary); color: var(--text); }
+.wg-chip.on { border-color: var(--primary); background: rgba(var(--primary-rgb),.12); color: var(--text); }
+.wg-chip.on em { color: var(--primary-light); }
+.wg-chip.add { border-style: dashed; color: var(--primary-light); }
+.wg-edit { flex-shrink: 0; background: none; border: none; padding: 6px 2px; font: inherit; font-size: .76rem; font-weight: 700;
+  color: var(--primary-light); cursor: pointer; }
+.wg-edit:hover { text-decoration: underline; text-underline-offset: 2px; }
+
+/* 관심 그룹 창 (아래에서 올라오는 창 · 넓은 화면은 가운데) */
+body.wg-noscroll { overflow: hidden; }
+.wg-sheet-wrap { position: fixed; inset: 0; z-index: 55; display: flex; align-items: flex-end; justify-content: center; }
+.wg-dim { position: absolute; inset: 0; background: rgba(0,0,0,.55); }
+.wg-sheet { position: relative; width: 100%; max-width: 440px; max-height: 85vh; overflow-y: auto; background: var(--bg2);
+  border: 1px solid var(--border); border-top: 3px solid var(--primary); padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
+@media (min-width: 600px) { .wg-sheet-wrap { align-items: center; } .wg-sheet { border-bottom: 1px solid var(--border); } }
+.wg-sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.wg-sheet-head b { font-size: 1rem; font-weight: 800; }
+.wg-sheet-head .mini-btn { min-width: 40px; min-height: 40px; }
+.wg-hint { font-size: .78rem; color: var(--primary-light); line-height: 1.55; margin-bottom: 12px; word-break: keep-all; }
+.wg-msg { min-height: 1.2em; font-size: .76rem; font-weight: 700; color: var(--accent); margin-top: 8px; }
+.wg-fav-list { display: flex; flex-direction: column; }
+.wg-fav-row { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 4px 2px; cursor: pointer; }
+.wg-fav-row + .wg-fav-row { border-top: 1px solid var(--border); }
+.wg-fav-row input { width: 20px; height: 20px; accent-color: var(--primary); flex-shrink: 0; }
+.wg-fav-row span { flex: 1; font-size: .92rem; font-weight: 700; }
+.wg-fav-row em { font-style: normal; font-size: .78rem; color: var(--text3); font-variant-numeric: tabular-nums; }
+.wg-add-btn { display: block; width: 100%; margin-top: 12px; padding: 12px; background: none; border: 1px solid var(--border);
+  color: var(--text); font: inherit; font-size: .88rem; font-weight: 700; cursor: pointer; }
+.wg-add-btn:hover { border-color: var(--primary); }
+.wg-new { display: flex; gap: 6px; margin-top: 12px; }
+.wg-new .f-input { flex: 1; min-width: 0; }
+.wg-new .btn-submit { flex-shrink: 0; padding: 0 16px; }
+.wg-go { width: 100%; margin-top: 12px; padding: 12px; }
+.wg-edit-list { display: flex; flex-direction: column; gap: 6px; }
+.wg-edit-row { display: flex; align-items: center; gap: 6px; }
+.wg-edit-row .f-input { flex: 1; min-width: 0; }
+.wg-edit-row em { font-style: normal; font-size: .72rem; color: var(--text3); flex-shrink: 0; min-width: 28px; text-align: right; }
+.wg-edit-row .mini-btn { flex-shrink: 0; min-height: 36px; }
+.wg-edit-row.del .f-input { text-decoration: line-through; opacity: .5; }
 .vt-btn {
   background: var(--bg2); border: 1px solid var(--border); color: var(--text3);
   padding: 4px 9px; font-size: .82rem; cursor: pointer; line-height: 1.2;
