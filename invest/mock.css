@@ -380,14 +380,15 @@
 .mk-sc-tile.up { border-left-color: var(--stock-up); }
 .mk-sc-tile.down { border-left-color: var(--stock-down); }
 .mk-sc-tl { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.mk-sc-tl.sub { justify-content: space-between; margin-top: 3px; font-size: .74rem; color: var(--text3); font-weight: 600; font-variant-numeric: tabular-nums; }
-.mk-sc-tl.sub span:last-child { font-weight: 700; flex-shrink: 0; }
+.mk-sc-tl.sub { justify-content: space-between; flex-wrap: wrap; column-gap: 8px; row-gap: 1px; margin-top: 3px; font-size: .74rem; color: var(--text3); font-weight: 600; font-variant-numeric: tabular-nums; }
+.mk-sc-tl.sub span:last-child { font-weight: 700; flex-shrink: 0; margin-left: auto; }
 .mk-sc-name { background: none; border: none; padding: 0; font: inherit; font-size: .88rem; font-weight: 800; color: var(--text);
   cursor: pointer; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .mk-sc-name.big { font-size: .95rem; }
 .mk-sc-name:hover { color: var(--primary-light); text-decoration: underline; text-underline-offset: 2px; }
 .mk-sc-q { font-size: .76rem; color: var(--text2); font-weight: 700; flex-shrink: 0; font-variant-numeric: tabular-nums; }
 .mk-sc-rt { margin-left: auto; font-size: .86rem; font-weight: 800; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.mk-sc-val { margin-left: auto; font-size: .88rem; font-weight: 800; flex-shrink: 0; color: var(--text); font-variant-numeric: tabular-nums; }
 .mk-sc-all { display: block; width: 100%; margin-top: 6px; padding: 9px; background: none; border: 1px dashed var(--border);
   font: inherit; font-size: .78rem; font-weight: 700; color: var(--primary-light); cursor: pointer; }
 .mk-sc-all:hover { border-color: var(--primary); }

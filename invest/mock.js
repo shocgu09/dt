@@ -859,12 +859,13 @@ var Mock = (function () {
   }
 
   /** 보유 종목 한 칸 (계좌 카드 안의 타일) */
+  /** 계좌 탭 보유 행과 같은 배치 — 왼쪽 종목·수량·평단→현재가, 오른쪽 평가금액·손익(수익률) */
   function shareTileHtml(p) {
     return '<div class="mk-sc-tile ' + signClass(p.pnl) + '">'
       + '<div class="mk-sc-tl">' + stockBtn(p, 'mk-sc-name') + '<span class="mk-sc-q">' + fmtNum(p.qty) + '주</span>'
-      +   '<b class="mk-sc-rt ' + signClass(p.pnlRate) + '">' + fmtRate(p.pnlRate) + '</b></div>'
+      +   '<b class="mk-sc-val">' + won(p.value) + '</b></div>'
       + '<div class="mk-sc-tl sub"><span>평단 ' + avgText(p) + ' → ' + (p.price != null ? fmtNum(p.price) : '-') + '</span>'
-      +   '<span class="' + signClass(p.pnl) + '">' + signedWon(p.pnl) + '</span></div>'
+      +   '<span class="' + signClass(p.pnl) + '">' + signedWon(p.pnl) + ' (' + fmtRate(p.pnlRate) + ')</span></div>'
       + '</div>';
   }
 
