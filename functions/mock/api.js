@@ -189,10 +189,9 @@ const CROWD_MIN = 3;
 const round1 = (v) => Math.round(v * 10) / 10;
 const kstDayStart = (now) => { const t = E.kstNow(now); return Date.UTC(+t.ymd.slice(0, 4), +t.ymd.slice(4, 6) - 1, +t.ymd.slice(6, 8)) - 9 * 3600e3; };
 
-/* AI 계좌 평가 하루 횟수. 0 이면 무제한.
- * 2026-09-23 — 회원님 테스트 기간이라 풀어 두었다. 요청이 오면 3 으로 되돌린다.
- * 유료 API 를 부르므로 테스트가 끝나면 반드시 다시 막아야 한다. */
-const REVIEW_DAILY_MAX = 0;
+/* AI 계좌 평가 하루 횟수. 0 이면 무제한 — 유료 API 를 부르므로 풀어 두지 않는다.
+ * (2026-09-23 테스트 기간에 0 으로 풀었다가 2026-09-29 3 으로 되돌렸다) */
+const REVIEW_DAILY_MAX = 3;
 
 // ── 라우팅 ────────────────────────────────────────────────────
 /**
