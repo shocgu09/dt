@@ -1895,9 +1895,6 @@ var Mock = (function () {
     mountAdmin: mountAdmin,
     saveSeason: saveSeason, loadSeasons: loadSeasons, pickSeason: pickSeason,
     newSeasonForm: newSeasonForm, onSeasonIdInput: onSeasonIdInput,
-    addHoliday: addHoliday, removeHoliday: removeHoliday,
-    // 커뮤니티 자랑하기 — 숫자는 워커가 장부에서 직접 만든다 (community.js 가 쓴다)
-    brag: function (code) { return api('/brag', 'POST', { code: code }); },
-    brags: function (ids) { return api('/brag?ids=' + encodeURIComponent(ids.join(','))); }
+    addHoliday: addHoliday, removeHoliday: removeHoliday
   };
 })();

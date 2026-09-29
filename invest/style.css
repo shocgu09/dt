@@ -831,35 +831,6 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
   border: 1px solid var(--border); font-size: .66rem; color: var(--text3); line-height: 1.6;
 }
 
-/* ── 커뮤니티 자랑하기 카드 ── */
-.brag-card {
-  margin: 8px 0 2px; padding: 11px 13px;
-  background: var(--bg); border: 1px solid var(--border); border-left: 3px solid var(--text3);
-}
-.brag-card.up { border-left-color: var(--stock-up); background: var(--bull-bg); }
-.brag-card.down { border-left-color: var(--stock-down); background: var(--bear-bg); }
-.brag-card.loading-sm { font-size: .76rem; color: var(--text3); border-left-color: var(--border); }
-.brag-top { display: flex; align-items: baseline; gap: 8px; }
-.brag-name { font-size: .84rem; font-weight: 800; }
-.brag-qty { font-size: .74rem; color: var(--text2); font-weight: 700; }
-.brag-pnl {
-  margin-top: 4px; font-size: 1.12rem; font-weight: 800;
-  font-variant-numeric: tabular-nums; letter-spacing: -.3px;
-}
-.brag-rate { margin-left: 7px; font-size: .86rem; font-weight: 800; }
-.brag-sub { margin-top: 4px; font-size: .68rem; color: var(--text3); font-weight: 600; line-height: 1.5; }
-
-/* 글쓰기 칸에 붙여 둔 미리보기 */
-.brag-pending { position: relative; margin-bottom: 12px; }
-.brag-pending .brag-card { margin-bottom: 0; padding-right: 44px; }   /* ✕ 버튼 자리 */
-.brag-remove {
-  position: absolute; top: 12px; right: 8px;
-  background: var(--bg2); border: 1px solid var(--border); color: var(--text2);
-  font-size: .74rem; font-weight: 700; padding: 2px 7px; cursor: pointer; line-height: 1.4;
-}
-.brag-remove:hover { color: var(--accent); border-color: var(--accent); }
-.cm-brag-btn { margin-right: 6px; white-space: nowrap; }
-
 /* ── 뉴스·공시 탭의 공시 목록 ── */
 .nd-seg { margin-bottom: 10px; }
 .dc-item { border: 1px solid var(--border); border-bottom: none; background: var(--bg2); }
@@ -919,21 +890,6 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 /* AI 생성 브리핑 배지 */
 .briefing-badge.ai { background: var(--primary-light); color: #0b1013; }
 
-/* ── 종목별 커뮤니티 (community.js) ── */
-.cm-write { background: var(--bg2); border: 1px solid var(--border); border-left: 3px solid var(--primary); padding: 12px 14px; margin-bottom: 14px; }
-.cm-write .comment-input { min-height: 74px; }
-.cm-guide { font-size: .72rem; color: var(--text3); line-height: 1.6; margin-top: 8px; }
-.cm-list { display: flex; flex-direction: column; gap: 10px; }
-.cm-post { background: var(--bg2); border: 1px solid var(--border); padding: 12px 14px; }
-.cm-post .comment-body { color: var(--text); }
-.cm-post .comment-actions { margin-top: 8px; flex-wrap: wrap; }
-.cm-blind { font-size: .82rem; color: var(--text3); padding: 6px 0; }
-.cm-blind .comment-action { color: var(--primary-light); margin-left: 4px; }
-.cm-rc { font-size: .72rem; color: var(--accent); font-weight: 700; margin-left: auto; }
-.cm-comments { margin-top: 10px; padding-left: 10px; border-left: 2px solid var(--border); }
-.cm-more { display: block; margin: 12px auto 0; }
-
-
 /* ── 터치 영역 ──
  * 보이는 크기는 그대로 두고 누르는 면적만 44px 이상으로 넓힌다 (투명한 ::before 가 버튼의 일부로 눌린다).
  * 옆 버튼과 겹치지 않도록 가로는 간격의 절반까지만 넓힌다. */
@@ -981,14 +937,6 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 .sb-item:hover { background: var(--bg3); }
 .sb-title { flex: 1; min-width: 0; font-size: .84rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sb-date { flex: 0 0 auto; font-size: .7rem; color: var(--text3); font-weight: 600; }
-
-/* ── 커뮤니티 $종목 태그 ── */
-.stock-tag {
-  display: inline; background: none; border: none; padding: 0; margin: 0;
-  color: var(--primary-light); font: inherit; font-weight: 700; cursor: pointer;
-  text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px;
-}
-.stock-tag:hover { color: var(--text); }
 
 /* 목록 위 작은 안내 (일시적 갱신 실패 — 이전 목록은 그대로 둔다) */
 .list-note {

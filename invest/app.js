@@ -1,5 +1,5 @@
 /* ===== DT 재테크 — 앱 뼈대 (회원 확인 · 탭 · 시황 브리핑 + 댓글 · 관리) =====
- * 시세(국내·미국·코인)는 market*.js · us.js · coin.js, 모의투자는 mock.js, 종목 커뮤니티는 community.js */
+ * 시세(국내·미국·코인)는 market*.js · us.js · coin.js, 모의투자는 mock.js */
 
 var db = null;
 var currentUser = null;
@@ -244,7 +244,7 @@ function showToast(text) {
 /* ===== 모의투자 모드 =====
  * 코드(mock.js · mock.css)는 모드를 켤 때 처음 불러온다 — 쓰지 않는 회원에게는 아무 변화가 없다.
  */
-var MOCK_VER = '38';
+var MOCK_VER = '39';
 var _mockLoading = null;
 
 function loadMockAssets() {
@@ -304,7 +304,6 @@ function switchTab(tab) {
     var d = document.getElementById('bDate');
     if (d && !d.value) d.value = todayStr();
     renderAdminBriefingList();
-    if (window.Community && isAdmin) Community.loadReports();
   }
 }
 

@@ -874,7 +874,6 @@ async function openStock(code, name, opts) {
   }
   var same = !!(curStock && curStock.code === code);
   curStock = { code: code, name: name };
-  if (window.Community) Community.reset();
   curTf = 'D';
   bookOpen = false;
   if (nameKnown) pushRecent(code, name);       // 이름을 모르면(딥링크) 시세를 받은 뒤에 넣는다
@@ -1073,7 +1072,6 @@ function stockShellHtml(code, name) {
     +   '<button class="sd-tab" data-sdtab="info" onclick="sdSwitch(\'info\')">정보</button>'
     +   '<button class="sd-tab" data-sdtab="trend" onclick="sdSwitch(\'trend\')">수급</button>'
     +   '<button class="sd-tab" data-sdtab="news" onclick="sdSwitch(\'news\')">뉴스·공시</button>'
-    +   '<button class="sd-tab" data-sdtab="community" onclick="sdSwitch(\'community\')">커뮤니티</button>'
     + '</div>'
     + '<div class="sd-panel" id="sdChart">'
     +   '<button type="button" class="cm-toggle" id="cmToggle" onclick="toggleChartMode()" aria-pressed="false">'
@@ -1104,7 +1102,6 @@ function stockShellHtml(code, name) {
     +   '<div id="ndNews"></div>'
     +   '<div id="ndDisc" style="display:none"></div>'
     + '</div>'
-    + '<div class="sd-panel" id="sdCommunity" style="display:none"><div class="loading">불러오는 중...</div></div>'
     + '<div class="disclaimer" id="sdDisclaimer">⚠️ 시세는 참고용이며 지연·오류가 있을 수 있습니다. 실제 매매는 증권사 앱에서 확인하세요.</div>';
 }
 
@@ -1114,14 +1111,9 @@ function sdSwitch(tab) {
   document.getElementById('sdInfo').style.display = tab === 'info' ? '' : 'none';
   document.getElementById('sdTrend').style.display = tab === 'trend' ? '' : 'none';
   document.getElementById('sdNews').style.display = tab === 'news' ? '' : 'none';
-  document.getElementById('sdCommunity').style.display = tab === 'community' ? '' : 'none';
-  // 커뮤니티 탭에는 글쓰기 칸 아래 안내 한 줄만 둔다 — 시세 면책까지 겹쳐 쌓이지 않게
-  var disc = document.getElementById('sdDisclaimer');
-  if (disc) disc.style.display = tab === 'community' ? 'none' : '';
   if (tab === 'info') loadStockProfile();
   if (tab === 'trend') loadDealTrend();
   if (tab === 'news') setNewsMode(newsMode);
-  if (tab === 'community' && window.Community && curStock) Community.open(curStock.code, curStock.name);
 }
 
 async function onToggleWatch() {
