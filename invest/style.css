@@ -368,6 +368,24 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 .chip:hover { border-color: var(--primary); color: var(--text); }
 /* 로고가 들어가는 칩 (최근 본 종목) */
 .chip-row .chip { display: inline-flex; align-items: center; gap: 6px; }
+/* 최근 본 종목 — 늘 한 줄, 넘치면 옆으로 (스크롤바는 숨기고 가장자리 흐림으로 더 있음을 보인다) */
+.recent-row { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.recent-row::-webkit-scrollbar { display: none; }
+.recent-row .chip { flex: 0 0 auto; white-space: nowrap; }
+.recent-row.more-r { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); }
+.recent-row.more-l { -webkit-mask-image: linear-gradient(to right, transparent, #000 36px); mask-image: linear-gradient(to right, transparent, #000 36px); }
+.recent-row.more-l.more-r { -webkit-mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent); }
+
+/* 접었다 펴는 섹션 머리 (지금 뜨는 테마) — 접혀 있을 때도 한 줄 막대로 보이게 */
+.m-fold { width: 100%; margin-bottom: 0; padding: 11px 13px; background: var(--bg2); border: 1px solid var(--border);
+  color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.m-fold:hover { background: var(--bg3); }
+.m-fold[aria-expanded="true"] { border-bottom-color: transparent; }
+.m-fold-title { font-size: .92rem; font-weight: 800; }
+.m-fold-caret { margin-left: 8px; font-size: .74rem; color: var(--text3); transition: transform .15s; }
+.m-fold[aria-expanded="true"] .m-fold-caret { transform: rotate(180deg); }
+.m-fold + #themeList .theme-row:first-child, .m-fold + #themeList .sector-head:first-child, .m-fold + #themeList > .list-note:first-child { border-top-color: var(--border); }
 
 /* 종목 행 */
 .q-row {

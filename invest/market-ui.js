@@ -612,7 +612,9 @@ function paintWatch() {
   });
 }
 
-/* ===== 최근 본 종목 ===== */
+/* ===== 최근 본 종목 =====
+ * 늘 한 줄 (최근 본 순, 최대 10개) — 넘치면 옆으로 넘긴다. PC 에서는 마우스 휠로도 옆으로 넘어가게 하고,
+ * 오른쪽·왼쪽에 더 있으면 가장자리를 흐리게 해서 넘길 수 있다는 걸 보여 준다. */
 function renderRecent() {
   var el = document.getElementById('recentList');
   var wrap = document.getElementById('recentSection');
@@ -623,6 +625,23 @@ function renderRecent() {
     return '<button class="chip" onclick="openStock(\'' + r.code + '\',\'' + escapeJsArg(r.name) + '\')">'
       + stockLogoHtml(r.code, r.name, null, 'sm') + escapeHtml(r.name) + '</button>';
   }).join('');
+  el.scrollLeft = 0;                       // 방금 본 종목이 맨 앞 — 늘 처음부터 보이게
+  if (!el.dataset.wired) {
+    el.dataset.wired = '1';
+    el.addEventListener('scroll', function () { recentEdges(el); }, { passive: true });
+    el.addEventListener('wheel', function (e) {
+      if (el.scrollWidth <= el.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      el.scrollLeft += e.deltaY;
+      e.preventDefault();
+    }, { passive: false });
+    window.addEventListener('resize', function () { recentEdges(el); });
+  }
+  recentEdges(el);
+}
+function recentEdges(el) {
+  var max = el.scrollWidth - el.clientWidth;
+  el.classList.toggle('more-l', max > 2 && el.scrollLeft > 2);
+  el.classList.toggle('more-r', max > 2 && el.scrollLeft < max - 2);
 }
 
 function onClearRecent() {
@@ -646,9 +665,29 @@ function setListNote(el, text) {
   n.textContent = text;
 }
 
+/* 기본은 접힘 — 접혀 있는 동안에는 받지 않는다 (주기 갱신도 건너뛴다). 펼치면 그때 받는다 */
+var _themesOpen = false;
+function toggleThemes() {
+  _themesOpen = !_themesOpen;
+  var el = document.getElementById('themeList');
+  var btn = document.getElementById('themeFold');
+  if (btn) btn.setAttribute('aria-expanded', _themesOpen);
+  if (!el) return;
+  el.hidden = !_themesOpen;
+  if (_themesOpen) {
+    if (!el.querySelector('.theme-row, .sector-head')) el.innerHTML = '<div class="loading">불러오는 중...</div>';
+    loadSectors(true);
+  } else {
+    // 테마 종목을 열어 둔 채 접으면 그 시세를 계속 받지 않게 비운다 — 다시 펴면 테마 목록부터
+    ++_sectorSeq;
+    _sectorCodes = [];
+    el.innerHTML = '';
+  }
+}
+
 async function loadSectors(force) {
   var el = document.getElementById('themeList');
-  if (!el) return;
+  if (!el || !_themesOpen) return;
   // 테마 상세(종목 목록)를 열어 둔 동안에는 주기 갱신이 그 화면을 덮지 않게 한다
   if (!force && el.querySelector('.sector-head')) return;
   var seq = ++_sectorSeq;

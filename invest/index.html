@@ -22,7 +22,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"></noscript>
   <link rel="stylesheet" href="../tokens.css?v=2">
-  <link rel="stylesheet" href="style.css?v=45">
+  <link rel="stylesheet" href="style.css?v=46">
   <link rel="icon" href="../icon-192.png?v=3">
 </head>
 <body>
@@ -99,14 +99,6 @@
             <div class="search-results" id="searchResults" role="listbox" aria-label="검색 결과" style="display:none"></div>
           </div>
 
-          <section class="m-section" id="recentSection" style="display:none">
-            <div class="m-head">
-              <h3>🕘 최근 본 종목</h3>
-              <button class="mini-btn" onclick="onClearRecent()">지우기</button>
-            </div>
-            <div class="chip-row" id="recentList"></div>
-          </section>
-
           <section class="m-section">
             <div class="m-head">
               <h3>⭐ 관심종목</h3>
@@ -118,12 +110,23 @@
             <div id="watchList"><div class="loading">불러오는 중...</div></div>
           </section>
 
-          <section class="m-section">
+          <section class="m-section" id="recentSection" style="display:none">
             <div class="m-head">
-              <h3>🔥 지금 뜨는 테마</h3>
-              <span class="m-hint">요즘 어디로 돈이 몰리는지</span>
+              <h3>🕘 최근 본 종목</h3>
+              <button class="mini-btn" onclick="onClearRecent()">지우기</button>
             </div>
-            <div id="themeList"><div class="loading">불러오는 중...</div></div>
+            <!-- 늘 한 줄 — 넘치면 옆으로 넘긴다 (최근 본 순) -->
+            <div class="chip-row recent-row" id="recentList"></div>
+          </section>
+
+          <!-- 지금 뜨는 테마 — 기본은 접힘. 펼쳤을 때만 받아 온다 (market-ui.js toggleThemes) -->
+          <section class="m-section">
+            <button type="button" class="m-head m-fold" id="themeFold" aria-expanded="false" aria-controls="themeList" onclick="toggleThemes()">
+              <span class="m-fold-title">🔥 지금 뜨는 테마</span>
+              <span class="m-hint">요즘 어디로 돈이 몰리는지</span>
+              <span class="m-fold-caret" aria-hidden="true">▾</span>
+            </button>
+            <div id="themeList" hidden></div>
           </section>
 
           <!-- DT 회원 픽 — 모의투자 참가 회원 집계 (시즌이 없거나 3종목 미만이면 market-ui.js 가 숨긴 채로 둔다) -->
@@ -267,7 +270,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="market.js?v=32"></script>
-  <script src="market-ui.js?v=47"></script>
+  <script src="market-ui.js?v=48"></script>
   <script src="coin.js?v=7"></script>
   <script src="us.js?v=6"></script>
   <script src="app.js?v=66"></script>
