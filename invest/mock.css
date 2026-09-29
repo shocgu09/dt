@@ -88,10 +88,11 @@
 
 /* 주문창 (바텀 시트) */
 .mk-noscroll { overflow: hidden; }
-.mk-sheet-wrap { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center; }
+.mk-sheet-wrap { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center;
+  padding-bottom: var(--kb, 0px); }   /* 키보드가 올라오면 그만큼 위로 (kb.js) */
 .mk-sheet-dim { position: absolute; inset: 0; background: rgba(0,0,0,.55); }
 .mk-sheet {
-  position: relative; width: 100%; max-width: 700px; max-height: 92vh; overflow-y: auto;
+  position: relative; width: 100%; max-width: 700px; max-height: min(92vh, calc(var(--vvh, 100vh) - 12px)); overflow-y: auto;
   background: var(--bg2); border: 1px solid var(--border); border-bottom: none; border-top: 3px solid var(--stock-up);
   padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
   animation: mk-up .22s cubic-bezier(.2,.8,.2,1);

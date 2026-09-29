@@ -626,9 +626,9 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 
 /* 관심 그룹 창 (아래에서 올라오는 창 · 넓은 화면은 가운데) */
 body.wg-noscroll { overflow: hidden; }
-.wg-sheet-wrap { position: fixed; inset: 0; z-index: 55; display: flex; align-items: flex-end; justify-content: center; }
+.wg-sheet-wrap { position: fixed; inset: 0; z-index: 55; display: flex; align-items: flex-end; justify-content: center; padding-bottom: var(--kb, 0px); }
 .wg-dim { position: absolute; inset: 0; background: rgba(0,0,0,.55); }
-.wg-sheet { position: relative; width: 100%; max-width: 440px; max-height: 85vh; overflow-y: auto; background: var(--bg2);
+.wg-sheet { position: relative; width: 100%; max-width: 440px; max-height: min(85vh, calc(var(--vvh, 100vh) - 12px)); overflow-y: auto; background: var(--bg2);
   border: 1px solid var(--border); border-top: 3px solid var(--primary); padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
 @media (min-width: 600px) { .wg-sheet-wrap { align-items: center; } .wg-sheet { border-bottom: 1px solid var(--border); } }
 .wg-sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
@@ -667,19 +667,19 @@ body.wg-noscroll { overflow: hidden; }
     box-shadow: 0 0 0 100vmax rgba(0,0,0,.55); }
   .wg-page-go { position: static; margin-top: 20px; }
 }
-/* 그룹 편집 — ⠿ 끌어 순서 바꾸기 · ✎ 이름 · ✕ 삭제 */
-.wg-ed-list { display: flex; flex-direction: column; gap: 4px; }
-.wg-ed-row { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 4px 6px 4px 2px; background: var(--bg3); }
-.wg-ed-row.base { background: none; }
-.wg-ed-row.dragging { outline: 1px solid var(--primary); box-shadow: 0 6px 18px rgba(0,0,0,.35); position: relative; z-index: 1; }
-.wg-ed-handle { flex-shrink: 0; width: 36px; min-height: 40px; background: none; border: none; color: var(--text3); font-size: 1.1rem;
-  cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+/* 그룹 편집 — [⊖ 삭제] 이름 [✎] ……… [⋮⋮ 끌어서 순서] */
+.wg-ed-list { display: flex; flex-direction: column; margin-bottom: 4px; }
+.wg-ed-row { display: flex; align-items: center; gap: 6px; min-height: 56px; background: var(--bg2); }
+.wg-ed-row.dragging { background: var(--bg3); outline: 1px solid var(--primary); box-shadow: 0 6px 18px rgba(0,0,0,.35); position: relative; z-index: 1; }
+.wg-ed-del, .wg-ed-pen, .wg-ed-handle { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; background: none; border: none; padding: 0; cursor: pointer; }
+.wg-ed-del { color: var(--accent); margin-left: -8px; }
+.wg-ed-del:disabled { color: var(--text3); opacity: .6; cursor: default; }
+.wg-ed-name { min-width: 0; font-size: 1rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wg-ed-pen { color: var(--text2); width: 40px; }
+.wg-ed-pen:hover { color: var(--primary-light); }
+.wg-ed-handle { margin-left: auto; margin-right: -8px; color: var(--text3); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
 .wg-ed-handle:active { cursor: grabbing; color: var(--primary-light); }
-.wg-ed-name { flex: 1; min-width: 0; font-size: .92rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.wg-ed-row em { font-style: normal; font-size: .74rem; color: var(--text3); font-variant-numeric: tabular-nums; flex-shrink: 0; margin-right: 4px; }
-.wg-ed-ico { flex-shrink: 0; width: 38px; height: 38px; background: none; border: none; color: var(--text2); font-size: 1rem; cursor: pointer; }
-.wg-ed-ico:hover { color: var(--text); }
-.wg-ed-ico.del:hover { color: var(--accent); }
 
 .vt-btn {
   background: var(--bg2); border: 1px solid var(--border); color: var(--text3);

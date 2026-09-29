@@ -635,7 +635,7 @@ function wgCodes() { var g = wgCurrent(); return g ? g.codes : watchlist; }
 /** 탭·창에 보일 순서 — 기본은 basePos 자리에 끼운다 */
 function wgOrdered() {
   var list = watchGroups.map(function (g) { return { id: g.id, name: g.name, codes: g.codes }; });
-  list.splice(Math.min(watchBasePos, list.length), 0, { id: 'all', name: '기본', codes: watchlist, base: true });
+  list.splice(Math.min(watchBasePos, list.length), 0, { id: 'all', name: watchBaseName, codes: watchlist, base: true });
   return list;
 }
 
@@ -643,7 +643,7 @@ function renderWatchGroups() {
   var el = document.getElementById('watchGroups');
   if (!el) return;
   wgCurrent();
-  var sig = _wgSel + '|' + watchlist.length + '|' + watchBasePos + '|' + JSON.stringify(watchGroups);
+  var sig = _wgSel + '|' + watchlist.length + '|' + watchBasePos + '|' + watchBaseName + '|' + JSON.stringify(watchGroups);
   if (el.dataset.sig === sig) return;
   el.dataset.sig = sig;
   var chip = function (id, name, n) {
@@ -739,7 +739,7 @@ var _wgPage = null;
 function openWatchGroupNew() { openWgPage({ mode: 'add' }); }
 function openWgPage(opts) {
   var rename = opts.mode === 'rename';
-  var g = rename ? watchGroups.filter(function (x) { return x.id === opts.id; })[0] : null;
+  var g = rename ? (opts.id === 'all' ? { id: 'all', name: watchBaseName } : watchGroups.filter(function (x) { return x.id === opts.id; })[0]) : null;
   if (rename && !g) return;
   if (!rename && watchGroups.length >= WG_MAX) { alert('그룹은 ' + WG_MAX + '개까지 만들 수 있습니다'); return; }
   _wgPage = { mode: rename ? 'rename' : 'add', id: g ? g.id : null, code: opts.code || null, busy: false };
@@ -795,10 +795,13 @@ async function wgPageSave() {
   var name = String((document.getElementById('wgPageInput') || {}).value || '').trim().slice(0, WG_NAME_MAX);
   var msg = function (t) { var m = document.getElementById('wgPageMsg'); if (m) m.textContent = t; };
   if (!name) return;
-  if (name === '기본' || watchGroups.some(function (g) { return g.id !== st.id && g.name === name; })) { msg('같은 이름의 그룹이 있습니다'); return; }
+  var taken = (st.id !== 'all' && name === watchBaseName) || watchGroups.some(function (g) { return g.id !== st.id && g.name === name; });
+  if (taken) { msg('같은 이름의 그룹이 있습니다'); return; }
   st.busy = true; wgPageInput();
   try {
-    if (st.mode === 'rename') {
+    if (st.mode === 'rename' && st.id === 'all') {
+      if (name !== watchBaseName) await saveWatchBaseName(name);
+    } else if (st.mode === 'rename') {
       var cur = watchGroups.filter(function (g) { return g.id === st.id; })[0];
       if (cur && cur.name !== name) await saveWatchGroups(watchGroups.map(function (g) { return g.id === st.id ? { id: g.id, name: name, codes: g.codes } : g; }));
     } else {
@@ -824,23 +827,29 @@ async function wgPageSave() {
 
 /* 그룹 편집 — 이름 변경(✎) · 순서 변경(⠿ 끌기, 키보드 ↑↓) · 삭제(✕) · 새 그룹 추가. 누르는 즉시 저장한다 */
 var _wgEd = null;              // { busy }
+var WG_ICON = {
+  minus: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg>',
+  pen: '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-6"/><path d="M18.4 2.6a2 2 0 0 1 2.9 2.9L12 14.8 8.5 15.5l.7-3.5z"/></svg>',
+  grip: '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>'
+};
 function openWatchGroupEdit() { _wgEd = { busy: false }; renderWgEdit(); }
 function renderWgEdit() {
   var st = _wgEd;
   if (!st) return;
+  // 줄: [⊖ 삭제] 이름 [✎ 이름 변경] ……… [⋮⋮ 끌어서 순서]. 기본은 지울 수 없어 ⊖ 를 흐리게 둔다
   var rows = wgOrdered().map(function (g) {
-    var id = g.id;
-    var name = '<span class="wg-ed-name">' + escapeHtml(g.name) + '</span><em>' + g.codes.length + '</em>';
-    var tools = g.base ? '' :
-        '<button type="button" class="wg-ed-ico" onclick="openWgPage({ mode: \'rename\', id: \'' + id + '\' })" aria-label="' + escapeHtml(g.name) + ' 이름 변경">✎</button>'
-      + '<button type="button" class="wg-ed-ico del" onclick="wgRemove(\'' + id + '\')" aria-label="' + escapeHtml(g.name) + ' 삭제">✕</button>';
+    var id = g.id, nm = escapeHtml(g.name);
     return '<div class="wg-ed-row' + (g.base ? ' base' : '') + '" data-id="' + id + '">'
-      + '<button type="button" class="wg-ed-handle" aria-label="' + escapeHtml(g.name) + ' 순서 바꾸기 (위·아래 화살표)"'
-      +   ' onpointerdown="wgDragStart(event, this)" onkeydown="wgKeyMove(event, \'' + id + '\')">⠿</button>'
-      + name + tools + '</div>';
+      + '<button type="button" class="wg-ed-del" ' + (g.base ? 'disabled aria-label="' + nm + ' 그룹은 지울 수 없습니다"' : 'onclick="wgRemove(\'' + id + '\')" aria-label="' + nm + ' 삭제"') + '>' + WG_ICON.minus + '</button>'
+      + '<span class="wg-ed-name">' + nm + '</span>'
+      + '<button type="button" class="wg-ed-pen" onclick="openWgPage({ mode: \'rename\', id: \'' + id + '\' })" aria-label="' + nm + ' 이름 변경">' + WG_ICON.pen + '</button>'
+      + '<button type="button" class="wg-ed-handle" aria-label="' + nm + ' 순서 바꾸기 (위·아래 화살표)"'
+      +   ' onpointerdown="wgDragStart(event, this)" onkeydown="wgKeyMove(event, \'' + id + '\')">' + WG_ICON.grip + '</button>'
+      + '</div>';
   }).join('');
   var add = watchGroups.length < WG_MAX ? '<button type="button" class="wg-add-btn" onclick="openWgPage({ mode: \'add\' })">+ 새 그룹 추가</button>' : '';
-  wgSheet('그룹 편집', '<div class="wg-ed-list" id="wgEdList">' + rows + '</div>' + add, '이름 변경 · 순서 변경 · 삭제할 수 있습니다');
+  wgSheet('그룹 편집', '<div class="wg-ed-list" id="wgEdList">' + rows + '</div>' + add
+    + '<button type="button" class="btn-submit wg-go" onclick="closeWgSheet()">확인</button>', '이름 변경 · 순서 변경 · 삭제할 수 있습니다');
 }
 
 /** 저장 뒤 탭·목록·창을 다시 그린다 */
