@@ -605,6 +605,10 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 
 /* 관심종목 그룹 탭 — 한 줄, 넘치면 옆으로 */
 .wg-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+/* 관심종목이 비었을 때 안내를 박스로 — 바로 아래 '최근 본 종목'과 이어져 보이지 않게 */
+#watchList > .empty { border: 1px dashed var(--border); padding: 22px 16px; }
+/* 최근 본 종목은 위 관심종목과 선으로 나눈다 */
+#recentSection { border-top: 1px solid var(--border); padding-top: 16px; }
 .wg-row:empty { display: none; }
 .wg-chips { display: flex; gap: 6px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .wg-chips::-webkit-scrollbar { display: none; }
@@ -645,12 +649,22 @@ body.wg-noscroll { overflow: hidden; }
 .wg-new .f-input { flex: 1; min-width: 0; }
 .wg-new .btn-submit { flex-shrink: 0; padding: 0 16px; }
 .wg-go { width: 100%; margin-top: 12px; padding: 12px; }
-.wg-edit-list { display: flex; flex-direction: column; gap: 6px; }
-.wg-edit-row { display: flex; align-items: center; gap: 6px; }
-.wg-edit-row .f-input { flex: 1; min-width: 0; }
-.wg-edit-row em { font-style: normal; font-size: .72rem; color: var(--text3); flex-shrink: 0; min-width: 28px; text-align: right; }
-.wg-edit-row .mini-btn { flex-shrink: 0; min-height: 36px; }
-.wg-edit-row.del .f-input { text-decoration: line-through; opacity: .5; }
+/* 그룹 편집 — ⠿ 끌어 순서 바꾸기 · ✎ 이름 · ✕ 삭제 */
+.wg-ed-list { display: flex; flex-direction: column; gap: 4px; }
+.wg-ed-row { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 4px 6px 4px 2px; background: var(--bg3); }
+.wg-ed-row.base { background: none; }
+.wg-ed-row.dragging { outline: 1px solid var(--primary); box-shadow: 0 6px 18px rgba(0,0,0,.35); position: relative; z-index: 1; }
+.wg-ed-handle { flex-shrink: 0; width: 36px; min-height: 40px; background: none; border: none; color: var(--text3); font-size: 1.1rem;
+  cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.wg-ed-handle:active { cursor: grabbing; color: var(--primary-light); }
+.wg-ed-name { flex: 1; min-width: 0; font-size: .92rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wg-ed-row em { font-style: normal; font-size: .74rem; color: var(--text3); font-variant-numeric: tabular-nums; flex-shrink: 0; margin-right: 4px; }
+.wg-ed-ico { flex-shrink: 0; width: 38px; height: 38px; background: none; border: none; color: var(--text2); font-size: 1rem; cursor: pointer; }
+.wg-ed-ico:hover { color: var(--text); }
+.wg-ed-ico.del:hover { color: var(--accent); }
+.wg-ed-input { flex: 1; min-width: 0; }
+.wg-ed-ok { flex-shrink: 0; min-height: 38px; padding: 0 12px; background: var(--primary); border: none; color: var(--on-primary);
+  font: inherit; font-size: .8rem; font-weight: 800; cursor: pointer; }
 .vt-btn {
   background: var(--bg2); border: 1px solid var(--border); color: var(--text3);
   padding: 4px 9px; font-size: .82rem; cursor: pointer; line-height: 1.2;

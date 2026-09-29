@@ -632,12 +632,18 @@ function wgCurrent() {
   return g || null;
 }
 function wgCodes() { var g = wgCurrent(); return g ? g.codes : watchlist; }
+/** 탭·창에 보일 순서 — 기본은 basePos 자리에 끼운다 */
+function wgOrdered() {
+  var list = watchGroups.map(function (g) { return { id: g.id, name: g.name, codes: g.codes }; });
+  list.splice(Math.min(watchBasePos, list.length), 0, { id: 'all', name: '기본', codes: watchlist, base: true });
+  return list;
+}
 
 function renderWatchGroups() {
   var el = document.getElementById('watchGroups');
   if (!el) return;
   wgCurrent();
-  var sig = _wgSel + '|' + watchlist.length + '|' + JSON.stringify(watchGroups);
+  var sig = _wgSel + '|' + watchlist.length + '|' + watchBasePos + '|' + JSON.stringify(watchGroups);
   if (el.dataset.sig === sig) return;
   el.dataset.sig = sig;
   var chip = function (id, name, n) {
@@ -646,8 +652,7 @@ function renderWatchGroups() {
       + escapeHtml(name) + '<em>' + n + '</em></button>';
   };
   el.innerHTML = '<div class="wg-chips" role="group" aria-label="관심종목 그룹">'
-    + chip('all', '기본', watchlist.length)
-    + watchGroups.map(function (g) { return chip(g.id, g.name, g.codes.length); }).join('')
+    + wgOrdered().map(function (g) { return chip(g.id, g.name, g.codes.length); }).join('')
     + (watchGroups.length < WG_MAX ? '<button type="button" class="wg-chip add" onclick="openWatchGroupNew()">+ 그룹 추가</button>' : '')
     + '</div>'
     + (watchGroups.length ? '<button type="button" class="wg-edit" onclick="openWatchGroupEdit()">그룹 편집</button>' : '');
@@ -689,7 +694,7 @@ function closeWgSheet() {
   var el = document.getElementById('wgSheet');
   if (el) el.remove();
   document.body.classList.remove('wg-noscroll');
-  _wgDraft = null; _favSheet = null;
+  _wgEd = null; _favSheet = null;
 }
 function wgMsg(t) { var m = document.getElementById('wgMsg'); if (m) m.textContent = t || ''; }
 
@@ -716,8 +721,7 @@ function renderFavSheet() {
       + ' onchange="onFavGroup(\'' + id + '\', this.checked)"><span>' + escapeHtml(label) + '</span><em>' + n + '개</em></label>';
   };
   var inner = '<div class="wg-fav-list">'
-    + row('all', '기본', watchlist.length, watchlist.indexOf(st.code) !== -1)
-    + watchGroups.map(function (g) { return row(g.id, g.name, g.codes.length, g.codes.indexOf(st.code) !== -1); }).join('')
+    + wgOrdered().map(function (g) { return row(g.id, g.name, g.codes.length, g.codes.indexOf(st.code) !== -1); }).join('')
     + '</div>';
   if (st.adding) {
     inner += '<div class="wg-new"><input type="text" class="f-input" id="wgName" maxlength="' + WG_NAME_MAX + '" placeholder="새 그룹 이름"'
@@ -776,54 +780,133 @@ async function createWatchGroup(btn) {
   } catch (e) { btn.disabled = false; wgMsg(e && e.message ? e.message : '그룹을 만들지 못했습니다'); }
 }
 
-/* 그룹 편집 — 이름 바꾸기 · 순서 · 삭제를 모아 두었다가 [저장] 에서 한 번에 */
-var _wgDraft = null;
-function openWatchGroupEdit() {
-  _wgDraft = watchGroups.map(function (g) { return { id: g.id, name: g.name, codes: g.codes.slice(), del: false }; });
-  renderWgEdit();
-}
+/* 그룹 편집 — 이름 변경(✎) · 순서 변경(⠿ 끌기, 키보드 ↑↓) · 삭제(✕) · 새 그룹 추가. 누르는 즉시 저장한다 */
+var _wgEd = null;              // { editing: 그룹 id | null, adding, busy }
+function openWatchGroupEdit() { _wgEd = { editing: null, adding: false, busy: false }; renderWgEdit(); }
 function renderWgEdit() {
-  if (!_wgDraft) return;
-  var n = _wgDraft.length;
-  wgSheet('그룹 편집', '<div class="wg-edit-list">' + _wgDraft.map(function (g, i) {
-    return '<div class="wg-edit-row' + (g.del ? ' del' : '') + '">'
-      + '<input type="text" class="f-input" maxlength="' + WG_NAME_MAX + '" value="' + escapeHtml(g.name) + '" aria-label="그룹 이름"'
-      + ' oninput="_wgDraft[' + i + '].name=this.value"' + (g.del ? ' disabled' : '') + '>'
-      + '<em>' + g.codes.length + '개</em>'
-      + '<button type="button" class="mini-btn" onclick="wgMove(' + i + ',-1)" aria-label="위로"' + (i === 0 ? ' disabled' : '') + '>▲</button>'
-      + '<button type="button" class="mini-btn" onclick="wgMove(' + i + ',1)" aria-label="아래로"' + (i === n - 1 ? ' disabled' : '') + '>▼</button>'
-      + '<button type="button" class="mini-btn' + (g.del ? '' : ' danger') + '" onclick="wgDel(' + i + ')">' + (g.del ? '되살리기' : '삭제') + '</button>'
-      + '</div>';
-  }).join('') + '</div>'
-    + '<button type="button" class="btn-submit wg-go" onclick="saveWgEdit(this)">저장</button>',
-    '기본 그룹은 바꿀 수 없습니다. 그룹을 지우면 그 그룹에만 담긴 종목은 관심종목에서 빠집니다.');
+  var st = _wgEd;
+  if (!st) return;
+  var rows = wgOrdered().map(function (g) {
+    var id = g.id, editing = st.editing === id;
+    var name = editing
+      ? '<input type="text" class="f-input wg-ed-input" id="wgEdName" maxlength="' + WG_NAME_MAX + '" value="' + escapeHtml(g.name) + '" aria-label="그룹 이름"'
+        + ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();wgRenameSave()}else if(event.key===\'Escape\'){event.stopPropagation();_wgEd.editing=null;renderWgEdit()}">'
+        + '<button type="button" class="wg-ed-ok" onclick="wgRenameSave()">저장</button>'
+      : '<span class="wg-ed-name">' + escapeHtml(g.name) + '</span><em>' + g.codes.length + '</em>';
+    var tools = g.base || editing ? '' :
+        '<button type="button" class="wg-ed-ico" onclick="_wgEd.editing=\'' + id + '\';renderWgEdit();wgFocus(\'#wgEdName\')" aria-label="' + escapeHtml(g.name) + ' 이름 변경">✎</button>'
+      + '<button type="button" class="wg-ed-ico del" onclick="wgRemove(\'' + id + '\')" aria-label="' + escapeHtml(g.name) + ' 삭제">✕</button>';
+    return '<div class="wg-ed-row' + (g.base ? ' base' : '') + '" data-id="' + id + '">'
+      + '<button type="button" class="wg-ed-handle" aria-label="' + escapeHtml(g.name) + ' 순서 바꾸기 (위·아래 화살표)"'
+      +   ' onpointerdown="wgDragStart(event, this)" onkeydown="wgKeyMove(event, \'' + id + '\')">⠿</button>'
+      + name + tools + '</div>';
+  }).join('');
+  var add = st.adding
+    ? '<div class="wg-new"><input type="text" class="f-input" id="wgName" maxlength="' + WG_NAME_MAX + '" placeholder="새 그룹 이름"'
+      + ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();wgAddSave()}else if(event.key===\'Escape\'){event.stopPropagation();_wgEd.adding=false;renderWgEdit()}">'
+      + '<button type="button" class="btn-submit" onclick="wgAddSave()">추가</button></div>'
+    : (watchGroups.length < WG_MAX ? '<button type="button" class="wg-add-btn" onclick="_wgEd.adding=true;renderWgEdit();wgFocus(\'#wgName\')">+ 새 그룹 추가</button>' : '');
+  wgSheet('그룹 편집', '<div class="wg-ed-list" id="wgEdList">' + rows + '</div>' + add, '이름 변경 · 순서 변경 · 삭제할 수 있습니다');
 }
-function wgMove(i, d) {
-  var j = i + d;
-  if (!_wgDraft || j < 0 || j >= _wgDraft.length) return;
-  var t = _wgDraft[i]; _wgDraft[i] = _wgDraft[j]; _wgDraft[j] = t;
+
+/** 저장 뒤 탭·목록·창을 다시 그린다 */
+async function wgPersist(groups, basePos) {
+  if (!_wgEd || _wgEd.busy) return false;
+  _wgEd.busy = true;
+  try {
+    await saveWatchGroups(groups, basePos);
+    var wl = document.getElementById('watchList');
+    if (wl) wl.dataset.key = '';
+    selectWatchGroup(_wgSel);              // 지운 그룹을 보고 있었다면 기본으로
+    return true;
+  } catch (e) {
+    wgMsg(e && e.message ? e.message : '저장하지 못했습니다');
+    return false;
+  } finally { if (_wgEd) _wgEd.busy = false; }
+}
+
+async function wgRenameSave() {
+  var id = _wgEd && _wgEd.editing;
+  if (!id) return;
+  var name = String((document.getElementById('wgEdName') || {}).value || '').trim().slice(0, WG_NAME_MAX);
+  var cur = watchGroups.filter(function (g) { return g.id === id; })[0];
+  if (!cur) { _wgEd.editing = null; renderWgEdit(); return; }
+  if (!name) { wgMsg('그룹 이름을 입력하세요'); return; }
+  if (name === '기본' || watchGroups.some(function (g) { return g.id !== id && g.name === name; })) { wgMsg('같은 이름의 그룹이 있습니다'); return; }
+  if (name !== cur.name && !await wgPersist(watchGroups.map(function (g) { return g.id === id ? { id: g.id, name: name, codes: g.codes } : g; }))) return;
+  _wgEd.editing = null;
   renderWgEdit();
 }
-function wgDel(i) { if (_wgDraft && _wgDraft[i]) { _wgDraft[i].del = !_wgDraft[i].del; renderWgEdit(); } }
-async function saveWgEdit(btn) {
-  if (!_wgDraft) return;
-  var keep = _wgDraft.filter(function (g) { return !g.del; });
-  for (var i = 0; i < keep.length; i++) {
-    keep[i].name = String(keep[i].name || '').trim().slice(0, WG_NAME_MAX);
-    if (!keep[i].name) { wgMsg('이름이 빈 그룹이 있습니다'); return; }
-    if (keep[i].name === '기본') { wgMsg('\'기본\'은 그룹 이름으로 쓸 수 없습니다'); return; }
-  }
-  var names = keep.map(function (g) { return g.name; });
-  if (names.some(function (x, k) { return names.indexOf(x) !== k; })) { wgMsg('같은 이름의 그룹이 있습니다'); return; }
-  var removedCodes = [];
-  _wgDraft.filter(function (g) { return g.del; }).forEach(function (g) { removedCodes = removedCodes.concat(g.codes); });
-  btn.disabled = true;
-  try {
-    await saveWatchGroups(keep.map(function (g) { return { id: g.id, name: g.name, codes: g.codes }; }));
-    closeWgSheet();
-    selectWatchGroup(_wgSel);           // 지운 그룹을 보고 있었다면 기본으로
-    removedCodes.forEach(function (c) { syncFavButtons(c, isWatched(c)); });
-  } catch (e) { btn.disabled = false; wgMsg(e && e.message ? e.message : '저장하지 못했습니다'); }
+
+async function wgRemove(id) {
+  var g = watchGroups.filter(function (x) { return x.id === id; })[0];
+  if (!g || !confirm('\'' + g.name + '\' 그룹을 삭제할까요?' + (g.codes.length ? '\n이 그룹에만 담긴 종목은 관심종목에서 빠집니다.' : ''))) return;
+  var idx = watchGroups.indexOf(g);
+  var pos = watchBasePos > idx ? watchBasePos - 1 : watchBasePos;        // 기본 앞의 그룹이 빠지면 기본 자리도 한 칸 당긴다
+  if (!await wgPersist(watchGroups.filter(function (x) { return x.id !== id; }), pos)) return;
+  g.codes.forEach(function (c) { syncFavButtons(c, isWatched(c)); });
+  renderWgEdit();
+}
+
+async function wgAddSave() {
+  var name = wgCheckName((document.getElementById('wgName') || {}).value);
+  if (!name) return;
+  if (!await wgPersist(watchGroups.concat([{ id: newGroupId(), name: name, codes: [] }]))) return;
+  _wgEd.adding = false;
+  renderWgEdit();
+}
+
+/** 화면에 놓인 순서대로 저장한다 (끌어 놓기 · 키보드 이동 뒤) */
+async function wgCommitOrder(ids) {
+  var byId = {};
+  watchGroups.forEach(function (g) { byId[g.id] = g; });
+  var groups = ids.filter(function (id) { return id !== 'all' && byId[id]; }).map(function (id) { return byId[id]; });
+  var pos = ids.filter(function (id) { return id === 'all' || byId[id]; }).indexOf('all');
+  var same = pos === watchBasePos && groups.every(function (g, i) { return watchGroups[i] && watchGroups[i].id === g.id; });
+  if (!same) await wgPersist(groups, pos);
+  renderWgEdit();
+}
+
+/* ⠿ 끌기 — 마우스·터치 모두 포인터 이벤트로. 끄는 동안 줄을 바로 옮기고, 놓으면 저장 */
+function wgDragStart(e, handle) {
+  if (!_wgEd || _wgEd.busy || _wgEd.editing) return;
+  if (e.button != null && e.button !== 0) return;
+  e.preventDefault();
+  var row = handle.closest('.wg-ed-row'), list = row && row.parentNode;
+  if (!list) return;
+  row.classList.add('dragging');
+  try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+  var moved = false;
+  var move = function (ev) {
+    var y = ev.clientY;
+    var others = [].filter.call(list.children, function (r) { return r !== row; });
+    var before = others.filter(function (r) { var b = r.getBoundingClientRect(); return y < b.top + b.height / 2; })[0] || null;
+    if (before !== row.nextSibling) { list.insertBefore(row, before); moved = true; }
+  };
+  var up = function () {
+    handle.removeEventListener('pointermove', move);
+    handle.removeEventListener('pointerup', up);
+    handle.removeEventListener('pointercancel', up);
+    row.classList.remove('dragging');
+    if (moved) wgCommitOrder([].map.call(list.children, function (r) { return r.dataset.id; }));
+  };
+  handle.addEventListener('pointermove', move);
+  handle.addEventListener('pointerup', up);
+  handle.addEventListener('pointercancel', up);
+}
+
+/** 키보드로 순서 바꾸기 — 손잡이에 초점을 두고 ↑ ↓ */
+function wgKeyMove(e, id) {
+  if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+  e.preventDefault();
+  var ids = wgOrdered().map(function (g) { return g.id; });
+  var i = ids.indexOf(id), j = i + (e.key === 'ArrowUp' ? -1 : 1);
+  if (i < 0 || j < 0 || j >= ids.length) return;
+  ids.splice(j, 0, ids.splice(i, 1)[0]);
+  wgCommitOrder(ids).then(function () {
+    var h = document.querySelector('#wgEdList .wg-ed-row[data-id="' + id + '"] .wg-ed-handle');
+    if (h) h.focus();
+  });
 }
 
 /* ===== 최근 본 종목 =====

@@ -421,6 +421,7 @@ var usWatchlist = [];        // 관심 미국 주식 — 같은 문서의 us 필
 // 관심종목 그룹 — 같은 문서의 groups 필드 [{ id, name, codes }]. '기본'은 예전부터 쓰던 codes 필드 그대로.
 // 그룹마다 따로 담는다 (한 종목이 여러 그룹에 들어갈 수 있다). 어느 그룹에든 있으면 ♥ 로 보인다.
 var watchGroups = [];
+var watchBasePos = 0;        // 탭·편집 목록에서 '기본'이 놓인 자리 (0 = 맨 앞) — 같은 문서의 basePos 필드
 var WG_MAX = 10, WG_NAME_MAX = 12;
 var _watchlistReady = null;
 
@@ -436,14 +437,17 @@ function sanitizeGroups(list) {
   });
 }
 
-/** 그룹 목록을 통째로 저장한다 (그룹은 회원 한 명이 편집하므로 원소 단위로 나눌 필요가 없다) */
-async function saveWatchGroups(groups) {
+/** 그룹 목록을 통째로 저장한다 (그룹은 회원 한 명이 편집하므로 원소 단위로 나눌 필요가 없다)
+ * @param basePos '기본'의 자리 — 주지 않으면 지금 자리를 그룹 수에 맞춰 유지한다 */
+async function saveWatchGroups(groups, basePos) {
   if (!db || !currentUser) throw new Error('로그인이 필요합니다');
   var clean = sanitizeGroups(groups);
+  var pos = Math.max(0, Math.min(clean.length, Math.round(basePos != null ? basePos : watchBasePos) || 0));
   await db.collection('stock_watchlist').doc(currentUser.uid).set({
-    groups: clean, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    groups: clean, basePos: pos, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
   watchGroups = clean;
+  watchBasePos = pos;
   return clean;
 }
 function newGroupId() { return 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
@@ -462,6 +466,7 @@ async function loadWatchlist() {
     coinWatchlist = (doc.exists && Array.isArray(doc.data().coins)) ? doc.data().coins : [];
     usWatchlist = (doc.exists && Array.isArray(doc.data().us)) ? doc.data().us : [];
     watchGroups = doc.exists ? sanitizeGroups(doc.data().groups) : [];
+    watchBasePos = doc.exists ? Math.max(0, Math.min(watchGroups.length, Number(doc.data().basePos) || 0)) : 0;
   } catch (e) { watchlist = []; coinWatchlist = []; usWatchlist = []; watchGroups = []; }
   return watchlist;
 }
