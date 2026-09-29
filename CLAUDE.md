@@ -19,9 +19,9 @@ DT Club은 드라이브를 사랑하는 사람들의 커뮤니티 웹앱 (PWA)�
 - Primary(앰버): `#d97706` / Light: `#f59e0b` / Dark: `#b45309` (라이트 테마 `#b45309` / `#d97706` / `#92400e`). 보라(`#7c6fff` 계열)는 옛 색이라 쓰지 않는다.
 - Accent: `#ff6b6b` (라이트 `#e05252`)
 - Semantic: Driver `#4ade80`, Passenger `#60a5fa`, Warning `#fbbf24`
-- Dark BG: `#0a0a0e` → `#111118` → `#1a1a24`
+- Dark BG(슬레이트): `#151b24` → `#1c2330` → `#252d3c` — 순수 검정 계열은 쓰지 않는다
 - Light BG: `#f4f4f8` → `#ffffff` → `#ebebf3`
-- Border: `#3a3a4a` (라이트 `#d0d0e0`) · Text: `#f0f0f5` → `#9898b0` → `#6a6a84`
+- Border: `#37425a` (라이트 `#d0d0e0`) · Text: `#eef2f7` → `#9aa6bc` → `#7d8aa3`
 - 버튼 글자색은 `#fff` 대신 `var(--on-primary)`
 
 ### Design Principles

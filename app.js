@@ -5645,9 +5645,9 @@ function drawCostBarChart(canvasId, data, year) {
   const chartW=w-padLeft-padRight, chartH=h-padTop-padBottom;
   const barW = Math.min(chartW/12*0.6, 32), gap = chartW/12;
   const style = getComputedStyle(document.documentElement);
-  const textColor = style.getPropertyValue('--text3').trim()||'#6a6a84';
+  const textColor = style.getPropertyValue('--text3').trim()||'#7d8aa3';
   const primaryColor = style.getPropertyValue('--primary').trim()||'#d97706';
-  const borderColor = style.getPropertyValue('--border').trim()||'#3a3a4a';
+  const borderColor = style.getPropertyValue('--border').trim()||'#37425a';
   ctx.font = '11px Pretendard Variable, sans-serif'; ctx.fillStyle = textColor; ctx.textAlign = 'right';
   for (let i=0;i<=4;i++) { const y=padTop+chartH-(chartH/4*i); ctx.beginPath(); ctx.strokeStyle=borderColor; ctx.lineWidth=0.5; ctx.moveTo(padLeft,y); ctx.lineTo(w-padRight,y); ctx.stroke(); const val=Math.round(max/4*i); ctx.fillText(val>=10000?Math.round(val/10000)+'만':val.toLocaleString(), padLeft-8, y+4); }
   const currentMonth = costState.currentMonth.getMonth();

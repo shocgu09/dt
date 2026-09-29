@@ -690,8 +690,8 @@ async function renderChart(container, bars, tf, mode, opts) {
   var up = cssVar('--stock-up') || '#f0616d';
   var down = cssVar('--stock-down') || '#4d8bff';
   var text = cssVar('--text2') || '#a0a0b8';
-  var grid = cssVar('--border') || '#3a3a4a';
-  var bg = cssVar('--bg') || '#0a0a0e';
+  var grid = cssVar('--border') || '#37425a';
+  var bg = cssVar('--bg') || '#151b24';
 
   var chart = LightweightCharts.createChart(container, {
     width: container.clientWidth,

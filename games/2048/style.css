@@ -1,6 +1,6 @@
 /* 공통 색 토큰은 /tokens.css — index.html 에서 이 파일보다 먼저 불러온다 */
 :root {
-  --tile-bg: #262632;
+  --tile-bg: #2b3444;
 }
 [data-theme="light"] {
   --tile-bg: #e2e2ec;
