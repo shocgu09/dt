@@ -133,26 +133,39 @@ CREATE TABLE IF NOT EXISTS audit_log (
   detail TEXT
 );
 
--- ── 자랑하기 스냅샷 ────────────────────────────────────────────
--- 종목 커뮤니티에 붙이는 "내 수익률" 카드.
--- 숫자를 글(Firestore)에 저장하면 개발자도구로 고칠 수 있으므로, 워커가 장부에서 직접 읽어
--- 여기에 박아 두고 글에는 id 만 남긴다. 클라이언트를 거치지 않아 위조할 수 없다.
--- 자랑한 순간으로 고정한다 — 나중에 주가가 변해도 그때 그 숫자를 보여 준다.
-CREATE TABLE IF NOT EXISTS brags (
+-- ── 랭킹 탭 "계좌 공유" ─────────────────────────────────────────
+-- 회원이 자기 모의투자 계좌(전체 또는 종목 하나)를 카드로 공유하고 댓글을 단다.
+-- 카드 숫자(card JSON)는 워커가 장부에서 직접 계산해 넣는다 — 화면이 보낸 숫자는 쓰지 않으므로 위조할 수 없다.
+-- 공유한 순간으로 고정한다(스냅샷). 실시간 값은 순위표가 보여 준다.
+-- 삭제는 deleted_at 표시만 한다 — 하루 횟수 제한을 지웠다 다시 올리는 식으로 피하지 못하게.
+-- (2026-09-29 종목 커뮤니티 폐기와 함께 옛 brags 테이블을 대신한다)
+CREATE TABLE IF NOT EXISTS shares (
+  id            TEXT PRIMARY KEY,
+  season_id     TEXT NOT NULL,
+  uid           TEXT NOT NULL,
+  nickname      TEXT NOT NULL,
+  kind          TEXT NOT NULL,              -- account | stock
+  code          TEXT,                       -- kind=stock 일 때
+  card          TEXT NOT NULL,              -- 스냅샷 JSON
+  body          TEXT NOT NULL DEFAULT '',   -- 한마디 (200자 이하)
+  comment_count INTEGER NOT NULL DEFAULT 0,
+  created_at    INTEGER NOT NULL,
+  deleted_at    INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_shares_season ON shares(season_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_shares_uid ON shares(uid, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS share_comments (
   id         TEXT PRIMARY KEY,
-  season_id  TEXT NOT NULL,
+  share_id   TEXT NOT NULL,
   uid        TEXT NOT NULL,
   nickname   TEXT NOT NULL,
-  code       TEXT NOT NULL,
-  name       TEXT NOT NULL,
-  qty        INTEGER NOT NULL,
-  avg_price  INTEGER NOT NULL,          -- cost / qty (반올림)
-  price      INTEGER NOT NULL,          -- 자랑한 순간의 현재가
-  pnl        INTEGER NOT NULL,          -- 평가손익(원) — 손실이면 음수
-  pnl_rate   REAL NOT NULL,             -- 수익률(%)
-  created_at INTEGER NOT NULL
+  body       TEXT NOT NULL,                 -- 300자 이하
+  created_at INTEGER NOT NULL,
+  deleted_at INTEGER
 );
-CREATE INDEX IF NOT EXISTS idx_brags_uid ON brags(uid, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_share_comments_share ON share_comments(share_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_share_comments_uid ON share_comments(uid, created_at DESC);
 
 -- ── AI 계좌 평가 ──────────────────────────────────────────────
 -- 지표는 워커가 D1 에서 직접 계산하고(metrics), AI 는 그걸 문장으로만 푼다(body).

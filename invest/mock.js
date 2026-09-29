@@ -576,7 +576,8 @@ var Mock = (function () {
 
   /** 떠 있는 창이 하나도 없을 때만 뒤 화면 스크롤을 푼다 */
   function syncNoScroll() {
-    var any = document.getElementById('mkSheet') || document.getElementById('mkJoin') || document.getElementById('mkAux');
+    var any = document.getElementById('mkSheet') || document.getElementById('mkJoin') || document.getElementById('mkAux')
+      || document.getElementById('mkShare');
     document.body.classList.toggle('mk-noscroll', !!any);
   }
 
@@ -585,6 +586,7 @@ var Mock = (function () {
     if (document.getElementById('mkAux')) { if (!aux || !aux.busy) closeAux(); return true; }
     if (document.getElementById('mkSheet')) { tryCloseSheet(); return true; }
     if (document.getElementById('mkJoin')) { closeJoin(); return true; }
+    if (document.getElementById('mkShare')) { if (!_shSheet || !_shSheet.busy) closeShare(); return true; }
     return false;
   }
 
@@ -778,8 +780,285 @@ var Mock = (function () {
       }
     } catch (e) { /* 명예의 전당은 없어도 된다 */ }
     if (currentTab !== 'ranking') return;
-    el.innerHTML = h + (_hallHtml || '');
+    // 순위표는 10초마다 다시 그린다 — 계좌 공유(#rkShare)는 따로 두어 펼친 댓글·입력 중인 글이 날아가지 않게 한다
+    var fresh = !document.getElementById('rkBoard');
+    if (fresh) el.innerHTML = '<div id="rkBoard"></div><div id="rkShare"></div><div id="rkHall"></div>';
+    document.getElementById('rkBoard').innerHTML = h;
+    document.getElementById('rkHall').innerHTML = _hallHtml || '';
+    if (fresh) loadShares(true);
     _rankBuilt = true;
+  }
+
+  /* ===== 랭킹 탭 · 계좌 공유 =====
+   * 카드 숫자는 서버가 장부로 만든다 — 화면은 종류(계좌 전체/종목 하나)·종목코드·한마디만 보낸다.
+   * 공유한 시각의 값으로 고정된 스냅샷이고, 실시간 값은 바로 위 순위표가 보여 준다.
+   * 읽기·댓글은 시즌에 참가하지 않은 회원도 할 수 있고, 공유는 참가자만 할 수 있다.
+   */
+  var SHARE_PREVIEW = 3, SHARE_POS_PREVIEW = 3, SHARE_MAX = 200, COMMENT_MAX = 300;
+  function newShareState() { return { items: [], next: null, loading: false, err: null, all: false, open: {}, cm: {} }; }
+  var _sh = newShareState();
+  var _shSheet = null;         // 공유 시트 { kind, code, body, busy }
+
+  function signedWon(n) { return (n > 0 ? '+' : '') + fmtNum(Math.round(n)) + '원'; }
+  function linkText(t) { var e = escapeHtml(t); return typeof linkifyBody === 'function' ? linkifyBody(e) : e; }
+
+  async function loadShares(reset) {
+    if (reset) _sh = newShareState();
+    if (_sh.loading) return;
+    _sh.loading = true;
+    renderShares();
+    try {
+      var d = await api('/shares' + (!reset && _sh.next ? '?before=' + encodeURIComponent(_sh.next) : ''));
+      _sh.items = reset ? d.items : _sh.items.concat(d.items);
+      _sh.next = d.next; _sh.err = null;
+    } catch (e) { _sh.err = e.message; }
+    _sh.loading = false;
+    renderShares();
+  }
+
+  function renderShares() {
+    var el = document.getElementById('rkShare');
+    if (!el) return;
+    // 다시 그려도 쓰던 댓글이 지워지지 않게 (다른 카드의 댓글을 받아 오는 사이 등)
+    var drafts = {};
+    el.querySelectorAll('textarea[data-cm]').forEach(function (t) { if (t.value) drafts[t.dataset.cm] = t.value; });
+    var focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.cm : null;
+
+    var joined = !!(season && season.joined);
+    var h = '<section class="m-section mk-share"><div class="m-head"><h3>📤 계좌 공유</h3>'
+      + (joined ? '<button class="mini-btn mk-share-btn" onclick="Mock.openShare()">내 계좌 공유</button>' : '') + '</div>';
+    if (!_sh.items.length) {
+      h += _sh.err ? '<div class="empty">' + escapeHtml(_sh.err) + '</div>'
+        : (_sh.loading ? '<div class="loading">불러오는 중</div>' : '<div class="mk-share-empty">아직 공유된 계좌가 없습니다.</div>');
+    } else {
+      h += (_sh.all ? _sh.items : _sh.items.slice(0, SHARE_PREVIEW)).map(shareCardHtml).join('');
+      if (!_sh.all && _sh.items.length > SHARE_PREVIEW) {
+        h += '<button class="mini-btn mk-share-more" onclick="Mock.moreShares()">공유 더 보기</button>';
+      } else if (_sh.all && _sh.next) {
+        h += '<button class="mini-btn mk-share-more" onclick="Mock.moreShares()"' + (_sh.loading ? ' disabled' : '') + '>'
+          + (_sh.loading ? '불러오는 중' : '더 불러오기') + '</button>';
+      }
+    }
+    h += '<div class="mk-note">' + (joined
+      ? '모의투자 계좌를 다른 회원과 나눠 보세요. 카드는 공유한 시각의 값으로 고정됩니다.'
+      : '시즌에 참가하면 계좌를 공유할 수 있습니다. 카드는 공유한 시각의 값으로 고정됩니다.') + '</div></section>';
+    el.innerHTML = h;
+
+    Object.keys(drafts).forEach(function (id) { var t = document.getElementById('cmi-' + id); if (t) t.value = drafts[id]; });
+    if (focused) { var f = document.getElementById('cmi-' + focused); if (f) try { f.focus({ preventScroll: true }); } catch (e) {} }
+  }
+
+  function sharePosHtml(p, big) {
+    var name = '<button type="button" class="mk-sc-name" onclick="openStock(\'' + escapeJsArg(p.code) + '\',\'' + escapeJsArg(p.name) + '\')">'
+      + escapeHtml(p.name) + '</button>';
+    if (big) {
+      return '<div class="mk-sc-big">'
+        + '<div class="mk-sc-row">' + name + '<span class="mk-sc-q">' + fmtNum(p.qty) + '주</span></div>'
+        + '<div class="mk-sc-eq"><b class="' + signClass(p.pnl) + '">' + signedWon(p.pnl) + '</b>' + rateHtml(p.pnlRate) + '</div>'
+        + '<div class="mk-sc-sub">평단 ' + fmtNum(p.avgPrice) + ' → 현재 ' + fmtNum(p.price) + ' · 평가금액 ' + won(p.value) + '</div></div>';
+    }
+    return '<div class="mk-sc-pos">'
+      + '<div class="mk-sc-row">' + name + '<span class="mk-sc-q">' + fmtNum(p.qty) + '주</span>' + rateHtml(p.pnlRate) + '</div>'
+      + '<div class="mk-sc-sub">평단 ' + fmtNum(p.avgPrice) + ' → ' + fmtNum(p.price) + ' · <span class="' + signClass(p.pnl) + '">' + signedWon(p.pnl) + '</span></div></div>';
+  }
+
+  function shareCardHtml(s) {
+    var c = s.card || {}, open = !!_sh.open[s.id];
+    var meta = [];
+    if (c.kind === 'account' && c.rank) meta.push(c.rank + '위' + (c.participants ? '/' + fmtNum(c.participants) + '명' : ''));
+    meta.push(kstHM(c.at || s.createdAt) + (c.closing ? ' 종가' : '') + ' 기준');
+    var h = '<article class="mk-sc" id="sc-' + s.id + '">'
+      + '<div class="mk-sc-top"><b class="mk-sc-who">' + escapeHtml(s.nickname) + (s.mine ? ' <i class="mk-tag">나</i>' : '') + '</b>'
+      +   '<span class="mk-sc-meta">' + escapeHtml(meta.join(' · ')) + '</span><span class="mk-sc-badge">모의투자</span></div>';
+    if (c.kind === 'account') {
+      var ps = c.positions || [], total = c.holdings != null ? c.holdings : ps.length;
+      h += '<div class="mk-sc-eq"><span class="mk-sc-lbl">총자산</span><b>' + won(c.equity) + '</b>'
+        + '<span class="' + signClass(c.pnl) + '">' + signedWon(c.pnl) + ' (' + fmtRate(c.returnRate) + ')</span></div>';
+      h += (open ? ps : ps.slice(0, SHARE_POS_PREVIEW)).map(function (p) { return sharePosHtml(p, false); }).join('');
+      if (!ps.length) h += '<div class="mk-sc-sub">보유 종목 없음</div>';
+      if (!open && total > SHARE_POS_PREVIEW) {
+        h += '<button type="button" class="mk-sc-link" onclick="Mock.toggleShare(\'' + s.id + '\')">보유 ' + fmtNum(total) + '종목 모두 보기</button>';
+      } else if (open && total > ps.length) {
+        h += '<div class="mk-sc-sub">외 ' + fmtNum(total - ps.length) + '종목</div>';
+      }
+      h += '<div class="mk-sc-foot">현금 ' + won(c.cash) + (c.equity > 0 ? ' (' + (c.cash / c.equity * 100).toFixed(1) + '%)' : '')
+        + ' · 실현손익 <span class="' + signClass(c.realizedPnl) + '">' + signedWon(c.realizedPnl) + '</span></div>';
+    } else if (c.position) {
+      h += sharePosHtml(c.position, true);
+    }
+    if (s.body) h += '<div class="mk-sc-body">' + linkText(s.body) + '</div>';
+    h += '<div class="mk-sc-act"><button type="button" class="comment-action" onclick="Mock.toggleShare(\'' + s.id + '\')" aria-expanded="' + open + '">'
+      + '💬 ' + fmtNum(s.commentCount) + '</button>'
+      + (s.canDelete ? '<button type="button" class="comment-action danger" onclick="Mock.deleteShare(\'' + s.id + '\')">삭제</button>' : '') + '</div>';
+    if (open) h += shareCommentsHtml(s);
+    return h + '</article>';
+  }
+
+  function shareCommentsHtml(s) {
+    var list = _sh.cm[s.id];
+    var h = '<div class="mk-sc-cm">';
+    if (!list) h += '<div class="mk-sc-sub">댓글을 불러오는 중</div>';
+    else if (list.err) h += '<div class="mk-sc-sub">' + escapeHtml(list.err) + '</div>';
+    else h += list.map(function (c) {
+      return '<div class="mk-sc-c"><div class="mk-sc-row"><b>' + escapeHtml(c.nickname) + '</b><span class="mk-sc-ct">' + escapeHtml(kstHM(c.createdAt)) + '</span>'
+        + (c.canDelete ? '<button type="button" class="comment-action danger" onclick="Mock.deleteComment(\'' + s.id + '\',\'' + c.id + '\')">삭제</button>' : '')
+        + '</div><div class="mk-sc-cb">' + linkText(c.body) + '</div></div>';
+    }).join('');
+    h += '<div class="mk-sc-cw"><textarea class="comment-input" id="cmi-' + s.id + '" data-cm="' + s.id + '" maxlength="' + COMMENT_MAX + '" rows="1"'
+      + ' aria-label="댓글" placeholder="댓글을 남겨 보세요"></textarea>'
+      + '<button type="button" class="btn-submit" onclick="Mock.submitComment(\'' + s.id + '\', this)">등록</button></div></div>';
+    return h;
+  }
+
+  function findShare(id) { return _sh.items.filter(function (x) { return x.id === id; })[0] || null; }
+
+  async function loadShareComments(id) {
+    try { _sh.cm[id] = (await api('/shares/' + id + '/comments')).items; }
+    catch (e) {
+      if (e.code === 'gone') { dropShare(id); toast('삭제된 공유입니다'); return; }
+      _sh.cm[id] = { err: e.message };
+    }
+    renderShares();
+  }
+
+  function dropShare(id) {
+    _sh.items = _sh.items.filter(function (x) { return x.id !== id; });
+    delete _sh.open[id]; delete _sh.cm[id];
+    renderShares();
+  }
+
+  function toggleShare(id) {
+    _sh.open[id] = !_sh.open[id];
+    renderShares();
+    if (_sh.open[id] && !_sh.cm[id]) loadShareComments(id);
+  }
+
+  function moreShares() {
+    if (!_sh.all) { _sh.all = true; renderShares(); return; }
+    if (_sh.next) loadShares(false);
+  }
+
+  async function deleteShare(id) {
+    var s = findShare(id);
+    if (!s || !confirm(s.mine ? '이 공유를 삭제할까요?' : s.nickname + '님의 공유를 삭제할까요?')) return;
+    try { await api('/shares/' + id, 'DELETE'); dropShare(id); toast('삭제했습니다'); }
+    catch (e) { if (e.code === 'gone') dropShare(id); toast(e.message, 'err'); }
+  }
+
+  async function submitComment(id, btn) {
+    var t = document.getElementById('cmi-' + id);
+    var text = t ? t.value.trim() : '';
+    if (!text) { if (t) t.focus(); return; }
+    btn.disabled = true;
+    try {
+      var r = await api('/shares/' + id + '/comments', 'POST', { body: text });
+      if (Array.isArray(_sh.cm[id])) _sh.cm[id].push(r.comment);
+      var s = findShare(id);
+      if (s && r.commentCount != null) s.commentCount = r.commentCount;
+      t.value = '';
+      renderShares();
+    } catch (e) {
+      btn.disabled = false;
+      if (e.code === 'gone') { dropShare(id); }
+      toast(e.message, 'err');
+    }
+  }
+
+  async function deleteComment(id, cid) {
+    if (!confirm('댓글을 삭제할까요?')) return;
+    try {
+      var r = await api('/shares/' + id + '/comments/' + cid, 'DELETE');
+      if (Array.isArray(_sh.cm[id])) _sh.cm[id] = _sh.cm[id].filter(function (c) { return c.id !== cid; });
+      var s = findShare(id);
+      if (s && r.commentCount != null) s.commentCount = r.commentCount;
+      renderShares();
+    } catch (e) { toast(e.message, 'err'); if (e.code === 'gone') loadShareComments(id); }
+  }
+
+  /* ── 공유 시트 ── */
+  function openShare() {
+    if (!season || !season.joined) return;
+    _shSheet = { kind: 'account', code: null, body: '', busy: false };
+    renderShareSheet();
+    if (!account) refreshAccount().then(function () { if (_shSheet) renderShareSheet(); }).catch(function () {});
+  }
+
+  function closeShare() {
+    _shSheet = null;
+    var el = document.getElementById('mkShare');
+    if (el) el.remove();
+    syncNoScroll();
+  }
+
+  function renderShareSheet() {
+    var st = _shSheet;
+    if (!st) return;
+    var el = document.getElementById('mkShare'), fresh = !el;
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'mkShare';
+      el.className = 'mk-sheet-wrap';
+      document.body.appendChild(el);
+    }
+    var pos = (account && account.positions) || [];
+    var seg = function (k, label, dis) {
+      var on = st.kind === k;
+      return '<button type="button" class="seg' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="Mock.shareKind(\'' + k + '\')"'
+        + (dis ? ' disabled' : '') + '>' + label + '</button>';
+    };
+    var h = '<div class="mk-sheet-head"><span class="mk-sheet-title">내 계좌 공유</span>'
+      + '<button class="mini-btn mk-x" onclick="Mock.closeShare()" aria-label="닫기">✕</button></div>'
+      + '<div class="seg-row sub mk-seg2" role="group">' + seg('account', '계좌 전체') + seg('stock', '종목 하나', account && !pos.length) + '</div>';
+    if (st.kind === 'account') {
+      h += '<div class="mk-share-desc">총자산·수익률·순위, 보유 종목(수량·평단·현재가·손익)과 현금이 카드에 담깁니다.</div>';
+    } else if (!account) {
+      h += '<div class="mk-share-desc">계좌를 불러오는 중</div>';
+    } else {
+      h += '<div class="mk-share-pick" role="group" aria-label="공유할 종목">' + pos.map(function (p) {
+        var on = st.code === p.code;
+        return '<button type="button" class="mk-share-opt' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="Mock.shareCode(\'' + escapeJsArg(p.code) + '\')">'
+          + '<b>' + escapeHtml(p.name) + '</b><span>' + fmtNum(p.qty) + '주 · ' + rateHtml(p.pnlRate) + '</span></button>';
+      }).join('') + '</div>';
+    }
+    h += '<textarea class="comment-input mk-share-text" id="mkShareText" maxlength="' + SHARE_MAX + '" aria-label="한마디"'
+      + ' placeholder="한마디 (선택)" oninput="Mock.shareInput(this)">' + escapeHtml(st.body) + '</textarea>'
+      + '<div class="mk-share-cnt" id="mkShareCnt">' + st.body.length + '/' + SHARE_MAX + '</div>'
+      + '<div class="mk-sheet-msg" id="mkShareMsg" role="alert"></div>'
+      + '<button type="button" class="btn-submit mk-share-go" onclick="Mock.submitShare(this)"'
+      + ((st.kind === 'stock' && !st.code) || st.busy ? ' disabled' : '') + '>' + (st.busy ? '공유하는 중' : '공유하기') + '</button>';
+    el.innerHTML = '<div class="mk-sheet-dim" onclick="Mock.closeShare()"></div>'
+      + '<div class="mk-sheet mk-share-sheet' + (fresh ? '' : ' still') + '" role="dialog" aria-modal="true" aria-label="내 계좌 공유" tabindex="-1">' + h + '</div>';
+    syncNoScroll();
+    if (fresh) focusDialog(el);
+  }
+
+  function shareKind(k) { if (!_shSheet || _shSheet.busy) return; _shSheet.kind = k === 'stock' ? 'stock' : 'account'; renderShareSheet(); }
+  function shareCode(code) { if (!_shSheet || _shSheet.busy) return; _shSheet.code = code; renderShareSheet(); }
+  function shareInput(t) {
+    if (!_shSheet) return;
+    _shSheet.body = t.value;
+    var c = document.getElementById('mkShareCnt');
+    if (c) c.textContent = t.value.length + '/' + SHARE_MAX;
+  }
+
+  async function submitShare() {
+    var st = _shSheet;
+    if (!st || st.busy || (st.kind === 'stock' && !st.code)) return;
+    st.busy = true;
+    renderShareSheet();
+    try {
+      var r = await api('/shares', 'POST', { kind: st.kind, code: st.kind === 'stock' ? st.code : undefined, body: st.body.trim() });
+      closeShare();
+      _sh.items.unshift(r.share);
+      renderShares();
+      toast(r.left != null ? '공유했습니다 · 오늘 ' + r.left + '번 남음' : '공유했습니다');
+    } catch (e) {
+      if (!_shSheet) return;
+      _shSheet.busy = false;
+      renderShareSheet();
+      var m = document.getElementById('mkShareMsg');
+      if (m) { m.textContent = e.message; m.className = 'mk-sheet-msg err'; }
+    }
   }
 
   /* ===== 종목 상세의 매수·매도 바 ===== */
@@ -1895,6 +2174,8 @@ var Mock = (function () {
     mountAdmin: mountAdmin,
     saveSeason: saveSeason, loadSeasons: loadSeasons, pickSeason: pickSeason,
     newSeasonForm: newSeasonForm, onSeasonIdInput: onSeasonIdInput,
-    addHoliday: addHoliday, removeHoliday: removeHoliday
+    addHoliday: addHoliday, removeHoliday: removeHoliday,
+    openShare: openShare, closeShare: closeShare, shareKind: shareKind, shareCode: shareCode, shareInput: shareInput, submitShare: submitShare,
+    toggleShare: toggleShare, moreShares: moreShares, deleteShare: deleteShare, submitComment: submitComment, deleteComment: deleteComment
   };
 })();

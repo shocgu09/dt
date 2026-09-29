@@ -172,10 +172,33 @@ function sessionInfo(now) {
   return { canOrder, phase, limitOnly: phase === 'pre_market' || phase === 'after_market', holiday: weekday && !tradingDay, serverTime: now };
 }
 
-const publicBrag = (b, seasonName) => ({
-  id: b.id, code: b.code, name: b.name, nickname: b.nickname,
-  qty: b.qty, avgPrice: b.avg_price, price: b.price,
-  pnl: b.pnl, pnlRate: b.pnl_rate, seasonName: seasonName || null, createdAt: b.created_at
+// ── 랭킹 탭 "계좌 공유" ──
+const SHARE_DAILY_MAX = 3;          // 회원당 하루 공유 (지운 것도 센다 — 지웠다 다시 올려 제한을 피하지 못하게)
+const SHARE_GAP_MS = 60000;         // 연달아 공유 간격
+const SHARE_BODY_MAX = 200;
+const SHARE_PAGE = 20;
+const SHARE_POS_MAX = 20;           // 카드에 넣는 보유 종목 수
+const COMMENT_DAILY_MAX = 50;
+const COMMENT_BODY_MAX = 300;
+const round2 = (v) => Math.round(v * 100) / 100;
+
+/** 글·댓글 본문 — 제어문자·과한 빈 줄을 정리한다. 길이는 자르지 않고 거절한다 (화면이 이미 막는다) */
+function cleanText(v, max, label) {
+  const t = String(v == null ? '' : v).replace(/\r\n?/g, '\n')
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u200b-\u200f\u2028-\u202e]/g, '')
+    .replace(/\n{3,}/g, '\n\n').trim();
+  if (t.length > max) throw new HttpError(400, `${label}은 ${max}자까지 쓸 수 있습니다`);
+  return t;
+}
+/** uid 는 내보내지 않는다 — 순위표와 같은 원칙. 대신 내 글인지·지울 수 있는지만 알려 준다 */
+const publicShare = (r, uid, isAdmin) => ({
+  id: r.id, nickname: r.nickname, kind: r.kind, code: r.code || null, card: JSON.parse(r.card),
+  body: r.body, commentCount: r.comment_count, createdAt: r.created_at,
+  mine: r.uid === uid, canDelete: r.uid === uid || isAdmin
+});
+const publicComment = (c, uid, isAdmin) => ({
+  id: c.id, nickname: c.nickname, body: c.body, createdAt: c.created_at,
+  mine: c.uid === uid, canDelete: c.uid === uid || isAdmin
 });
 
 const publicOrder = (o) => o && ({
@@ -236,19 +259,6 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     return { items: rows };
   }
 
-  // 글을 그릴 때 여러 개를 한 번에 — 글마다 따로 부르면 화면 하나에 수십 번이 된다
-  if (path === '/brag' && method === 'GET') {
-    const ids = String(url.searchParams.get('ids') || '')
-      .split(',').map((x) => x.trim()).filter((x) => /^[0-9a-f-]{36}$/i.test(x)).slice(0, 30);
-    if (!ids.length) return { items: [] };
-    const rows = (await db.prepare(
-      `SELECT b.*, s.name AS season_name FROM brags b
-       LEFT JOIN seasons s ON s.id = b.season_id
-       WHERE b.id IN (${ids.map(() => '?').join(',')})`
-    ).bind(...ids).all()).results || [];
-    return { items: rows.map((r) => publicBrag(r, r.season_name)) };
-  }
-
   const season = await E.activeSeason(db, now);
   // 장이 끝난 미체결 주문은 크론(08:00~20:10)이 만료시키지만, 크론이 놓친 뒤 화면을 열면 여기서 정리한다
   // (안 그러면 '주문 가능 금액'이 밤새 묶인 채로 보인다). UPDATE 1건이라 비용은 없다.
@@ -265,6 +275,86 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       next, joined: !!account, participants: count ? count.n : 0, isAdmin, ...sessionInfo(now)
     };
   }
+  /* ── 계좌 공유: 읽기·댓글·삭제 — 시즌에 참가하지 않은 회원도 읽고 댓글을 달 수 있다 ──
+   * 공유하기(POST /shares)만 참가자 전용이라 아래 계좌 확인 뒤에 있다. */
+  if (path === '/shares' && method === 'GET') {
+    if (!season) return { season: null, items: [], next: null };
+    // 다음 페이지 기준은 (시각, id) — 같은 밀리초에 두 건이 들어와도 경계에서 빠지지 않게
+    const cur = String(url.searchParams.get('before') || '');
+    const mm = /^(\d{1,15})_([0-9a-f-]{36})$/i.exec(cur);
+    const bAt = mm ? Number(mm[1]) : now + 1, bId = mm ? mm[2] : 'ffffffff';
+    const rows = (await db.prepare(
+      `SELECT * FROM shares WHERE season_id=? AND deleted_at IS NULL AND (created_at < ? OR (created_at = ? AND id < ?))
+       ORDER BY created_at DESC, id DESC LIMIT ?`
+    ).bind(season.id, bAt, bAt, bId, SHARE_PAGE).all()).results || [];
+    const last = rows[rows.length - 1];
+    return {
+      season: { id: season.id, name: season.name },
+      items: rows.map((r) => publicShare(r, uid, isAdmin)),
+      next: rows.length === SHARE_PAGE ? `${last.created_at}_${last.id}` : null
+    };
+  }
+  const sm = /^\/shares\/([0-9a-f-]{36})(?:\/comments(?:\/([0-9a-f-]{36}))?)?$/i.exec(path);
+  if (sm) {
+    const share = await db.prepare(`SELECT * FROM shares WHERE id=?`).bind(sm[1]).first();
+    if (!share || share.deleted_at) throw new HttpError(404, '삭제된 공유입니다', 'gone');
+    const withComments = path.includes('/comments');
+    const countSql = `UPDATE shares SET comment_count = (SELECT COUNT(*) FROM share_comments WHERE share_id=? AND deleted_at IS NULL) WHERE id=?`;
+
+    if (!withComments && method === 'DELETE') {
+      if (share.uid !== uid && !isAdmin) throw new HttpError(403, '내 공유만 삭제할 수 있습니다');
+      const stmts = [
+        db.prepare(`UPDATE shares SET deleted_at=? WHERE id=?`).bind(now, share.id),
+        db.prepare(`UPDATE share_comments SET deleted_at=? WHERE share_id=? AND deleted_at IS NULL`).bind(now, share.id)
+      ];
+      if (share.uid !== uid) stmts.push(db.prepare(`INSERT INTO audit_log (at, actor, action, detail) VALUES (?,?,?,?)`)
+        .bind(now, uid, 'share.delete', JSON.stringify({ id: share.id, author: share.nickname })));
+      await db.batch(stmts);
+      return { ok: true };
+    }
+    if (withComments && !sm[2] && method === 'GET') {
+      const rows = (await db.prepare(
+        `SELECT * FROM share_comments WHERE share_id=? AND deleted_at IS NULL ORDER BY created_at ASC, id ASC LIMIT 300`
+      ).bind(share.id).all()).results || [];
+      return { items: rows.map((c) => publicComment(c, uid, isAdmin)) };
+    }
+    if (withComments && !sm[2] && method === 'POST') {
+      // 지난 시즌 공유는 목록에서 빠진다 — 그 공유에 댓글이 새로 쌓이지 않게 한다
+      if (!season || share.season_id !== season.id) throw new HttpError(409, '지난 시즌 공유에는 댓글을 달 수 없습니다', 'closed');
+      const input = await body();
+      const text = cleanText(input.body, COMMENT_BODY_MAX, '댓글');
+      if (!text) throw new HttpError(400, '댓글 내용을 입력하세요');
+      const [cnt, last] = await db.batch([
+        db.prepare(`SELECT COUNT(*) AS n FROM share_comments WHERE uid=? AND created_at >= ?`).bind(uid, kstDayStart(now)),
+        db.prepare(`SELECT body, created_at FROM share_comments WHERE uid=? ORDER BY created_at DESC LIMIT 1`).bind(uid)
+      ]);
+      if ((cnt.results[0] || {}).n >= COMMENT_DAILY_MAX) throw new HttpError(429, `댓글은 하루 ${COMMENT_DAILY_MAX}개까지 달 수 있습니다`, 'quota');
+      const prev = last.results[0];
+      if (prev && prev.body === text && now - prev.created_at < 10 * 60000) throw new HttpError(409, '같은 댓글을 방금 달았습니다', 'dup');
+      const id = crypto.randomUUID();
+      const nick = profile.name || '회원';
+      await db.batch([
+        db.prepare(`INSERT INTO share_comments (id, share_id, uid, nickname, body, created_at) VALUES (?,?,?,?,?,?)`)
+          .bind(id, share.id, uid, nick, text, now),
+        db.prepare(countSql).bind(share.id, share.id)
+      ]);
+      const count = await db.prepare(`SELECT comment_count AS n FROM shares WHERE id=?`).bind(share.id).first();
+      return { comment: publicComment({ id, uid, nickname: nick, body: text, created_at: now }, uid, isAdmin), commentCount: count ? count.n : null };
+    }
+    if (withComments && sm[2] && method === 'DELETE') {
+      const c = await db.prepare(`SELECT * FROM share_comments WHERE id=? AND share_id=?`).bind(sm[2], share.id).first();
+      if (!c || c.deleted_at) throw new HttpError(404, '이미 삭제된 댓글입니다', 'gone');
+      if (c.uid !== uid && !isAdmin) throw new HttpError(403, '내 댓글만 삭제할 수 있습니다');
+      const stmts = [db.prepare(`UPDATE share_comments SET deleted_at=? WHERE id=?`).bind(now, c.id), db.prepare(countSql).bind(share.id, share.id)];
+      if (c.uid !== uid) stmts.push(db.prepare(`INSERT INTO audit_log (at, actor, action, detail) VALUES (?,?,?,?)`)
+        .bind(now, uid, 'share.comment.delete', JSON.stringify({ id: c.id, share: share.id, author: c.nickname })));
+      await db.batch(stmts);
+      const count = await db.prepare(`SELECT comment_count AS n FROM shares WHERE id=?`).bind(share.id).first();
+      return { ok: true, commentCount: count ? count.n : null };
+    }
+    throw new HttpError(405, '지원하지 않는 요청입니다');
+  }
+
   /* ── ③ DT 회원 보유 현황 — 참가하지 않은 회원도 볼 수 있다. 이름·평단·수량은 내보내지 않는다 ── */
   if (path === '/crowd' && method === 'GET') {
     const code = url.searchParams.get('code');
@@ -417,38 +507,52 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     }
   }
 
-  /* ── 자랑하기 ──────────────────────────────────────────────
-   * 커뮤니티 글에 붙일 "내 수익률" 스냅샷.
-   * 숫자는 여기(서버)에서 장부를 직접 읽어 만든다 — 클라이언트가 보낸 값은 쓰지 않는다.
-   * 글에는 이 id 만 저장되므로 수익률을 고쳐 쓸 수 없다.
+  /* ── 계좌 공유하기 (시즌 참가자) ─────────────────────────────
+   * 카드 숫자는 여기서 장부를 읽어 계산한다 — 화면이 보낸 숫자는 쓰지 않는다.
+   * 가격 기준은 계좌 화면·순위표와 같은 pricer(장중 시세, 시즌 마지막 날 장 마감 뒤에는 15:30 종가).
    */
-  if (path === '/brag' && method === 'POST') {
+  if (path === '/shares' && method === 'POST') {
     const input = await body();
-    if (!isCode(input.code)) throw new HttpError(400, '종목코드가 올바르지 않습니다');
-    const pos = await db.prepare(
-      `SELECT code, name, qty, cost FROM positions WHERE season_id=? AND uid=? AND code=?`
-    ).bind(season.id, uid, input.code).first();
-    if (!pos || pos.qty <= 0) throw new HttpError(409, '보유 중인 종목만 자랑할 수 있습니다', 'no_position');
+    const kind = input.kind === 'stock' ? 'stock' : 'account';
+    const text = cleanText(input.body, SHARE_BODY_MAX, '한마디');
+    if (kind === 'stock' && !isCode(input.code)) throw new HttpError(400, '종목코드가 올바르지 않습니다');
+    const [cnt, last] = await db.batch([
+      db.prepare(`SELECT COUNT(*) AS n FROM shares WHERE uid=? AND created_at >= ?`).bind(uid, kstDayStart(now)),
+      db.prepare(`SELECT MAX(created_at) AS at FROM shares WHERE uid=?`).bind(uid)
+    ]);
+    if ((cnt.results[0] || {}).n >= SHARE_DAILY_MAX) throw new HttpError(429, `공유는 하루 ${SHARE_DAILY_MAX}번까지 할 수 있습니다`, 'quota');
+    const lastAt = (last.results[0] || {}).at;
+    if (lastAt && now - lastAt < SHARE_GAP_MS) throw new HttpError(429, '방금 공유했습니다. 1분 뒤에 다시 시도하세요', 'cooldown');
 
-    const quote = await naver.getQuote(pos.code).catch(() => null);
-    if (!quote || quote.price == null) throw new HttpError(503, '시세를 가져오지 못했습니다. 잠시 후 다시 시도하세요');
-
-    const nick = profile.name || account.nickname;
-    const avg = Math.round(pos.cost / pos.qty);
-    const value = quote.price * pos.qty;
-    const pnl = value - pos.cost;
-    const rate = pos.cost > 0 ? Math.round((pnl / pos.cost) * 10000) / 100 : 0;
+    const [view, board] = await Promise.all([accountView(db, season, account, now), liveBoard(db, season, now).catch(() => null)]);
+    const me = board ? board.rows.find((r) => r.uid === uid) : null;
+    const pos = (p) => ({
+      code: p.code, name: p.name, qty: p.qty, avgPrice: p.avgPrice, price: p.price,
+      value: p.value, pnl: p.pnl, pnlRate: round2(p.pnlRate)
+    });
+    const base = { v: 1, kind, seasonName: season.name, at: now, live: view.live, closing: view.closing };
+    let card;
+    if (kind === 'account') {
+      const list = view.positions.slice().sort((x, y) => y.value - x.value);
+      card = {
+        ...base, seed: season.seed, equity: view.equity, pnl: view.equity - season.seed, returnRate: round2(view.returnRate),
+        cash: view.cash, stock: view.stock, realizedPnl: view.realizedPnl,
+        rank: me ? me.rank : null, participants: board ? board.rows.length : null,
+        holdings: list.length, positions: list.slice(0, SHARE_POS_MAX).map(pos)
+      };
+    } else {
+      const p = view.positions.find((x) => x.code === input.code);
+      if (!p) throw new HttpError(409, '보유 중인 종목만 공유할 수 있습니다', 'no_position');
+      card = { ...base, position: pos(p) };
+    }
     const id = crypto.randomUUID();
-
+    const nick = profile.name || account.nickname;
+    const row = { id, season_id: season.id, uid, nickname: nick, kind, code: kind === 'stock' ? input.code : null,
+      card: JSON.stringify(card), body: text, comment_count: 0, created_at: now };
     await db.prepare(
-      `INSERT INTO brags (id, season_id, uid, nickname, code, name, qty, avg_price, price, pnl, pnl_rate, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
-    ).bind(id, season.id, uid, nick, pos.code, pos.name, pos.qty, avg, quote.price, pnl, rate, now).run();
-
-    return { brag: publicBrag({
-      id, season_id: season.id, nickname: nick, code: pos.code, name: pos.name,
-      qty: pos.qty, avg_price: avg, price: quote.price, pnl, pnl_rate: rate, created_at: now
-    }, season.name) };
+      `INSERT INTO shares (id, season_id, uid, nickname, kind, code, card, body, comment_count, created_at) VALUES (?,?,?,?,?,?,?,?,0,?)`
+    ).bind(row.id, row.season_id, row.uid, row.nickname, row.kind, row.code, row.card, row.body, row.created_at).run();
+    return { share: publicShare(row, uid, isAdmin), left: SHARE_DAILY_MAX - (((cnt.results[0] || {}).n || 0) + 1) };
   }
 
   /* ── AI 계좌 평가 ────────────────────────────────────────

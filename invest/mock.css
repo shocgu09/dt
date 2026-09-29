@@ -11,9 +11,9 @@
 .mk-bar-label { color: var(--text2); font-weight: 600; }
 .mk-bar-eq { font-variant-numeric: tabular-nums; }
 .mk-bar-go { margin-left: auto; color: var(--primary-light); font-size: .76rem; }
-.mk-bar .up, .mk-card .up, .mk-pos .up, .mk-rank .up, .mk-hold .up, .mk-hall .up { color: var(--stock-up); }
-.mk-bar .down, .mk-card .down, .mk-pos .down, .mk-rank .down, .mk-hold .down, .mk-hall .down { color: var(--stock-down); }
-.mk-bar .flat, .mk-card .flat, .mk-pos .flat, .mk-rank .flat { color: var(--stock-flat); }
+.mk-bar .up, .mk-card .up, .mk-pos .up, .mk-rank .up, .mk-hold .up, .mk-hall .up, .mk-sc .up, .mk-share-opt .up { color: var(--stock-up); }
+.mk-bar .down, .mk-card .down, .mk-pos .down, .mk-rank .down, .mk-hold .down, .mk-hall .down, .mk-sc .down, .mk-share-opt .down { color: var(--stock-down); }
+.mk-bar .flat, .mk-card .flat, .mk-pos .flat, .mk-rank .flat, .mk-sc .flat, .mk-share-opt .flat { color: var(--stock-flat); }
 
 .mk-bar-rank { font-weight: 800; color: var(--primary-light); }
 .mk-bar-rank i { font-style: normal; font-weight: 600; color: var(--text3); font-size: .74rem; }
@@ -337,3 +337,61 @@
 .mk-ca-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .mk-ca-btns .mk-act { flex: 1 1 auto; }
 .mk-ca-hist { margin-top: 14px; }
+
+/* ── 랭킹 탭 · 계좌 공유 (카드는 공유한 시각의 스냅샷) ── */
+.mk-share .m-head .mk-share-btn { margin-left: auto; border-color: var(--primary); color: var(--primary-light); font-weight: 800; }
+.mk-share-empty { font-size: .82rem; color: var(--text3); padding: 14px; border: 1px dashed var(--border); text-align: center; }
+.mk-share-more { display: block; margin: 10px auto 0; }
+.mk-sc { background: var(--bg2); border: 1px solid var(--border); border-left: 3px solid var(--primary); padding: 12px 14px; margin-bottom: 8px; }
+.mk-sc-top { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; min-width: 0; }
+.mk-sc-who { font-size: .88rem; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mk-sc-meta { font-size: .72rem; color: var(--text3); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mk-sc-badge { margin-left: auto; flex-shrink: 0; font-size: .66rem; font-weight: 800; color: var(--primary-light);
+  border: 1px solid rgba(var(--primary-rgb),.5); padding: 1px 6px; }
+.mk-sc-eq { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+.mk-sc-eq b { font-size: 1.12rem; font-weight: 800; letter-spacing: -.3px; }
+.mk-sc-eq span { font-size: .84rem; font-weight: 800; }
+.mk-sc-lbl { font-size: .72rem !important; font-weight: 700 !important; color: var(--text3); }
+.mk-sc-pos { padding: 7px 0; border-top: 1px solid var(--border); }
+.mk-sc-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.mk-sc-row .up, .mk-sc-row .down, .mk-sc-row .flat { margin-left: auto; font-size: .82rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.mk-sc-name { background: none; border: none; padding: 0; font: inherit; font-size: .86rem; font-weight: 700; color: var(--text);
+  cursor: pointer; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.mk-sc-name:hover { color: var(--primary-light); text-decoration: underline; text-underline-offset: 2px; }
+.mk-sc-q { font-size: .76rem; color: var(--text2); font-weight: 700; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.mk-sc-sub { font-size: .72rem; color: var(--text3); font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; line-height: 1.5; }
+.mk-sc-big { border-top: 1px solid var(--border); padding-top: 8px; }
+.mk-sc-big .mk-sc-name { font-size: .95rem; }
+.mk-sc-big .mk-sc-eq { margin: 6px 0 2px; }
+.mk-sc-link { display: block; background: none; border: none; padding: 6px 0 0; font: inherit; font-size: .76rem; font-weight: 700;
+  color: var(--primary-light); cursor: pointer; }
+.mk-sc-foot { font-size: .74rem; color: var(--text2); font-weight: 600; padding-top: 7px; margin-top: 2px; border-top: 1px solid var(--border);
+  font-variant-numeric: tabular-nums; }
+.mk-sc-body { font-size: .86rem; color: var(--text); line-height: 1.6; margin-top: 10px; white-space: pre-wrap; word-break: break-word; }
+.mk-sc-act { display: flex; gap: 4px; margin-top: 8px; }
+.mk-sc-act .comment-action { min-height: 32px; }
+.mk-sc-cm { margin-top: 8px; padding-left: 10px; border-left: 2px solid var(--border); }
+.mk-sc-c { padding: 6px 0; }
+.mk-sc-c + .mk-sc-c { border-top: 1px solid var(--border); }
+.mk-sc-c b { font-size: .8rem; font-weight: 800; }
+.mk-sc-ct { font-size: .68rem; color: var(--text3); font-weight: 600; }
+.mk-sc-c .comment-action { margin-left: auto; min-height: 28px; }
+.mk-sc-cb { font-size: .84rem; line-height: 1.55; margin-top: 2px; white-space: pre-wrap; word-break: break-word; }
+.mk-sc-cw { display: flex; gap: 6px; margin-top: 8px; align-items: flex-end; }
+.mk-sc-cw .comment-input { flex: 1; min-height: 38px; }
+.mk-sc-cw .btn-submit { flex-shrink: 0; }
+
+/* 공유 시트 — 매수(상승색) 주문창과 헷갈리지 않게 위 테두리는 메인 색 */
+.mk-sheet.mk-share-sheet { border-top-color: var(--primary); }
+.mk-share-desc { font-size: .8rem; color: var(--text2); line-height: 1.6; margin-bottom: 10px; }
+.mk-share-pick { display: flex; flex-direction: column; border: 1px solid var(--border); margin-bottom: 10px; max-height: 40vh; overflow-y: auto; }
+.mk-share-opt { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; min-height: 44px;
+  background: var(--bg2); border: none; border-bottom: 1px solid var(--border); padding: 10px 12px; color: var(--text);
+  font: inherit; font-size: .86rem; text-align: left; cursor: pointer; }
+.mk-share-opt:last-child { border-bottom: none; }
+.mk-share-opt span { font-size: .78rem; color: var(--text2); font-weight: 700; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.mk-share-opt.on { background: var(--bg3); box-shadow: inset 3px 0 0 var(--primary); }
+.mk-share-text { width: 100%; min-height: 70px; }
+.mk-share-cnt { font-size: .7rem; color: var(--text3); text-align: right; margin-top: 4px; }
+.mk-share-go { width: 100%; padding: 13px; font-size: .92rem; }
+
