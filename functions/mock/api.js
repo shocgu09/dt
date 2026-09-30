@@ -274,7 +274,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
 
   if (path === '/hall' && method === 'GET') {
     const rows = (await db.prepare(
-      `SELECT f.season_id, s.name AS season_name, f.rank, f.uid, f.nickname, f.equity, f.fills, s.seed
+      `SELECT f.season_id, s.name AS season_name, s.start_date, s.end_date, f.rank, f.uid, f.nickname, f.equity, f.fills, s.seed
        FROM final_rankings f JOIN seasons s ON s.id = f.season_id
        WHERE f.rank <= 10 ORDER BY s.end_date DESC, f.rank ASC`
     ).all()).results || [];

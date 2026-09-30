@@ -820,12 +820,15 @@ var Mock = (function () {
       var hall = await api('/hall');
       if (hall.items.length) {
         var by = {};
-        hall.items.forEach(function (r) { (by[r.season_id] = by[r.season_id] || { name: r.season_name, rows: [] }).rows.push(r); });
+        hall.items.forEach(function (r) { (by[r.season_id] = by[r.season_id] || { name: r.season_name, start: r.start_date, end: r.end_date, rows: [] }).rows.push(r); });
+        // '2026-09-22' → '26.9.22'
+        var ymd = function (iso) { var p = String(iso || '').split('-'); return p.length === 3 ? p[0].slice(2) + '.' + (+p[1]) + '.' + (+p[2]) : ''; };
         var info = hall.seasons || {};
         _hallHtml = '<section class="m-section"><div class="m-head"><h3>🏛 명예의 전당</h3></div>'
           + Object.keys(by).map(function (k) {
               var si = info[k] || {}, seed = by[k].rows[0].seed, me = si.me;
               return '<div class="mk-hall"><div class="mk-hall-name">' + escapeHtml(by[k].name)
+                +   (by[k].start ? '<span class="mk-hall-n">' + ymd(by[k].start) + ' ~ ' + ymd(by[k].end) + '</span>' : '')
                 +   (si.participants ? '<span class="mk-hall-n">' + fmtNum(si.participants) + '명 참가</span>' : '') + '</div>'
                 + by[k].rows.slice(0, 3).map(function (r) {
                     return '<div class="mk-hall-row' + (r.me ? ' me' : '') + '"><span>' + (['🥇', '🥈', '🥉'][r.rank - 1] || r.rank) + ' ' + escapeHtml(r.nickname)
@@ -1000,12 +1003,24 @@ var Mock = (function () {
 
     var joined = !!(season && season.joined);
     // 시즌이 둘 이상이면 고를 수 있게 — 지난 시즌 글은 읽기만 (글쓰기·댓글 입력 숨김)
+    // 시즌이 쌓여도 한 줄에 들어가게 — 최근 2개는 버튼, 그 전 시즌은 '이전 시즌' 목록으로 모은다 (서버는 최근 12개까지 준다)
+    var SEASON_BTNS = 2;
+    var recent = _sh.seasons.slice(0, SEASON_BTNS), older = _sh.seasons.slice(SEASON_BTNS);
+    var olderOn = older.some(function (x) { return x.id === _sh.shown; });
     var picker = _sh.seasons.length > 1
-      ? '<div class="seg-row sub mk-sh-seasons" role="group" aria-label="시즌 고르기">' + _sh.seasons.map(function (x) {
+      ? '<div class="seg-row sub mk-sh-seasons" role="group" aria-label="시즌 고르기">' + recent.map(function (x) {
           var on = x.id === _sh.shown;
           return '<button type="button" class="seg' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="Mock.shareSeason(\'' + escapeJsArg(x.id) + '\')">'
             + escapeHtml(x.name) + (x.closed ? ' <i>종료</i>' : '') + '</button>';
-        }).join('') + '</div>'
+        }).join('')
+        + (older.length
+            ? '<select class="seg mk-sh-older' + (olderOn ? ' on' : '') + '" aria-label="이전 시즌" onchange="if(this.value)Mock.shareSeason(this.value)">'
+              + '<option value="">이전 시즌 ▾</option>'
+              + older.map(function (x) {
+                  return '<option value="' + escapeHtml(x.id) + '"' + (x.id === _sh.shown ? ' selected' : '') + '>' + escapeHtml(x.name) + '</option>';
+                }).join('') + '</select>'
+            : '')
+        + '</div>'
       : '';
     var h = '<section class="m-section mk-share">' + picker
       + '<div class="m-head"><span class="m-hint">' + (_sh.closed ? '지난 시즌 글 · 읽기만 할 수 있습니다' : '회원들의 이야기와 모의투자 계좌') + '</span>'

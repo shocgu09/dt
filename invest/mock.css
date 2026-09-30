@@ -502,3 +502,5 @@
 .mk-sh-seasons { margin-bottom: 12px; }
 .mk-sh-seasons .seg i { font-style: normal; font-size: .64rem; font-weight: 700; color: var(--text3); margin-left: 3px; }
 .mk-sh-seasons .seg.on i { color: inherit; opacity: .8; }
+.mk-sh-older { appearance: none; -webkit-appearance: none; text-align: center; text-align-last: center; font: inherit; cursor: pointer; }
+.mk-hall-name .mk-hall-n + .mk-hall-n::before { content: '·'; margin-right: 6px; }
