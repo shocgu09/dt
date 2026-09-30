@@ -257,3 +257,13 @@ CREATE TABLE IF NOT EXISTS ca_checks (
   result TEXT NOT NULL,
   PRIMARY KEY (code, ymd)
 );
+
+-- 재테크 닉네임 (2026-09-30) — 순위표·명예의 전당·커뮤니티에는 실명 대신 이걸 보여 준다 (functions/mock/nick.js)
+-- nick_key: 띄어쓰기 빼고 소문자 — 이걸로 중복을 막는다. auto=1 은 자동으로 만든 닉네임, changed_at 은 회원이 직접 바꾼 시각
+CREATE TABLE IF NOT EXISTS nicknames (
+  uid        TEXT PRIMARY KEY,
+  nick       TEXT NOT NULL,
+  nick_key   TEXT NOT NULL UNIQUE,
+  auto       INTEGER NOT NULL DEFAULT 1,
+  changed_at INTEGER
+);

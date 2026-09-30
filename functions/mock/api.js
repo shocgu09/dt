@@ -8,6 +8,7 @@ import * as H from './holidays.js';
 import { profileOf } from '../lib/profile.js';
 import * as E from './engine.js';
 import * as C from './corp.js';
+import * as N from './nick.js';
 
 const isCode = (c) => /^[0-9A-Z]{6}$/.test(c || '');
 
@@ -195,8 +196,8 @@ function cleanText(v, max, label) {
   return t;
 }
 /** uid 는 내보내지 않는다 — 순위표와 같은 원칙. 대신 내 글인지·지울 수 있는지만 알려 준다 */
-const publicShare = (r, uid, isAdmin) => ({
-  id: r.id, nickname: r.nickname, kind: r.kind, code: r.code || null, card: JSON.parse(r.card),
+const publicShare = (r, uid, isAdmin, nicks) => ({
+  id: r.id, nickname: (nicks && nicks.get(r.uid)) || '회원', ...(isAdmin ? { realName: r.nickname } : {}), kind: r.kind, code: r.code || null, card: JSON.parse(r.card),
   body: r.body, images: JSON.parse(r.images || '[]'), commentCount: r.comment_count, createdAt: r.created_at,
   mine: r.uid === uid, canDelete: r.uid === uid || isAdmin
 });
@@ -216,8 +217,8 @@ function decodeImages(list) {
     return { data: b64, size };
   });
 }
-const publicComment = (c, uid, isAdmin) => ({
-  id: c.id, nickname: c.nickname, body: c.body, createdAt: c.created_at,
+const publicComment = (c, uid, isAdmin, nicks) => ({
+  id: c.id, nickname: (nicks && nicks.get(c.uid)) || '회원', ...(isAdmin ? { realName: c.nickname } : {}), body: c.body, createdAt: c.created_at,
   mine: c.uid === uid, canDelete: c.uid === uid || isAdmin
 });
 
@@ -272,11 +273,24 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
 
   if (path === '/hall' && method === 'GET') {
     const rows = (await db.prepare(
-      `SELECT f.season_id, s.name AS season_name, f.rank, f.nickname, f.equity, f.fills, s.seed
+      `SELECT f.season_id, s.name AS season_name, f.rank, f.uid, f.nickname, f.equity, f.fills, s.seed
        FROM final_rankings f JOIN seasons s ON s.id = f.season_id
        WHERE f.rank <= 10 ORDER BY s.end_date DESC, f.rank ASC`
     ).all()).results || [];
-    return { items: rows };
+    // 저장된 이름은 그때의 실명이다 — 지난 시즌도 지금 닉네임으로 보여 준다
+    const nicks = await N.nicksFor(db, rows.map((r) => r.uid));
+    return { items: rows.map(({ uid: u, nickname, ...r }) => ({ ...r, nickname: nicks.get(u) || '회원', ...(isAdmin ? { realName: nickname } : {}) })) };
+  }
+
+  /* ── 닉네임 — 참가하지 않은 회원도 (커뮤니티 댓글에 쓰인다) ── */
+  if (path === '/nickname' && method === 'GET') {
+    return N.nickView(await N.myNick(db, uid), now);
+  }
+  if (path === '/nickname' && method === 'POST') {
+    const input = await body();
+    const r = await N.setNick(db, uid, input.nick, now);
+    if (r.error) throw new HttpError(r.status, r.error, r.code);
+    return N.nickView(r, now);
   }
 
   const season = await E.activeSeason(db, now);
@@ -308,9 +322,10 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
        ORDER BY created_at DESC, id DESC LIMIT ?`
     ).bind(season.id, bAt, bAt, bId, SHARE_PAGE).all()).results || [];
     const last = rows[rows.length - 1];
+    const nicks = await N.nicksFor(db, rows.map((r) => r.uid));
     return {
       season: { id: season.id, name: season.name },
-      items: rows.map((r) => publicShare(r, uid, isAdmin)),
+      items: rows.map((r) => publicShare(r, uid, isAdmin, nicks)),
       next: rows.length === SHARE_PAGE ? `${last.created_at}_${last.id}` : null
     };
   }
@@ -380,7 +395,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       ...images.map((im, i) => db.prepare(`INSERT INTO share_images (id, share_id, uid, data, size, created_at) VALUES (?,?,?,?,?,?)`)
         .bind(imgIds[i], id, uid, im.data, im.size, now))
     ]);
-    return { share: publicShare(row, uid, isAdmin), left: (isShare ? SHARE_DAILY_MAX : POST_DAILY_MAX) - (used + 1) };
+    return { share: publicShare(row, uid, isAdmin, await N.nicksFor(db, [uid])), left: (isShare ? SHARE_DAILY_MAX : POST_DAILY_MAX) - (used + 1) };
   }
   /* 사진 — 회원만 (토큰 필요). 지운 글의 사진은 내보내지 않는다. id 가 바뀌지 않으므로 오래 캐시한다 */
   const im = /^\/share-images\/([0-9a-f-]{36})$/i.exec(path);
@@ -417,7 +432,8 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       const rows = (await db.prepare(
         `SELECT * FROM share_comments WHERE share_id=? AND deleted_at IS NULL ORDER BY created_at ASC, id ASC LIMIT 300`
       ).bind(share.id).all()).results || [];
-      return { items: rows.map((c) => publicComment(c, uid, isAdmin)) };
+      const nicks = await N.nicksFor(db, rows.map((c) => c.uid));
+      return { items: rows.map((c) => publicComment(c, uid, isAdmin, nicks)) };
     }
     if (withComments && !sm[2] && method === 'POST') {
       // 지난 시즌 공유는 목록에서 빠진다 — 그 공유에 댓글이 새로 쌓이지 않게 한다
@@ -440,7 +456,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
         db.prepare(countSql).bind(share.id, share.id)
       ]);
       const count = await db.prepare(`SELECT comment_count AS n FROM shares WHERE id=?`).bind(share.id).first();
-      return { comment: publicComment({ id, uid, nickname: nick, body: text, created_at: now }, uid, isAdmin), commentCount: count ? count.n : null };
+      return { comment: publicComment({ id, uid, nickname: nick, body: text, created_at: now }, uid, isAdmin, await N.nicksFor(db, [uid])), commentCount: count ? count.n : null };
     }
     if (withComments && sm[2] && method === 'DELETE') {
       const c = await db.prepare(`SELECT * FROM share_comments WHERE id=? AND share_id=?`).bind(sm[2], share.id).first();
@@ -511,11 +527,13 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
   if (path === '/leaderboard' && method === 'GET') {
     const board = await liveBoard(db, season, now);
     const me = board.rows.find((r) => r.uid === uid);
+    const nicks = await N.nicksFor(db, board.rows.map((r) => r.uid));
     return {
       season: { id: season.id, name: season.name, seed: season.seed, endDate: season.end_date },
       asOf: board.asOf, live: board.live, closing: board.closing,
-      // uid 는 내보내지 않는다 — 순위표에는 닉네임만 (key 는 갱신 간 순위 변동 표시용 해시)
-      rows: board.rows.map((r) => ({ key: rowKey(r.uid), rank: r.rank, nickname: r.nickname, equity: r.equity, fills: r.fills, me: r.uid === uid })),
+      // uid 는 내보내지 않는다 — 순위표에는 닉네임만 (key 는 갱신 간 순위 변동 표시용 해시). 실명은 관리자에게만
+      rows: board.rows.map((r) => ({ key: rowKey(r.uid), rank: r.rank, nickname: nicks.get(r.uid) || '회원',
+        ...(isAdmin ? { realName: r.nickname } : {}), equity: r.equity, fills: r.fills, me: r.uid === uid })),
       me: me ? { rank: me.rank, equity: me.equity } : null
     };
   }
@@ -523,7 +541,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
   const account = await E.getAccount(db, season.id, uid);
   if (!account) throw new HttpError(409, '시즌 참가 후 이용할 수 있습니다', 'not_joined');
   if (account.status !== 'active') throw new HttpError(403, '이용이 제한된 계정입니다');
-  // 개명했으면 순위표 이름도 맞춘다
+  // 개명했으면 저장된 실명도 맞춘다 (화면에는 닉네임이 나가고, 실명은 관리자 확인용)
   if (profile.name && profile.name !== account.nickname) {
     await db.prepare(`UPDATE accounts SET nickname=? WHERE season_id=? AND uid=?`).bind(profile.name, season.id, uid).run();
   }

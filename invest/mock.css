@@ -474,3 +474,22 @@
 .mk-share-cnt { font-size: .7rem; color: var(--text3); text-align: right; margin-top: 4px; }
 .mk-share-go { width: 100%; padding: 13px; font-size: .92rem; }
 
+
+/* ── 닉네임 (랭킹 탭 위) ── */
+.mk-nick { background: var(--bg2); border: 1px solid var(--border); padding: 9px 12px; margin-bottom: 14px; }
+.mk-nick.ask { border-color: var(--primary); border-left: 3px solid var(--primary); }
+.mk-nick-lead { font-size: .8rem; color: var(--text2); line-height: 1.6; margin-bottom: 8px; }
+.mk-nick-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mk-nick-k { font-size: .74rem; color: var(--text3); font-weight: 700; flex: 0 0 auto; }
+.mk-nick-v { font-size: .9rem; font-weight: 800; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mk-nick-auto { font-style: normal; font-size: .62rem; font-weight: 800; color: var(--text3); border: 1px solid var(--border); padding: 0 4px; flex: 0 0 auto; }
+.mk-nick-act { margin-left: auto; display: flex; gap: 6px; flex: 0 0 auto; }
+.mk-nick-next { font-size: .7rem; color: var(--text3); font-weight: 600; }
+.mk-nick.edit .f-input { flex: 1; min-width: 0; margin: 0; }
+.mk-nick.edit .btn-submit, .mk-nick.edit .btn-ghost { flex: 0 0 auto; padding: 8px 12px; margin: 0; width: auto; }
+.mk-nick-hint { font-size: .7rem; color: var(--text3); margin-top: 6px; }
+.mk-nick-err { font-size: .74rem; color: #f87171; font-weight: 700; margin-top: 4px; }
+.mk-nick-err:empty { display: none; }
+#mkJoinNick { width: 100%; margin: 4px 0 0; }
+/* 관리자에게만 오는 실명 — 닉네임 옆에 작게 */
+.mk-real { font-size: .68rem; font-weight: 600; color: var(--text3); margin-left: 4px; }

@@ -629,7 +629,7 @@ var Mock = (function () {
           '시세는 네이버 증권 기준입니다. 정규장은 KRX 가격, 프리 · 애프터마켓은 NXT · KRX 시간외 가격을 따르며 지연 · 오류가 있을 수 있습니다. 시세 제공 오류로 인한 체결은 확인 후 정정 또는 취소될 수 있습니다.',
           '체결은 실제 호가창이 아니라 <b>주문 뒤에 실제로 거래된 가격 · 수량</b>으로 판정합니다. 판정은 최대 1분 간격이라 실제보다 늦게 체결이 표시될 수 있고, 시장가는 판정 시점의 현재가로 체결되어 호가 스프레드 · 잔량 · VI 는 반영되지 않습니다.',
           '주문은 거래일(주말 · 휴장일 제외)에만 접수됩니다. 액면분할 · 병합 · 무상증자는 보유 수량에, 유상증자 권리락은 현금으로 자동 반영됩니다. 현금배당은 반영되지 않습니다.',
-          '순위표에 <b>이름 · 총자산 · 수익률 · 체결 건수</b>가 회원들에게 공개됩니다. 보유 종목은 공개되지 않습니다. 종목별 보유 인원 · 평균 수익률은 3명 이상일 때 이름 없이 합계로만 보입니다.',
+          '순위표에 <b>닉네임 · 총자산 · 수익률 · 체결 건수</b>가 회원들에게 공개됩니다. 실명과 보유 종목은 공개되지 않습니다. 종목별 보유 인원 · 평균 수익률은 3명 이상일 때 이름 없이 합계로만 보입니다.',
           '1인 1계정입니다. 부정한 방법이 확인되면 순위에서 제외됩니다.'
         ])
       + '<div class="mk-jf-h">📌 매매 규칙</div>'
@@ -644,9 +644,26 @@ var Mock = (function () {
           '시장가 매수는 현재가 기준으로 주문 가능 금액을 잡습니다. 체결가가 올라 금액이 모자라면 살 수 있는 수량까지만 체결되고 나머지는 취소됩니다.',
           '신용 · 미수 · 공매도는 없습니다.'
         ])
+      + '<div class="mk-jf-h">🏷️ 닉네임</div>'
+      + '<p class="mk-jf-lead">순위표와 커뮤니티에는 실명 대신 닉네임이 보입니다. <span id="mkJoinAuto"></span></p>'
+      + '<input id="mkJoinNick" class="f-input" maxlength="10" autocomplete="off" aria-label="닉네임" placeholder="원하는 닉네임 (띄어쓰기 없이 2~10자)">'
+      + '<div class="mk-nick-err" id="mkJoinNickErr" role="alert"></div>'
       + '<label class="mk-jf-check"><input type="checkbox" id="mkAgree" onchange="document.getElementById(\'mkJoinGo\').disabled = !this.checked"> 위 내용을 확인했습니다</label>'
       + '<div class="mk-jf-btns"><button class="btn-ghost" onclick="Mock.closeJoin()">취소</button>'
       + '<button class="btn-submit" id="mkJoinGo" disabled onclick="Mock.join(this)">' + fmtCompact(s.seed) + '원 받고 시작하기</button></div>');
+    fillJoinAuto();
+  }
+
+  // 참가 창 2단계가 열리면 자동 닉네임을 받아 안내에 채운다
+  function fillJoinAuto() {
+    loadNick().then(function (n) {
+      var b = document.getElementById('mkJoinAuto');
+      if (!b) return;
+      // 이미 직접 정한 닉네임이 있으면(커뮤니티에서 먼저 정했다) 그걸 그대로 쓴다고 알린다
+      b.textContent = !n ? '비워 두면 자동 닉네임으로 시작하고, 나중에 랭킹 탭에서 바꿀 수 있습니다.'
+        : n.auto ? '비워 두면 자동 닉네임 \'' + n.nick + '\'(으)로 시작하고, 나중에 랭킹 탭에서 바꿀 수 있습니다.'
+        : '비워 두면 지금 닉네임 \'' + n.nick + '\'을(를) 그대로 씁니다.';
+    });
   }
 
   function joinDone(cash) {
@@ -659,7 +676,15 @@ var Mock = (function () {
   }
 
   async function join(btn) {
+    // 닉네임을 적었으면 먼저 정한다 — 안 되는 이름이면 참가하기 전에 멈춰서 고치게 한다
+    var nIn = document.getElementById('mkJoinNick'), nErr = document.getElementById('mkJoinNickErr');
+    var want = nIn ? nIn.value.trim() : '';
+    if (want && !/^[가-힣A-Za-z0-9]{2,10}$/.test(want)) { nErr.textContent = '닉네임은 띄어쓰기 없이 한글·영문·숫자 2~10자로 정해 주세요'; nIn.focus(); return; }
     btn.disabled = true; btn.textContent = '처리 중';
+    if (want && !(_nick && _nick.nick === want)) {
+      try { _nick = await api('/nickname', 'POST', { nick: want }); if (nErr) nErr.textContent = ''; }
+      catch (e) { nErr.textContent = e.message; nIn.focus(); btn.disabled = false; btn.textContent = '다시 시도'; return; }
+    }
     try {
       var r = await api('/join', 'POST');
       await refreshSeason();
@@ -754,7 +779,7 @@ var Mock = (function () {
         _prevRank[k] = r.rank;
         return '<div class="mk-rank' + (r.me ? ' me' : '') + move + '">'
           + '<span class="mk-rank-no">' + medal + '</span>'
-          + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(r.nickname) + (r.me ? ' <i class="mk-tag">나</i>' : '') + '</span>'
+          + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(r.nickname) + (r.realName ? ' <small class="mk-real" title="실명 (관리자에게만 보임)">' + escapeHtml(r.realName) + '</small>' : '') + (r.me ? ' <i class="mk-tag">나</i>' : '') + '</span>'
           +   '<span class="mk-pos-sub">체결 ' + fmtNum(r.fills) + '건</span></span>'
           + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(r.equity) + '</span>'
           +   '<span class="mk-pos-pnl ' + signClass(rr) + '">' + fmtRate(rr) + '</span></span>'
@@ -781,7 +806,7 @@ var Mock = (function () {
           + Object.keys(by).map(function (k) {
               return '<div class="mk-hall"><div class="mk-hall-name">' + escapeHtml(by[k].name) + '</div>'
                 + by[k].rows.slice(0, 3).map(function (r) {
-                    return '<div class="mk-hall-row"><span>' + (['🥇', '🥈', '🥉'][r.rank - 1] || r.rank) + ' ' + escapeHtml(r.nickname) + '</span>'
+                    return '<div class="mk-hall-row"><span>' + (['🥇', '🥈', '🥉'][r.rank - 1] || r.rank) + ' ' + escapeHtml(r.nickname) + (r.realName ? ' <small class="mk-real" title="실명 (관리자에게만 보임)">' + escapeHtml(r.realName) + '</small>' : '') + '</span>'
                       + '<span>' + fmtNum(r.equity) + '원 (' + fmtRate((r.equity - r.seed) / r.seed * 100) + ')</span></div>';
                   }).join('') + '</div>';
             }).join('') + '</section>';
@@ -795,13 +820,78 @@ var Mock = (function () {
         +   '<button type="button" class="seg" role="tab" data-rk="board" onclick="Mock.rankView(\'board\')">🏆 순위</button>'
         +   '<button type="button" class="seg" role="tab" data-rk="share" onclick="Mock.rankView(\'share\')">💬 커뮤니티<i class="mk-rk-dot" hidden></i></button>'
         + '</div>'
+        + '<div id="rkNick"></div>'
         + '<div id="rkBoard" role="tabpanel"></div><div id="rkHall"></div><div id="rkShare" role="tabpanel"></div>';
       applyRankView();
+      loadNick();
     }
     document.getElementById('rkBoard').innerHTML = h;
     document.getElementById('rkHall').innerHTML = _hallHtml || '';
     if (fresh) loadShares(true);     // 커뮤니티를 열지 않아도 새 글 표시(점)를 위해 받아 둔다
     _rankBuilt = true;
+  }
+
+  /* ===== 닉네임 — 순위표·명예의 전당·커뮤니티에는 실명 대신 이 이름이 보인다 =====
+   * 서버가 처음 부를 때 자동 닉네임('용감한 황소 27')을 만들어 둔다. 직접 바꾸면 30일 동안 다시 못 바꾼다.
+   * 자동 닉네임인 회원에게는 랭킹 탭에서 한 번 바꿔 보라고 권한다 ('이대로 쓰기'를 누르면 이 기기에서 다시 묻지 않는다). */
+  var _nick = null, _nickEdit = false;
+  function nickAskKey() { return 'dt-invest-nick-asked:' + (currentUser ? currentUser.uid : ''); }
+  function nickAsked() { try { return !!localStorage.getItem(nickAskKey()); } catch (e) { return true; } }
+  async function loadNick() {
+    try { _nick = await api('/nickname'); } catch (e) { _nick = null; }
+    renderNick();
+    return _nick;
+  }
+  function renderNick() {
+    var el = document.getElementById('rkNick');
+    if (!el) return;
+    if (!_nick) { el.innerHTML = ''; return; }
+    if (_nickEdit) {
+      el.innerHTML = '<div class="mk-nick edit">'
+        + '<div class="mk-nick-row"><input id="mkNickIn" class="f-input" maxlength="10" autocomplete="off" aria-label="새 닉네임"'
+        +   ' placeholder="새 닉네임" value="' + (_nick.auto ? '' : escapeHtml(_nick.nick)) + '"'
+        +   ' onkeydown="if(event.key===\'Enter\')Mock.saveNick()">'
+        +   '<button class="btn-submit" id="mkNickSave" onclick="Mock.saveNick()">저장</button>'
+        +   '<button class="btn-ghost" onclick="Mock.editNick(false)">취소</button></div>'
+        + '<div class="mk-nick-hint">띄어쓰기 없이 한글·영문·숫자 2~10자 · 저장하면 30일 동안 바꿀 수 없습니다</div>'
+        + '<div class="mk-nick-err" id="mkNickErr" role="alert"></div>'
+        + '</div>';
+      var inp = document.getElementById('mkNickIn');
+      if (inp) inp.focus();
+      return;
+    }
+    var ask = _nick.auto && !nickAsked();
+    var next = _nick.nextChangeAt ? new Date(_nick.nextChangeAt + 9 * 3600e3) : null;
+    el.innerHTML = '<div class="mk-nick' + (ask ? ' ask' : '') + '">'
+      + (ask ? '<div class="mk-nick-lead">순위표와 커뮤니티에는 실명 대신 닉네임이 보입니다. 원하는 이름으로 바꿔 보세요.</div>' : '')
+      + '<div class="mk-nick-row"><span class="mk-nick-k">내 닉네임</span><b class="mk-nick-v">' + escapeHtml(_nick.nick) + '</b>'
+      +   (_nick.auto ? '<i class="mk-nick-auto">자동</i>' : '')
+      +   '<span class="mk-nick-act">'
+      +   (_nick.canChange ? '<button class="mini-btn" onclick="Mock.editNick(true)">바꾸기</button>'
+            : '<span class="mk-nick-next">' + (next.getUTCMonth() + 1) + '/' + next.getUTCDate() + '부터 변경 가능</span>')
+      +   (ask ? '<button class="mini-btn" onclick="Mock.keepNick()">이대로 쓰기</button>' : '')
+      +   '</span></div>'
+      + '</div>';
+  }
+  function editNick(on) { _nickEdit = !!on; renderNick(); }
+  function keepNick() { try { localStorage.setItem(nickAskKey(), '1'); } catch (e) {} renderNick(); }
+  async function saveNick() {
+    var inp = document.getElementById('mkNickIn'), err = document.getElementById('mkNickErr'), btn = document.getElementById('mkNickSave');
+    if (!inp) return;
+    var v = inp.value.trim();
+    if (!/^[가-힣A-Za-z0-9]{2,10}$/.test(v)) { err.textContent = '띄어쓰기 없이 한글·영문·숫자 2~10자로 정해 주세요'; return; }
+    if (!confirm('닉네임을 \'' + v + '\'(으)로 바꿀까요?\n바꾼 뒤 30일 동안은 다시 바꿀 수 없습니다.')) return;
+    btn.disabled = true; err.textContent = '';
+    try {
+      _nick = await api('/nickname', 'POST', { nick: v });
+      _nickEdit = false;
+      keepNick();
+      loadRanking();
+      if (_sh && _sh.items && _sh.items.length) loadShares(true);    // 커뮤니티 글·댓글의 이름도 새로
+    } catch (e) {
+      err.textContent = e.message;
+      btn.disabled = false;
+    }
   }
 
   /* 랭킹 탭 안의 두 화면 — 순위(순위표·명예의 전당) | 커뮤니티(계좌 공유 글). 한 번에 하나만 보인다 */
@@ -926,7 +1016,7 @@ var Mock = (function () {
     var rank = c.kind === 'account' && c.rank
       ? '<span class="mk-sc-rank">' + c.rank + '위' + (c.participants ? '<i>/' + fmtNum(c.participants) + '명</i>' : '') + '</span>' : '';
     var h = '<article class="mk-sc" id="sc-' + s.id + '">'
-      + '<div class="mk-sc-top"><div class="mk-sc-id"><b class="mk-sc-who">' + escapeHtml(s.nickname) + '</b>'
+      + '<div class="mk-sc-top"><div class="mk-sc-id"><b class="mk-sc-who">' + escapeHtml(s.nickname) + '</b>' + (s.realName ? ' <small class="mk-real" title="실명 (관리자에게만 보임)">' + escapeHtml(s.realName) + '</small>' : '')
       +   (s.mine ? '<i class="mk-tag">나</i>' : '') + '</div>' + rank + '</div>'
       + '<div class="mk-sc-meta">' + (c.seasonName ? '<span class="mk-sc-season">' + escapeHtml(c.seasonName) + '</span>' : '')
       +   escapeHtml(kstHM(c.at || s.createdAt) + (c.kind === 'text' ? '' : (c.closing ? ' 종가' : '') + ' 기준')) + '</div>';
@@ -987,7 +1077,7 @@ var Mock = (function () {
     else if (list.err) h += '<div class="mk-sc-none">' + escapeHtml(list.err) + '</div>';
     else if (!list.length) h += '<div class="mk-sc-none">첫 댓글을 남겨 보세요</div>';
     else h += list.map(function (c) {
-      return '<div class="mk-sc-c"><div class="mk-sc-ch"><b>' + escapeHtml(c.nickname) + '</b><span class="mk-sc-ct">' + escapeHtml(kstHM(c.createdAt)) + '</span>'
+      return '<div class="mk-sc-c"><div class="mk-sc-ch"><b>' + escapeHtml(c.nickname) + '</b>' + (c.realName ? ' <small class="mk-real" title="실명 (관리자에게만 보임)">' + escapeHtml(c.realName) + '</small>' : '') + '<span class="mk-sc-ct">' + escapeHtml(kstHM(c.createdAt)) + '</span>'
         + (c.canDelete ? '<button type="button" class="mk-sc-cdel" onclick="Mock.deleteComment(\'' + s.id + '\',\'' + c.id + '\')" aria-label="댓글 삭제">삭제</button>' : '')
         + '</div><div class="mk-sc-cb">' + linkText(c.body) + '</div></div>';
     }).join('');
@@ -2404,6 +2494,7 @@ var Mock = (function () {
     addHoliday: addHoliday, removeHoliday: removeHoliday,
     openShare: openShare, closeShare: closeShare, shareKind: shareKind, shareCode: shareCode, shareInput: shareInput, submitShare: submitShare,
     sharePhotos: sharePhotos, removePhoto: removePhoto, viewPhoto: viewPhoto,
+    editNick: editNick, saveNick: saveNick, keepNick: keepNick,
     rankView: rankView, toggleShare: toggleShare, fullShare: fullShare, moreShares: moreShares, deleteShare: deleteShare, submitComment: submitComment, deleteComment: deleteComment
   };
 })();
