@@ -274,7 +274,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
 
   if (path === '/hall' && method === 'GET') {
     const rows = (await db.prepare(
-      `SELECT f.season_id, s.name AS season_name, s.start_date, s.end_date, f.rank, f.uid, f.nickname, f.equity, f.fills, s.seed
+      `SELECT f.season_id, s.name AS season_name, s.start_date, s.end_date, f.rank, f.uid, f.nickname, f.equity, f.fills, s.seed, COALESCE(f.principal, s.seed) AS principal
        FROM final_rankings f JOIN seasons s ON s.id = f.season_id
        WHERE f.rank <= 10 ORDER BY s.end_date DESC, f.rank ASC`
     ).all()).results || [];
@@ -283,11 +283,11 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     // 시즌별 참가자 수와 내 최종 순위 — 1~3위 밖이어도 '5위 / 7명'처럼 볼 수 있게 (내 것만, 남의 순위는 top 10 까지만)
     const [cnt, mine] = await db.batch([
       db.prepare(`SELECT season_id, COUNT(*) AS n FROM final_rankings GROUP BY season_id`),
-      db.prepare(`SELECT season_id, rank, equity FROM final_rankings WHERE uid=?`).bind(uid)
+      db.prepare(`SELECT f.season_id, f.rank, f.equity, COALESCE(f.principal, s.seed) AS principal FROM final_rankings f JOIN seasons s ON s.id = f.season_id WHERE f.uid=?`).bind(uid)
     ]);
     const seasons = {};
     for (const c of cnt.results || []) seasons[c.season_id] = { participants: c.n, me: null };
-    for (const m of mine.results || []) if (seasons[m.season_id]) seasons[m.season_id].me = { rank: m.rank, equity: m.equity };
+    for (const m of mine.results || []) if (seasons[m.season_id]) seasons[m.season_id].me = { rank: m.rank, equity: m.equity, principal: m.principal };
     return {
       items: rows.map(({ uid: u, nickname, ...r }) => ({ ...r, nickname: nicks.get(u) || '회원', me: u === uid, ...(isAdmin ? { realName: nickname } : {}) })),
       seasons
@@ -402,7 +402,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       if (kind === 'account') {
         const list = view.positions.slice().sort((x, y) => y.value - x.value);
         card = {
-          ...base, seed: season.seed, equity: view.equity, pnl: view.equity - season.seed, returnRate: round2(view.returnRate),
+          ...base, seed: season.seed, principal: view.principal, equity: view.equity, pnl: view.equity - view.principal, returnRate: round2(view.returnRate),
           cash: view.cash, stock: view.stock, realizedPnl: view.realizedPnl,
           rank: me ? me.rank : null, participants: board ? board.rows.length : null,
           holdings: list.length, positions: list.slice(0, SHARE_POS_MAX).map(pos)
@@ -561,8 +561,8 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       asOf: board.asOf, live: board.live, closing: board.closing,
       // uid 는 내보내지 않는다 — 순위표에는 닉네임만 (key 는 갱신 간 순위 변동 표시용 해시). 실명은 관리자에게만
       rows: board.rows.map((r) => ({ key: rowKey(r.uid), rank: r.rank, nickname: nicks.get(r.uid) || '회원',
-        ...(isAdmin ? { realName: r.nickname } : {}), equity: r.equity, fills: r.fills, me: r.uid === uid })),
-      me: me ? { rank: me.rank, equity: me.equity } : null
+        ...(isAdmin ? { realName: r.nickname } : {}), equity: r.equity, principal: season.seed + (r.deposits || 0), fills: r.fills, me: r.uid === uid })),
+      me: me ? { rank: me.rank, equity: me.equity, principal: season.seed + (me.deposits || 0) } : null
     };
   }
 
@@ -572,6 +572,34 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
   // 개명했으면 저장된 실명도 맞춘다 (화면에는 닉네임이 나가고, 실명은 관리자 확인용)
   if (profile.name && profile.name !== account.nickname) {
     await db.prepare(`UPDATE accounts SET nickname=? WHERE season_id=? AND uid=?`).bind(profile.name, season.id, uid).run();
+  }
+
+  /* ── 출석 보상 — 거래일 하루 1번 ATTEND_AMOUNT, ATTEND_EVERY 일 연속마다 ATTEND_BONUS 를 더 준다 ── */
+  if (path === '/attendance' && method === 'GET') return attendanceInfo(db, season, uid, now);
+  if (path === '/attendance' && method === 'POST') {
+    const t = E.kstNow(now);
+    if (!E.isTradingDay(t)) throw new HttpError(409, '오늘은 휴장일이라 출석 보상이 없습니다', 'holiday');
+    if (t.iso < season.start_date || t.iso > season.end_date) throw new HttpError(409, '시즌 기간이 아닙니다', 'season');
+    const last = await db.prepare(`SELECT ymd, streak FROM attendance WHERE season_id=? AND uid=? ORDER BY ymd DESC LIMIT 1`).bind(season.id, uid).first();
+    if (last && last.ymd === t.ymd) throw new HttpError(409, '오늘은 이미 출석했습니다', 'done');
+    // 연속 — 직전 거래일에 출석했으면 이어진다 (주말·휴장일은 끊지 않는다)
+    const streak = last && last.ymd === prevTradingYmd(t.ymd) ? last.streak + 1 : 1;
+    const bonus = streak % ATTEND_EVERY === 0 ? ATTEND_BONUS : 0;
+    const total = ATTEND_AMOUNT + bonus;
+    try {
+      await db.batch([
+        db.prepare(`INSERT INTO attendance (season_id, uid, ymd, amount, bonus, streak, at) VALUES (?,?,?,?,?,?,?)`)
+          .bind(season.id, uid, t.ymd, ATTEND_AMOUNT, bonus, streak, now),
+        db.prepare(`UPDATE accounts SET cash = cash + ?, deposits = deposits + ? WHERE season_id=? AND uid=? AND status='active'`)
+          .bind(total, total, season.id, uid)
+      ]);
+    } catch (e) {
+      // 같은 순간 두 번 눌렀다 — PK 가 막고 batch 전체가 되돌려진다
+      if (/UNIQUE|PRIMARY/i.test(String(e && e.message))) throw new HttpError(409, '오늘은 이미 출석했습니다', 'done');
+      throw e;
+    }
+    mem.delete(`lb:${season.id}`);
+    return { ...(await attendanceInfo(db, season, uid, now)), paid: { amount: ATTEND_AMOUNT, bonus, streak } };
   }
 
   if (path === '/account' && method === 'GET') {
@@ -747,7 +775,7 @@ async function accountView(db, season, account, now) {
   // 현금·보유·미체결을 한 트랜잭션(batch)으로 읽는다. 따로 읽으면 그 사이 체결이 끼어
   // 체결 전 현금 + 체결 후 보유가 합쳐져 총자산이 매수 금액만큼 부풀 수 있었다
   const [accRes, posRes, ordRes, feeRes] = await db.batch([
-    db.prepare(`SELECT cash, realized_pnl, fills FROM accounts WHERE season_id=? AND uid=?`).bind(season.id, uid),
+    db.prepare(`SELECT cash, realized_pnl, fills, deposits FROM accounts WHERE season_id=? AND uid=?`).bind(season.id, uid),
     db.prepare(`SELECT code, name, qty, cost FROM positions WHERE season_id=? AND uid=? ORDER BY cost DESC`).bind(season.id, uid),
     db.prepare(`SELECT * FROM orders WHERE season_id=? AND uid=? AND status IN ('open','partial') ORDER BY accepted_at DESC`).bind(season.id, uid),
     // 매수 수수료는 매입금액에 넣지 않으므로(원가법) 평가손익·실현손익 어디에도 없다 — 합이 총손익과 맞도록 따로 보여 준다
@@ -771,12 +799,53 @@ async function accountView(db, season, account, now) {
   });
   const reserved = orders.filter((o) => o.side === 'buy').reduce((s, o) => s + o.reserved, 0);
   const equity = acc.cash + stock;
+  // 원금 = 시드 + 출석금. 출석금은 수익이 아니므로 수익률·손익은 원금 기준 (순위는 총자산 그대로)
+  const deposits = acc.deposits || 0, principal = season.seed + deposits;
   return {
     season: { id: season.id, name: season.name, seed: season.seed, endDate: season.end_date, feeRate: season.fee_rate, taxRate: season.tax_rate },
-    cash: acc.cash, available: acc.cash - reserved, stock, equity,
-    returnRate: (equity - season.seed) / season.seed * 100,
+    cash: acc.cash, available: acc.cash - reserved, stock, equity, deposits, principal,
+    returnRate: (equity - principal) / principal * 100,
     realizedPnl: acc.realized_pnl, buyFees, fills: acc.fills,
     positions: items, openOrders: orders.map(publicOrder), live: px.live, closing: px.closing, ...sessionInfo(now)
+  };
+}
+
+// 출석 보상 — 거래일 하루 1번. 5일 연속마다 보너스 (주말·휴장일은 연속을 끊지 않는다)
+const ATTEND_AMOUNT = 100000, ATTEND_BONUS = 200000, ATTEND_EVERY = 5;
+
+/** 직전 거래일 (YYYYMMDD) — 주말·휴장일을 건너뛴다 */
+function prevTradingYmd(ymd) {
+  let d = Date.UTC(+ymd.slice(0, 4), +ymd.slice(4, 6) - 1, +ymd.slice(6, 8));
+  for (let i = 0; i < 20; i++) {
+    d -= 86400e3;
+    const x = new Date(d), y = x.toISOString().slice(0, 10).replace(/-/g, '');
+    if (E.isTradingDay({ dow: x.getUTCDay(), ymd: y })) return y;
+  }
+  return null;
+}
+
+/** 내 출석 현황 — 오늘 받았는지, 받을 수 있는지, 연속 일수, 다음 보너스까지 */
+async function attendanceInfo(db, season, uid, now) {
+  const t = E.kstNow(now);
+  const [lastRes, sumRes] = await db.batch([
+    db.prepare(`SELECT ymd, streak FROM attendance WHERE season_id=? AND uid=? ORDER BY ymd DESC LIMIT 1`).bind(season.id, uid),
+    db.prepare(`SELECT COUNT(*) AS days, COALESCE(SUM(amount + bonus), 0) AS total FROM attendance WHERE season_id=? AND uid=?`).bind(season.id, uid)
+  ]);
+  const last = lastRes.results && lastRes.results[0];
+  const sum = (sumRes.results && sumRes.results[0]) || { days: 0, total: 0 };
+  const tradingDay = E.isTradingDay(t);
+  const inSeason = t.iso >= season.start_date && t.iso <= season.end_date;
+  const today = !!(last && last.ymd === t.ymd);
+  // 지금 이어지고 있는 연속 — 오늘 받았으면 오늘까지, 아니면 직전 거래일까지 (그보다 전이면 끊겼다)
+  const alive = last && (today || last.ymd === prevTradingYmd(t.ymd) || (!tradingDay && last.ymd >= prevTradingYmd(t.ymd)));
+  const streak = alive ? last.streak : 0;
+  // 다음 보너스까지 남은 출석 수 (다음 출석을 1로 센다) — 1 이면 다음 출석에 보너스
+  const untilBonus = ATTEND_EVERY - (streak % ATTEND_EVERY);
+  return {
+    amount: ATTEND_AMOUNT, bonus: ATTEND_BONUS, every: ATTEND_EVERY,
+    today, canAttend: tradingDay && inSeason && !today, tradingDay, inSeason,
+    streak, days: sum.days, total: sum.total,
+    untilBonus, bonusToday: !today && untilBonus === 1
   };
 }
 
@@ -788,7 +857,7 @@ function liveBoard(db, season, now) {
 async function leaderboard(db, season, now, official, asOfYmd) {
   // 현금과 보유를 한 트랜잭션(batch)으로 읽는다 — 사이에 체결이 끼면 그 회원 자산이 틀린 채 10초 캐시에 올라갔다
   const [accRes, posRes] = await db.batch([
-    db.prepare(`SELECT uid, nickname, cash, fills, joined_at FROM accounts WHERE season_id=? AND status='active'`).bind(season.id),
+    db.prepare(`SELECT uid, nickname, cash, fills, joined_at, deposits FROM accounts WHERE season_id=? AND status='active'`).bind(season.id),
     db.prepare(`SELECT uid, code, qty, cost FROM positions WHERE season_id=?`).bind(season.id)
   ]);
   const positions = posRes.results || [];
@@ -1117,10 +1186,11 @@ async function closeOfDay(db, season, now) {
 function finalStatements(db, season, rows) {
   const out = [];
   if (rows.length) out.push(db.prepare(
-    `INSERT OR REPLACE INTO final_rankings (season_id, rank, uid, nickname, equity, fills)
+    `INSERT OR REPLACE INTO final_rankings (season_id, rank, uid, nickname, equity, fills, principal)
      SELECT ?, json_extract(value, '$.rank'), json_extract(value, '$.uid'), json_extract(value, '$.nickname'),
-            json_extract(value, '$.equity'), json_extract(value, '$.fills') FROM json_each(?)`
-  ).bind(season.id, JSON.stringify(rows.map((r) => ({ rank: r.rank, uid: r.uid, nickname: r.nickname, equity: r.equity, fills: r.fills })))));
+            json_extract(value, '$.equity'), json_extract(value, '$.fills'), json_extract(value, '$.principal') FROM json_each(?)`
+  ).bind(season.id, JSON.stringify(rows.map((r) => ({ rank: r.rank, uid: r.uid, nickname: r.nickname, equity: r.equity, fills: r.fills,
+    principal: season.seed + (r.deposits || 0) })))));
   out.push(db.prepare(`UPDATE seasons SET status='closed' WHERE id=? AND status='active'`).bind(season.id));
   return out;
 }

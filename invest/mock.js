@@ -58,6 +58,15 @@ var Mock = (function () {
 
   function modeKey() { return 'dt-invest-mock:' + (currentUser ? currentUser.uid : ''); }
   function won(n) { return fmtNum(Math.round(n)) + '원'; }
+  /** 억·만 단위를 빠짐없이 — 100,100,000 → '1억 10만', 100,000,000 → '1억' (원금처럼 몇십만 차이가 중요한 곳에) */
+  function korWon(n) {
+    n = Math.round(n || 0);
+    var eok = Math.floor(n / 1e8), man = Math.floor((n % 1e8) / 1e4), rest = n % 1e4, out = [];
+    if (eok) out.push(fmtNum(eok) + '억');
+    if (man) out.push(fmtNum(man) + '만');
+    if (rest || !out.length) out.push(fmtNum(rest));
+    return out.join(' ');
+  }
   function rateHtml(r) { return '<span class="' + signClass(r) + '">' + fmtRate(r) + '</span>'; }
   /** 체결 시각 — 좁은 줄에 들어가야 해서 "09.22 10:42" 로 짧게 쓴다 (KST 고정) */
   function kstHM(ms) {
@@ -279,6 +288,7 @@ var Mock = (function () {
     if (!account) { paint(el, '<div class="empty">' + escapeHtml(errMsg || '계좌 정보를 불러오는 중') + '</div>'); return; }
 
     var a = account, s = a.season;
+    var principal = a.principal || s.seed;          // 원금 = 시드 + 출석금 (옛 워커 응답에는 없다)
     var evalPnl = a.positions.reduce(function (t, p) { return t + p.pnl; }, 0);
     var h = '<div class="mk-card mk-summary">'
       + '<div class="mk-sum-head"><span>' + escapeHtml(s.name) + '</span><span class="mk-sum-end">' + escapeHtml(s.endDate) + ' 종료' + InfoTip.btn('계좌 보는 법', [
@@ -286,12 +296,14 @@ var Mock = (function () {
           '· 주문 가능: 현금에서 미체결 매수 주문이 묶어 둔 돈(주문 대기)을 뺀 금액',
           '· 평가손익: 보유 주식의 지금 가치 − 산 금액',
           '· 실현손익: 판 금액에서 수수료·세금과 산 금액(평균 단가)을 뺀 손익',
-          '· 매수 수수료는 산 금액에 넣지 않습니다. 평가손익 + 실현손익 − 매수 수수료 = 총손익입니다.'
+          '· 매수 수수료는 산 금액에 넣지 않습니다. 평가손익 + 실현손익 − 매수 수수료 = 총손익입니다.',
+          '· 원금 = 시드머니 + 출석금. 출석금은 수익이 아니라서 손익·수익률은 원금 기준으로 계산합니다 (순위는 총자산 기준).'
         ].join('\n'), 'sm') + '</span></div>'
       + '<div class="mk-eq">' + won(a.equity) + '</div>'
-      + '<div class="mk-eq-sub">' + rateHtml(a.returnRate) + ' <span class="' + signClass(a.equity - s.seed) + '">'
-      +   (a.equity - s.seed > 0 ? '+' : '') + fmtNum(a.equity - s.seed) + '원</span>'
-      +   '<span class="mk-dim"> · 시작 ' + fmtCompact(s.seed) + '원</span></div>'
+      + '<div class="mk-eq-sub">' + rateHtml(a.returnRate) + ' <span class="' + signClass(a.equity - principal) + '">'
+      +   (a.equity - principal > 0 ? '+' : '') + fmtNum(a.equity - principal) + '원</span>'
+      +   '<span class="mk-dim"> · 원금 ' + korWon(principal) + '원'
+      +   (a.deposits ? ' (시드 ' + korWon(s.seed) + ' + 출석 ' + korWon(a.deposits) + ')' : '') + '</span></div>'
       + '<div class="mk-grid">'
       // 총자산 = 현금 + 보유 주식. 미체결 매수가 묶어 둔 돈은 '주문 가능'에서 빠지므로 따로 밝혀 합이 맞게 한다
       +   cell('주문 가능', won(a.available) + (a.cash > a.available ? '<small class="mk-cell-sub">주문 대기 ' + won(a.cash - a.available) + '</small>' : ''))
@@ -307,6 +319,7 @@ var Mock = (function () {
       + '</div>'
       + '</div>';
 
+    h += '<div id="mkAttend"></div>';
     h += corpHtml(a.corpActions);
 
     h += '<section class="m-section"><div class="m-head"><h3>📦 보유 종목</h3><span class="m-hint">' + a.positions.length + '종목</span></div>';
@@ -337,6 +350,8 @@ var Mock = (function () {
       + '%(ETF·ETN 면제). 자세한 규칙은 참가 안내에 있습니다.</div>'
       ;
     paint(el, h);
+    renderAttend();
+    if (_attFor !== s.id || Date.now() - _attAt > 300000) loadAttend(s.id);
     // 계좌 탭은 10초마다 다시 그려진다 — 평가가 없는 회원도 매번 GET /review 를 부르지 않게, 받아 봤으면 그 결과로 그린다.
     // 시즌이 바뀌었거나 10분이 지났으면(남은 횟수가 날짜 따라 바뀐다) 다시 받는다
     if (_reviewFor === s.id && Date.now() - _reviewAt < 600000) renderReview();
@@ -640,6 +655,7 @@ var Mock = (function () {
           '수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2) + '% (ETF · ETN 면제) — 실전과 같은 수준',
           '거래가 적은 종목은 여러 번에 나눠 체결되거나 체결되지 않을 수 있습니다.',
           '시장가 매수는 현재가 기준으로 주문 가능 금액을 잡습니다. 체결가가 올라 금액이 모자라면 살 수 있는 수량까지만 체결되고 나머지는 취소됩니다.',
+          '거래일마다 <b>출석</b>하면 10만 원, 5일 연속마다 보너스 20만 원이 현금으로 들어옵니다. 순위는 총자산 기준이고, 출석금은 원금에 더해져 수익률에는 들어가지 않습니다.',
           '신용 · 미수 · 공매도는 없습니다.'
         ])
       + '<div class="mk-jf-h">🏷️ 닉네임</div>'
@@ -754,6 +770,60 @@ var Mock = (function () {
       + (n.end_date ? ' · ' + md(n.end_date) + ' 종료' : '') + '</p>';
   }
 
+  /* ===== 출석 보상 =====
+   * 거래일 하루 1번 출석하면 현금이 들어온다 (금액·보너스는 서버가 정한다). 연속 출석 N일마다 보너스.
+   * 계좌 탭은 10초마다 다시 그려지므로 받아 둔 상태로 그리고, 서버에는 5분에 한 번(또는 출석 직후)만 묻는다. */
+  var _att = null, _attFor = null, _attAt = 0, _attBusy = false;
+  async function loadAttend(seasonId) {
+    _attFor = seasonId; _attAt = Date.now();
+    try { _att = await api('/attendance'); } catch (e) { _att = { err: e.message }; }
+    renderAttend();
+  }
+  function renderAttend() {
+    var el = document.getElementById('mkAttend');
+    if (!el) return;
+    var t = _att;
+    if (!t) { el.innerHTML = ''; return; }
+    if (t.err) { el.innerHTML = ''; return; }          // 출석은 부가 기능 — 실패해도 계좌 화면을 가리지 않는다
+    var every = t.every || 5;
+    // 연속 진행 칸 — 이번 묶음(every 일) 안에서 몇 번째인지
+    var inRun = t.streak % every || (t.streak ? every : 0);
+    if (!t.today && inRun === every) inRun = 0;        // 보너스까지 채운 뒤 아직 오늘 출석 전이면 새 묶음
+    var dots = '';
+    for (var i = 1; i <= every; i++) dots += '<i class="mk-att-dot' + (i <= inRun ? ' on' : '') + (i === every ? ' bonus' : '') + '"></i>';
+    var action;
+    if (t.today) action = '<span class="mk-att-done">✓ 오늘 출석 완료</span>';
+    else if (t.canAttend) action = '<button class="btn-submit mk-att-btn" onclick="Mock.attend(this)"' + (_attBusy ? ' disabled' : '') + '>'
+      + '출석하고 ' + fmtCompact(t.amount + (t.bonusToday ? t.bonus : 0)) + '원 받기' + '</button>';
+    else action = '<span class="mk-att-off">' + (!t.inSeason ? '시즌 기간이 아닙니다' : '오늘은 휴장일이라 출석 보상이 없습니다') + '</span>';
+    el.innerHTML = '<div class="mk-card mk-att">'
+      + '<div class="mk-att-top"><b>📅 출석 체크</b>'
+      +   '<span class="mk-att-sum">이번 시즌 ' + fmtNum(t.days) + '일 · 받은 출석금 ' + korWon(t.total) + '원</span></div>'
+      + '<div class="mk-att-mid"><span class="mk-att-dots" aria-label="연속 출석 ' + t.streak + '일">' + dots + '</span>'
+      +   '<span class="mk-att-streak">연속 <b>' + fmtNum(t.streak) + '</b>일'
+      +   (t.bonusToday ? ' · <em>오늘 출석하면 보너스 +' + fmtCompact(t.bonus) + '원</em>'
+            : ' · ' + t.untilBonus + '번 더 출석하면 보너스 +' + fmtCompact(t.bonus) + '원') + '</span></div>'
+      + '<div class="mk-att-act">' + action + '</div>'
+      + '<div class="mk-att-note">거래일 하루 1번 ' + fmtCompact(t.amount) + '원 · ' + every + '일 연속마다 +' + fmtCompact(t.bonus) + '원 (주말·휴장일은 연속이 끊기지 않습니다). 출석금은 원금에 더해지고 수익률에는 들어가지 않습니다.</div>'
+      + '</div>';
+  }
+  async function attend(btn) {
+    if (_attBusy) return;
+    _attBusy = true;
+    if (btn) { btn.disabled = true; btn.textContent = '처리 중'; }
+    try {
+      var r = await api('/attendance', 'POST');
+      _att = r; _attAt = Date.now();
+      toast('출석 완료 · ' + fmtCompact(r.paid.amount + r.paid.bonus) + '원' + (r.paid.bonus ? ' (연속 ' + r.paid.streak + '일 보너스 포함)' : '') + '이 들어왔습니다');
+      await refreshAccount();
+    } catch (e) {
+      if (e.code === 'done') await loadAttend(_attFor);
+      else toast(e.message);
+    }
+    _attBusy = false;
+    renderAttend();
+  }
+
   /* ===== 랭킹 ===== */
   var _rankBuilt = false, _hallHtml = null, _prevRank = {}, _prevSeasonId = null, _rankSeq = 0;
 
@@ -769,7 +839,7 @@ var Mock = (function () {
       if (seq !== _rankSeq) return;           // 탭을 오가며 겹친 요청 — 늦게 온 옛 응답으로 덮지 않는다
       if (currentTab === 'ranking') {
         _boardMe = d.me ? {
-          seasonId: d.season.id, equity: d.me.equity, returnRate: (d.me.equity - d.season.seed) / d.season.seed * 100,
+          seasonId: d.season.id, equity: d.me.equity, returnRate: (d.me.equity - (d.me.principal || d.season.seed)) / (d.me.principal || d.season.seed) * 100,
           rank: d.me.rank, participants: d.rows.length, at: Date.now()
         } : null;
         renderBar();
@@ -782,7 +852,8 @@ var Mock = (function () {
         + '<span class="m-hint">' + (d.closing ? '시즌 종료 · 최종 순위 집계 중'
           : escapeHtml(hmOf(d.asOf)) + ' 기준 · ' + (d.live ? '장중' : '장 마감')) + '</span></div>';
       h += d.rows.length ? d.rows.map(function (r) {
-        var rr = (r.equity - d.season.seed) / d.season.seed * 100;
+        var base = r.principal || d.season.seed;         // 원금 = 시드 + 출석금
+        var rr = (r.equity - base) / base * 100;
         var medal = r.rank === 1 ? '🥇' : (r.rank === 2 ? '🥈' : (r.rank === 3 ? '🥉' : r.rank));
         // 직전 갱신보다 순위가 오르내렸으면 잠깐 표시한다 (서버가 준 안정 키로 같은 회원을 잇는다)
         var k = r.key || r.nickname;
@@ -791,7 +862,7 @@ var Mock = (function () {
         return '<div class="mk-rank' + (r.me ? ' me' : '') + move + '">'
           + '<span class="mk-rank-no">' + medal + '</span>'
           + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(r.nickname) + (r.realName ? ' <small class="mk-real" title="실명 (관리자에게만 보임)">' + escapeHtml(r.realName) + '</small>' : '') + (r.me ? ' <i class="mk-tag">나</i>' : '') + '</span>'
-          +   '<span class="mk-pos-sub">체결 ' + fmtNum(r.fills) + '건</span></span>'
+          +   '<span class="mk-pos-sub">체결 ' + fmtNum(r.fills) + '건' + (base !== d.season.seed ? ' · 원금 ' + korWon(base) : '') + '</span></span>'
           + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(r.equity) + '</span>'
           +   '<span class="mk-pos-pnl ' + signClass(rr) + '">' + fmtRate(rr) + '</span></span>'
           + '</div>';
@@ -834,12 +905,12 @@ var Mock = (function () {
                     return '<div class="mk-hall-row' + (r.me ? ' me' : '') + '"><span>' + (['🥇', '🥈', '🥉'][r.rank - 1] || r.rank) + ' ' + escapeHtml(r.nickname)
                       + (r.realName ? ' <small class="mk-real" title="실명 (관리자에게만 보임)">' + escapeHtml(r.realName) + '</small>' : '')
                       + (r.me ? ' <i class="mk-tag">나</i>' : '') + '</span>'
-                      + '<span>' + fmtNum(r.equity) + '원 (' + fmtRate((r.equity - r.seed) / r.seed * 100) + ')</span></div>';
+                      + '<span>' + fmtNum(r.equity) + '원 (' + fmtRate((r.equity - (r.principal || r.seed)) / (r.principal || r.seed) * 100) + ')</span></div>';
                   }).join('')
                 // 1~3위 밖이면 내 최종 순위를 따로 — '5위 / 7명'
                 + (me && me.rank > 3
                     ? '<div class="mk-hall-row me"><span>내 순위 <b>' + me.rank + '위</b> / ' + fmtNum(si.participants) + '명</span>'
-                      + '<span>' + fmtNum(me.equity) + '원 (' + fmtRate((me.equity - seed) / seed * 100) + ')</span></div>'
+                      + '<span>' + fmtNum(me.equity) + '원 (' + fmtRate((me.equity - (me.principal || seed)) / (me.principal || seed) * 100) + ')</span></div>'
                     : '')
                 + '</div>';
             }).join('') + '</section>';
@@ -1088,7 +1159,8 @@ var Mock = (function () {
       var ps = (c.positions || []).slice(0, SHARE_POS_FULL), total = c.holdings != null ? c.holdings : (c.positions || []).length;
       h += '<div class="mk-sc-sum"><span class="mk-sc-k">총자산</span>'
         + '<b class="mk-sc-total">' + won(c.equity) + '</b>'
-        + '<span class="mk-sc-chg ' + signClass(c.pnl) + '">' + signedWon(c.pnl) + ' · ' + fmtRate(c.returnRate) + '</span></div>'
+        + '<span class="mk-sc-chg ' + signClass(c.pnl) + '">' + signedWon(c.pnl) + ' · ' + fmtRate(c.returnRate) + '</span>'
+        + (c.principal && c.seed && c.principal !== c.seed ? '<span class="mk-sc-k">원금 ' + korWon(c.principal) + '원</span>' : '') + '</div>'
         + '<div class="mk-sc-cells">'
         +   '<div><span class="mk-sc-k">현금</span><b>' + won(c.cash) + '</b>'
         +     (c.equity > 0 ? '<em>' + (c.cash / c.equity * 100).toFixed(1) + '%</em>' : '') + '</div>'
@@ -2560,7 +2632,7 @@ var Mock = (function () {
     addHoliday: addHoliday, removeHoliday: removeHoliday,
     openShare: openShare, closeShare: closeShare, shareKind: shareKind, shareCode: shareCode, shareInput: shareInput, submitShare: submitShare,
     sharePhotos: sharePhotos, removePhoto: removePhoto, viewPhoto: viewPhoto,
-    editNick: editNick, saveNick: saveNick,
+    editNick: editNick, saveNick: saveNick, attend: attend,
     rankView: rankView, shareSeason: shareSeason, toggleShare: toggleShare, fullShare: fullShare, moreShares: moreShares, deleteShare: deleteShare, submitComment: submitComment, deleteComment: deleteComment
   };
 })();

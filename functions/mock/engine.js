@@ -508,7 +508,7 @@ export async function tryFill(db, season, order, ctx, now = Date.now()) {
 /** 계정들의 총자산 = 현금 + Σ 보유수량 × 평가가. priceOf(code) 가 없으면 매입가로 평가한다 */
 export function valuate(accounts, positions, priceOf) {
   const byUid = {};
-  for (const a of accounts) byUid[a.uid] = { uid: a.uid, nickname: a.nickname, cash: a.cash, stock: 0, fills: a.fills, joined_at: a.joined_at };
+  for (const a of accounts) byUid[a.uid] = { uid: a.uid, nickname: a.nickname, cash: a.cash, stock: 0, fills: a.fills, joined_at: a.joined_at, deposits: a.deposits || 0 };
   for (const p of positions) {
     const row = byUid[p.uid];
     if (!row) continue;

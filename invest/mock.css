@@ -504,3 +504,21 @@
 .mk-sh-acts { margin-left: auto; display: flex; gap: 6px; flex: 0 0 auto; }
 .mk-sh-older { appearance: none; -webkit-appearance: none; font: inherit; cursor: pointer; }
 .mk-sh-name { color: var(--text); font-weight: 800; margin-right: 2px; }
+
+/* 출석 체크 (계좌 탭) */
+.mk-att { margin-top: 12px; }
+.mk-att-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.mk-att-top b { font-size: .92rem; font-weight: 800; }
+.mk-att-sum { margin-left: auto; font-size: .74rem; color: var(--text3); font-weight: 600; }
+.mk-att-mid { display: flex; align-items: center; gap: 10px; margin: 10px 0; flex-wrap: wrap; }
+.mk-att-dots { display: inline-flex; gap: 4px; }
+.mk-att-dot { width: 14px; height: 14px; border: 1px solid var(--border); background: var(--bg3); display: inline-block; }
+.mk-att-dot.on { background: var(--primary); border-color: var(--primary); }
+.mk-att-dot.bonus { border-color: var(--primary-light); }
+.mk-att-streak { font-size: .8rem; color: var(--text2); font-weight: 600; }
+.mk-att-streak b { color: var(--text); font-weight: 800; }
+.mk-att-streak em { font-style: normal; color: var(--primary-light); font-weight: 800; }
+.mk-att-btn { width: 100%; }
+.mk-att-done { display: block; text-align: center; padding: 10px; font-weight: 800; color: #4ade80; border: 1px solid var(--border); background: var(--bg2); }
+.mk-att-off { display: block; text-align: center; padding: 10px; font-size: .82rem; color: var(--text3); border: 1px dashed var(--border); }
+.mk-att-note { font-size: .7rem; color: var(--text3); margin-top: 8px; line-height: 1.5; }

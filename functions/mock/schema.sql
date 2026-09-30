@@ -267,3 +267,18 @@ CREATE TABLE IF NOT EXISTS nicknames (
   auto       INTEGER NOT NULL DEFAULT 1,
   changed_at INTEGER
 );
+
+-- 출석 보상 (2026-10-01) — 거래일 하루 1번 10만 원, 5일 연속마다 +20만 원. 받은 돈은 accounts.cash 와 accounts.deposits 에 더한다.
+-- 순위는 총자산 그대로, 수익률은 원금(시드 + deposits) 기준. 한 사람이 같은 날 두 번 받지 못하게 PK 로 막는다
+-- (기존 DB: ALTER TABLE accounts ADD COLUMN deposits INTEGER NOT NULL DEFAULT 0;
+--           ALTER TABLE final_rankings ADD COLUMN principal INTEGER;)
+CREATE TABLE IF NOT EXISTS attendance (
+  season_id TEXT NOT NULL,
+  uid       TEXT NOT NULL,
+  ymd       TEXT NOT NULL,              -- 출석한 거래일 (YYYYMMDD, KST)
+  amount    INTEGER NOT NULL,           -- 기본 출석금
+  bonus     INTEGER NOT NULL DEFAULT 0, -- 연속 출석 보너스
+  streak    INTEGER NOT NULL,           -- 이날까지 연속 출석 거래일 수
+  at        INTEGER NOT NULL,
+  PRIMARY KEY (season_id, uid, ymd)
+);
