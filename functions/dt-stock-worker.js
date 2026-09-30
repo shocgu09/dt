@@ -248,14 +248,29 @@ export default {
   }
 };
 
+// 무료 요금제는 호출 한 번에 D1 문장 50개까지다. 체결·반대매매 접수·밤 정산이 그 한도 때문에 일을 남기면(stats.more)
+// 몇 초 뒤 알람으로 다시 돈다 — 알람은 새 호출이라 한도가 새로 잡힌다. 크론 한 번당 이어 돌기는 CHAIN_MAX 번까지
+const CHAIN_MAX = 8, CHAIN_GAP_MS = 4000;
 export class MockCron extends DurableObject {
   async run() {
+    this.chain = 0;
+    return this.work();
+  }
+  async alarm() {
+    this.chain = (this.chain || 0) + 1;
+    await this.work();
+  }
+  async work() {
     // 앞 호출이 1분 넘게 걸리면 다음 분 호출이 겹친다 — 체결은 주문 잠금으로 안전하지만 같은 일을 두 번 할 이유가 없다
     if (this.busyUntil && Date.now() < this.busyUntil) return 'busy';
     this.busyUntil = Date.now() + 5 * 60 * 1000;
-    try { await runCron(this.env); }
+    let stats = null;
+    try { stats = await runCron(this.env); }
     finally { this.busyUntil = 0; }
-    return 'ok';
+    if (stats && stats.more && (this.chain || 0) < CHAIN_MAX) {
+      await this.ctx.storage.setAlarm(Date.now() + CHAIN_GAP_MS).catch((e) => console.error('chain alarm failed', e && e.message));
+    }
+    return stats && stats.more ? 'more' : 'ok';
   }
 }
 

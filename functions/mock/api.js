@@ -1013,6 +1013,13 @@ async function accountView(db, season, account, now, isAdmin = false) {
   // 원금 = 시드 + 출석금. 출석금은 수익이 아니므로 수익률·손익은 원금 기준 (순위는 순자산)
   const deposits = acc.deposits || 0, principal = season.seed + deposits;
   const on = E.creditOn(season, isAdmin);
+  // 알림 — 미수는 가장 최근 한 줄만(밤마다 날짜별로 새 줄이 생긴다), 담보부족·만기는 잔고를 다 갚았으면 끝난 일이라 뺀다
+  // (밤 정산이 닫기 전이라도 대출 신청이 막히거나 '반대매매됩니다' 안내가 남지 않게)
+  let misuShown = false;
+  const calls = (callRes.results || []).filter((c) => {
+    if (c.kind === 'misu') { if (misuShown) return false; misuShown = true; return true; }
+    return principal0 > 0;
+  });
   return {
     season: { id: season.id, name: season.name, seed: season.seed, endDate: season.end_date, feeRate: season.fee_rate, taxRate: season.tax_rate },
     cash: net, available: net + adj - reserved, reserved, stock, equity, deposits, principal,
@@ -1025,7 +1032,7 @@ async function accountView(db, season, account, now, isAdmin = false) {
       frozenUntil: acc.frozen_until && acc.frozen_until >= today ? acc.frozen_until : null,
       creditPrincipal, loanPrincipal, accrued, debt, interestPaid: acc.interest_paid || 0,
       collateral, lots: lotItems,
-      calls: (callRes.results || []).map((c) => ({ kind: c.kind, ymd: c.ymd, amount: c.amount, ratio: c.ratio, dueYmd: c.due_ymd, status: c.status })),
+      calls: calls.map((c) => ({ kind: c.kind, ymd: c.ymd, amount: c.amount, ratio: c.ratio, dueYmd: c.due_ymd, status: c.status })),
       rules: {
         stockMarginRate: K.RULES.stockMarginRate, creditDepositRate: K.RULES.creditDepositRate, creditTermDays: K.RULES.creditTermDays,
         creditBrackets: K.RULES.creditBrackets.map((b) => ({ upto: isFinite(b.upto) ? b.upto : null, rate: b.rate })),
@@ -1273,7 +1280,7 @@ export async function runCron(env, now = Date.now()) {
   // 이 호출에서 쓴 D1 문장 수 — 여기까지 약 6건
   const stats = { q: 6 };
   // 23:30~ 결제일 정산 (미수·동결·연체이자, 담보비율, 만기) — 키움의 미수 변제 마감 23:30 에 맞춘다
-  if (t.hm >= 23 * 60 + 30) { await S.nightly(db, season, now, stats); return; }
+  if (t.hm >= 23 * 60 + 30) { await S.nightly(db, season, now, stats); return stats; }
   // 08:00~08:59 이자 정기징수(매월 첫 영업일)·반대매매 주문 접수 — 체결 판정보다 먼저 (반대매매는 09:00 시가에 체결)
   if (t.hm >= E.PRE_FROM && t.hm < E.OPEN_AT) {
     await S.morning(db, season, now, stats, { quotesFor, kindOf }).catch((e) => console.error('settle morning failed', e && e.message));
@@ -1290,6 +1297,8 @@ export async function runCron(env, now = Date.now()) {
   if (t.hm >= E.AFTER_TO) await backfillCloses(db, season, now);
   // 시즌 마지막 날 20:00 — 애프터마켓까지 끝난 평가액(마지막 시간외 가격 포함)으로 최종 순위를 확정한다
   if (t.hm >= E.AFTER_TO && t.iso >= season.end_date) await finalizeLastDay(db, season, now);
+  // stats.more — 문장 한도 때문에 남긴 일이 있다 (MockCron 이 몇 초 뒤 새 호출로 이어서 돈다)
+  return stats;
 }
 
 /** 마지막 날 20:00 마감 — 실시간 순위와 같은 평가(시간외 가격 포함)라 20:00 에 보이던 순위가 그대로 최종 순위가 된다.
@@ -1311,6 +1320,7 @@ async function fillOpenOrders(db, season, now, stats = { q: 0 }) {
   if (!allCodes.length) return;
   const rot = Math.floor(now / 60000) % allCodes.length;
   const codes = allCodes.slice(rot).concat(allCodes.slice(0, rot)).slice(0, MAX_CODES_PER_RUN * 2);
+  if (allCodes.length > codes.length) stats.more = true;
   const orders = (await db.prepare(
     `SELECT * FROM orders WHERE season_id=? AND status IN ('open','partial') AND code IN (${codes.map(() => '?').join(',')})
      ORDER BY accepted_at LIMIT 300`
@@ -1350,7 +1360,7 @@ async function fillOpenOrders(db, season, now, stats = { q: 0 }) {
 
   let filled = 0;
   for (const o of orders) {
-    if (stats.q >= FILL_QUERY_BUDGET - 9) break;    // 한 건 더 체결할 여유가 없으면 다음 분으로 넘긴다 (체결 1건 = 최대 9문장)
+    if (stats.q >= FILL_QUERY_BUDGET - 9) { stats.more = true; break; }    // 한 건 더 체결할 여유가 없으면 다음 분으로 넘긴다 (체결 1건 = 최대 9문장)
     const acc = accounts[o.uid];
     if (!quotes[o.code] || !acc) continue;
     const available = (acc.cash - (acc.cash_short || 0)) + (adj[o.uid] || 0) - ((reserved[o.uid] || 0) - (o.side === 'buy' ? o.reserved : 0));

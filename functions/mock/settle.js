@@ -45,7 +45,7 @@ export async function nightly(db, season, now, stats = { q: 0 }) {
        OR EXISTS (SELECT 1 FROM fills f WHERE f.season_id=a.season_id AND f.uid=a.uid AND f.settle_ymd > ? AND f.cash_delta IS NOT NULL))`
   ).bind(S, S, season.id, S).all()).results || [];
   for (const a of rows) {
-    if (stmts.length >= BUDGET - 6) break;
+    if (stmts.length >= BUDGET - 6) { stats.more = true; break; }
     const net = a.cash - a.cash_short;
     const settled = net - a.pend_all;            // 오늘 결제까지 끝난 예수금
     const cover = net - a.pend_buy;              // + 결제 전 매도대금 (매도로 미수가 충당되는지)
@@ -93,7 +93,8 @@ export async function nightly(db, season, now, stats = { q: 0 }) {
   }
 
   // ② 담보비율 · ③ 만기 — 원금이 남은 잔고가 있는 계좌
-  if (stmts.length < BUDGET - 6) {
+  if (stmts.length >= BUDGET - 6) stats.more = true;
+  else {
     stats.q += 4;
     const [lotRes, posRes, accRes, callRes] = await db.batch([
       db.prepare(`SELECT l.*, (SELECT close FROM closes c WHERE c.code=l.code AND c.date <= ? ORDER BY c.date DESC LIMIT 1) AS close
@@ -110,7 +111,7 @@ export async function nightly(db, season, now, stats = { q: 0 }) {
     for (const a of accRes.results || []) acct(a.uid).net = a.cash - a.cash_short;
     for (const c of callRes.results || []) if (byUid[c.uid]) byUid[c.uid].calls.push(c);
     for (const uid of Object.keys(byUid)) {
-      if (stmts.length >= BUDGET - 3) break;
+      if (stmts.length >= BUDGET - 3) { stats.more = true; break; }
       const u = byUid[uid];
       const r = collateralOf(u.lots, u.pos, u.net);
       const open = u.calls.filter((c) => c.kind === 'collateral');
@@ -121,7 +122,8 @@ export async function nightly(db, season, now, stats = { q: 0 }) {
           // 추가담보 기한(다음 거래일)이 지났는데 여전히 부족 — 다음 거래일 아침 반대매매
           push(db.prepare(`UPDATE margin_calls SET status='due', due_ymd=?, amount=?, ratio=?, updated_at=? WHERE id=?`)
             .bind(next, deficit, r.ratio, now, earlier.id));
-        } else if (!open.some((c) => c.ymd < S)) {
+        } else if (!open.some((c) => c.ymd <= S)) {
+          // 오늘 이미 통보한 계좌는 건너뛴다 — 다시 넣으면 매분 같은 계좌가 문장 한도를 차지해 뒤 계좌가 영영 판정되지 않는다
           push(callUpsert(db, season, uid, 'collateral', S, deficit, r.ratio, K.addTradingDays(S, 2), 'open', { value: r.value, debt: r.debt }, now));
         }
       } else if (open.length) {
@@ -135,6 +137,11 @@ export async function nightly(db, season, now, stats = { q: 0 }) {
         push(callUpsert(db, season, uid, 'expiry', l.due_ymd + ':' + l.code, l.principal, null, next, 'due', { lotId: l.id, code: l.code }, now));
       }
     }
+  }
+  // 신용·담보 잔고를 다 갚았거나 반대매매로 다 팔린 계좌 — 위 반복은 원금이 남은 계좌만 보므로 남은 담보부족·만기 알림을 여기서 닫는다
+  if (stmts.length < BUDGET - 1) {
+    push(db.prepare(`UPDATE margin_calls SET status='resolved', updated_at=? WHERE season_id=? AND kind IN ('collateral','expiry') AND status IN ('open','due','ordered')
+                     AND uid NOT IN (SELECT uid FROM lots WHERE season_id=? AND principal > 0)`).bind(now, season.id, season.id));
   }
   if (stmts.length) { stats.q += stmts.length; await db.batch(stmts); }
 }
@@ -216,8 +223,9 @@ async function forcedOrders(db, season, now, stats, helpers) {
   const calls = (await db.prepare(
     `SELECT * FROM margin_calls WHERE season_id=? AND status='due' AND due_ymd <= ? ORDER BY created_at LIMIT 5`
   ).bind(season.id, t.ymd).all()).results || [];
+  if (calls.length === 5) stats.more = true;
   for (const c of calls) {
-    if (stats.q > 30) return;                                           // 나머지는 다음 분에
+    if (stats.q > 30) { stats.more = true; return; }                                           // 나머지는 다음 분에
     try {
       if (c.kind === 'misu') await forcedMisu(db, season, c, now, stats, helpers);
       else if (c.kind === 'collateral') await forcedCollateral(db, season, c, now, stats, helpers);

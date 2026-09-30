@@ -70,6 +70,19 @@ export async function nicksFor(db, uids) {
     ).bind(...part).all()).results || [];
     for (const r of rows) { const v = { nick: r.nick, auto: !!r.auto, changedAt: r.changed_at }; put(r.uid, v); out.set(r.uid, v.nick); }
   }
+  // 닉네임이 없는 회원이 한꺼번에 많으면(새 시즌 첫날 등) 한 명씩 만들다 호출당 D1 문장 한도(50)를 넘는다 —
+  // 30명씩 한 문장으로 넣고 다시 읽는다. 자동 닉네임이 겹쳐 빠진 회원만 아래에서 한 명씩 다시 만든다
+  const missing = todo.filter((u) => !out.has(u));
+  for (let i = 0; i < missing.length; i += 30) {
+    const part = missing.slice(i, i + 30);
+    const vals = [];
+    for (const u of part) { const nick = genAuto(); vals.push(u, nick, nickKey(nick)); }
+    await db.prepare(`INSERT OR IGNORE INTO nicknames (uid, nick, nick_key, auto, changed_at) VALUES ${part.map(() => '(?,?,?,1,NULL)').join(',')}`)
+      .bind(...vals).run();
+    const rows = (await db.prepare(`SELECT uid, nick, auto, changed_at FROM nicknames WHERE uid IN (${part.map(() => '?').join(',')})`)
+      .bind(...part).all()).results || [];
+    for (const r of rows) { const v = { nick: r.nick, auto: !!r.auto, changedAt: r.changed_at }; put(r.uid, v); out.set(r.uid, v.nick); }
+  }
   for (const u of todo) {
     if (out.has(u)) continue;
     const v = await createAuto(db, u);
