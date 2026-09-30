@@ -820,8 +820,8 @@ var Mock = (function () {
         +   '<button type="button" class="seg" role="tab" data-rk="board" onclick="Mock.rankView(\'board\')">🏆 순위</button>'
         +   '<button type="button" class="seg" role="tab" data-rk="share" onclick="Mock.rankView(\'share\')">💬 커뮤니티<i class="mk-rk-dot" hidden></i></button>'
         + '</div>'
-        + '<div id="rkNick"></div>'
-        + '<div id="rkBoard" role="tabpanel"></div><div id="rkHall"></div><div id="rkShare" role="tabpanel"></div>';
+        + '<div id="rkBoard" role="tabpanel"></div><div id="rkHall"></div><div id="rkShare" role="tabpanel"></div>'
+        + '<div id="rkNick"></div>';          // 내 닉네임 — 순위·커뮤니티 아래 맨 끝
       applyRankView();
       loadNick();
     }

@@ -476,7 +476,7 @@
 
 
 /* ── 닉네임 (랭킹 탭 위) ── */
-.mk-nick { background: var(--bg2); border: 1px solid var(--border); padding: 9px 12px; margin-bottom: 14px; }
+.mk-nick { background: var(--bg2); border: 1px solid var(--border); padding: 9px 12px; margin-top: 18px; }
 .mk-nick.ask { border-color: var(--primary); border-left: 3px solid var(--primary); }
 .mk-nick-lead { font-size: .8rem; color: var(--text2); line-height: 1.6; margin-bottom: 8px; }
 .mk-nick-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
