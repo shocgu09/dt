@@ -317,6 +317,11 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 
 /* 줄 머리 — 윗줄 순서대로 국내·미국 장 상태, 오른쪽 끝에 항목 고르기 */
 .idx-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.idx-clock { flex: 0 0 auto; font-size: .7rem; font-weight: 800; color: var(--text2); font-variant-numeric: tabular-nums; margin-right: 2px; }
+.idx-clock:empty { display: none; }
+/* 폭이 모자라면(폰) 배지 글자를 줄여서라도 ! · ⚙ 가 잘리지 않게 */
+.idx-head .idx-state { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.idx-head .info-tip, .idx-head .ix-gear { flex: 0 0 auto; }
 .idx-head .info-tip { margin-left: auto; }      /* ! 와 ⚙ 를 오른쪽 모서리에 붙여 둔다 */
 .idx-head .ix-gear { height: 22px; }
 

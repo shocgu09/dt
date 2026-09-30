@@ -332,11 +332,23 @@ function groupClosed(g) {
 var INDEX_TIP = [
   '· 10분 · 15분: 거래소 규정으로 그만큼 늦은 시세입니다. 해외 선물·금·유가는 10분, VIX 는 15분 전 값입니다.',
   '· 마감: 그 시장이 쉬는 중이라 마지막 값을 보여 줍니다.',
+  '· 맨 왼쪽 시계와 사이트의 모든 시각은 한국 시각입니다.',
   '· 국내 · 미국 배지: 각 시장이 지금 어느 구간(프리마켓·정규장·애프터마켓·마감)인지 알려 줍니다.',
   '· 국내 거래 시간(08:00~20:00)에는 국내가 앞, 20:00~다음 날 08:00 에는 미국 장이 열려 있으면 미국 묶음이 앞으로 옵니다.',
   '· 코스피 야간선물은 18:00~05:00 에 열리는 코스피200 선물입니다.',
   '· ⚙ 에서 보여 줄 항목을 고를 수 있습니다.'
 ].join('\n');
+
+/** 줄 머리 시계 — 한국 시각 HH:MM. 해외에서 보는 회원도 장 시간을 한국 시각으로 맞춰 볼 수 있게 */
+function paintClock() {
+  var el = document.getElementById('ixClock');
+  if (!el) return;
+  var k = kstParts();
+  var t = String(Math.floor(k.hm / 60)).padStart(2, '0') + ':' + String(k.hm % 60).padStart(2, '0');
+  if (el.textContent !== '🕙 ' + t) el.textContent = '🕙 ' + t;
+}
+// 뼈대를 다시 만들어도 id 로 찾으므로 타이머는 하나면 된다 (지수 폴링 간격과 따로 분 단위로 맞춘다)
+setInterval(paintClock, 15000);
 
 /** 지금은 보여 줄 값이 없는 칸 — 야간선물은 개장 전(그날 야간장이 아직 안 열림)이면 '-' 뿐이라 칸을 뺀다 */
 function hiddenIndexCell(k, x) {
@@ -380,6 +392,7 @@ async function loadIndex() {
       var heads = order.filter(function (g) { return top.some(function (k) { return INDEX_GROUP_OF[k] === g; }); });
       InfoTip.hide();          // 뼈대를 갈아 끼우면 열려 있던 설명의 기준 칸이 사라진다
       el.innerHTML = '<div class="idx-head">'
+        + '<span class="idx-clock" id="ixClock" title="한국 시각"></span>'
         + heads.map(function (g) { return '<div class="idx-state" id="' + (g === 'kr' ? 'ixState' : 'ixStateUs') + '"></div>'; }).join('')
         + InfoTip.btn('지수·선물 시세 안내', INDEX_TIP)
         + '<button class="ix-gear" onclick="toggleIndexPanel()" aria-label="표시 항목 고르기">⚙</button>'
@@ -414,6 +427,7 @@ async function loadIndex() {
 
     paintIndexSparks(top, d);
     paintStateBadges();
+    paintClock();
   } catch (e) {
     if (!el.dataset.built) el.innerHTML = '<div class="idx-err">지수를 불러오지 못했습니다</div>';
     paintStateBadges();          // 실패가 이어지면 '실시간' 대신 '연결 끊김'으로 바꾼다
