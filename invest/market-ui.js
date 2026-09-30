@@ -261,6 +261,10 @@ function groupClosed(g) {
   if (g === 'us') { var u = usStateLabel(); return !!u && u.cls === 'closed'; }
   return false;
 }
+/** 지금은 보여 줄 값이 없는 칸 — 야간선물은 개장 전(그날 야간장이 아직 안 열림)이면 '-' 뿐이라 칸을 뺀다 */
+function hiddenIndexCell(k, x) {
+  return k === 'nightfut' && (x.state === 'pre' || x.price == null);
+}
 /** 칸 꼬리표 — '10분 지연' 은 칸 안에서 '10분' 으로 줄인다 (전체 말은 title 로 남긴다) */
 function shortIndexTag(t) { return String(t || '').replace(/분 지연$/, '분'); }
 
@@ -275,7 +279,7 @@ async function loadIndex() {
 
     // 뼈대는 구성이 바뀔 때만 다시 만들고 평소엔 값만 갈아끼운다 (플래시 애니메이션 유지)
     var pick = indexPick();
-    var have = INDEX_KEYS.filter(function (k) { return d[k] && pick.indexOf(k) !== -1; });
+    var have = INDEX_KEYS.filter(function (k) { return d[k] && pick.indexOf(k) !== -1 && !hiddenIndexCell(k, d[k]); });
     // 윗줄: 지금 움직이는 쪽을 앞에 — 한국 낮에는 국내, 미국 장중(밤)에는 미국
     var order = usLeads() ? ['us', 'kr'] : ['kr', 'us'];
     var top = [], chips = [];
