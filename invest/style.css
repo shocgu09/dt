@@ -322,7 +322,12 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 .info-tip:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
 /* 제목·라벨 옆에 붙는 작은 ! */
 .info-tip.sm { width: 17px; height: 17px; font-size: .64rem; margin-left: 5px; vertical-align: 1px; }
-.m-head .info-tip.sm { margin-left: -2px; }
+/* 제목 바로 옆에 붙이면 제목의 일부처럼 보인다 — 머리 줄의 오른쪽 끝에 둔다 */
+.m-head .info-tip.sm { order: 99; margin-left: 0; }
+.m-head h3 + .info-tip:last-child { margin-left: auto; }          /* 힌트가 없는 머리 */
+.pf-head .info-tip.sm { margin-left: 8px; align-self: center; }
+.pf-head h4 + .info-tip { margin-left: auto; }
+.sd-asof .info-tip.sm { float: right; margin-left: 8px; }
 .stat-k .info-tip.sm { margin-left: 3px; width: 15px; height: 15px; font-size: .58rem; }
 [data-tip-body]:not(.info-tip) { cursor: help; }
 .info-pop {

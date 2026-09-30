@@ -2317,8 +2317,8 @@ function pfGrid(cells) {
 
 function pfCardHead(title, hint, tip) {
   return '<div class="pf-head"><h4>' + escapeHtml(title) + '</h4>'
-    + (tip ? InfoTip.btn(title + ' 용어', tip, 'sm') : '')
-    + (hint ? '<span class="pf-hint">' + escapeHtml(hint) + '</span>' : '') + '</div>';
+    + (hint ? '<span class="pf-hint">' + escapeHtml(hint) + '</span>' : '')
+    + (tip ? InfoTip.btn(title + ' 용어', tip, 'sm') : '') + '</div>';
 }
 
 function stockInfoCardHtml(p) {

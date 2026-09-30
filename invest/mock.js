@@ -283,13 +283,13 @@ var Mock = (function () {
     var a = account, s = a.season;
     var evalPnl = a.positions.reduce(function (t, p) { return t + p.pnl; }, 0);
     var h = '<div class="mk-card mk-summary">'
-      + '<div class="mk-sum-head"><span>' + escapeHtml(s.name) + InfoTip.btn('계좌 보는 법', [
+      + '<div class="mk-sum-head"><span>' + escapeHtml(s.name) + '</span><span class="mk-sum-end">' + escapeHtml(s.endDate) + ' 종료' + InfoTip.btn('계좌 보는 법', [
           '· 총자산 = 현금 + 보유 주식 (현재가로 평가)',
           '· 주문 가능: 현금에서 미체결 매수 주문이 묶어 둔 돈(주문 대기)을 뺀 금액',
           '· 평가손익: 보유 주식의 지금 가치 − 산 금액',
           '· 실현손익: 판 금액에서 수수료·세금과 산 금액(평균 단가)을 뺀 손익',
           '· 매수 수수료는 산 금액에 넣지 않습니다. 평가손익 + 실현손익 − 매수 수수료 = 총손익입니다.'
-        ].join('\n'), 'sm') + '</span><span>' + escapeHtml(s.endDate) + ' 종료</span></div>'
+        ].join('\n'), 'sm') + '</span></div>'
       + '<div class="mk-eq">' + won(a.equity) + '</div>'
       + '<div class="mk-eq-sub">' + rateHtml(a.returnRate) + ' <span class="' + signClass(a.equity - s.seed) + '">'
       +   (a.equity - s.seed > 0 ? '+' : '') + fmtNum(a.equity - s.seed) + '원</span>'
@@ -1503,8 +1503,8 @@ var Mock = (function () {
     }
     el.innerHTML = '<div class="mk-sheet-dim" onclick="Mock.tryCloseSheet()"></div>'
       + '<div class="mk-sheet ' + s.side + '" role="dialog" aria-modal="true" aria-label="주문" tabindex="-1">'
-      + '<div class="mk-sheet-head"><span class="mk-sheet-title">' + escapeHtml(s.name) + ' <i>' + escapeHtml(s.code) + '</i>' + orderTipHtml() + '</span>'
-      +   '<button class="mini-btn" onclick="Mock.tryCloseSheet()" aria-label="닫기">✕</button></div>'
+      + '<div class="mk-sheet-head"><span class="mk-sheet-title">' + escapeHtml(s.name) + ' <i>' + escapeHtml(s.code) + '</i></span>'
+      +   '<span class="mk-sheet-acts">' + orderTipHtml() + '<button class="mini-btn" onclick="Mock.tryCloseSheet()" aria-label="닫기">✕</button></span></div>'
       + '<div class="seg-row mk-seg2" role="group" aria-label="매매 구분">'
       +   '<button class="seg' + (isBuy ? ' on buy' : '') + '" aria-pressed="' + isBuy + '" onclick="Mock.setSheet(\'side\',\'buy\')">매수</button>'
       +   '<button class="seg' + (!isBuy ? ' on sell' : '') + '" aria-pressed="' + !isBuy + '" onclick="Mock.setSheet(\'side\',\'sell\')"' + (isBuy && noHolding ? ' disabled title="보유한 주식이 없습니다"' : '') + '>매도</button>'
