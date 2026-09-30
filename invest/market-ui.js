@@ -13,7 +13,7 @@ var rankType = 'value';
 var rankMarket = 'KOSPI';
 var watchView = 'card';          // 'card' | 'list'
 var chartMode = 'simple';        // 'simple' | 'detail'
-var sparkCache = {};             // code -> { values, at }
+var sparkCache = {};             // code -> { values, span('intraday'|'daily'), at }
 var _homeScrollY = 0;            // 종목 상세로 들어가기 전 시세 홈 스크롤 위치
 var _detailFrom = null;          // 상세를 열기 전 보던 탭 — 뒤로 가기로 닫으면 그 탭으로 돌아간다
 var _backToHome = false;         // "← 시세" 로 닫는 중 (다른 탭에서 왔어도 시세 홈으로)
@@ -534,10 +534,10 @@ async function ensureSparkline(code) {
   try {
     var d = await Market.spark(code);
     var vals = Array.isArray(d.points) ? d.points : [];
-    sparkCache[code] = { values: vals, at: Date.now() };
+    sparkCache[code] = { values: vals, span: d.span || 'intraday', at: Date.now() };
     return vals;
   } catch (e) {
-    sparkCache[code] = { values: [], at: Date.now() };
+    sparkCache[code] = { values: [], span: '', at: Date.now() };
     return [];
   }
 }
@@ -705,9 +705,13 @@ function paintWatch() {
       ensureSparkline(q.code).then(function (vals) {
         var cur = document.getElementById('wqs-' + q.code);
         if (!cur) return;
-        // 5초마다 SVG 를 통째로 새로 만들지 않는다 — 선 데이터(1분 캐시)나 색이 바뀔 때만 다시 그린다
+        // 선 데이터는 1분 캐시라 옆의 현재가(5초)보다 1~2분 늦다 — 당일 분봉 선이면 끝점을 현재가로 바꿔 끼워 숫자와 맞춘다.
+        // 장 시작 전 일봉 선(끝점이 어제 종가)에는 끼우지 않는다 — 모양이 틀어진다
         var hit = sparkCache[q.code];
-        var sk = (hit ? hit.at : 0) + ':' + (q.change >= 0 ? 'u' : 'd');
+        var live = hit && hit.span === 'intraday' && vals.length > 1 && q.price != null;
+        if (live) { vals = vals.slice(); vals[vals.length - 1] = q.price; }
+        // 5초마다 SVG 를 통째로 새로 만들지 않는다 — 선 데이터·끝점(현재가)·색이 바뀔 때만 다시 그린다
+        var sk = (hit ? hit.at : 0) + ':' + (live ? q.price : '') + ':' + (q.change >= 0 ? 'u' : 'd');
         if (cur.dataset.sk === sk) return;
         cur.dataset.sk = sk;
         cur.innerHTML = sparklineSvg(vals, q.change >= 0);
