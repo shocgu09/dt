@@ -35,6 +35,13 @@ export async function getJson(url) {
   return r.json();
 }
 
+// 해외 칸의 꼬리표 — 장이 닫혀 있으면 '마감', 열려 있으면 지연 분 (SOX 처럼 실시간이면 비운다).
+// 한국 낮에 SOX·VIX 가 전날 종가로 멈춰 있는 걸 지연이나 고장으로 읽지 않게 한다.
+function worldTag(status, delayMin) {
+  if (status && status !== 'OPEN') return '마감';
+  return delayMin ? `${delayMin}분 지연` : '';
+}
+
 // polling API 의 종목 1건 → 공통 시세 형태
 function mapQuote(s) {
   const code = s.itemCode;
@@ -232,6 +239,7 @@ export const naver = {
         changeRate: Number(x.fluctuationsRatio),
         delayMin: (x.stockExchangeType && x.stockExchangeType.delayTime) || 0
       };
+      out[key].tag = worldTag(x.marketStatus, out[key].delayMin);
     }
     return out;
   },
@@ -487,6 +495,7 @@ export const naver = {
               decimals: meta.decimals, unit: null,
               delayMin: (x.stockExchangeType && x.stockExchangeType.delayTime) || 0
             };
+            out[meta.key].tag = worldTag(x.marketStatus, out[meta.key].delayMin);
           }
         } catch (e) { /* 이 묶음만 빠진다 */ }
       })(),

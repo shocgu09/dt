@@ -234,7 +234,8 @@ async function loadIndex() {
           + (coinM ? ' role="button" tabindex="0" onclick="Coin.open(\'' + coinM + '\',\'' + escapeJsArg(INDEX_LABEL[k]) + '\')"'
                    + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click()}"' : '') + '>'
           + '<div class="idx-name">' + indexIconHtml(k) + escapeHtml(INDEX_NAME[k] || x.name)
-          +   (x.delayMin ? '<span class="idx-delay">' + x.delayMin + '분 지연</span>' : '')
+          // 해외 칸은 워커가 tag('마감' / 'N분 지연')를 실어 준다 — 그때는 고정 지연 배지 대신 그걸 쓴다
+          +   (x.delayMin && x.tag === undefined ? '<span class="idx-delay">' + x.delayMin + '분 지연</span>' : '')
           +   (x.tag !== undefined ? '<span class="idx-delay" id="ixt-' + k + '"></span>' : '')
           + '</div>'
           + '<div class="idx-price" id="ixp-' + k + '"></div>'
