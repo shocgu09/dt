@@ -498,9 +498,9 @@
 .mk-next { font-size: .86rem; color: var(--text2); margin-top: 6px; }
 .mk-next b { color: var(--text); }
 
-/* 커뮤니티 시즌 고르기 — 지난 시즌은 '종료' 표시 */
-.mk-sh-seasons { margin-bottom: 12px; }
-.mk-sh-seasons .seg i { font-style: normal; font-size: .64rem; font-weight: 700; color: var(--text3); margin-left: 3px; }
-.mk-sh-seasons .seg.on i { color: inherit; opacity: .8; }
-.mk-sh-older { appearance: none; -webkit-appearance: none; text-align: center; text-align-last: center; font: inherit; cursor: pointer; }
 .mk-hall-name .mk-hall-n + .mk-hall-n::before { content: '·'; margin-right: 6px; }
+/* 커뮤니티 — 현재 시즌만 보이고, 머리 줄 오른쪽 작은 버튼으로 지난 시즌을 고른다 */
+.mk-sh-acts .mini-btn, .mk-share .m-head .mk-sh-acts .mk-share-btn { margin-left: 0; }
+.mk-sh-acts { margin-left: auto; display: flex; gap: 6px; flex: 0 0 auto; }
+.mk-sh-older { appearance: none; -webkit-appearance: none; font: inherit; cursor: pointer; }
+.mk-sh-name { color: var(--text); font-weight: 800; margin-right: 2px; }

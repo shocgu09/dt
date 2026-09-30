@@ -1003,28 +1003,26 @@ var Mock = (function () {
 
     var joined = !!(season && season.joined);
     // 시즌이 둘 이상이면 고를 수 있게 — 지난 시즌 글은 읽기만 (글쓰기·댓글 입력 숨김)
-    // 시즌이 쌓여도 한 줄에 들어가게 — 최근 2개는 버튼, 그 전 시즌은 '이전 시즌' 목록으로 모은다 (서버는 최근 12개까지 준다)
-    var SEASON_BTNS = 2;
-    var recent = _sh.seasons.slice(0, SEASON_BTNS), older = _sh.seasons.slice(SEASON_BTNS);
-    var olderOn = older.some(function (x) { return x.id === _sh.shown; });
-    var picker = _sh.seasons.length > 1
-      ? '<div class="seg-row sub mk-sh-seasons" role="group" aria-label="시즌 고르기">' + recent.map(function (x) {
-          var on = x.id === _sh.shown;
-          return '<button type="button" class="seg' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="Mock.shareSeason(\'' + escapeJsArg(x.id) + '\')">'
-            + escapeHtml(x.name) + (x.closed ? ' <i>종료</i>' : '') + '</button>';
-        }).join('')
-        + (older.length
-            ? '<select class="seg mk-sh-older' + (olderOn ? ' on' : '') + '" aria-label="이전 시즌" onchange="if(this.value)Mock.shareSeason(this.value)">'
-              + '<option value="">이전 시즌 ▾</option>'
-              + older.map(function (x) {
-                  return '<option value="' + escapeHtml(x.id) + '"' + (x.id === _sh.shown ? ' selected' : '') + '>' + escapeHtml(x.name) + '</option>';
-                }).join('') + '</select>'
-            : '')
-        + '</div>'
+    // 기본은 현재 시즌(목록 맨 앞 — 진행 중, 없으면 가장 최근에 끝난 시즌)만. 지난 시즌은 머리 줄의 작은 '이전 시즌 ▾'로 고른다
+    var curId = _sh.seasons.length ? _sh.seasons[0].id : null;
+    var past = _sh.seasons.filter(function (x) { return x.id !== curId; });
+    var viewingPast = !!(_sh.shown && curId && _sh.shown !== curId);
+    var shownName = (_sh.seasons.filter(function (x) { return x.id === _sh.shown; })[0] || {}).name || '';
+    var pastPicker = past.length
+      ? '<select class="mini-btn mk-sh-older" aria-label="이전 시즌 보기" onchange="if(this.value)Mock.shareSeason(this.value)">'
+        + '<option value="">이전 시즌 ▾</option>'
+        + past.map(function (x) {
+            return '<option value="' + escapeHtml(x.id) + '"' + (x.id === _sh.shown ? ' selected' : '') + '>' + escapeHtml(x.name) + '</option>';
+          }).join('') + '</select>'
       : '';
-    var h = '<section class="m-section mk-share">' + picker
-      + '<div class="m-head"><span class="m-hint">' + (_sh.closed ? '지난 시즌 글 · 읽기만 할 수 있습니다' : '회원들의 이야기와 모의투자 계좌') + '</span>'
-      + (_sh.closed ? '' : '<button class="mini-btn mk-share-btn" onclick="Mock.openShare()">✏️ 글쓰기</button>') + '</div>';
+    var h = '<section class="m-section mk-share">'
+      + '<div class="m-head"><span class="m-hint">'
+      +   (viewingPast ? '<b class="mk-sh-name">' + escapeHtml(shownName) + '</b> 지난 시즌 글 · 읽기만 할 수 있습니다'
+            : (_sh.closed ? '지난 시즌 글 · 읽기만 할 수 있습니다' : '회원들의 이야기와 모의투자 계좌')) + '</span>'
+      +   '<span class="mk-sh-acts">'
+      +   (viewingPast ? '<button type="button" class="mini-btn" onclick="Mock.shareSeason(\'' + escapeJsArg(curId) + '\')">← 현재 시즌</button>' : pastPicker)
+      +   (_sh.closed ? '' : '<button class="mini-btn mk-share-btn" onclick="Mock.openShare()">✏️ 글쓰기</button>')
+      +   '</span></div>';
     if (!_sh.items.length) {
       h += _sh.err ? '<div class="empty">' + escapeHtml(_sh.err) + '</div>'
         : (_sh.loading ? '<div class="loading">불러오는 중</div>' : '<div class="mk-share-empty">아직 올라온 글이 없습니다.</div>');
