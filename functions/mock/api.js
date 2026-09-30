@@ -331,7 +331,15 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
   /* ── 계좌 공유: 읽기·댓글·삭제 — 시즌에 참가하지 않은 회원도 읽고 댓글을 달 수 있다 ──
    * 공유하기(POST /shares)만 참가자 전용이라 아래 계좌 확인 뒤에 있다. */
   if (path === '/shares' && method === 'GET') {
-    if (!season) return { season: null, items: [], next: null };
+    // 시즌 고르기 — 지난 시즌 글도 읽을 수 있다 (댓글은 아래 POST 에서 진행 중인 시즌만 받는다).
+    // 고르지 않으면 진행 중인 시즌, 없으면(시즌 사이) 가장 최근에 끝난 시즌
+    const list = (await db.prepare(
+      `SELECT id, name, status FROM seasons WHERE status IN ('active','closed') ORDER BY start_date DESC LIMIT 12`
+    ).all()).results || [];
+    const want = String(url.searchParams.get('season') || '');
+    const pick = list.find((x) => x.id === want) || (season && list.find((x) => x.id === season.id)) || list.find((x) => x.status === 'closed');
+    const seasons = list.map((x) => ({ id: x.id, name: x.name, closed: x.status !== 'active' }));
+    if (!pick) return { season: null, seasons, items: [], next: null };
     // 다음 페이지 기준은 (시각, id) — 같은 밀리초에 두 건이 들어와도 경계에서 빠지지 않게
     const cur = String(url.searchParams.get('before') || '');
     const mm = /^(\d{1,15})_([0-9a-f-]{36})$/i.exec(cur);
@@ -339,11 +347,12 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     const rows = (await db.prepare(
       `SELECT * FROM shares WHERE season_id=? AND deleted_at IS NULL AND (created_at < ? OR (created_at = ? AND id < ?))
        ORDER BY created_at DESC, id DESC LIMIT ?`
-    ).bind(season.id, bAt, bAt, bId, SHARE_PAGE).all()).results || [];
+    ).bind(pick.id, bAt, bAt, bId, SHARE_PAGE).all()).results || [];
     const last = rows[rows.length - 1];
     const nicks = await N.nicksFor(db, rows.map((r) => r.uid));
     return {
-      season: { id: season.id, name: season.name },
+      season: { id: pick.id, name: pick.name, closed: pick.status !== 'active' },
+      seasons,
       items: rows.map((r) => publicShare(r, uid, isAdmin, nicks)),
       next: rows.length === SHARE_PAGE ? `${last.created_at}_${last.id}` : null
     };

@@ -962,7 +962,8 @@ var Mock = (function () {
    * 읽기·댓글은 시즌에 참가하지 않은 회원도 할 수 있고, 공유는 참가자만 할 수 있다.
    */
   var SHARE_PREVIEW = 3, SHARE_POS_PREVIEW = 3, SHARE_POS_FULL = 10, COMMENT_MAX = 300;
-  function newShareState() { return { items: [], next: null, loading: false, err: null, all: false, open: {}, full: {}, cm: {} }; }
+  // seasonId: 고른 시즌 (null = 서버 기본 — 진행 중인 시즌, 없으면 가장 최근에 끝난 시즌) · closed: 지난 시즌이라 읽기만
+  function newShareState() { return { items: [], next: null, loading: false, err: null, all: false, open: {}, full: {}, cm: {}, seasonId: null, seasons: [], closed: false }; }
   var _sh = newShareState();
   var _shSheet = null;         // 공유 시트 { kind, code, body, busy }
 
@@ -970,14 +971,20 @@ var Mock = (function () {
   function linkText(t) { var e = escapeHtml(t); return typeof linkifyBody === 'function' ? linkifyBody(e) : e; }
 
   async function loadShares(reset) {
-    if (reset) _sh = newShareState();
+    if (reset) { var keep = { seasonId: _sh.seasonId, seasons: _sh.seasons, closed: _sh.closed }; _sh = newShareState(); Object.assign(_sh, keep); }
     if (_sh.loading) return;
     _sh.loading = true;
     renderShares();
     try {
-      var d = await api('/shares' + (!reset && _sh.next ? '?before=' + encodeURIComponent(_sh.next) : ''));
+      var q = [];
+      if (_sh.seasonId) q.push('season=' + encodeURIComponent(_sh.seasonId));
+      if (!reset && _sh.next) q.push('before=' + encodeURIComponent(_sh.next));
+      var d = await api('/shares' + (q.length ? '?' + q.join('&') : ''));
       _sh.items = reset ? d.items : _sh.items.concat(d.items);
       _sh.next = d.next; _sh.err = null;
+      _sh.seasons = d.seasons || [];
+      _sh.closed = !!(d.season && d.season.closed);
+      _sh.shown = d.season ? d.season.id : null;          // 지금 보이는 시즌 (고른 게 없으면 서버가 정한 것)
     } catch (e) { _sh.err = e.message; }
     _sh.loading = false;
     renderShares();
@@ -992,8 +999,17 @@ var Mock = (function () {
     var focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.cm : null;
 
     var joined = !!(season && season.joined);
-    var h = '<section class="m-section mk-share"><div class="m-head"><span class="m-hint">회원들의 이야기와 모의투자 계좌</span>'
-      + '<button class="mini-btn mk-share-btn" onclick="Mock.openShare()">✏️ 글쓰기</button></div>';
+    // 시즌이 둘 이상이면 고를 수 있게 — 지난 시즌 글은 읽기만 (글쓰기·댓글 입력 숨김)
+    var picker = _sh.seasons.length > 1
+      ? '<div class="seg-row sub mk-sh-seasons" role="group" aria-label="시즌 고르기">' + _sh.seasons.map(function (x) {
+          var on = x.id === _sh.shown;
+          return '<button type="button" class="seg' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="Mock.shareSeason(\'' + escapeJsArg(x.id) + '\')">'
+            + escapeHtml(x.name) + (x.closed ? ' <i>종료</i>' : '') + '</button>';
+        }).join('') + '</div>'
+      : '';
+    var h = '<section class="m-section mk-share">' + picker
+      + '<div class="m-head"><span class="m-hint">' + (_sh.closed ? '지난 시즌 글 · 읽기만 할 수 있습니다' : '회원들의 이야기와 모의투자 계좌') + '</span>'
+      + (_sh.closed ? '' : '<button class="mini-btn mk-share-btn" onclick="Mock.openShare()">✏️ 글쓰기</button>') + '</div>';
     if (!_sh.items.length) {
       h += _sh.err ? '<div class="empty">' + escapeHtml(_sh.err) + '</div>'
         : (_sh.loading ? '<div class="loading">불러오는 중</div>' : '<div class="mk-share-empty">아직 올라온 글이 없습니다.</div>');
@@ -1006,9 +1022,10 @@ var Mock = (function () {
           + (_sh.loading ? '불러오는 중' : '더 불러오기') + '</button>';
       }
     }
-    h += '<div class="mk-note">' + (joined
+    if (!_sh.closed) h += '<div class="mk-note">' + (joined
       ? '글에 모의투자 계좌를 붙일 수 있습니다 (하루 3번). 계좌 카드는 올린 시각의 값으로 고정됩니다.'
-      : '시즌에 참가하면 글에 모의투자 계좌를 붙일 수 있습니다.') + '</div></section>';
+      : '시즌에 참가하면 글에 모의투자 계좌를 붙일 수 있습니다.') + '</div>';
+    h += '</section>';
     el.innerHTML = h;
     hydrateShareImages(el);
     if (_rkView === 'share') markSharesSeen(); else updateShareDot();
@@ -1104,16 +1121,23 @@ var Mock = (function () {
     var h = '<div class="mk-sc-cm">';
     if (!list) h += '<div class="mk-sc-none">댓글을 불러오는 중</div>';
     else if (list.err) h += '<div class="mk-sc-none">' + escapeHtml(list.err) + '</div>';
-    else if (!list.length) h += '<div class="mk-sc-none">첫 댓글을 남겨 보세요</div>';
+    else if (!list.length) h += '<div class="mk-sc-none">' + (_sh.closed ? '댓글이 없습니다' : '첫 댓글을 남겨 보세요') + '</div>';
     else h += list.map(function (c) {
       return '<div class="mk-sc-c"><div class="mk-sc-ch"><b>' + escapeHtml(c.nickname) + '</b>' + (c.realName ? ' <small class="mk-real" title="실명 (관리자에게만 보임)">' + escapeHtml(c.realName) + '</small>' : '') + '<span class="mk-sc-ct">' + escapeHtml(kstHM(c.createdAt)) + '</span>'
         + (c.canDelete ? '<button type="button" class="mk-sc-cdel" onclick="Mock.deleteComment(\'' + s.id + '\',\'' + c.id + '\')" aria-label="댓글 삭제">삭제</button>' : '')
         + '</div><div class="mk-sc-cb">' + linkText(c.body) + '</div></div>';
     }).join('');
+    if (_sh.closed) return h + '</div>';            // 지난 시즌 — 댓글은 읽기만
     h += '<div class="mk-sc-cw"><textarea class="comment-input" id="cmi-' + s.id + '" data-cm="' + s.id + '" maxlength="' + COMMENT_MAX + '" rows="1"'
       + ' aria-label="댓글" placeholder="댓글을 남겨 보세요"></textarea>'
       + '<button type="button" class="btn-submit" onclick="Mock.submitComment(\'' + s.id + '\', this)">등록</button></div></div>';
     return h;
+  }
+
+  function shareSeason(id) {
+    if (id === _sh.shown) return;
+    _sh.seasonId = id;
+    loadShares(true);
   }
 
   function findShare(id) { return _sh.items.filter(function (x) { return x.id === id; })[0] || null; }
@@ -2524,6 +2548,6 @@ var Mock = (function () {
     openShare: openShare, closeShare: closeShare, shareKind: shareKind, shareCode: shareCode, shareInput: shareInput, submitShare: submitShare,
     sharePhotos: sharePhotos, removePhoto: removePhoto, viewPhoto: viewPhoto,
     editNick: editNick, saveNick: saveNick,
-    rankView: rankView, toggleShare: toggleShare, fullShare: fullShare, moreShares: moreShares, deleteShare: deleteShare, submitComment: submitComment, deleteComment: deleteComment
+    rankView: rankView, shareSeason: shareSeason, toggleShare: toggleShare, fullShare: fullShare, moreShares: moreShares, deleteShare: deleteShare, submitComment: submitComment, deleteComment: deleteComment
   };
 })();
