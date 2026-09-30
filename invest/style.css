@@ -320,6 +320,11 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 }
 .info-tip:hover, .info-tip[aria-describedby] { border-color: var(--primary); color: var(--primary-light); }
 .info-tip:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+/* 제목·라벨 옆에 붙는 작은 ! */
+.info-tip.sm { width: 17px; height: 17px; font-size: .64rem; margin-left: 5px; vertical-align: 1px; }
+.m-head .info-tip.sm { margin-left: -2px; }
+.stat-k .info-tip.sm { margin-left: 3px; width: 15px; height: 15px; font-size: .58rem; }
+[data-tip-body]:not(.info-tip) { cursor: help; }
 .info-pop {
   position: fixed; z-index: 1000; width: max-content; max-width: min(300px, calc(100vw - 16px));
   background: var(--bg2); border: 1px solid var(--primary); box-shadow: var(--shadow);

@@ -454,7 +454,7 @@ var Us = (function () {
         ['거래대금', fmtUsdCompact(q.valueUsd)],
         ['거래량', q.volume != null ? fmtCompact(q.volume) + '주' : '-'],
         ['시가총액', q.marketValue ? escapeHtml(String(q.marketValue).replace(' USD', '달러')) : fmtUsdCompact(q.marketCap)],
-        ['PER', escapeHtml(q.per || '-')],
+        ['PER' + InfoTip.btn('PER · PBR', 'PER: 주가 ÷ 주당순이익. 낮을수록 버는 돈에 비해 주가가 싸다는 뜻입니다.\nPBR: 주가 ÷ 주당순자산. 1보다 낮으면 장부상 자산보다 싸게 거래되는 중입니다.', 'sm'), escapeHtml(q.per || '-')],
         ['PBR', escapeHtml(q.pbr || '-')],
         ['배당수익률', escapeHtml(q.dividendYield || '-')]
       ].map(function (r) {

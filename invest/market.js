@@ -1181,8 +1181,8 @@ var InfoTip = (function () {
   window.addEventListener('resize', hide);
 
   /** 따로 쓰는 ! 버튼 */
-  function btn(title, body) {
-    return '<button type="button" class="info-tip" aria-label="' + esc((title || '') + ' 설명') + '"'
+  function btn(title, body, cls) {
+    return '<button type="button" class="info-tip' + (cls ? ' ' + cls : '') + '" aria-label="' + esc((title || '') + ' 설명') + '"'
       + ' data-tip-title="' + esc(title) + '" data-tip-body="' + esc(body) + '">!</button>';
   }
   return { show: show, hide: hide, btn: btn };

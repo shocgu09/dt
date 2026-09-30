@@ -1686,7 +1686,10 @@ async function loadStockQuote() {
     var src = alt ? (q.source === 'daum' ? '다음' : '야후') + '(대체)' : '네이버';
     if (alt && st.cls === 'live') st = { cls: 'closed', text: '지연 가능' };
     aEl.innerHTML = (q.asOf ? escapeHtml(shortTime(q.asOf)) + ' 기준 · ' : '') + src + ' ' + (sess ? '· ' + sess + ' ' : '')
-      + '<span class="state-dot ' + st.cls + '">' + st.text + '</span>';
+      + '<span class="state-dot ' + st.cls + '">' + st.text + '</span>'
+      // 평소(네이버 · KRX)와 다른 값을 보여 줄 때만 ! 로 이유를 밝힌다
+      + (alt ? InfoTip.btn('대체 시세', '네이버 시세를 받지 못해 ' + (q.source === 'daum' ? '다음' : '야후') + ' 값을 대신 보여 줍니다. 몇 분 늦을 수 있고, 네이버 연결이 돌아오면 다시 네이버 값으로 바뀝니다.', 'sm')
+        : sess ? InfoTip.btn('넥스트레이드(NXT) 시세', 'KRX 정규장(09:00~15:30) 밖이라 대체거래소 넥스트레이드의 체결가를 보여 줍니다.\n프리마켓 08:00~08:50 · 애프터마켓 15:40~20:00\n상·하한가 표시도 NXT 기준입니다.', 'sm') : '');
 
     // 상·하한가 — 프리·애프터마켓에는 NXT 가격을 보여 주므로 그 시장의 상태로 (KRX 값은 전날 것이 밤새 남아 있다)
     var ls = q.session ? (q.nxt && q.nxt.limitState) : q.limitState;
@@ -2312,8 +2315,9 @@ function pfGrid(cells) {
   return '<div class="pf-grid">' + list.join('') + '</div>';
 }
 
-function pfCardHead(title, hint) {
+function pfCardHead(title, hint, tip) {
   return '<div class="pf-head"><h4>' + escapeHtml(title) + '</h4>'
+    + (tip ? InfoTip.btn(title + ' 용어', tip, 'sm') : '')
     + (hint ? '<span class="pf-hint">' + escapeHtml(hint) + '</span>' : '') + '</div>';
 }
 
@@ -2328,7 +2332,13 @@ function stockInfoCardHtml(p) {
     infoCell('외인소진율', i.foreignRate)
   ]);
   if (!grid) return '';
-  return '<section class="pf-card">' + pfCardHead('종목정보', '투자지표')
+  return '<section class="pf-card">' + pfCardHead('종목정보', '투자지표', [
+      '· PER: 주가 ÷ 주당순이익(EPS). 낮을수록 버는 돈에 비해 주가가 싸다는 뜻입니다.',
+      '· EPS: 1주당 순이익 (최근 4분기)',
+      '· PBR: 주가 ÷ 주당순자산(BPS). 1보다 낮으면 장부상 자산보다 싸게 거래되는 중입니다.',
+      '· 배당수익률: 1년 배당금 ÷ 주가',
+      '· 외인소진율: 외국인이 살 수 있는 한도 중 이미 사 둔 비율'
+    ].join('\n'))
     + grid
     + '<div class="pf-note">PER·EPS 는 최근 4분기 실적 기준 · 추정치는 증권사 컨센서스</div>'
     + '</section>';
@@ -2355,7 +2365,12 @@ function etfInfoCardHtml(p) {
       }))
     : '';
   if (!grid && !rateHtml) return '';
-  return '<section class="pf-card">' + pfCardHead('ETF 정보', '기초지수 · 보수')
+  return '<section class="pf-card">' + pfCardHead('ETF 정보', '기초지수 · 보수', [
+      '· 순자산가치(NAV): ETF 가 담은 자산의 1주당 실제 가치',
+      '· 괴리율: 시장 가격이 NAV 보다 얼마나 비싸거나(+) 싼지(−)',
+      '· 총보수: 1년 동안 떼는 운용 비용 비율',
+      '· 분배율: 최근 1년 분배금 ÷ 가격'
+    ].join('\n'))
     + grid
     + rateHtml
     + '<div class="pf-note">괴리율은 시장가와 순자산가치(NAV)의 차이 · 기간 수익률은 분배금 포함</div>'

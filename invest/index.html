@@ -22,7 +22,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"></noscript>
   <link rel="stylesheet" href="../tokens.css?v=3">
-  <link rel="stylesheet" href="style.css?v=56">
+  <link rel="stylesheet" href="style.css?v=57">
   <link rel="icon" href="../icon-192.png?v=3">
 </head>
 <body>
@@ -136,6 +136,7 @@
           <section class="m-section" id="crowdSection" style="display:none">
             <div class="m-head">
               <h3>👥 DT 회원 픽</h3>
+              <button type="button" class="info-tip sm" aria-label="DT 회원 픽 설명" data-tip-title="DT 회원 픽" data-tip-body="이번 시즌 모의투자에 참가 중인 회원 기준입니다.&#10;· 많이 보유: 지금 그 종목을 가진 회원 수&#10;· 오늘 많이 산: 오늘 0시 이후 그 종목을 산 회원 수&#10;회원 3명 이상인 종목만, 상위 10개를 5분마다 새로 집계합니다.">!</button>
               <span class="m-hint" id="crowdHint">모의투자 기준</span>
             </div>
             <div class="seg-row cw-seg">
@@ -146,7 +147,9 @@
           </section>
 
           <section class="m-section">
-            <div class="m-head"><h3>📊 오늘의 등락</h3></div>
+            <div class="m-head"><h3>📊 오늘의 등락</h3>
+              <button type="button" class="info-tip sm" aria-label="오늘의 등락 설명" data-tip-title="오늘의 등락" data-tip-body="· 거래대금: 오늘 거래된 금액이 큰 순&#10;· 거래량: 오늘 거래된 주식 수가 많은 순&#10;· 급상승 · 급하락: 전일 대비 등락률 순&#10;· 시총: 시가총액이 큰 순&#10;순위는 1분마다 갱신되고 가격·등락률은 현재가라, 순위와 잠깐 어긋날 수 있습니다.">!</button>
+            </div>
             <div class="seg-row">
               <button class="seg on" data-rank="value" onclick="setRank('value')">거래대금</button>
               <button class="seg" data-rank="volume" onclick="setRank('volume')">거래량</button>
@@ -272,11 +275,11 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="market.js?v=36"></script>
-  <script src="market-ui.js?v=60"></script>
-  <script src="coin.js?v=7"></script>
-  <script src="us.js?v=6"></script>
-  <script src="app.js?v=70"></script>
+  <script src="market.js?v=37"></script>
+  <script src="market-ui.js?v=61"></script>
+  <script src="coin.js?v=8"></script>
+  <script src="us.js?v=7"></script>
+  <script src="app.js?v=71"></script>
   <script src="../last-seen.js?v=1"></script>
   <script src="../kb.js?v=3"></script>
 </body>

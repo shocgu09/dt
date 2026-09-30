@@ -84,10 +84,10 @@ var Coin = (function () {
   }
   function badgesHtml(x) {
     var h = '';
-    if (x && x.warning) h += '<span class="cn-badge warn" title="거래지원 종료 가능성이 있는 유의 종목">유의</span>';
+    if (x && x.warning) h += '<span class="cn-badge warn" data-tip-title="유의 종목" data-tip-body="업비트가 거래지원 종료(상장폐지) 가능성을 알린 코인입니다.">유의</span>';
     if (x && x.caution && x.caution.length) {
       var why = x.caution.map(function (k) { return CAUTION_LABEL[k] || k; }).join(', ');
-      h += '<span class="cn-badge caution" title="주의: ' + escapeAttr(why) + '">주의</span>';
+      h += '<span class="cn-badge caution" data-tip-title="주의 종목" data-tip-body="' + escapeAttr('업비트가 알린 주의 사유: ' + why) + '">주의</span>';
     }
     return h;
   }

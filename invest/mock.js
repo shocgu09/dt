@@ -283,7 +283,13 @@ var Mock = (function () {
     var a = account, s = a.season;
     var evalPnl = a.positions.reduce(function (t, p) { return t + p.pnl; }, 0);
     var h = '<div class="mk-card mk-summary">'
-      + '<div class="mk-sum-head"><span>' + escapeHtml(s.name) + '</span><span>' + escapeHtml(s.endDate) + ' 종료</span></div>'
+      + '<div class="mk-sum-head"><span>' + escapeHtml(s.name) + InfoTip.btn('계좌 보는 법', [
+          '· 총자산 = 현금 + 보유 주식 (현재가로 평가)',
+          '· 주문 가능: 현금에서 미체결 매수 주문이 묶어 둔 돈(주문 대기)을 뺀 금액',
+          '· 평가손익: 보유 주식의 지금 가치 − 산 금액',
+          '· 실현손익: 판 금액에서 수수료·세금과 산 금액(평균 단가)을 뺀 손익',
+          '· 매수 수수료는 산 금액에 넣지 않습니다. 평가손익 + 실현손익 − 매수 수수료 = 총손익입니다.'
+        ].join('\n'), 'sm') + '</span><span>' + escapeHtml(s.endDate) + ' 종료</span></div>'
       + '<div class="mk-eq">' + won(a.equity) + '</div>'
       + '<div class="mk-eq-sub">' + rateHtml(a.returnRate) + ' <span class="' + signClass(a.equity - s.seed) + '">'
       +   (a.equity - s.seed > 0 ? '+' : '') + fmtNum(a.equity - s.seed) + '원</span>'
@@ -1453,6 +1459,18 @@ var Mock = (function () {
     return '매도 가능 ' + fmtNum(n.maxQty) + '주' + (n.held !== n.maxQty ? ' (보유 ' + fmtNum(n.held) + '주)' : '');
   }
 
+  /** 주문창 제목 옆 ! — 체결 규칙과 비용 */
+  function orderTipHtml() {
+    var ss = account && account.season, fr = ss ? ss.feeRate : 0.00015, tr = ss ? ss.taxRate : 0.002;
+    return InfoTip.btn('주문 규칙', [
+      '· 실제 시장에서 거래가 일어난 가격으로만 체결됩니다. 주문 뒤 거래가 생기고, 그 가격이 지정가에 닿아야 합니다.',
+      '· 시장가는 그때의 체결가로 체결됩니다. 체결 판정은 최대 1분 늦을 수 있습니다.',
+      '· 동시호가·VI·거래정지로 가격이 멈춘 동안에는 체결되지 않고, 거래가 다시 생기면 그 가격으로 체결됩니다.',
+      '· 수수료 ' + (fr * 100).toFixed(3) + '% (매수·매도) · 매도세 ' + (tr * 100).toFixed(2) + '% (ETF·ETN 면제)',
+      '· 매도 가능 = 보유 수량 − 아직 체결 안 된 매도 주문 수량'
+    ].join('\n'), 'sm');
+  }
+
   function calcHtml(n) {
     var isBuy = sheet.side === 'buy', a = account;
     // 시장가는 체결가가 정해지지 않았다 — 지금 시세로 어림한 값임을 밝힌다
@@ -1485,7 +1503,7 @@ var Mock = (function () {
     }
     el.innerHTML = '<div class="mk-sheet-dim" onclick="Mock.tryCloseSheet()"></div>'
       + '<div class="mk-sheet ' + s.side + '" role="dialog" aria-modal="true" aria-label="주문" tabindex="-1">'
-      + '<div class="mk-sheet-head"><span class="mk-sheet-title">' + escapeHtml(s.name) + ' <i>' + escapeHtml(s.code) + '</i></span>'
+      + '<div class="mk-sheet-head"><span class="mk-sheet-title">' + escapeHtml(s.name) + ' <i>' + escapeHtml(s.code) + '</i>' + orderTipHtml() + '</span>'
       +   '<button class="mini-btn" onclick="Mock.tryCloseSheet()" aria-label="닫기">✕</button></div>'
       + '<div class="seg-row mk-seg2" role="group" aria-label="매매 구분">'
       +   '<button class="seg' + (isBuy ? ' on buy' : '') + '" aria-pressed="' + isBuy + '" onclick="Mock.setSheet(\'side\',\'buy\')">매수</button>'
