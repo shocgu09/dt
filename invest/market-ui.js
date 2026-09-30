@@ -134,8 +134,12 @@ function watchingNightLive() {
   return indexPick().some(function (k) { return NIGHT_LIVE[k]; });
 }
 
-// 열 개를 다 켜면 가로로 너무 길다 — 처음엔 다섯 개만 보이고, 회원이 체크리스트로 고른다
-var INDEX_DEFAULT = ['kospi', 'kosdaq', 'fut', 'nightfut', 'usd', 'nasdaq', 'sp500', 'btc'];
+// 처음 보는 회원의 기본 구성 — 회원이 ⚙ 체크리스트로 바꾸면 그 기기에 저장된 목록을 쓴다
+var INDEX_DEFAULT = [
+  'kospi', 'kosdaq', 'fut',                              // 국내
+  'nightfut', 'nasdaq', 'sox',                           // 미국 (야간선물 포함)
+  'usd', 'gold', 'oil', 'us10y', 'kr10y', 'kr3y'         // 기타 (아랫줄)
+];
 var INDEX_PICK_KEY = 'dt-invest-index-pick';
 var NIGHTFUT_ADDED_KEY = 'dt-invest-index-nightfut';
 var _indexPick = null;
