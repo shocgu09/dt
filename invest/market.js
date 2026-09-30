@@ -1082,3 +1082,108 @@ function resetDirs(prefix) {
     if (!prefix || k.indexOf(prefix) === 0) delete _prevVals[k];
   });
 }
+
+/* ===== 설명 팝업 (! 표시) =====
+ * 어느 요소든 data-tip-body(와 선택적인 data-tip-title)를 달면 설명이 붙는다.
+ *   - 마우스: 올리면 뜨고 벗어나면 닫힌다. 누르면 고정된다.
+ *   - 터치: 누르면 뜨고, 다른 곳을 누르거나 스크롤하면 닫힌다.
+ *   - 키보드: 포커스하면 뜨고 Esc 로 닫힌다.
+ * 누른 것이 코인 칩처럼 눌러서 이동하는 칸 안에 있어도 이동하지 않고 설명만 연다 (캡처 단계에서 멈춘다).
+ * 팝업은 body 에 하나만 두고 fixed 로 띄운다 — 가로 스크롤·overflow 안에서도 잘리지 않는다.
+ * InfoTip.btn(제목, 본문) 은 따로 쓰는 ! 버튼 HTML 을 만든다.
+ */
+var InfoTip = (function () {
+  var pop = null, cur = null, mode = '';
+  var hoverOk = false;
+  try { hoverOk = window.matchMedia('(hover: hover) and (pointer: fine)').matches; } catch (e) { /* 터치로 본다 */ }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function ensure() {
+    if (pop) return pop;
+    pop = document.createElement('div');
+    pop.className = 'info-pop';
+    pop.setAttribute('role', 'tooltip');
+    pop.id = 'infoPop';
+    pop.hidden = true;
+    pop.innerHTML = '<div class="info-pop-t"></div><div class="info-pop-b"></div>';
+    document.body.appendChild(pop);
+    return pop;
+  }
+  function trigger(t) { return t && t.closest ? t.closest('[data-tip-body]') : null; }
+
+  function show(el, how) {
+    var body = el.getAttribute('data-tip-body');
+    if (!body) return;
+    var p = ensure();
+    var title = el.getAttribute('data-tip-title') || '';
+    p.firstChild.textContent = title;
+    p.firstChild.style.display = title ? '' : 'none';
+    p.lastChild.textContent = body;
+    p.hidden = false;
+    if (cur && cur !== el) cur.removeAttribute('aria-describedby');
+    cur = el; mode = how;
+    el.setAttribute('aria-describedby', 'infoPop');
+    // 아래에 띄우고, 넘치면 위로. 좌우는 화면 안으로 끌어온다
+    var r = el.getBoundingClientRect();
+    var w = p.offsetWidth, h = p.offsetHeight, gap = 6, m = 8;
+    var left = Math.max(m, Math.min(window.innerWidth - w - m, r.left + r.width / 2 - w / 2));
+    var top = r.bottom + gap;
+    if (top + h > window.innerHeight - m && r.top - gap - h > m) top = r.top - gap - h;
+    p.style.left = Math.round(left) + 'px';
+    p.style.top = Math.round(top) + 'px';
+  }
+  function hide() {
+    if (!pop || pop.hidden) return;
+    pop.hidden = true;
+    if (cur) cur.removeAttribute('aria-describedby');
+    cur = null; mode = '';
+  }
+
+  document.addEventListener('mouseover', function (e) {
+    if (!hoverOk) return;
+    var t = trigger(e.target);
+    if (t && t !== cur) show(t, 'hover');
+  });
+  document.addEventListener('mouseout', function (e) {
+    if (mode !== 'hover' || !cur) return;
+    var t = trigger(e.target);
+    if (t === cur && !cur.contains(e.relatedTarget)) hide();
+  });
+  document.addEventListener('click', function (e) {
+    var t = trigger(e.target);
+    if (t) {
+      e.preventDefault(); e.stopPropagation();
+      if (t === cur && mode === 'pin') hide(); else show(t, 'pin');
+      return;
+    }
+    if (cur && !(pop && pop.contains(e.target))) hide();
+  }, true);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { hide(); return; }
+    var t = trigger(e.target);
+    if (t && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault(); e.stopPropagation();
+      if (t === cur) hide(); else show(t, 'pin');
+    }
+  }, true);
+  document.addEventListener('focusin', function (e) {
+    var t = trigger(e.target);
+    if (t && t !== cur) show(t, 'focus');
+  });
+  document.addEventListener('focusout', function (e) {
+    if (mode === 'focus' && trigger(e.target) === cur) hide();
+  });
+  window.addEventListener('scroll', hide, { capture: true, passive: true });
+  window.addEventListener('resize', hide);
+
+  /** 따로 쓰는 ! 버튼 */
+  function btn(title, body) {
+    return '<button type="button" class="info-tip" aria-label="' + esc((title || '') + ' 설명') + '"'
+      + ' data-tip-title="' + esc(title) + '" data-tip-body="' + esc(body) + '">!</button>';
+  }
+  return { show: show, hide: hide, btn: btn };
+})();

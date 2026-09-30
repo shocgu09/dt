@@ -261,6 +261,15 @@ function groupClosed(g) {
   if (g === 'us') { var u = usStateLabel(); return !!u && u.cls === 'closed'; }
   return false;
 }
+// 스트립 오른쪽 위 ! — 칸마다 달면 복잡해서 박스 하나에 모아 둔다
+var INDEX_TIP = [
+  '· 10분 · 15분: 거래소 규정으로 그만큼 늦은 시세입니다. 해외 선물·금·유가는 10분, VIX 는 15분 전 값입니다.',
+  '· 마감: 그 시장이 쉬는 중이라 마지막 값을 보여 줍니다.',
+  '· 국내 · 미국 배지: 각 시장이 지금 열려 있는지 알려 줍니다. 밤에 미국 장이 열리면 미국 묶음이 앞으로 옵니다.',
+  '· 야간선물은 18:00~05:00 에 열리는 코스피200 선물입니다.',
+  '· ⚙ 에서 보여 줄 항목을 고를 수 있습니다.'
+].join('\n');
+
 /** 지금은 보여 줄 값이 없는 칸 — 야간선물은 개장 전(그날 야간장이 아직 안 열림)이면 '-' 뿐이라 칸을 뺀다 */
 function hiddenIndexCell(k, x) {
   return k === 'nightfut' && (x.state === 'pre' || x.price == null);
@@ -301,8 +310,10 @@ async function loadIndex() {
       };
       // 줄 머리: 윗줄 순서대로 국내·미국 장 상태, 오른쪽 끝에 항목 고르기
       var heads = order.filter(function (g) { return top.some(function (k) { return INDEX_GROUP_OF[k] === g; }); });
+      InfoTip.hide();          // 뼈대를 갈아 끼우면 열려 있던 설명의 기준 칸이 사라진다
       el.innerHTML = '<div class="idx-head">'
         + heads.map(function (g) { return '<div class="idx-state" id="' + (g === 'kr' ? 'ixState' : 'ixStateUs') + '"></div>'; }).join('')
+        + InfoTip.btn('지수·선물 시세 안내', INDEX_TIP)
         + '<button class="ix-gear" onclick="toggleIndexPanel()" aria-label="표시 항목 고르기">⚙</button>'
         + '</div>'
         + (top.length ? '<div class="idx-scroll">' + top.map(function (k, i) {

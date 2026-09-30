@@ -308,7 +308,26 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 
 /* 줄 머리 — 윗줄 순서대로 국내·미국 장 상태, 오른쪽 끝에 항목 고르기 */
 .idx-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.idx-head .ix-gear { margin-left: auto; }
+.idx-head .info-tip { margin-left: auto; }      /* ! 와 ⚙ 를 오른쪽 모서리에 붙여 둔다 */
+.idx-head .ix-gear { height: 22px; }
+
+/* ! 설명 버튼 · 팝업 (market.js InfoTip) */
+.info-tip {
+  flex: 0 0 auto; width: 22px; height: 22px; padding: 0; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg3); border: 1px solid var(--border); color: var(--primary-light);
+  font-size: .78rem; font-weight: 900; font-family: inherit; cursor: pointer;
+}
+.info-tip:hover, .info-tip[aria-describedby] { border-color: var(--primary); color: var(--primary-light); }
+.info-tip:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.info-pop {
+  position: fixed; z-index: 1000; width: max-content; max-width: min(300px, calc(100vw - 16px));
+  background: var(--bg2); border: 1px solid var(--primary); box-shadow: var(--shadow);
+  padding: 10px 12px; color: var(--text); pointer-events: auto;
+}
+.info-pop[hidden] { display: none; }
+.info-pop-t { font-size: .76rem; font-weight: 800; margin-bottom: 6px; color: var(--primary-light); }
+.info-pop-b { font-size: .74rem; font-weight: 600; line-height: 1.6; color: var(--text2); white-space: pre-line; word-break: keep-all; }
 .ix-gear {
   background: var(--bg3); border: 1px solid var(--border); color: var(--text2);
   font-size: .82rem; padding: 3px 7px; cursor: pointer; line-height: 1.3;
