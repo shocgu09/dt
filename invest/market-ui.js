@@ -75,18 +75,17 @@ function startHomePolling() {
 }
 
 /* ===== 지수 스트립 ===== */
-// 표시 순서 — 워커가 내려준 것만 그린다 (구버전 캐시 응답에는 뒤의 것이 없을 수 있다)
-// 뒤쪽 셋은 CME 해외 지수선물 — 국내 장중에도 돌아가서 "지금 미국이 어디로 가는지"를 보여준다
-var INDEX_KEYS = [
-  'kospi', 'kosdaq', 'kpi200', 'fut', 'nightfut', 'kq150',
-  'usd', 'nasdaq', 'sp500', 'dow', 'vix', 'sox', 'gold', 'oil', 'us10y', 'kr10y', 'kr3y',
-  'btc', 'eth'
+// 세 묶음 — 1행에 국내·미국 지수(큰 칸), 2행에 기타 지표(한 줄 칩). 워커가 내려준 것만 그린다.
+// 미국 쪽 선물은 CME 라 국내 장중에도 돌아가서 "지금 미국이 어디로 가는지"를 보여준다.
+// VIX 는 지수라기보다 공포지수라 기타로 둔다.
+var INDEX_GROUPS = [
+  { id: 'kr', label: '국내', keys: ['kospi', 'kosdaq', 'kpi200', 'fut', 'nightfut', 'kq150'] },
+  { id: 'us', label: '미국', keys: ['nasdaq', 'sp500', 'dow', 'sox'] },
+  { id: 'etc', label: '기타', keys: ['usd', 'vix', 'gold', 'oil', 'us10y', 'kr10y', 'kr3y', 'btc', 'eth'] }
 ];
-// 국내 지수가 아닌 것들 — 스트립에서 선 하나로 갈라 놓는다 (분봉이 없어 스파크라인도 없다)
-var FUT_KEYS = {
-  usd: 1, nasdaq: 1, sp500: 1, dow: 1, vix: 1, sox: 1,
-  gold: 1, oil: 1, us10y: 1, kr10y: 1, kr3y: 1, btc: 1, eth: 1
-};
+var INDEX_KEYS = [].concat.apply([], INDEX_GROUPS.map(function (g) { return g.keys; }));
+var INDEX_GROUP_OF = {};
+INDEX_GROUPS.forEach(function (g) { g.keys.forEach(function (k) { INDEX_GROUP_OF[k] = g.id; }); });
 // 누르면 코인 상세로 가는 칸 (업비트 원화 마켓)
 var COIN_CELL = { btc: 'KRW-BTC', eth: 'KRW-ETH' };
 
@@ -191,13 +190,19 @@ function renderIndexPanel() {
   box.style.display = _indexPanelOpen ? '' : 'none';
   if (!_indexPanelOpen) return;
   var pick = indexPick();
+  // 스트립과 같은 묶음으로 보여 준다 — 국내·미국은 윗줄, 기타는 아랫줄
   box.innerHTML = '<div class="ix-pick-head">스트립에 보여 줄 항목</div>'
-    + '<div class="ix-pick-list">' + INDEX_KEYS.map(function (k) {
-        var on = pick.indexOf(k) !== -1;
-        return '<button class="ix-pick' + (on ? ' on' : '') + '" onclick="toggleIndexKey(\'' + k + '\')" aria-pressed="' + on + '">'
-          + '<span class="ix-pick-box">' + (on ? '✓' : '') + '</span>'
-          + indexIconHtml(k) + escapeHtml(INDEX_LABEL[k] || k) + '</button>';
-      }).join('') + '</div>';
+    + INDEX_GROUPS.map(function (g) {
+        return '<div class="ix-pick-group">'
+          + '<div class="ix-pick-glabel">' + g.label + (g.id === 'etc' ? ' <span>아랫줄</span>' : '') + '</div>'
+          + '<div class="ix-pick-list">' + g.keys.map(function (k) {
+              var on = pick.indexOf(k) !== -1;
+              return '<button class="ix-pick' + (on ? ' on' : '') + '" onclick="toggleIndexKey(\'' + k + '\')" aria-pressed="' + on + '">'
+                + '<span class="ix-pick-box">' + (on ? '✓' : '') + '</span>'
+                + indexIconHtml(k) + escapeHtml(INDEX_LABEL[k] || k) + '</button>';
+            }).join('') + '</div>'
+          + '</div>';
+      }).join('');
 }
 
 // 네이버 이름이 길어 좁은 셀에서 두 줄이 된다 ("나스닥 100 선물")
@@ -210,6 +215,52 @@ var INDEX_LABEL = {
   us10y: '미국 국채 10년', kr10y: '한국 국채 10년', kr3y: '한국 국채 3년',
   btc: '비트코인', eth: '이더리움'
 };
+// 아랫줄 칩은 한 줄에 이름·값·등락이 다 들어가야 해서 더 짧게 쓴다
+var CHIP_NAME = {
+  usd: '원/달러', vix: 'VIX', gold: '금', oil: 'WTI', us10y: '미국 10년', kr10y: '한국 10년', kr3y: '한국 3년',
+  btc: '비트코인', eth: '이더리움'
+};
+
+/* 미국 장 상태 — 워커가 네이버 QQQ 의 장 상태를 usMarket 으로 실어 준다 (휴장일까지 네이버 값 그대로) */
+var _usMarket = null;
+function etParts() {
+  var p = {};
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+      .formatToParts(new Date()).forEach(function (x) { p[x.type] = x.value; });
+  } catch (e) { return null; }
+  return { wd: p.weekday, hm: Number(p.hour) * 60 + Number(p.minute) };
+}
+/** 국내 배지와 같은 말을 쓴다 — 닫혀 있을 때는 휴장 / 장 시작 전 / 장 마감 으로 가른다 */
+function usStateLabel() {
+  var u = _usMarket;
+  if (!u) return null;
+  if (u.status === 'OPEN') return { cls: 'live', text: '정규장' };
+  if (u.session === 'pre') return { cls: 'live', text: '프리마켓' };
+  if (u.session === 'after') return { cls: 'live', text: '애프터마켓' };
+  if (u.session) return { cls: 'live', text: '장외거래' };
+  var et = etParts();
+  if (!et) return { cls: 'closed', text: '장 마감' };
+  if (et.wd === 'Sat' || et.wd === 'Sun') return { cls: 'closed', text: '휴장' };
+  if (et.hm >= 570 && et.hm < 960) return { cls: 'closed', text: '휴장' };     // 평일 정규장 시간인데 닫혀 있다 = 미국 휴장일
+  if (et.hm < 570) return { cls: 'closed', text: '장 시작 전' };
+  return { cls: 'closed', text: '장 마감' };
+}
+/** 윗줄 순서 — 미국이 열려 있고 국장 정규장(09:00~15:30)이 아니면 미국을 앞에 둔다 */
+function usLeads() {
+  var u = usStateLabel();
+  if (!u || u.cls !== 'live') return false;
+  var k = kstParts();
+  return !(isTradingDayKst() && k.hm >= 9 * 60 && k.hm < 15 * 60 + 30);
+}
+/** 줄 머리 배지가 이미 닫힘을 알리는 묶음인가 — 그러면 칸마다 '마감'을 또 달지 않는다 */
+function groupClosed(g) {
+  if (g === 'kr') return marketStateLabel().cls === 'closed';
+  if (g === 'us') { var u = usStateLabel(); return !!u && u.cls === 'closed'; }
+  return false;
+}
+/** 칸 꼬리표 — '10분 지연' 은 칸 안에서 '10분' 으로 줄인다 (전체 말은 title 로 남긴다) */
+function shortIndexTag(t) { return String(t || '').replace(/분 지연$/, '분'); }
 
 async function loadIndex() {
   var el = document.getElementById('indexStrip');
@@ -218,43 +269,65 @@ async function loadIndex() {
     var d = await Market.index();
     if (d.marketStatus) setMarketStatus(d.marketStatus);   // 워커가 대표 종목 기준으로 실어 준다
     setHolidays(d.holidays);                              // 휴장일도 워커 목록을 쓴다 (D1 단일 출처)
+    if (d.usMarket) _usMarket = d.usMarket;
 
     // 뼈대는 구성이 바뀔 때만 다시 만들고 평소엔 값만 갈아끼운다 (플래시 애니메이션 유지)
     var pick = indexPick();
     var have = INDEX_KEYS.filter(function (k) { return d[k] && pick.indexOf(k) !== -1; });
-    if (el.dataset.built !== have.join(',')) {
-      // 지수 셀만 가로로 밀리고(idx-scroll) 상태 배지는 그 밖에 고정 — 좁은 화면에서 배지가 숫자를 가리지 않는다
-      el.innerHTML = '<div class="idx-scroll">' + have.map(function (k) {
-        var x = d[k];
-        if (!x) return '';
-        // 국내 지수와 해외 선물 사이에 선을 하나 둬서 다른 묶음임을 보인다
-        var first = FUT_KEYS[k] && !FUT_KEYS[have[have.indexOf(k) - 1]];
+    // 윗줄: 지금 움직이는 쪽을 앞에 — 한국 낮에는 국내, 미국 장중(밤)에는 미국
+    var order = usLeads() ? ['us', 'kr'] : ['kr', 'us'];
+    var top = [], chips = [];
+    order.forEach(function (g) {
+      have.forEach(function (k) { if (INDEX_GROUP_OF[k] === g) top.push(k); });
+    });
+    have.forEach(function (k) { if (INDEX_GROUP_OF[k] === 'etc') chips.push(k); });
+    var built = top.join(',') + '|' + chips.join(',');
+    if (el.dataset.built !== built) {
+      var tagSpan = function (k, x) {
+        // 해외 칸은 워커가 tag('마감' / 'N분 지연')를 실어 준다 — 없으면 고정 지연 분만 쓴다
+        if (x.tag !== undefined) return '<span class="idx-delay" id="ixt-' + k + '"></span>';
+        return x.delayMin ? '<span class="idx-delay" title="' + x.delayMin + '분 지연 시세">' + x.delayMin + '분</span>' : '';
+      };
+      var coinAttrs = function (k) {
         var coinM = COIN_CELL[k];
-        return '<div class="idx-cell' + (FUT_KEYS[k] ? ' fut' : '') + (first ? ' fut-first' : '') + (coinM ? ' coin' : '') + '"'
-          + (coinM ? ' role="button" tabindex="0" onclick="Coin.open(\'' + coinM + '\',\'' + escapeJsArg(INDEX_LABEL[k]) + '\')"'
-                   + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click()}"' : '') + '>'
-          + '<div class="idx-name">' + indexIconHtml(k) + escapeHtml(INDEX_NAME[k] || x.name)
-          // 해외 칸은 워커가 tag('마감' / 'N분 지연')를 실어 준다 — 그때는 고정 지연 배지 대신 그걸 쓴다
-          +   (x.delayMin && x.tag === undefined ? '<span class="idx-delay">' + x.delayMin + '분 지연</span>' : '')
-          +   (x.tag !== undefined ? '<span class="idx-delay" id="ixt-' + k + '"></span>' : '')
-          + '</div>'
-          + '<div class="idx-price" id="ixp-' + k + '"></div>'
-          + '<div class="idx-chg" id="ixc-' + k + '"></div>'
-          + '<div class="idx-spark" id="ixs-' + k + '"></div>'
-          + '</div>';
-      }).join('') + '</div>'
-      + '<div class="idx-side">'
-      +   '<div class="idx-state" id="ixState"></div>'
-      +   '<button class="ix-gear" onclick="toggleIndexPanel()" aria-label="표시 항목 고르기">⚙</button>'
-      + '</div>'
-      + '<div class="ix-panel" id="ixPanel" style="display:none"></div>';
-      el.dataset.built = have.join(',');
+        return coinM ? ' role="button" tabindex="0" onclick="Coin.open(\'' + coinM + '\',\'' + escapeJsArg(INDEX_LABEL[k]) + '\')"'
+          + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click()}"' : '';
+      };
+      // 줄 머리: 윗줄 순서대로 국내·미국 장 상태, 오른쪽 끝에 항목 고르기
+      var heads = order.filter(function (g) { return top.some(function (k) { return INDEX_GROUP_OF[k] === g; }); });
+      el.innerHTML = '<div class="idx-head">'
+        + heads.map(function (g) { return '<div class="idx-state" id="' + (g === 'kr' ? 'ixState' : 'ixStateUs') + '"></div>'; }).join('')
+        + '<button class="ix-gear" onclick="toggleIndexPanel()" aria-label="표시 항목 고르기">⚙</button>'
+        + '</div>'
+        + (top.length ? '<div class="idx-scroll">' + top.map(function (k, i) {
+            var x = d[k];
+            // 국내와 미국 사이에 선을 하나 둬서 다른 묶음임을 보인다
+            var first = i > 0 && INDEX_GROUP_OF[top[i - 1]] !== INDEX_GROUP_OF[k];
+            return '<div class="idx-cell' + (first ? ' grp-first' : '') + '" data-grp="' + INDEX_GROUP_OF[k] + '">'
+              + '<div class="idx-name">' + indexIconHtml(k) + escapeHtml(INDEX_NAME[k] || x.name) + tagSpan(k, x) + '</div>'
+              + '<div class="idx-price" id="ixp-' + k + '"></div>'
+              + '<div class="idx-chg" id="ixc-' + k + '"></div>'
+              + '<div class="idx-spark" id="ixs-' + k + '"></div>'
+              + '</div>';
+          }).join('') + '</div>' : '')
+        + (chips.length ? '<div class="idx-chips">' + chips.map(function (k) {
+            var x = d[k];
+            return '<div class="idx-chip' + (COIN_CELL[k] ? ' coin' : '') + '"' + coinAttrs(k) + '>'
+              + indexIconHtml(k)
+              + '<span class="idx-cname">' + escapeHtml(CHIP_NAME[k] || INDEX_LABEL[k] || x.name) + '</span>'
+              + '<span class="idx-cprice" id="ixp-' + k + '" data-chip="1"></span>'
+              + '<span class="idx-cchg" id="ixc-' + k + '"></span>'
+              + tagSpan(k, x)
+              + '</div>';
+          }).join('') + '</div>' : '')
+        + '<div class="ix-panel" id="ixPanel" style="display:none"></div>';
+      el.dataset.built = built;
       renderIndexPanel();
     }
 
     have.forEach(function (k) { paintIndexCell(k, d[k]); });
 
-    paintIndexSparks(have, d);
+    paintIndexSparks(top, d);
     paintStateBadges();
   } catch (e) {
     if (!el.dataset.built) el.innerHTML = '<div class="idx-err">지수를 불러오지 못했습니다</div>';
@@ -262,11 +335,12 @@ async function loadIndex() {
   }
 }
 
-/** 지수 스트립 한 칸의 값·등락. 코인 목록(5초)도 비트코인·이더리움 칸을 이걸로 칠해, 15~30초 도는 스트립과 목록이 어긋나지 않게 한다 */
+/** 지수 스트립 한 칸(또는 아랫줄 칩)의 값·등락. 코인 목록(5초)도 비트코인·이더리움 칸을 이걸로 칠해, 15~30초 도는 스트립과 목록이 어긋나지 않게 한다 */
 function paintIndexCell(k, x) {
   var pEl = document.getElementById('ixp-' + k);
   var cEl = document.getElementById('ixc-' + k);
   if (!x || !pEl || !cEl) return;
+  var chip = !!pEl.dataset.chip;
   var cls = signClass(x.change);
   // 지수는 소수 둘째 자리까지, 국채 금리는 셋째 자리까지 (4.955%). 단위는 항목이 알려 준다.
   var dg = x.decimals == null ? 2 : x.decimals;
@@ -274,16 +348,24 @@ function paintIndexCell(k, x) {
     : Number(x.price).toLocaleString('ko-KR', { minimumFractionDigits: dg, maximumFractionDigits: dg })
       + (x.unit || '');
   setTextFlash(pEl, pTxt, dirOf('ix:' + k, x.price));
-  pEl.className = 'idx-price ' + cls;
+  pEl.className = (chip ? 'idx-cprice ' : 'idx-price ') + cls;
   // 값이 없는 칸(야간장 개장 전)은 등락 줄을 비운다 — "– -" 가 남지 않게
   // 금리(단위 %)는 등락률로 쓰면 '▲ +3.06%'가 금리 3%p 상승처럼 읽힌다 — 변화폭을 %p 로 쓴다
+  // 칩은 폭이 좁아 화살표를 빼고 색으로만 방향을 보인다
+  var mark = chip ? '' : signMark(x.change) + ' ';
   cEl.textContent = x.price == null ? ''
     : (x.unit === '%' && x.change != null
-        ? signMark(x.change) + ' ' + (x.change > 0 ? '+' : '') + Number(x.change).toFixed(dg) + '%p'
-        : signMark(x.change) + ' ' + fmtRate(x.changeRate));
-  cEl.className = 'idx-chg ' + cls;
+        ? mark + (x.change > 0 ? '+' : '') + Number(x.change).toFixed(dg) + '%p'
+        : mark + fmtRate(x.changeRate));
+  cEl.className = (chip ? 'idx-cchg ' : 'idx-chg ') + cls;
   var tEl = document.getElementById('ixt-' + k);
-  if (tEl) tEl.textContent = x.tag || '';
+  if (tEl) {
+    var t = x.tag || '';
+    // 줄 머리가 이미 '장 마감'이면 윗줄 칸마다 '마감'을 또 달지 않는다
+    if (t === '마감' && !chip && groupClosed(INDEX_GROUP_OF[k])) t = '';
+    tEl.textContent = shortIndexTag(t);
+    tEl.title = /분 지연$/.test(t) ? t + ' 시세' : '';
+  }
 }
 
 /**
@@ -296,6 +378,13 @@ function paintStateBadges() {
   var sEl = document.getElementById('ixState');
   // 이 배지는 국장 기준이다. 옆의 나스닥 선물·금·유가는 국장이 닫혀 있어도 돌아간다.
   if (sEl) { sEl.textContent = hs.cls === 'stale' ? hs.text : '국내 ' + hs.text; sEl.className = 'idx-state ' + hs.cls; }
+  // 미국 배지 — 연결이 끊겼으면 국내 배지 하나로 알리고 이건 비운다
+  var uEl = document.getElementById('ixStateUs');
+  if (uEl) {
+    var us = hs.cls === 'stale' ? null : usStateLabel();
+    uEl.textContent = us ? '미국 ' + us.text : '';
+    uEl.className = 'idx-state ' + (us ? us.cls : '');
+  }
   // 상세에 대체 출처(다음·야후) 값이 떠 있으면 '지연 가능'을 지킨다 — 요청이 한 번 실패해 다시 칠할 때 '실시간'으로 바뀌었다
   var alt = _lastQuote && _lastQuote.source && _lastQuote.source !== 'naver';
   var ds = alt && st.cls === 'live' ? { cls: 'closed', text: '지연 가능' } : st;

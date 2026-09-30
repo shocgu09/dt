@@ -499,6 +499,21 @@ export const naver = {
           }
         } catch (e) { /* 이 묶음만 빠진다 */ }
       })(),
+      // 미국 장 상태 — 지수 스트립 '미국' 배지와 국장·미장 순서에 쓴다.
+      // QQQ 한 종목으로 정규장·프리·애프터·휴장을 네이버 값 그대로 받는다 (시계로 짐작하면 미국 휴장일을 틀린다)
+      (async () => {
+        try {
+          const d = await getJson('https://polling.finance.naver.com/api/realtime/worldstock/stock/QQQ.O');
+          const x = d && d.datas && d.datas[0];
+          if (!x) return;
+          const o = x.overMarketPriceInfo;
+          const overOpen = !!(o && o.overMarketStatus === 'OPEN');
+          out.usMarket = {
+            status: x.marketStatus === 'OPEN' ? 'OPEN' : 'CLOSE',
+            session: overOpen ? (o.tradingSessionType === 'PRE_MARKET' ? 'pre' : o.tradingSessionType === 'AFTER_MARKET' ? 'after' : 'other') : null
+          };
+        } catch (e) { /* 배지만 빠진다 */ }
+      })(),
       // 환율 (하나은행 고시)
       (async () => {
         try {
