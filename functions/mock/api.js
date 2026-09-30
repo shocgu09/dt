@@ -149,10 +149,11 @@ async function pricer(db, codes, now, official, asOfYmd, closingYmd) {
   };
 }
 
-/** 시즌 마지막 날 15:30 이후(마감이 늦어져 다음 날로 넘어간 경우 포함)면 그 종료일(YYYYMMDD) */
+/** 종료일이 지났는데 아직 마감되지 않았으면(마감 크론 실패) 그 종료일(YYYYMMDD) — 평가를 그날 종가로 멈춘다.
+ *  마지막 날 당일은 20:00 까지 애프터마켓 가격으로 평가가 움직이고, 20:00 크론이 그 값으로 최종 순위를 확정한다. */
 function closingYmd(season, now) {
   const t = E.kstNow(now);
-  const after = t.iso > season.end_date || (t.iso === season.end_date && t.hm >= E.ACCEPT_TO);
+  const after = t.iso > season.end_date;
   return after ? season.end_date.replace(/-/g, '') : null;
 }
 
@@ -956,6 +957,18 @@ export async function runCron(env, now = Date.now()) {
   if (t.hm >= 15 * 60 + 40 && t.hm < 16 * 60 + 30) await closeOfDay(db, season, now);
   // 20:00 이후 — 애프터마켓(15:40~)에 새로 산 종목은 오늘 종가가 저장되지 않았다. 내일 권리 변동 비교 기준이 되므로 채운다
   if (t.hm >= E.AFTER_TO) await backfillCloses(db, season, now);
+  // 시즌 마지막 날 20:00 — 애프터마켓까지 끝난 평가액(마지막 시간외 가격 포함)으로 최종 순위를 확정한다
+  if (t.hm >= E.AFTER_TO && t.iso >= season.end_date) await finalizeLastDay(db, season, now);
+}
+
+/** 마지막 날 20:00 마감 — 실시간 순위와 같은 평가(시간외 가격 포함)라 20:00 에 보이던 순위가 그대로 최종 순위가 된다.
+ *  20:00~20:05 크론이 한 번이라도 돌면 끝난다. 못 돌면 다음 날 finalizeOverdue 가 15:30 종가로 마감한다 */
+async function finalizeLastDay(db, season, now) {
+  await E.expireStale(db, now);                       // 20:00 에 만료된 애프터마켓 미체결 주문이 현금을 묶고 있지 않게
+  const board = await leaderboard(db, season, now);   // official 이 아닌 평가 — 20:00 이후엔 마지막 시간외 가격에서 멈춰 있다
+  await db.batch(finalStatements(db, season, board.rows));
+  mem.delete(`lb:${season.id}`);
+  console.log('season finalized (20:00)', season.id, board.rows.length);
 }
 
 async function fillOpenOrders(db, season, now, stats = { q: 0 }) {
@@ -1075,7 +1088,7 @@ async function closeOfDay(db, season, now) {
      SELECT ?, json_extract(value, '$.uid'), ?, json_extract(value, '$.equity'), json_extract(value, '$.cash'), json_extract(value, '$.rank')
      FROM json_each(?)`
   ).bind(season.id, t.ymd, JSON.stringify(rows)));
-  if (t.iso >= season.end_date) stmts.push(...finalStatements(db, season, board.rows));
+  // 최종 순위는 여기서 확정하지 않는다 — 마지막 날도 20:00 애프터마켓까지 매매하고 finalizeLastDay 가 20:00 평가액으로 확정한다
   if (stmts.length) await db.batch(stmts);
   mem.delete(`lb:${season.id}`);
 }

@@ -132,11 +132,8 @@ export async function acceptOrder(db, season, account, input, quote, taxFree, no
     if (t.dow >= 1 && t.dow <= 5 && !tradingDay) throw new OrderError('오늘은 휴장일입니다. 다음 거래일 08:00 부터 주문할 수 있습니다', 'holiday');
     throw new OrderError('주문 가능 시간이 아닙니다 (거래일 08:00~20:00, 15:30~15:40 제외)', 'closed');
   }
-  // 시즌 마지막 날의 애프터마켓 — 최종 순위는 보유 종목을 15:30 종가로 평가하는데 현금은 그 뒤 체결까지 반영된다.
-  // 15:30 종가보다 싸게 NXT 에서 사 종가로 평가받는(또는 비싸게 파는) 차익이 생겨 순위가 바뀔 수 있다
-  if (session === 'after' && season.end_date && t.iso >= season.end_date) {
-    throw new OrderError('시즌 마지막 날은 15:30 정규장으로 매매가 끝납니다 (최종 순위는 15:30 종가 기준)', 'season_end');
-  }
+  // 시즌 마지막 날도 20:00 애프터마켓까지 매매한다 — 최종 순위는 20:00 평가액(시간외 가격 포함)으로 확정한다 (2026-09-30 변경).
+  // 예전에는 15:30 종가로 확정하느라 마지막 날 애프터마켓 주문을 막았다.
   if (!quote || quote.krx == null || quote.krx.price == null) throw new OrderError('시세를 확인할 수 없는 종목입니다');
   if (session !== 'regular') {
     // 시간외는 실전에서도 지정가만 받는다 (거래가 얇아 시장가는 위험하다)

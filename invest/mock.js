@@ -304,8 +304,8 @@ var Mock = (function () {
             + (a.buyFees ? '<small class="mk-cell-sub">매수 수수료 −' + fmtNum(a.buyFees) + '원</small>' : ''))
       + '</div>'
       + '<div class="mk-note">' + (a._stale ? '<b>' + escapeHtml(hmOf(a._recvAt)) + ' 기준 평가</b> · 최신 시세를 받지 못했습니다'
-          : a.closing ? '시즌 마지막 날 · 15:30 종가 기준 평가 · 최종 순위 집계 중'
-          : (a.live ? '실시간 평가 (08:00~20:00, 시간외 포함)' : '장 마감 · 최종 체결가 기준 평가') + ' · 순위 확정은 15:30 종가 기준')
+          : a.closing ? '시즌 종료 · 최종 순위 집계 중'
+          : (a.live ? '실시간 평가 (08:00~20:00, 시간외 포함)' : '장 마감 · 최종 체결가 기준 평가') + ' · 최종 순위는 마지막 날 20:00 평가액 기준')
       + '</div>'
       + '</div>';
 
@@ -335,7 +335,7 @@ var Mock = (function () {
       + '<button class="mini-btn" onclick="Mock.loadHistory(true)">불러오기</button></div>'
       + '<div id="mkHistory"></div></section>'
       + '<div class="disclaimer">⚠️ 가상 자금 모의투자이며 투자 권유가 아닙니다. 체결가는 네이버 증권 시세 기준(정규장 KRX · 시간외 NXT/KRX), '
-      + '체결 판정은 최대 1분 지연될 수 있습니다. 최종 순위는 15:30 KRX 종가 기준 · 수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2)
+      + '체결 판정은 최대 1분 지연될 수 있습니다. 최종 순위는 마지막 날 20:00 평가액 기준 · 수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2)
       + '%(ETF·ETN 면제). 자세한 규칙은 참가 안내에 있습니다.</div>'
       ;
     paint(el, h);
@@ -545,7 +545,7 @@ var Mock = (function () {
       +   '<li>체결가는 네이버 증권 시세 기준 — 정규장은 KRX, 시간외는 NXT · KRX 시간외 가격</li>'
       +   '<li>수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2) + '% (ETF · ETN 면제)</li>'
       +   '<li>주문 뒤에 실제로 거래된 가격 · 수량 안에서만 체결됩니다 (판정은 최대 1분 간격)</li>'
-      +   '<li>참가자 ' + fmtNum(season.participants) + '명 · 시즌마다 초기화 · 최종 순위는 ' + escapeHtml(s.endDate) + ' 15:30 종가 기준</li>'
+      +   '<li>참가자 ' + fmtNum(season.participants) + '명 · 시즌마다 초기화 · 최종 순위는 ' + escapeHtml(s.endDate) + ' 20:00 평가액 기준</li>'
       + '</ul>'
       + '<button class="btn-submit mk-join-btn" onclick="Mock.openJoinFlow()">시즌 참여하기</button>'
       + '<p class="mk-note">가상의 자금이며 실제 돈과 무관합니다. 어떤 것으로도 교환되지 않습니다.</p>'
@@ -605,7 +605,7 @@ var Mock = (function () {
         '<div class="mk-jf-step">1 / 2</div>'
       + '<h3 class="mk-jf-title">🏁 ' + escapeHtml(s.name) + '에<br>참여하시겠습니까?</h3>'
       + '<p class="mk-jf-lead">가상 시드머니 <b>' + fmtCompact(s.seed) + '원</b>으로 실제 시세에 맞춰 매매하고, '
-      +   '<b>' + escapeHtml(s.endDate) + '</b> 15:30 종가 기준 최종 자산으로 순위를 가립니다.</p>'
+      +   '<b>' + escapeHtml(s.endDate) + '</b> 20:00 기준 최종 자산으로 순위를 가립니다.</p>'
       + '<div class="mk-grid">'
       +   cell('기간', escapeHtml(s.startDate) + ' ~ ' + escapeHtml(s.endDate))
       +   cell('현재 참가자', fmtNum(season.participants) + '명')
@@ -634,10 +634,10 @@ var Mock = (function () {
         ])
       + '<div class="mk-jf-h">📌 매매 규칙</div>'
       + li([
-          '시드머니 <b>' + fmtCompact(s.seed) + '원</b> · 시즌마다 초기화 · 순위는 <b>실시간</b>(시간외 가격 포함), 일일 기록과 최종 순위는 ' + escapeHtml(s.endDate) + ' 15:30 <b>KRX 종가</b> 기준',
+          '시드머니 <b>' + fmtCompact(s.seed) + '원</b> · 시즌마다 초기화 · 순위는 <b>실시간</b>(시간외 가격 포함) · 일일 기록은 15:30 <b>KRX 종가</b> 기준 · 최종 순위는 ' + escapeHtml(s.endDate) + ' <b>20:00 평가액</b>(애프터마켓 가격 포함) 기준',
           '국내 상장 주식 · ETF(레버리지 · 인버스 포함) · ETN 을 <b>모두 거래할 수 있습니다</b>. 거래정지 종목과 주문이 제한된 종목만 예외입니다.',
           '정규장 08:30~15:30 지정가 · 시장가. 09:00 전 접수분은 <b>시가</b>, 15:20~15:30 접수분은 <b>종가</b>로 체결되고, 미체결은 장 마감 시 만료됩니다.',
-          '시간외 08:00~08:30 프리마켓(NXT · 08:50 까지 체결) / 15:40~20:00 애프터마켓(NXT · KRX) — <b>지정가만</b>, ETF · ETN 은 시간외 불가, 미체결은 08:50 · 20:00 에 만료됩니다. 시즌 마지막 날은 15:30 정규장으로 매매가 끝납니다.',
+          '시간외 08:00~08:30 프리마켓(NXT · 08:50 까지 체결) / 15:40~20:00 애프터마켓(NXT · KRX) — <b>지정가만</b>, ETF · ETN 은 시간외 불가, 미체결은 08:50 · 20:00 에 만료됩니다. 시즌 마지막 날도 20:00 애프터마켓까지 매매할 수 있습니다.',
           '지정가는 전일 종가 ±30% 안에서 호가단위에 맞게 입력합니다. 미체결 주문은 <b>정정 · 취소</b>할 수 있고, 가격을 바꾸면 대기 순서가 뒤로 갑니다.',
           '수수료 ' + (s.feeRate * 100).toFixed(3) + '% · 매도세 ' + (s.taxRate * 100).toFixed(2) + '% (ETF · ETN 면제) — 실전과 같은 수준',
           '거래가 적은 종목은 여러 번에 나눠 체결되거나 체결되지 않을 수 있습니다.',
@@ -768,7 +768,7 @@ var Mock = (function () {
       // 시즌이 바뀌면 이전 시즌의 순위 기억을 버린다
       if (_prevSeasonId !== d.season.id) { _prevRank = {}; _hallHtml = null; _prevSeasonId = d.season.id; }
       h += '<section class="m-section"><div class="m-head"><h3>🏆 ' + escapeHtml(d.season.name) + '</h3>'
-        + '<span class="m-hint">' + (d.closing ? '15:30 종가 기준 · 최종 순위 집계 중'
+        + '<span class="m-hint">' + (d.closing ? '시즌 종료 · 최종 순위 집계 중'
           : escapeHtml(hmOf(d.asOf)) + ' 기준 · ' + (d.live ? '장중' : '장 마감')) + '</span></div>';
       h += d.rows.length ? d.rows.map(function (r) {
         var rr = (r.equity - d.season.seed) / d.season.seed * 100;
@@ -786,8 +786,8 @@ var Mock = (function () {
           + '</div>';
       }).join('') : '<div class="empty">참가자가 없습니다.</div>';
       h += '<div class="mk-note">' + (d.closing
-          ? '시즌 마지막 날 · ' + escapeHtml(d.season.endDate) + ' KRX 정규장 종가(15:30) 기준 총자산으로 매긴 순위입니다.'
-          : '실시간 순위 · 장중에는 10초마다 다시 매깁니다 (시간외 가격 포함) · 최종 순위는 ' + escapeHtml(d.season.endDate) + ' KRX 정규장 종가 기준 총자산으로 확정됩니다.')
+          ? '시즌이 끝났습니다 · 최종 순위를 집계하고 있습니다.'
+          : '실시간 순위 · 장중에는 10초마다 다시 매깁니다 (시간외 가격 포함) · 최종 순위는 ' + escapeHtml(d.season.endDate) + ' 20:00 총자산(애프터마켓 가격 포함)으로 확정됩니다.')
         + '</div></section>';
     } catch (e) {
       if (seq !== _rankSeq) return;
@@ -1511,7 +1511,7 @@ var Mock = (function () {
     if (!p.canOrder) return '<div class="mk-warn">주문 가능 시간이 아닙니다 (거래일 08:00~20:00)</div>';
     if (p.phase === 'pre_market') return '<div class="mk-info"><b>프리마켓(NXT)</b> · 지정가 주문만 가능 · 08:30 접수 마감 · 08:50 까지 미체결이면 만료</div>';
     if (p.phase === 'after_market') {
-      if (seasonLastDay()) return '<div class="mk-warn">시즌 마지막 날은 15:30 정규장으로 매매가 끝났습니다 · 최종 순위는 15:30 종가 기준입니다</div>';
+      if (seasonLastDay()) return '<div class="mk-info"><b>애프터마켓 · 시즌 마지막 날</b> · 지정가만 · 20:00 평가액으로 최종 순위가 확정됩니다</div>';
       return '<div class="mk-info"><b>애프터마켓</b> · 지정가 주문만 가능 · 20:00 까지 미체결이면 만료 · ETF·ETN 제외</div>';
     }
     // 시가·종가에 닿지 않는 지정가는 체결되지 않고 이어서 기다린다 — '체결됩니다'로 단정하지 않는다
