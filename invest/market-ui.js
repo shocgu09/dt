@@ -300,15 +300,31 @@ function usStateLabel() {
   return { cls: 'closed', text: '장 마감' };
 }
 /** 윗줄 순서 — 미국이 열려 있고 국장 정규장(09:00~15:30)이 아니면 미국을 앞에 둔다 */
+/** 국내 거래 시간(08:00 NXT 프리마켓 ~ 20:00 애프터마켓) — 국장 중심이라 이 시간에는 늘 국내를 앞에 둔다 */
+var KR_DAY_FROM = 8 * 60, KR_DAY_TO = 20 * 60;
+/** 윗줄 순서 — 국내 거래가 없는 20:00~08:00 에 미국 장이 열려 있을 때만 미국을 앞에 둔다.
+ *  서머타임과 상관없이 늘 20:00·08:00 에 바뀐다 (예전에는 미국 프리마켓이 열리는 17·18시에 바뀌어
+ *  국내 애프터마켓이 한창일 때 미국이 앞에 왔다). 주말·미국 휴장일 밤은 미국이 닫혀 있어 국내가 앞 */
 function usLeads() {
   var u = usStateLabel();
   if (!u || u.cls !== 'live') return false;
-  var k = kstParts();
-  return !(isTradingDayKst() && k.hm >= 9 * 60 && k.hm < 15 * 60 + 30);
+  var hm = kstParts().hm;
+  return hm >= KR_DAY_TO || hm < KR_DAY_FROM;
+}
+/** 줄 머리 국내 배지 — 프리마켓 / 정규장 / 애프터마켓 / 장 마감으로 나눈다.
+ *  15:30 뒤에는 코스피 지수는 멈췄지만 종목은 NXT·KRX 애프터마켓에서 20:00 까지 거래된다 */
+function krStripState() {
+  if (!isTradingDayKst()) return { cls: 'closed', text: '휴장' };
+  var hm = kstParts().hm;
+  if (hm < KR_DAY_FROM) return { cls: 'closed', text: '장 시작 전' };
+  if (hm < 9 * 60) return { cls: 'live', text: '프리마켓' };
+  if (hm < 15 * 60 + 30) return { cls: 'live', text: '정규장' };
+  if (hm < KR_DAY_TO) return { cls: 'live', text: '애프터마켓' };
+  return { cls: 'closed', text: '장 마감' };
 }
 /** 줄 머리 배지가 이미 닫힘을 알리는 묶음인가 — 그러면 칸마다 '마감'을 또 달지 않는다 */
 function groupClosed(g) {
-  if (g === 'kr') return marketStateLabel().cls === 'closed';
+  if (g === 'kr') return krStripState().cls === 'closed';
   if (g === 'us') { var u = usStateLabel(); return !!u && u.cls === 'closed'; }
   return false;
 }
@@ -316,7 +332,8 @@ function groupClosed(g) {
 var INDEX_TIP = [
   '· 10분 · 15분: 거래소 규정으로 그만큼 늦은 시세입니다. 해외 선물·금·유가는 10분, VIX 는 15분 전 값입니다.',
   '· 마감: 그 시장이 쉬는 중이라 마지막 값을 보여 줍니다.',
-  '· 국내 · 미국 배지: 각 시장이 지금 열려 있는지 알려 줍니다. 밤에 미국 장이 열리면 미국 묶음이 앞으로 옵니다.',
+  '· 국내 · 미국 배지: 각 시장이 지금 어느 구간(프리마켓·정규장·애프터마켓·마감)인지 알려 줍니다.',
+  '· 국내 거래 시간(08:00~20:00)에는 국내가 앞, 20:00~다음 날 08:00 에는 미국 장이 열려 있으면 미국 묶음이 앞으로 옵니다.',
   '· 코스피 야간선물은 18:00~05:00 에 열리는 코스피200 선물입니다.',
   '· ⚙ 에서 보여 줄 항목을 고를 수 있습니다.'
 ].join('\n');
@@ -445,7 +462,12 @@ function paintStateBadges() {
   var hs = _listQuotesTried ? marketStateLabel('quotes') : st;     // 시세 홈은 관심·랭킹 목록 시세까지 본다
   var sEl = document.getElementById('ixState');
   // 이 배지는 국장 기준이다. 옆의 나스닥 선물·금·유가는 국장이 닫혀 있어도 돌아간다.
-  if (sEl) { sEl.textContent = hs.cls === 'stale' ? hs.text : '국내 ' + hs.text; sEl.className = 'idx-state ' + hs.cls; }
+  // 연결이 끊겼으면 그걸 먼저 알리고, 아니면 국내 거래 구간(프리·정규·애프터·마감)을 보여 준다
+  if (sEl) {
+    var ks = hs.cls === 'stale' ? hs : krStripState();
+    sEl.textContent = hs.cls === 'stale' ? hs.text : '국내 ' + ks.text;
+    sEl.className = 'idx-state ' + ks.cls;
+  }
   // 미국 배지 — 연결이 끊겼으면 국내 배지 하나로 알리고 이건 비운다
   var uEl = document.getElementById('ixStateUs');
   if (uEl) {
