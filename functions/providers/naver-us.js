@@ -115,12 +115,25 @@ export const naverUs = {
     return ((d && d.stocks) || []).map(mapRow);
   },
 
-  /** 자동완성에서 미국 종목만 */
+  /**
+   * 자동완성에서 미국 종목만.
+   * 네이버 자동완성은 10건까지만 준다 — '하이닉스'로 찾으면 국내 SK하이닉스·레버리지 ETF 가 10건을 채워
+   * 나스닥의 SK하이닉스 ADR(SKHY)이 잘렸다. 한글로 찾으면 '검색어 ADR'·'첫 국내 종목명 ADR'로 한 번 더 찾아
+   * 한국 기업 ADR(SKHY·KB·SKM·KEP·WF…)을 앞에 붙인다. ('하이닉스 ADR' 은 0건이고 'SK하이닉스 ADR' 만 잡힌다)
+   */
   async search(q) {
-    const d = await getJson(`https://ac.stock.naver.com/ac?q=${encodeURIComponent(q)}&target=stock`);
-    return (d.items || [])
-      .filter((i) => i.nationCode === 'USA' && isUsCode(i.reutersCode))
-      .map((i) => ({ code: i.reutersCode, symbol: i.code, name: i.name, exchange: i.typeCode || null }));
+    const ac = async (s) => ((await getJson(`https://ac.stock.naver.com/ac?q=${encodeURIComponent(s)}&target=stock`)).items || []);
+    const usOnly = (items) => items.filter((i) => i.nationCode === 'USA' && isUsCode(i.reutersCode));
+    const items = await ac(q);
+    let found = usOnly(items);
+    if (/[가-힣]/.test(q) && !/adr/i.test(q)) {
+      const kr = items.find((i) => i.nationCode === 'KOR');
+      const names = [...new Set([q, kr && kr.name].filter(Boolean))];
+      const extra = await Promise.all(names.map((n) => ac(n + ' ADR').then(usOnly).catch(() => [])));
+      const seen = new Set();
+      found = [...extra.flat(), ...found].filter((i) => !seen.has(i.reutersCode) && seen.add(i.reutersCode));
+    }
+    return found.map((i) => ({ code: i.reutersCode, symbol: i.code, name: i.name, exchange: i.typeCode || null }));
   },
 
   /**
