@@ -861,13 +861,17 @@ var Mock = (function () {
     el.innerHTML = '<div class="mk-nick">'
       + '<div class="mk-nick-row"><span class="mk-nick-k">내 닉네임</span><b class="mk-nick-v">' + escapeHtml(_nick.nick) + '</b>'
       +   (_nick.auto ? '<i class="mk-nick-auto">자동</i>' : '')
-      +   '<span class="mk-nick-act">'
-      +   (_nick.canChange ? '<button class="mini-btn" onclick="Mock.editNick(true)">바꾸기</button>'
-            : '<span class="mk-nick-next">' + (next.getUTCMonth() + 1) + '/' + next.getUTCDate() + '부터 변경 가능</span>')
-      +   '</span></div>'
+      // 바꿀 수 없는 기간에도 버튼 모양은 같게 두고, 누르면 언제부터 되는지 알려 준다
+      +   '<span class="mk-nick-act"><button class="mini-btn" onclick="Mock.editNick(true)">바꾸기</button></span></div>'
+      + (_nickWait && next ? '<div class="mk-nick-hint" role="status">' + (next.getUTCMonth() + 1) + '/' + next.getUTCDate()
+          + '부터 변경 가능합니다 (닉네임은 30일에 한 번 바꿀 수 있습니다)</div>' : '')
       + '</div>';
   }
-  function editNick(on) { _nickEdit = !!on; renderNick(); }
+  var _nickWait = false;
+  function editNick(on) {
+    if (on && _nick && !_nick.canChange) { _nickWait = true; renderNick(); return; }
+    _nickWait = false; _nickEdit = !!on; renderNick();
+  }
   async function saveNick() {
     var inp = document.getElementById('mkNickIn'), err = document.getElementById('mkNickErr'), btn = document.getElementById('mkNickSave');
     if (!inp) return;
