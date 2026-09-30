@@ -22,7 +22,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"></noscript>
   <link rel="stylesheet" href="../tokens.css?v=3">
-  <link rel="stylesheet" href="style.css?v=57">
+  <link rel="stylesheet" href="style.css?v=58">
   <link rel="icon" href="../icon-192.png?v=3">
 </head>
 <body>
@@ -230,8 +230,9 @@
             <div class="f-label">언급 종목</div>
             <div class="ticker-picker">
               <input type="text" id="bTickerInput" class="f-input" autocomplete="off"
-                     placeholder="종목명으로 검색 (예: 삼성전자, ㅅㅅㅈㅈ, 005930)"
-                     onfocus="loadMaster()" oninput="onTickerSearch(this.value)">
+                     placeholder="종목명·코드 검색 · 여러 개는 쉼표로 (예: 삼성전자, SK하이닉스, 005380)"
+                     onfocus="loadMaster()" oninput="onTickerSearch(this.value)"
+                     onpaste="onTickerPaste(event)" onkeydown="onTickerKey(event)">
               <div class="ticker-results" id="bTickerResults" style="display:none"></div>
             </div>
             <div class="chip-list" id="bTickerList"></div>
@@ -279,7 +280,7 @@
   <script src="market-ui.js?v=61"></script>
   <script src="coin.js?v=8"></script>
   <script src="us.js?v=7"></script>
-  <script src="app.js?v=71"></script>
+  <script src="app.js?v=72"></script>
   <script src="../last-seen.js?v=1"></script>
   <script src="../kb.js?v=3"></script>
 </body>

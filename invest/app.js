@@ -726,8 +726,123 @@ function onTickerSearch(v) {
   clearTimeout(_tickerSearchTimer);
   var q = (v || '').trim();
   var box = document.getElementById('bTickerResults');
+  _tickerBulk = null;
   if (!q) { box.innerHTML = ''; box.style.display = 'none'; return; }
-  _tickerSearchTimer = setTimeout(function () { runTickerSearch(q); }, 250);
+  // 쉼표·세미콜론이 들어 있으면 여러 종목을 한 번에 — 검색 대신 일괄 추가 미리보기
+  var bulk = tickerTokens(q);
+  _tickerSearchTimer = setTimeout(function () { bulk ? runTickerBulk(bulk) : runTickerSearch(q); }, 250);
+}
+
+/* ── 일괄 추가 ──
+ * '삼성전자, SK하이닉스, 005380' 처럼 쉼표·줄바꿈으로 나열하면 한꺼번에 찾아 미리 보여 주고, [N개 추가] 또는 Enter 로 넣는다.
+ * 엑셀·메모에서 줄 단위로 복사해 붙여 넣으면 입력칸이 줄바꿈을 지워 이름이 붙어 버리므로 붙여넣기에서 쉼표로 바꿔 둔다.
+ * 찾는 순서: 6자리 코드 → 종목 마스터의 이름(띄어쓰기·대소문자 무시) 정확히 일치 → 서버 검색에서 이름이 정확히 같은 것.
+ * 정확히 같은 게 없으면 넣지 않고 '못 찾음'에 첫 후보를 보여 준다 (눌러서 넣을 수 있다). */
+var _tickerBulk = null;       // { found:[{code,name}], miss:[{q, cand}] }
+
+/** 여러 종목인가 — 아니면 null. 코드만 띄어쓰기로 나열한 것도 받는다 ('005930 000660') */
+function tickerTokens(q) {
+  var parts = q.split(/[,;\n\t、]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+  if (parts.length === 1 && /^[0-9A-Z]{6}(\s+[0-9A-Z]{6})+$/i.test(parts[0])) parts = parts[0].split(/\s+/);
+  return parts.length > 1 ? parts.slice(0, 40) : null;     // 한 번에 40개까지 (서버 검색이 몰리지 않게)
+}
+
+function onTickerPaste(e) {
+  var t = (e.clipboardData || window.clipboardData);
+  t = t && t.getData('text');
+  if (!t || !/[\n\t]/.test(t.trim())) return;          // 한 줄이면 평소대로 붙는다
+  e.preventDefault();
+  var input = e.target;
+  var joined = t.split(/[\r\n\t]+/).map(function (s) { return s.trim(); }).filter(Boolean).join(', ');
+  var before = input.value.slice(0, input.selectionStart), after = input.value.slice(input.selectionEnd);
+  input.value = before + (before && !/[,;]\s*$/.test(before) ? ', ' : '') + joined + after;
+  onTickerSearch(input.value);
+}
+
+function onTickerKey(e) {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  if (_tickerBulk && _tickerBulk.found.length) addBulkTickers();
+}
+
+async function runTickerBulk(tokens) {
+  var box = document.getElementById('bTickerResults');
+  box.style.display = '';
+  box.innerHTML = '<div class="tr-empty">' + tokens.length + '개 찾는 중...</div>';
+  var seq = ++_tickerSeq;
+  var master = (typeof loadMaster === 'function' ? await loadMaster() : []) || [];
+  var byCode = {}, byKey = {};
+  master.forEach(function (m) { byCode[m.code] = m; if (!byKey[m.key]) byKey[m.key] = m; });
+  var norm = function (s) { return String(s).toLowerCase().replace(/\s+/g, ''); };
+  var found = [], miss = [], seen = {};
+  var push = function (m) { if (!seen[m.code]) { seen[m.code] = 1; found.push({ code: m.code, name: m.name }); } };
+  await Promise.all(tokens.map(async function (tok, i) {
+    var code = tok.toUpperCase();
+    var hit = /^[0-9A-Z]{6}$/.test(code) && byCode[code] ? byCode[code] : byKey[norm(tok)];
+    if (!hit) {
+      // 마스터에 없는 종목(신규 상장 등)·코드 — 서버 검색에서 이름·코드가 정확히 같은 것만
+      try {
+        var d = await Market.search(tok);
+        var items = (d.items || []).filter(function (x) { return /^[0-9A-Z]{6}$/.test(x.code); });
+        hit = items.filter(function (x) { return x.code === code || norm(x.name) === norm(tok); })[0];
+        if (!hit) { miss[i] = { q: tok, cand: items[0] || null }; return; }
+      } catch (e) { miss[i] = { q: tok, cand: null }; return; }
+    }
+    found[i] = hit;
+  }));
+  if (seq !== _tickerSeq) return;
+  // 입력한 순서를 지킨다 (Promise.all 은 끝나는 순서가 제각각)
+  var ordered = found; found = []; ordered.forEach(function (m) { if (m) push(m); });
+  miss = miss.filter(Boolean);
+  _tickerBulk = { found: found, miss: miss };
+  paintTickerBulk();
+}
+
+function paintTickerBulk() {
+  var box = document.getElementById('bTickerResults');
+  var b = _tickerBulk;
+  if (!b) return;
+  var already = function (code) { return formTickers.some(function (t) { return normalizeTicker(t).code === code; }); };
+  var fresh = b.found.filter(function (m) { return !already(m.code); });
+  box.style.display = '';
+  box.innerHTML = '<div class="tr-bulk">'
+    + (b.found.length
+        ? '<div class="tr-bulk-k">찾음 ' + b.found.length + '개' + (fresh.length < b.found.length ? ' · 이미 있는 ' + (b.found.length - fresh.length) + '개 제외' : '') + '</div>'
+          + '<div class="tr-bulk-list">' + b.found.map(function (m) {
+              return '<span class="tr-bulk-chip' + (already(m.code) ? ' dup' : '') + '">' + escapeHtml(m.name) + ' <i>' + m.code + '</i></span>';
+            }).join('') + '</div>'
+        : '')
+    + (b.miss.length
+        ? '<div class="tr-bulk-k miss">못 찾음 ' + b.miss.length + '개</div>'
+          + '<div class="tr-bulk-list">' + b.miss.map(function (x) {
+              return '<span class="tr-bulk-chip miss">' + escapeHtml(x.q)
+                + (x.cand ? ' → <button type="button" class="tr-bulk-cand" onclick="pickTicker(\'' + x.cand.code + '\',\'' + escapeJsArg(x.cand.name) + '\', true)">'
+                    + escapeHtml(x.cand.name) + ' 넣기</button>' : '')
+                + '</span>';
+            }).join('') + '</div>'
+        : '')
+    + (fresh.length
+        ? '<button type="button" class="btn-submit tr-bulk-add" onclick="addBulkTickers()">' + fresh.length + '개 추가 (Enter)</button>'
+        : '<div class="tr-empty">새로 넣을 종목이 없습니다</div>')
+    + '</div>';
+}
+
+function addBulkTickers() {
+  var b = _tickerBulk;
+  if (!b) return;
+  b.found.forEach(function (m) {
+    _tickerNameCache[m.code] = m.name;
+    if (!formTickers.some(function (t) { return normalizeTicker(t).code === m.code; })) formTickers.push({ code: m.code, name: m.name });
+  });
+  renderFormTickers();
+  // 못 찾은 게 있으면 그것만 입력칸에 남겨 고쳐 쓸 수 있게 한다
+  var input = document.getElementById('bTickerInput');
+  input.value = b.miss.map(function (x) { return x.q; }).join(', ');
+  _tickerBulk = null;
+  var box = document.getElementById('bTickerResults');
+  box.innerHTML = ''; box.style.display = 'none';
+  if (input.value) onTickerSearch(input.value);
+  input.focus();
 }
 
 async function runTickerSearch(q) {
@@ -754,10 +869,17 @@ async function runTickerSearch(q) {
   }
 }
 
-function pickTicker(code, name) {
+function pickTicker(code, name, keepBulk) {
   _tickerNameCache[code] = name;
   if (!formTickers.some(function (t) { return normalizeTicker(t).code === code; })) {
     formTickers.push({ code: code, name: name });
+  }
+  // 일괄 미리보기의 '못 찾음 → 후보 넣기' — 미리보기는 그대로 두고 그 항목만 치운다
+  if (keepBulk && _tickerBulk) {
+    _tickerBulk.miss = _tickerBulk.miss.filter(function (x) { return !(x.cand && x.cand.code === code); });
+    renderFormTickers();
+    paintTickerBulk();
+    return;
   }
   document.getElementById('bTickerInput').value = '';
   var box = document.getElementById('bTickerResults');
