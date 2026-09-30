@@ -78,10 +78,12 @@ function startHomePolling() {
 // 세 묶음 — 1행에 국내·미국 지수(큰 칸), 2행에 기타 지표(한 줄 칩). 워커가 내려준 것만 그린다.
 // 미국 쪽 선물은 CME 라 국내 장중에도 돌아가서 "지금 미국이 어디로 가는지"를 보여준다.
 // VIX 는 지수라기보다 공포지수라 기타로 둔다.
+// 코스피200 야간선물은 미국 장 시간(18:00~05:00)에 돌아서 미국 묶음 맨 앞에 둔다 — 밤에 미국이 앞으로 오면
+// 국내 묶음 뒤(마감된 코스피·코스닥 뒤)로 밀려 스크롤해야 보였고, '국내 장 마감' 배지 아래 있어 멈춘 것처럼 읽혔다.
 var INDEX_GROUPS = [
-  { id: 'kr', label: '국내', keys: ['kospi', 'kosdaq', 'kpi200', 'fut', 'nightfut', 'kq150'] },
-  { id: 'us', label: '미국', keys: ['nasdaq', 'sp500', 'dow', 'sox'] },
-  { id: 'etc', label: '기타', keys: ['usd', 'vix', 'gold', 'oil', 'us10y', 'kr10y', 'kr3y', 'btc', 'eth'] }
+  { id: 'kr', label: '국내', keys: ['kospi', 'kosdaq', 'kpi200', 'fut', 'kq150'] },
+  { id: 'us', label: '미국', note: '야간선물 포함', keys: ['nightfut', 'nasdaq', 'sp500', 'dow', 'sox'] },
+  { id: 'etc', label: '기타', note: '아랫줄', keys: ['usd', 'vix', 'gold', 'oil', 'us10y', 'kr10y', 'kr3y', 'btc', 'eth'] }
 ];
 var INDEX_KEYS = [].concat.apply([], INDEX_GROUPS.map(function (g) { return g.keys; }));
 var INDEX_GROUP_OF = {};
@@ -194,7 +196,7 @@ function renderIndexPanel() {
   box.innerHTML = '<div class="ix-pick-head">스트립에 보여 줄 항목</div>'
     + INDEX_GROUPS.map(function (g) {
         return '<div class="ix-pick-group">'
-          + '<div class="ix-pick-glabel">' + g.label + (g.id === 'etc' ? ' <span>아랫줄</span>' : '') + '</div>'
+          + '<div class="ix-pick-glabel">' + g.label + (g.note ? ' <span>' + g.note + '</span>' : '') + '</div>'
           + '<div class="ix-pick-list">' + g.keys.map(function (k) {
               var on = pick.indexOf(k) !== -1;
               return '<button class="ix-pick' + (on ? ' on' : '') + '" onclick="toggleIndexKey(\'' + k + '\')" aria-pressed="' + on + '">'
