@@ -302,8 +302,7 @@ var Mock = (function () {
       + '<div class="mk-eq">' + won(a.equity) + '</div>'
       + '<div class="mk-eq-sub">' + rateHtml(a.returnRate) + ' <span class="' + signClass(a.equity - principal) + '">'
       +   (a.equity - principal > 0 ? '+' : '') + fmtNum(a.equity - principal) + '원</span>'
-      +   '<span class="mk-dim"> · 원금 ' + korWon(principal) + '원'
-      +   (a.deposits ? ' (시드 ' + korWon(s.seed) + ' + 출석 ' + korWon(a.deposits) + ')' : '') + '</span></div>'
+      +   '<span class="mk-dim"> · 시작 ' + fmtCompact(s.seed) + '원</span></div>'
       + '<div class="mk-grid">'
       // 총자산 = 현금 + 보유 주식. 미체결 매수가 묶어 둔 돈은 '주문 가능'에서 빠지므로 따로 밝혀 합이 맞게 한다
       +   cell('주문 가능', won(a.available) + (a.cash > a.available ? '<small class="mk-cell-sub">주문 대기 ' + won(a.cash - a.available) + '</small>' : ''))
@@ -862,7 +861,7 @@ var Mock = (function () {
         return '<div class="mk-rank' + (r.me ? ' me' : '') + move + '">'
           + '<span class="mk-rank-no">' + medal + '</span>'
           + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(r.nickname) + (r.realName ? ' <small class="mk-real" title="실명 (관리자에게만 보임)">' + escapeHtml(r.realName) + '</small>' : '') + (r.me ? ' <i class="mk-tag">나</i>' : '') + '</span>'
-          +   '<span class="mk-pos-sub">체결 ' + fmtNum(r.fills) + '건' + (base !== d.season.seed ? ' · 원금 ' + korWon(base) : '') + '</span></span>'
+          +   '<span class="mk-pos-sub">체결 ' + fmtNum(r.fills) + '건</span></span>'
           + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(r.equity) + '</span>'
           +   '<span class="mk-pos-pnl ' + signClass(rr) + '">' + fmtRate(rr) + '</span></span>'
           + '</div>';
@@ -1159,8 +1158,7 @@ var Mock = (function () {
       var ps = (c.positions || []).slice(0, SHARE_POS_FULL), total = c.holdings != null ? c.holdings : (c.positions || []).length;
       h += '<div class="mk-sc-sum"><span class="mk-sc-k">총자산</span>'
         + '<b class="mk-sc-total">' + won(c.equity) + '</b>'
-        + '<span class="mk-sc-chg ' + signClass(c.pnl) + '">' + signedWon(c.pnl) + ' · ' + fmtRate(c.returnRate) + '</span>'
-        + (c.principal && c.seed && c.principal !== c.seed ? '<span class="mk-sc-k">원금 ' + korWon(c.principal) + '원</span>' : '') + '</div>'
+        + '<span class="mk-sc-chg ' + signClass(c.pnl) + '">' + signedWon(c.pnl) + ' · ' + fmtRate(c.returnRate) + '</span>' + '</div>'
         + '<div class="mk-sc-cells">'
         +   '<div><span class="mk-sc-k">현금</span><b>' + won(c.cash) + '</b>'
         +     (c.equity > 0 ? '<em>' + (c.cash / c.equity * 100).toFixed(1) + '%</em>' : '') + '</div>'
