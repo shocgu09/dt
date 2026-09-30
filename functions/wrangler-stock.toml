@@ -32,6 +32,16 @@ database_id = "9f3385ce-0c5f-41ae-a8dc-b25df64e912f"
 [triggers]
 crons = ["* 23 * * SUN-THU", "* 0-10 * * MON-FRI", "0-5 11 * * MON-FRI"]
 
+# 크론 작업을 실제로 도는 곳 (dt-stock-worker.js 의 MockCron) — 무료 요금제는 SQLite 방식만 된다.
+# 저장소는 쓰지 않는다. 크론 호출 CPU 10ms 한도를 피하려고 둔다
+[[durable_objects.bindings]]
+name = "MOCK_CRON"
+class_name = "MockCron"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MockCron"]
+
 # 크론·체결 오류를 대시보드(Workers Logs)에 남긴다 — 지금까지는 실패해도 흔적이 없었다
 [observability]
 enabled = true

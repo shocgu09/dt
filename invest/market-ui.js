@@ -1538,7 +1538,7 @@ function startStockPolling() {
   Poller.add('quote', loadStockQuote, pollMs(3000, 60000));
   // 봉은 장외에는 바뀌지 않는다 — 10분에 한 번이면 충분하다 (워커·KV 호출 절약)
   Poller.add('bars', refreshChartBars, pollMs(60000, 600000));
-  if (bookOpen) Poller.add('book', loadBook, pollMs(3000, 60000));
+  // 호가는 따로 폴링하지 않는다 — 펼쳐 있으면 loadStockQuote 가 시세와 한 요청으로 받아 그린다
   // DT 회원 보유 현황 — 장중 1분, 장외 5분 (집계라 자주 부를 필요가 없다)
   Poller.add('crowd', loadStockCrowd, pollMs(60000, 300000));
 }
@@ -1724,9 +1724,10 @@ async function loadStockQuote() {
   if (!box) return;
   var code = curStock.code;
   try {
-    var q = await Market.quote(code);
+    var q = await Market.quote(code, bookOpen);
     // 기다리는 사이 다른 종목으로 넘어갔으면 늦게 온 응답은 버린다
     if (!curStock || curStock.code !== code) return;
+    if (bookOpen && q.book) loadBook(q.book);
     box = document.getElementById('sdPrice');
     if (!box) return;
     // 시계 대신 서버 상태를 신뢰 — 단 KRX 상태는 NXT 프리·애프터마켓(08:00~08:50 · 15:40~) 동안 CLOSE 라
@@ -2041,20 +2042,18 @@ function toggleBook() {
   wrap.style.display = bookOpen ? '' : 'none';
   if (!bookOpen) { wrap.dataset.built = ''; resetDirs('bk:'); }
   btn.textContent = bookOpen ? '▴ 호가 접기' : '▾ 호가 보기 (20분 지연)';
-  if (bookOpen) {
-    Poller.add('book', loadBook, pollMs(3000, 60000));      // 추가하는 즉시 1회 실행된다
-  } else {
-    Poller.remove('book');
-  }
+  // 펼친 순간 한 번 받아 그리고, 이후로는 시세 폴링(loadStockQuote)이 호가를 함께 받아 온다
+  if (bookOpen) loadBook();
 }
 
-async function loadBook() {
+/** @param given 시세 응답에 실려 온 호가 — 없으면 직접 받는다 (펼친 직후 1회) */
+async function loadBook(given) {
   if (!curStock || !bookOpen) return;
   var wrap = document.getElementById('bookWrap');
   if (!wrap) return;
   try {
     var code = curStock.code;
-    var b = await Market.book(code);
+    var b = given || await Market.book(code);
     if (!curStock || curStock.code !== code || !bookOpen) return;
     wrap = document.getElementById('bookWrap');
     if (!wrap) return;

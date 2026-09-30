@@ -106,6 +106,9 @@ export async function runCorpActions(db, season, now, quotesFor, stats) {
   if (applied) return applied;
 
   // 2) 오늘 아직 점검하지 않은 보유 종목
+  //    09:00 전에는 결과를 확정하지 않아(아래 settle) 같은 종목을 매분 다시 본다 — 5분에 한 번만 본다.
+  //    08:00 첫 분은 반드시 보므로 프리마켓 첫 체결 전에 분할·병합을 잡는 것은 그대로다
+  if (t.hm < E.OPEN_AT && t.hm % 5 !== 0) return 0;
   stats.q += 1;
   const held = (await db.prepare(
     `SELECT code, MAX(name) AS name FROM positions WHERE season_id=? AND code NOT IN (SELECT code FROM ca_checks WHERE ymd=?)

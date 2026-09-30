@@ -62,7 +62,7 @@ function markFeedStale(sel, kind) {
 }
 
 var Market = {
-  quote:   function (code) { return marketApi('/api/quote', { code: code }); },
+  quote:   function (code, withBook) { return marketApi('/api/quote', withBook ? { code: code, book: '1' } : { code: code }); },
   // 여러 종목을 한 번에 (최대 50) — 관심종목을 종목 수만큼 따로 부르지 않는다
   quotes:  function (codes) { return marketApi('/api/quotes', { codes: codes.join(',') }); },
   book:    function (code) { return marketApi('/api/book', { code: code }); },
@@ -308,10 +308,16 @@ function marketStateLabel(alsoFeed) {
  * - 장외에는 느리게 돈다 (pollMs 의 장외 주기 — 네이버 트래픽 최소화)
  * - 탭이 백그라운드면 멈춘다 (모바일 배터리)
  * - 화면 전환 시 stopAll()로 확실히 정리
+ * - 화면을 켜 둔 채 IDLE_AFTER 동안 조작이 없으면 IDLE_MS 주기로 늦춘다 — 켜 두고 자리를 비운 화면이
+ *   3초 폴링을 하루 종일 돌리면 워커 무료 한도(하루 10만 요청)를 혼자 수천 건씩 쓴다. 다시 만지면 바로 갱신한다
  */
 var Poller = (function () {
   var jobs = {};          // key -> { fn, ms, timer, running, gen }
   var paused = false;
+  var IDLE_AFTER = 5 * 60 * 1000;
+  var IDLE_MS = 60 * 1000;
+  var lastActive = Date.now();
+  function isIdle() { return Date.now() - lastActive > IDLE_AFTER; }
 
   /**
    * 작업 하나에는 언제나 체인이 하나만 돈다.
@@ -333,6 +339,7 @@ var Poller = (function () {
         if (jobs[key] !== job || paused) return;
         // 주기는 매번 다시 계산한다 — 개장 전에 들어온 화면이 개장 후에도 느린 주기로 남지 않게
         var ms = typeof job.ms === 'function' ? job.ms() : job.ms;
+        if (isIdle()) ms = Math.max(ms, IDLE_MS);
         var gen = job.gen;
         job.timer = setTimeout(function () { if (jobs[key] === job && job.gen === gen && !paused) run(key); }, ms);
       });
@@ -361,9 +368,20 @@ var Poller = (function () {
       // 요청이 날아가 있는 작업은 run 이 건너뛴다 — 그 요청이 끝나며 다음 타이머를 건다 (체인 하나 유지)
       Object.keys(jobs).forEach(function (k) { clearTimeout(jobs[k].timer); jobs[k].gen++; run(k); });
     },
-    activeKeys: function () { return Object.keys(jobs); }
+    activeKeys: function () { return Object.keys(jobs); },
+    /** 조작이 있을 때마다 부른다. 쉬다가 돌아온 거면 늦춰 둔 작업을 바로 한 번씩 돌린다 */
+    touch: function () {
+      var wasIdle = isIdle();
+      lastActive = Date.now();
+      if (!wasIdle || paused) return;
+      Object.keys(jobs).forEach(function (k) { clearTimeout(jobs[k].timer); jobs[k].gen++; run(k); });
+    }
   };
 })();
+
+['pointerdown', 'keydown', 'wheel', 'touchstart', 'mousemove', 'scroll'].forEach(function (ev) {
+  window.addEventListener(ev, function () { Poller.touch(); }, { capture: true, passive: true });
+});
 
 /** 장중/장외에 따라 달라지는 폴링 주기 — Poller.add 의 ms 자리에 넘긴다 */
 function pollMs(openMs, closedMs) {

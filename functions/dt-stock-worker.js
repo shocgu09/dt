@@ -11,6 +11,7 @@ import { verifyIdToken, bearerToken } from './lib/verify-id-token.js';
 import { profileOf } from './lib/profile.js';
 import { handleMock, mockErrorResponse, runCron } from './mock/api.js';
 import { holidaySet } from './mock/holidays.js';
+import { DurableObject } from 'cloudflare:workers';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -188,7 +189,12 @@ export default {
     if (request.method !== 'GET') return json({ error: 'Method Not Allowed' }, 405);
 
     try {
-      if (path === '/api/quote')  return json(await handleQuote(env, q.get('code')));
+      if (path === '/api/quote') {
+        // 호가를 펼친 종목 화면은 시세와 호가를 한 요청으로 받는다 — 3초 폴링 두 줄이 한 줄이 돼 요청 수가 절반
+        if (q.get('book') !== '1') return json(await handleQuote(env, q.get('code')));
+        const [quote, book] = await Promise.all([handleQuote(env, q.get('code')), handleBook(env, q.get('code'))]);
+        return json({ ...quote, book });
+      }
       if (path === '/api/quotes') return json(await handleQuotes(env, q.get('codes')));
       if (path === '/api/book')   return json(await handleBook(env, q.get('code')));
       if (path === '/api/ohlc')   return json(await handleOhlc(env, q.get('code'), q.get('tf') || 'D'));
@@ -223,10 +229,35 @@ export default {
   },
 
   // 평일 장중 매분 — 미체결 주문 체결, 장 마감 후 종가 저장·자산 스냅샷
+  // 실제 일은 Durable Object(MockCron)가 한다. 무료 요금제에서 크론 호출은 CPU 10ms 까지인데,
+  // 지정가 주문이 걸린 종목마다 분봉을 받아 판정하느라 장 초반엔 이미 12~20ms 를 쓰고 있었다(9/30 실측, 726회 중 93회 초과).
+  // Durable Object 는 같은 무료 요금제에서 호출당 CPU 30초라 회원·주문이 늘어도 체결 판정이 잘리지 않는다.
   async scheduled(event, env, ctx) {
+    if (env.MOCK_CRON) {
+      // 이름 하나로 고정 — 인스턴스가 하나라 두 크론이 겹쳐도 한 곳에서 차례로 돈다. D1·네이버가 있는 아시아에 둔다
+      const stub = env.MOCK_CRON.get(env.MOCK_CRON.idFromName('mock-cron'), { locationHint: 'apac' });
+      // Durable Object 를 부르지 못하면(배포 직후·일시 장애) 예전처럼 여기서 직접 돈다 — 체결 판정이 멈추지 않게.
+      // 반쯤 돌다 실패했어도 두 번 도는 것은 안전하다 (체결은 주문 잠금으로, 마감·스냅샷은 '이미 했는지'를 보고 건너뛴다)
+      ctx.waitUntil(stub.run().catch((e) => {
+        console.error('cron (DO) failed — running inline', e && e.stack || e);
+        return runCron(env).catch((e2) => console.error('cron failed', e2 && e2.stack || e2));
+      }));
+      return;
+    }
     ctx.waitUntil(runCron(env).catch((e) => console.error('cron failed', e && e.stack || e)));
   }
 };
+
+export class MockCron extends DurableObject {
+  async run() {
+    // 앞 호출이 1분 넘게 걸리면 다음 분 호출이 겹친다 — 체결은 주문 잠금으로 안전하지만 같은 일을 두 번 할 이유가 없다
+    if (this.busyUntil && Date.now() < this.busyUntil) return 'busy';
+    this.busyUntil = Date.now() + 5 * 60 * 1000;
+    try { await runCron(this.env); }
+    finally { this.busyUntil = 0; }
+    return 'ok';
+  }
+}
 
 // ── 핸들러 ────────────────────────────────────────────────────
 async function handleQuote(env, code) {
