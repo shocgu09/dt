@@ -244,7 +244,7 @@ function showToast(text) {
 /* ===== 모의투자 모드 =====
  * 코드(mock.js · mock.css)는 모드를 켤 때 처음 불러온다 — 쓰지 않는 회원에게는 아무 변화가 없다.
  */
-var MOCK_VER = '60';
+var MOCK_VER = '61';
 var _mockLoading = null;
 
 function loadMockAssets() {
@@ -445,6 +445,30 @@ function toggleComments(id) {
   }
 }
 
+/* 댓글 작성자 닉네임 — 재테크 탭은 실명 대신 닉네임을 쓴다 (모의투자와 같은 닉네임, 워커 D1 에 있다).
+ * Firestore 댓글의 authorName 은 실명이라(보안 규칙이 실명과 같아야 저장을 허락한다) 화면에는 관리자에게만 작게 보인다. */
+var _nickMap = {};          // uid -> 닉네임
+async function ensureNicknames(uids) {
+  var todo = uids.filter(function (u, i) { return u && !(u in _nickMap) && uids.indexOf(u) === i; });
+  if (currentUser && !(currentUser.uid in _nickMap) && todo.indexOf(currentUser.uid) === -1) todo.push(currentUser.uid);
+  if (!todo.length || !currentUser) return;
+  try {
+    var token = await currentUser.getIdToken();
+    var r = await fetch(MARKET_API + '/api/mock/nicknames', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uids: todo.slice(0, 300) })
+    });
+    var d = r.ok ? await r.json() : null;
+    if (d && d.nicks) Object.keys(d.nicks).forEach(function (u) { _nickMap[u] = d.nicks[u]; });
+  } catch (e) { /* 못 받으면 '회원'으로 보인다 — 실명을 대신 쓰지 않는다 */ }
+}
+function commentAuthorHtml(c) {
+  var nick = _nickMap[c.authorUid];
+  return '<span class="comment-author">' + escapeHtml(nick || '회원') + '</span>'
+    + (isAdmin && c.authorName ? '<span class="comment-real" title="실명 (관리자에게만 보임)">' + escapeHtml(c.authorName) + '</span>' : '');
+}
+
 async function loadComments(id) {
   if (!db) return;
   try {
@@ -452,6 +476,7 @@ async function loadComments(id) {
       .collection('comments').orderBy('createdAt', 'asc').limit(300).get();
     commentCache[id] = snap.docs.filter(function(d) { return isDocId(d.id); })
       .map(function(d) { return Object.assign({ id: d.id }, d.data()); });
+    await ensureNicknames(commentCache[id].map(function (c) { return c.authorUid; }));
     commentError[id] = false;
     renderComments(id);
   } catch (e) {
@@ -523,7 +548,7 @@ function commentHtml(briefingId, c, isReply) {
 
   var h = '<div class="comment-item' + (isReply ? ' reply' : '') + '">';
   h += '<div class="comment-head">';
-  h += '<span class="comment-author">' + escapeHtml(c.authorName || '회원') + '</span>';
+  h += commentAuthorHtml(c);
   h += '<span class="comment-time">' + timeAgo(c.createdAt) + '</span>';
   h += '</div>';
   h += '<div class="comment-body" id="cb-' + c.id + '">' + linkifyBody(escapeHtml(c.body || ''))

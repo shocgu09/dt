@@ -152,6 +152,7 @@ body {
 .comment-item.reply { margin-left: 20px; padding-left: 12px; border-left: 2px solid var(--border); border-bottom: none; }
 .comment-head { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; flex-wrap: wrap; }
 .comment-author { font-size: .82rem; font-weight: 700; }
+.comment-real { font-size: .68rem; font-weight: 600; color: var(--text3); margin-left: 4px; }
 .comment-time { font-size: .72rem; color: var(--text3); margin-left: auto; }
 .comment-body { font-size: .86rem; color: var(--text2); line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
 .comment-body.deleted { color: var(--text3); font-style: italic; }

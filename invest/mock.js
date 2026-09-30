@@ -885,6 +885,7 @@ var Mock = (function () {
     try {
       _nick = await api('/nickname', 'POST', { nick: v });
       _nickEdit = false;
+      if (typeof _nickMap === 'object' && currentUser) _nickMap[currentUser.uid] = _nick.nick;    // 시황 댓글의 내 이름도
       keepNick();
       loadRanking();
       if (_sh && _sh.items && _sh.items.length) loadShares(true);    // 커뮤니티 글·댓글의 이름도 새로

@@ -286,6 +286,13 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
   if (path === '/nickname' && method === 'GET') {
     return N.nickView(await N.myNick(db, uid), now);
   }
+  // 시황 댓글(Firestore)처럼 다른 곳에 저장된 글의 작성자 닉네임 — 화면이 이미 아는 uid 로만 묻는다
+  if (path === '/nicknames' && method === 'POST') {
+    const input = await body();
+    const uids = (Array.isArray(input.uids) ? input.uids : [])
+      .filter((u) => typeof u === 'string' && /^[A-Za-z0-9_-]{6,128}$/.test(u)).slice(0, 300);
+    return { nicks: Object.fromEntries(await N.nicksFor(db, uids)) };
+  }
   if (path === '/nickname' && method === 'POST') {
     const input = await body();
     const r = await N.setNick(db, uid, input.nick, now);
