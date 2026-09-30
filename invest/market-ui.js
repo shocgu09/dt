@@ -339,16 +339,15 @@ var INDEX_TIP = [
   '· ⚙ 에서 보여 줄 항목을 고를 수 있습니다.'
 ].join('\n');
 
-/** 줄 머리 시계 — 한국 시각 HH:MM. 해외에서 보는 회원도 장 시간을 한국 시각으로 맞춰 볼 수 있게 */
+/** 줄 머리 시계 — 한국 시각 HH:MM:SS. 해외에서 보는 회원도 장 시간을 한국 시각으로 맞춰 볼 수 있게 */
 function paintClock() {
   var el = document.getElementById('ixClock');
   if (!el) return;
-  var k = kstParts();
-  var t = String(Math.floor(k.hm / 60)).padStart(2, '0') + ':' + String(k.hm % 60).padStart(2, '0');
-  if (el.textContent !== '🕙 ' + t) el.textContent = '🕙 ' + t;
+  var t = '🕙 ' + new Date(Date.now() + 9 * 3600000).toISOString().slice(11, 19);    // UTC+9 = 한국 시각 (서머타임 없음)
+  if (el.textContent !== t) el.textContent = t;
 }
-// 뼈대를 다시 만들어도 id 로 찾으므로 타이머는 하나면 된다 (지수 폴링 간격과 따로 분 단위로 맞춘다)
-setInterval(paintClock, 15000);
+// 뼈대를 다시 만들어도 id 로 찾으므로 타이머는 하나면 된다. 초가 바뀌는 순간에 맞춰 1초마다 (탭이 가려지면 브라우저가 알아서 늦춘다)
+setTimeout(function () { paintClock(); setInterval(paintClock, 1000); }, 1000 - (Date.now() % 1000));
 
 /** 지금은 보여 줄 값이 없는 칸 — 야간선물은 개장 전(그날 야간장이 아직 안 열림)이면 '-' 뿐이라 칸을 뺀다 */
 function hiddenIndexCell(k, x) {
