@@ -352,6 +352,26 @@ var Us = (function () {
     b.textContent = on ? '♥' : '♡';
   }
 
+  /** 종목정보 카드 — 국내 종목 상세와 같은 모양(제목 · 투자지표 · 오른쪽 끝 !). 값이 바뀔 때만 다시 그린다 */
+  function paintInfoCard(q) {
+    var el = document.getElementById('uxInfo');
+    if (!el || typeof pfGrid !== 'function') return;
+    var cap = q.marketValue ? String(q.marketValue).replace(' USD', '달러') : (q.marketCap ? fmtUsdCompact(q.marketCap) : null);
+    var grid = pfGrid([
+      infoCell('시가총액', cap),
+      infoCell('PER', q.per || null),
+      infoCell('PBR', q.pbr || null),
+      infoCell('배당수익률', q.dividendYield || null)
+    ]);
+    var html = grid ? '<section class="pf-card">' + pfCardHead('종목정보', '투자지표', [
+        '· PER: 주가 ÷ 주당순이익(EPS). 낮을수록 버는 돈에 비해 주가가 싸다는 뜻입니다.',
+        '· PBR: 주가 ÷ 주당순자산(BPS). 1보다 낮으면 장부상 자산보다 싸게 거래되는 중입니다.',
+        '· 배당수익률: 1년 배당금 ÷ 주가',
+        '· 시가총액: 주가 × 발행 주식 수 (달러)'
+      ].join('\n')) + grid + '</section>' : '';
+    if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; }
+  }
+
   function shellHtml(code, name) {
     var on = usWatchlist.indexOf(code) !== -1;
     return ''
@@ -379,6 +399,7 @@ var Us = (function () {
       +   '<div class="chart-box" id="uxChartBox"><div class="loading">차트 불러오는 중...</div></div>'
       +   '<div class="cn-chart-note" id="uxChartNote">일봉 날짜는 미국 현지 날짜입니다</div>'
       + '</div>'
+      + '<div id="uxInfo"></div>'
       + '<a class="ext-link" href="https://m.stock.naver.com/worldstock/stock/' + encodeURIComponent(code) + '/total" target="_blank" rel="noopener noreferrer">네이버 증권에서 보기 →</a>'
       + '<div class="disclaimer">⚠️ 네이버 증권 미국 주식 시세 · 투자 참고용 · 지연·오류가 있을 수 있습니다.</div>';
   }
@@ -452,14 +473,11 @@ var Us = (function () {
 
       document.getElementById('uxStats').innerHTML = [
         ['거래대금', fmtUsdCompact(q.valueUsd)],
-        ['거래량', q.volume != null ? fmtCompact(q.volume) + '주' : '-'],
-        ['시가총액', q.marketValue ? escapeHtml(String(q.marketValue).replace(' USD', '달러')) : fmtUsdCompact(q.marketCap)],
-        ['PER' + InfoTip.btn('PER · PBR', 'PER: 주가 ÷ 주당순이익. 낮을수록 버는 돈에 비해 주가가 싸다는 뜻입니다.\nPBR: 주가 ÷ 주당순자산. 1보다 낮으면 장부상 자산보다 싸게 거래되는 중입니다.', 'sm'), escapeHtml(q.per || '-')],
-        ['PBR', escapeHtml(q.pbr || '-')],
-        ['배당수익률', escapeHtml(q.dividendYield || '-')]
+        ['거래량', q.volume != null ? fmtCompact(q.volume) + '주' : '-']
       ].map(function (r) {
         return '<div class="stat"><span class="stat-k">' + r[0] + '</span><span class="stat-v">' + r[1] + '</span></div>';
       }).join('');
+      paintInfoCard(q);
 
       document.getElementById('uxRange').innerHTML =
           rangeRow(q.status === 'OPEN' ? '오늘 범위' : '최근 거래일 범위', q.low, q.high, q.price)

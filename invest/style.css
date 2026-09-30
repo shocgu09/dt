@@ -328,7 +328,6 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 .pf-head .info-tip.sm { margin-left: 8px; align-self: center; }
 .pf-head h4 + .info-tip { margin-left: auto; }
 .sd-asof .info-tip.sm { float: right; margin-left: 8px; }
-.stat-k .info-tip.sm { margin-left: 3px; width: 15px; height: 15px; font-size: .58rem; }
 [data-tip-body]:not(.info-tip) { cursor: help; }
 .info-pop {
   position: fixed; z-index: 1000; width: max-content; max-width: min(300px, calc(100vw - 16px));
