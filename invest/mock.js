@@ -832,11 +832,8 @@ var Mock = (function () {
   }
 
   /* ===== 닉네임 — 순위표·명예의 전당·커뮤니티에는 실명 대신 이 이름이 보인다 =====
-   * 서버가 처음 부를 때 자동 닉네임('용감한 황소 27')을 만들어 둔다. 직접 바꾸면 30일 동안 다시 못 바꾼다.
-   * 자동 닉네임인 회원에게는 랭킹 탭에서 한 번 바꿔 보라고 권한다 ('이대로 쓰기'를 누르면 이 기기에서 다시 묻지 않는다). */
+   * 서버가 처음 부를 때 자동 닉네임('용감한 황소 27')을 만들어 둔다. 직접 바꾸면 30일 동안 다시 못 바꾼다. */
   var _nick = null, _nickEdit = false;
-  function nickAskKey() { return 'dt-invest-nick-asked:' + (currentUser ? currentUser.uid : ''); }
-  function nickAsked() { try { return !!localStorage.getItem(nickAskKey()); } catch (e) { return true; } }
   async function loadNick() {
     try { _nick = await api('/nickname'); } catch (e) { _nick = null; }
     renderNick();
@@ -860,21 +857,17 @@ var Mock = (function () {
       if (inp) inp.focus();
       return;
     }
-    var ask = _nick.auto && !nickAsked();
     var next = _nick.nextChangeAt ? new Date(_nick.nextChangeAt + 9 * 3600e3) : null;
-    el.innerHTML = '<div class="mk-nick' + (ask ? ' ask' : '') + '">'
-      + (ask ? '<div class="mk-nick-lead">순위표와 커뮤니티에는 실명 대신 닉네임이 보입니다. 원하는 이름으로 바꿔 보세요.</div>' : '')
+    el.innerHTML = '<div class="mk-nick">'
       + '<div class="mk-nick-row"><span class="mk-nick-k">내 닉네임</span><b class="mk-nick-v">' + escapeHtml(_nick.nick) + '</b>'
       +   (_nick.auto ? '<i class="mk-nick-auto">자동</i>' : '')
       +   '<span class="mk-nick-act">'
       +   (_nick.canChange ? '<button class="mini-btn" onclick="Mock.editNick(true)">바꾸기</button>'
             : '<span class="mk-nick-next">' + (next.getUTCMonth() + 1) + '/' + next.getUTCDate() + '부터 변경 가능</span>')
-      +   (ask ? '<button class="mini-btn" onclick="Mock.keepNick()">이대로 쓰기</button>' : '')
       +   '</span></div>'
       + '</div>';
   }
   function editNick(on) { _nickEdit = !!on; renderNick(); }
-  function keepNick() { try { localStorage.setItem(nickAskKey(), '1'); } catch (e) {} renderNick(); }
   async function saveNick() {
     var inp = document.getElementById('mkNickIn'), err = document.getElementById('mkNickErr'), btn = document.getElementById('mkNickSave');
     if (!inp) return;
@@ -886,7 +879,7 @@ var Mock = (function () {
       _nick = await api('/nickname', 'POST', { nick: v });
       _nickEdit = false;
       if (typeof _nickMap === 'object' && currentUser) _nickMap[currentUser.uid] = _nick.nick;    // 시황 댓글의 내 이름도
-      keepNick();
+      renderNick();
       loadRanking();
       if (_sh && _sh.items && _sh.items.length) loadShares(true);    // 커뮤니티 글·댓글의 이름도 새로
     } catch (e) {
@@ -2495,7 +2488,7 @@ var Mock = (function () {
     addHoliday: addHoliday, removeHoliday: removeHoliday,
     openShare: openShare, closeShare: closeShare, shareKind: shareKind, shareCode: shareCode, shareInput: shareInput, submitShare: submitShare,
     sharePhotos: sharePhotos, removePhoto: removePhoto, viewPhoto: viewPhoto,
-    editNick: editNick, saveNick: saveNick, keepNick: keepNick,
+    editNick: editNick, saveNick: saveNick,
     rankView: rankView, toggleShare: toggleShare, fullShare: fullShare, moreShares: moreShares, deleteShare: deleteShare, submitComment: submitComment, deleteComment: deleteComment
   };
 })();
