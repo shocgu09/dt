@@ -75,6 +75,53 @@ function startHomePolling() {
 }
 
 /* ===== 지수 스트립 ===== */
+/* 가로 줄(윗줄 지수 · 아랫줄 칩) — 스크롤바를 숨겨 두어 마우스로는 옆으로 넘길 방법이 없었다 (트랙패드·터치만 됐다).
+ *  - 휠: 세로 휠을 가로로 바꾼다. 끝까지 넘겼으면 페이지 스크롤로 돌려준다
+ *  - 끌기: 마우스로 잡고 끌어서 넘긴다. 5px 넘게 끌었으면 놓을 때의 클릭(코인 칩 열기)은 무시한다
+ * #indexStrip 은 뼈대를 다시 만들어도 남아 있으므로 거기에 한 번만 건다. */
+(function initStripScroll() {
+  var sel = '.idx-scroll, .idx-chips';
+  function bind() {
+    var strip = document.getElementById('indexStrip');
+    if (!strip || strip.dataset.hs) return;
+    strip.dataset.hs = '1';
+    strip.addEventListener('wheel', function (e) {
+      var el = e.target.closest && e.target.closest(sel);
+      if (!el || el.scrollWidth <= el.clientWidth + 1) return;
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;          // 트랙패드 가로 스와이프는 그대로
+      var d = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+      var max = el.scrollWidth - el.clientWidth;
+      if ((d < 0 && el.scrollLeft <= 0) || (d > 0 && el.scrollLeft >= max - 1)) return;
+      e.preventDefault();
+      el.scrollLeft += d;
+    }, { passive: false });
+    var drag = null, moved = false;
+    strip.addEventListener('pointerdown', function (e) {
+      if (e.pointerType !== 'mouse' || e.button !== 0) return;
+      var el = e.target.closest && e.target.closest(sel);
+      if (!el || el.scrollWidth <= el.clientWidth + 1) return;
+      drag = { el: el, x: e.clientX, left: el.scrollLeft };
+      moved = false;
+    });
+    window.addEventListener('pointermove', function (e) {
+      if (!drag) return;
+      var dx = e.clientX - drag.x;
+      if (!moved && Math.abs(dx) > 5) { moved = true; drag.el.classList.add('dragging'); }
+      if (moved) drag.el.scrollLeft = drag.left - dx;
+    });
+    window.addEventListener('pointerup', function () {
+      if (!drag) return;
+      drag.el.classList.remove('dragging');
+      drag = null;
+    });
+    // 끌기가 끝나며 생기는 클릭은 삼킨다 (칩을 끌다 놓았는데 코인 상세가 열리지 않게)
+    strip.addEventListener('click', function (e) {
+      if (moved) { e.stopPropagation(); e.preventDefault(); moved = false; }
+    }, true);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind); else bind();
+})();
+
 // 세 묶음 — 1행에 국내·미국 지수(큰 칸), 2행에 기타 지표(한 줄 칩). 워커가 내려준 것만 그린다.
 // 미국 쪽 선물은 CME 라 국내 장중에도 돌아가서 "지금 미국이 어디로 가는지"를 보여준다.
 // VIX 는 지수라기보다 공포지수라 기타로 둔다.

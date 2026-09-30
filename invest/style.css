@@ -265,6 +265,14 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
           mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
 }
 .idx-scroll::-webkit-scrollbar, .idx-chips::-webkit-scrollbar { display: none; }
+/* 마우스(PC) — 넘길 수 있다는 걸 보이게 얇은 스크롤바를 두고, 잡고 끌 수 있게 한다 (터치 기기는 그대로 숨김) */
+@media (hover: hover) and (pointer: fine) {
+  .idx-scroll, .idx-chips { scrollbar-width: thin; scrollbar-color: var(--border) transparent; cursor: grab; padding-bottom: 4px; }
+  .idx-scroll::-webkit-scrollbar, .idx-chips::-webkit-scrollbar { display: block; height: 4px; }
+  .idx-scroll::-webkit-scrollbar-thumb, .idx-chips::-webkit-scrollbar-thumb { background: var(--border); }
+  .idx-scroll.dragging, .idx-chips.dragging { cursor: grabbing; user-select: none; }
+  .idx-chip.coin { cursor: pointer; }
+}
 .idx-scroll::after, .idx-chips::after { content: ''; flex: 0 0 20px; }   /* 끝까지 밀었을 때 마지막 지수가 흐려지지 않게 (마스크 18px 보다 넓게) */
 .idx-cell { flex: 0 0 auto; min-width: 96px; max-width: 150px; }
 /* 국내·미국 — 다른 묶음이라 선으로 가른다 */
