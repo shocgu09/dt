@@ -1200,6 +1200,8 @@ body.wg-noscroll { overflow: hidden; }
   background: rgba(245,158,11,.1); border-left: 3px solid #f59e0b;
 }
 .cn-chart-note { margin-top: 6px; font-size: .68rem; color: var(--text3); text-align: right; }
+/* 차트 아래 안내 줄과 붙어 보이지 않게 */
+.ux-info { margin-top: 18px; }
 
 /* 미국 주식 — 프리·애프터마켓 가격 줄 (us.js) */
 .us-over { margin-top: 4px; font-size: .78rem; font-weight: 700; color: var(--text2); }

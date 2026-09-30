@@ -352,24 +352,34 @@ var Us = (function () {
     b.textContent = on ? '♥' : '♡';
   }
 
-  /** 종목정보 카드 — 국내 종목 상세와 같은 모양(제목 · 투자지표 · 오른쪽 끝 !). 값이 바뀔 때만 다시 그린다 */
+  /** 종목정보 카드 — 국내 종목 상세와 같은 모양(제목 · 투자지표 · 오른쪽 끝 !).
+   *  시세 폴링(3초)마다 거래량이 바뀌므로 칸 구성이 같으면 값만 갈아 끼운다 (열어 둔 ! 설명이 닫히지 않게) */
   function paintInfoCard(q) {
     var el = document.getElementById('uxInfo');
     if (!el || typeof pfGrid !== 'function') return;
     var cap = q.marketValue ? String(q.marketValue).replace(' USD', '달러') : (q.marketCap ? fmtUsdCompact(q.marketCap) : null);
-    var grid = pfGrid([
-      infoCell('시가총액', cap),
-      infoCell('PER', q.per || null),
-      infoCell('PBR', q.pbr || null),
-      infoCell('배당수익률', q.dividendYield || null)
-    ]);
-    var html = grid ? '<section class="pf-card">' + pfCardHead('종목정보', '투자지표', [
+    var cells = [
+      ['거래대금', q.valueUsd != null ? fmtUsdCompact(q.valueUsd) : null],
+      ['거래량', q.volume != null ? fmtCompact(q.volume) + '주' : null],
+      ['시가총액', cap],
+      ['PER', q.per || null],
+      ['PBR', q.pbr || null],
+      ['배당수익률', q.dividendYield || null]
+    ].filter(function (c) { return c[1] != null && c[1] !== ''; });
+    var key = cells.map(function (c) { return c[0]; }).join(',');
+    if (el.dataset.key === key) {
+      var vs = el.querySelectorAll('.pf-v');
+      cells.forEach(function (c, i) { if (vs[i] && vs[i].textContent !== c[1]) vs[i].textContent = c[1]; });
+      return;
+    }
+    el.dataset.key = key;
+    el.innerHTML = cells.length ? '<section class="pf-card">' + pfCardHead('종목정보', '투자지표', [
+        '· 거래대금 · 거래량: 최근 거래일 기준',
         '· PER: 주가 ÷ 주당순이익(EPS). 낮을수록 버는 돈에 비해 주가가 싸다는 뜻입니다.',
         '· PBR: 주가 ÷ 주당순자산(BPS). 1보다 낮으면 장부상 자산보다 싸게 거래되는 중입니다.',
         '· 배당수익률: 1년 배당금 ÷ 주가',
         '· 시가총액: 주가 × 발행 주식 수 (달러)'
-      ].join('\n')) + grid + '</section>' : '';
-    if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; }
+      ].join('\n')) + pfGrid(cells.map(function (c) { return infoCell(c[0], c[1]); })) + '</section>' : '';
   }
 
   function shellHtml(code, name) {
@@ -386,7 +396,6 @@ var Us = (function () {
       + '<div class="sd-sub" id="sdSub">' + escapeHtml(symbolOf(code)) + ' · 미국</div>'
       + '<div class="sd-price-block" id="uxPrice"><div class="loading">시세 불러오는 중...</div></div>'
       + '<div id="uxRange"></div>'
-      + '<div class="sd-stats" id="uxStats"></div>'
       + '<div class="sd-panel" id="uxChart">'
       +   '<button type="button" class="cm-toggle" id="cmToggle" onclick="Us.toggleChartMode()" aria-pressed="false">'
       +     '<span class="cm-check" aria-hidden="true">✓</span>자세히 보기'
@@ -399,7 +408,7 @@ var Us = (function () {
       +   '<div class="chart-box" id="uxChartBox"><div class="loading">차트 불러오는 중...</div></div>'
       +   '<div class="cn-chart-note" id="uxChartNote">일봉 날짜는 미국 현지 날짜입니다</div>'
       + '</div>'
-      + '<div id="uxInfo"></div>'
+      + '<div class="ux-info" id="uxInfo"></div>'
       + '<a class="ext-link" href="https://m.stock.naver.com/worldstock/stock/' + encodeURIComponent(code) + '/total" target="_blank" rel="noopener noreferrer">네이버 증권에서 보기 →</a>'
       + '<div class="disclaimer">⚠️ 네이버 증권 미국 주식 시세 · 투자 참고용 · 지연·오류가 있을 수 있습니다.</div>';
   }
@@ -471,12 +480,6 @@ var Us = (function () {
       document.getElementById('sdSub').textContent = symbolOf(code) + ' · ' + exLabel(q.exchange)
         + (q.en ? ' · ' + q.en : '') + (q.industry ? ' · ' + q.industry : '');
 
-      document.getElementById('uxStats').innerHTML = [
-        ['거래대금', fmtUsdCompact(q.valueUsd)],
-        ['거래량', q.volume != null ? fmtCompact(q.volume) + '주' : '-']
-      ].map(function (r) {
-        return '<div class="stat"><span class="stat-k">' + r[0] + '</span><span class="stat-v">' + r[1] + '</span></div>';
-      }).join('');
       paintInfoCard(q);
 
       document.getElementById('uxRange').innerHTML =
