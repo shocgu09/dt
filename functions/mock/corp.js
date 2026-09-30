@@ -11,6 +11,7 @@
 // 현금배당은 기준가가 바뀌지 않아 가격으로 알 수 없고, 분기 시즌 안에 기준일과 지급일이 함께 드는 경우가 드물어 반영하지 않는다.
 import * as E from './engine.js';
 import { naver } from '../providers/naver.js';
+import * as K from './credit.js';
 
 const MISSING_DAYS_TO_DELIST = 3;   // 시세에서 사라진 거래일이 이만큼 쌓이면 상장폐지로 처리한다
 const ACCOUNTS_PER_RUN = 6;         // 계좌 1곳 = D1 4문장 — 호출당 한도(50) 보호
@@ -111,8 +112,8 @@ export async function runCorpActions(db, season, now, quotesFor, stats) {
   if (t.hm < E.OPEN_AT && t.hm % 5 !== 0) return 0;
   stats.q += 1;
   const held = (await db.prepare(
-    `SELECT code, MAX(name) AS name FROM positions WHERE season_id=? AND code NOT IN (SELECT code FROM ca_checks WHERE ymd=?)
-     GROUP BY code LIMIT 150`
+    `SELECT code, MAX(name) AS name FROM (SELECT code, name FROM positions WHERE season_id=?1 UNION ALL SELECT code, name FROM lots WHERE season_id=?1 AND qty > 0)
+     WHERE code NOT IN (SELECT code FROM ca_checks WHERE ymd=?2) GROUP BY code LIMIT 150`
   ).bind(season.id, t.ymd).all()).results || [];
   if (!held.length) return 0;
   const codes = held.map((h) => h.code);
@@ -193,41 +194,70 @@ export async function runCorpActions(db, season, now, quotesFor, stats) {
 export async function applyAction(db, season, a, now, stats) {
   const t = E.kstNow(now);
   const start = todayStartMs(t);
+  // 현금 보유와 신용·담보 잔고를 함께 — 계좌 단위로 한 번에 반영한다 (ca_applications 는 계좌당 한 줄)
   stats.q += 1;
-  const rows = (await db.prepare(
-    `SELECT p.uid, p.qty, p.cost,
-            (SELECT COALESCE(SUM(f.qty),0) FROM fills f WHERE f.season_id=p.season_id AND f.uid=p.uid AND f.code=p.code
-               AND f.side='buy' AND f.at >= ?) AS bought_today
-     FROM positions p
-     WHERE p.season_id=? AND p.code=?
-       AND p.uid NOT IN (SELECT uid FROM ca_applications WHERE action_id=? AND season_id=?)
-     LIMIT ?`
-  ).bind(start, season.id, a.code, a.id, season.id, ACCOUNTS_PER_RUN).all()).results || [];
+  const uids = ((await db.prepare(
+    `SELECT uid FROM (SELECT uid FROM positions WHERE season_id=?1 AND code=?2
+                      UNION SELECT uid FROM lots WHERE season_id=?1 AND code=?2 AND qty > 0)
+     WHERE uid NOT IN (SELECT uid FROM ca_applications WHERE action_id=?3 AND season_id=?1)
+     LIMIT ?4`
+  ).bind(season.id, a.code, a.id, ACCOUNTS_PER_RUN).all()).results || []).map((r) => r.uid);
 
   let n = 0;
-  for (const p of rows) {
-    const plan = planFor(a, p);
-    const key = [season.id, p.uid, a.code];
-    const stmts = [
-      // 가드 — 읽은 뒤 그 사이 체결로 보유가 바뀌었으면 통째로 되돌리고 다음 분에 다시 읽는다
-      db.prepare(`UPDATE accounts SET cash = -1 WHERE season_id=? AND uid=?
-                  AND NOT EXISTS (SELECT 1 FROM positions WHERE season_id=? AND uid=? AND code=? AND qty=? AND cost=?)`)
-        .bind(season.id, p.uid, ...key, p.qty, p.cost),
-      plan.qty > 0
-        ? db.prepare(`UPDATE positions SET qty=?, cost=? WHERE season_id=? AND uid=? AND code=?`).bind(plan.qty, plan.cost, ...key)
-        : db.prepare(`DELETE FROM positions WHERE season_id=? AND uid=? AND code=?`).bind(...key),
-      db.prepare(`UPDATE accounts SET cash = cash + ?, realized_pnl = realized_pnl + ? WHERE season_id=? AND uid=?`)
-        .bind(plan.cash, plan.realized, season.id, p.uid),
+  for (const uid of uids) {
+    stats.q += 2;
+    const [posRes, lotRes] = await db.batch([
+      db.prepare(`SELECT p.qty, p.cost,
+                    (SELECT COALESCE(SUM(f.qty),0) FROM fills f WHERE f.season_id=p.season_id AND f.uid=p.uid AND f.code=p.code
+                       AND f.side='buy' AND f.lot_id IS NULL AND f.at >= ?) AS bought_today
+                  FROM positions p WHERE p.season_id=? AND p.uid=? AND p.code=?`).bind(start, season.id, uid, a.code),
+      db.prepare(`SELECT l.id, l.qty, l.cost,
+                    (SELECT COALESCE(SUM(f.qty),0) FROM fills f WHERE f.lot_id=l.id AND f.side='buy' AND f.at >= ?) AS bought_today
+                  FROM lots l WHERE l.season_id=? AND l.uid=? AND l.code=? AND l.qty > 0`).bind(start, season.id, uid, a.code)
+    ]);
+    const p = (posRes.results || [])[0] || null;
+    const lots = lotRes.results || [];
+    const key = [season.id, uid, a.code];
+    const plan = p ? planFor(a, p) : { qty: 0, cost: 0, cash: 0, realized: 0 };
+    let cash = plan.cash, realized = plan.realized;
+    const stmts = [];
+    if (p) {
+      stmts.push(
+        // 가드 — 읽은 뒤 그 사이 체결로 보유가 바뀌었으면 통째로 되돌리고 다음 분에 다시 읽는다
+        db.prepare(`UPDATE accounts SET cash = -1 WHERE season_id=? AND uid=?
+                    AND NOT EXISTS (SELECT 1 FROM positions WHERE season_id=? AND uid=? AND code=? AND qty=? AND cost=?)`)
+          .bind(season.id, uid, ...key, p.qty, p.cost),
+        plan.qty > 0
+          ? db.prepare(`UPDATE positions SET qty=?, cost=? WHERE season_id=? AND uid=? AND code=?`).bind(plan.qty, plan.cost, ...key)
+          : db.prepare(`DELETE FROM positions WHERE season_id=? AND uid=? AND code=?`).bind(...key)
+      );
+    }
+    for (const l of lots) {
+      // 신용·담보 잔고 — 수량·매입금액만 바꾸고 융자·대출 원금은 그대로 (상장폐지면 주식은 0 이 되고 빚은 남는다)
+      const lp = planFor(a, l);
+      cash += lp.cash; realized += lp.realized;
+      stmts.push(
+        db.prepare(`UPDATE accounts SET cash = -1 WHERE season_id=? AND uid=? AND NOT EXISTS (SELECT 1 FROM lots WHERE id=? AND qty=? AND cost=?)`)
+          .bind(season.id, uid, l.id, l.qty, l.cost),
+        db.prepare(`UPDATE lots SET qty=?, cost=? WHERE id=?`).bind(lp.qty, lp.cost, l.id),
+        db.prepare(`INSERT INTO lot_moves (id, season_id, uid, lot_id, code, dir, qty, cost, at) VALUES (?,?,?,?,?,'set',?,?,?)`)
+          .bind(crypto.randomUUID(), season.id, uid, l.id, a.code, lp.qty, lp.cost, now)
+      );
+    }
+    // 단주·권리 대금 입금 — 미수(cash_short)가 있으면 먼저 갚는다
+    stmts.push(
+      db.prepare(`UPDATE accounts SET ${K.SQL_CREDIT}, realized_pnl = realized_pnl + ? WHERE season_id=? AND uid=?`)
+        .bind(cash, cash, realized, season.id, uid),
       db.prepare(`INSERT INTO ca_applications (action_id, season_id, uid, code, qty_before, qty_after, cost_before, cost_after, cash_delta, realized_delta, at)
                   VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
-        .bind(a.id, season.id, p.uid, a.code, p.qty, plan.qty, p.cost, plan.cost, plan.cash, plan.realized, now)
-    ];
+        .bind(a.id, season.id, uid, a.code, p ? p.qty : 0, plan.qty, p ? p.cost : 0, plan.cost, cash, realized, now)
+    );
     stats.q += stmts.length;
     try { await db.batch(stmts); n++; }
-    catch (e) { console.warn('corp apply skipped', a.code, p.uid, e && e.message); }
+    catch (e) { console.warn('corp apply skipped', a.code, uid, e && e.message); }
   }
 
-  if (rows.length < ACCOUNTS_PER_RUN) {
+  if (uids.length < ACCOUNTS_PER_RUN) {
     // 다 반영했다
     stats.q += 1;
     await db.prepare(`UPDATE corp_actions SET status='applied', applied_at=? WHERE id=? AND status='applying'`).bind(now, a.id).run();

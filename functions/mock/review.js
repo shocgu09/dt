@@ -12,7 +12,7 @@ const DAY = 86400000;
  * 엔진과 같은 이동평균 원가법을 쓴다 — fills 에 매도 시점 평단이 남지 않아 여기서 되살린다.
  * 보유기간은 매수 시각의 금액가중 평균을 기준으로 잰다.
  */
-function replayFills(fills, corp = []) {
+function replayFills(fills, corp = [], moves = []) {
   // code -> { qty, cost(매입금액 합), amt(매수금액 합 — 보유기간 가중용), wAt(매수금액×시각 합) }
   //
   // 엔진(engine.js)과 규칙을 글자 그대로 맞춘다. 하나라도 어긋나면 실현손익이 장부와 달라진다.
@@ -20,22 +20,36 @@ function replayFills(fills, corp = []) {
   //   매도: 매도분 원가 = ROUND(cost * qty / 보유수량)  ← 정수 반올림까지 동일하게
   //         실현손익 = (매도대금 − 수수료 − 세금) − 매도분 원가
   // 그래서 이건 추정이 아니라 재계산이다. 합계가 accounts.realized_pnl 과 일치해야 맞다.
+  // 장부 키 = 종목 + 잔고. 현금 보유는 '종목|', 신용·담보 잔고는 '종목|잔고id' — 엔진도 둘을 따로 둔다 (positions / lots)
   const book = {};
   const sells = [];
-  // 권리 변동(분할·병합·증자·폐지) 반영도 시각순으로 끼워 넣는다 — 반영 뒤 수량·매입금액을 장부 값 그대로 덮어쓴다
+  const bk = (code, lot) => { const k = code + '|' + (lot || ''); return book[k] || (book[k] = { qty: 0, cost: 0, amt: 0, wAt: 0 }); };
+  // 권리 변동(분할·병합·증자·폐지) 반영과 담보 설정·해제(lot_moves)도 시각순으로 끼워 넣는다
   const events = fills.map((f) => ({ ...f, _k: 'fill' }))
     .concat(corp.map((c) => ({ ...c, _k: 'corp' })))
+    .concat(moves.map((m) => ({ ...m, _k: 'move' })))
     .sort((a, b) => (a.at - b.at) || (a._k === b._k ? 0 : a._k === 'fill' ? -1 : 1));
   for (const f of events) {
+    if (f._k === 'move') {
+      const lotB = bk(f.code, f.lot_id), cashB = bk(f.code, null);
+      if (f.dir === 'set') { lotB.qty = f.qty; lotB.cost = f.cost; if (lotB.qty <= 0) { lotB.qty = 0; lotB.cost = 0; lotB.amt = 0; lotB.wAt = 0; } continue; }
+      // in: 현금 보유 → 담보 잔고, out: 잔고 → 현금 보유. 보유기간 가중치는 수량 비율로 함께 옮긴다
+      const from = f.dir === 'in' ? cashB : lotB, to = f.dir === 'in' ? lotB : cashB;
+      const r = from.qty > 0 ? Math.min(1, f.qty / from.qty) : 0;
+      to.qty += f.qty; to.cost += f.cost; to.amt += from.amt * r; to.wAt += from.wAt * r;
+      from.qty -= f.qty; from.cost -= f.cost; from.amt *= (1 - r); from.wAt *= (1 - r);
+      if (from.qty <= 0) { from.qty = 0; from.cost = 0; from.amt = 0; from.wAt = 0; }
+      continue;
+    }
     if (f._k === 'corp') {
-      const b = book[f.code] || (book[f.code] = { qty: 0, cost: 0, amt: 0, wAt: 0 });
+      const b = bk(f.code, null);
       // 평균 매수시각(보유기간 가중치)은 그대로 둔다 — 분할은 매수 시점을 바꾸지 않는다
       b.qty = f.qty_after; b.cost = f.cost_after;
       if (b.qty <= 0) { b.qty = 0; b.cost = 0; b.amt = 0; b.wAt = 0; }
       continue;
     }
     const amount = f.price * f.qty;
-    const b = book[f.code] || (book[f.code] = { qty: 0, cost: 0, amt: 0, wAt: 0 });
+    const b = bk(f.code, f.lot_id);
     if (f.side === 'buy') {
       b.qty += f.qty;
       b.cost += amount;                 // 수수료 제외 — 엔진과 같다
@@ -92,17 +106,19 @@ async function benchmarkReturn(code, joinedAt, now) {
  */
 export async function buildMetrics(db, season, account, view, now) {
   const uid = account.uid;
-  const [fillRes, snapRes, corpRes] = await Promise.all([
-    db.prepare(`SELECT code, name, side, qty, price, fee, tax, at FROM fills WHERE season_id=? AND uid=? ORDER BY at`).bind(season.id, uid).all(),
+  const [fillRes, snapRes, corpRes, moveRes] = await Promise.all([
+    db.prepare(`SELECT code, name, side, qty, price, fee, tax, at, lot_id, forced FROM fills WHERE season_id=? AND uid=? ORDER BY at`).bind(season.id, uid).all(),
     db.prepare(`SELECT date, equity FROM daily_snapshots WHERE season_id=? AND uid=? ORDER BY date`).bind(season.id, uid).all(),
-    db.prepare(`SELECT code, qty_after, cost_after, realized_delta, at FROM ca_applications WHERE season_id=? AND uid=? ORDER BY at`).bind(season.id, uid).all()
+    db.prepare(`SELECT code, qty_after, cost_after, realized_delta, at FROM ca_applications WHERE season_id=? AND uid=? ORDER BY at`).bind(season.id, uid).all(),
+    db.prepare(`SELECT lot_id, code, dir, qty, cost, at FROM lot_moves WHERE season_id=? AND uid=? ORDER BY at`).bind(season.id, uid).all()
   ]);
+  const moves = moveRes.results || [];
   const fills = fillRes.results || [];
   const corp = corpRes.results || [];
   const snaps = snapRes.results || [];
 
   // ── 매매 습관 ──
-  const sells = replayFills(fills, corp);
+  const sells = replayFills(fills, corp, moves);
   const wins = sells.filter((s) => s.pnl > 0);
   const losses = sells.filter((s) => s.pnl < 0);
   const avg = (arr, f) => (arr.length ? arr.reduce((s, x) => s + f(x), 0) / arr.length : null);
@@ -144,6 +160,13 @@ export async function buildMetrics(db, season, account, view, now) {
     // 시장 덕인지 실력인지 — 이 한 줄이 평가의 중심이다
     alpha: (ret != null && kospi != null) ? round2(ret - kospi) : null,
     cashRatio: view.equity > 0 ? round2(view.cash / view.equity * 100) : null,
+    // 신용·미수·담보대출 — 빌린 돈의 크기와 비용, 반대매매 횟수 (없으면 모두 0)
+    leverage: view.credit ? {
+      debt: view.credit.debt, creditPrincipal: view.credit.creditPrincipal, loanPrincipal: view.credit.loanPrincipal,
+      grossExposure: view.equity > 0 ? round2(view.stock / view.equity * 100) : null,
+      interestPaid: view.credit.interestPaid, forcedSells: fills.filter((f) => f.forced).length,
+      misu: view.settle ? view.settle.misu : 0
+    } : null,
     positionCount: positions.length,
     topPosition: top ? { name: top.name, weight: stock > 0 ? round2(top.value / view.equity * 100) : null, pnlRate: round2(top.pnlRate) } : null,
     trades: { total: fills.length, buys: fills.filter((f) => f.side === 'buy').length, sells: sells.length,

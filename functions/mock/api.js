@@ -9,6 +9,8 @@ import { profileOf } from '../lib/profile.js';
 import * as E from './engine.js';
 import * as C from './corp.js';
 import * as N from './nick.js';
+import * as K from './credit.js';
+import * as S from './settle.js';
 
 const isCode = (c) => /^[0-9A-Z]{6}$/.test(c || '');
 
@@ -226,7 +228,8 @@ const publicComment = (c, uid, isAdmin, nicks) => ({
 const publicOrder = (o) => o && ({
   id: o.id, code: o.code, name: o.name, side: o.side, type: o.type, qty: o.qty, limitPrice: o.limit_price,
   filledQty: o.filled_qty, status: o.status, reason: o.reason, acceptedAt: o.accepted_at, updatedAt: o.updated_at,
-  origOrderId: o.orig_order_id || null
+  origOrderId: o.orig_order_id || null,
+  credit: o.credit || null, lotId: o.lot_id || null, forced: o.forced || null, marginRate: o.margin_rate != null ? o.margin_rate : null
 });
 
 // ③ 회원 보유 현황 — 이 인원 미만이면 숫자를 보여 주지 않는다 (개인이 특정되지 않게)
@@ -269,7 +272,10 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     const code = url.searchParams.get('code');
     if (!isCode(code)) throw new HttpError(400, '종목코드가 올바르지 않습니다');
     const kind = await kindOf(code, url.searchParams.get('name'));
-    return { code, kind, taxFree: kind === 'etf' || kind === 'etn' };
+    // 종목 증거금률·신용 가능 여부 — 주문창이 주문가능금액·수량을 계산한다 (접수 때 서버가 다시 계산한다)
+    const q = (await quotesFor([code]).catch(() => ({})))[code] || null;
+    const terms = K.stockTerms(kind, (q && q.name) || url.searchParams.get('name'), q);
+    return { code, kind, taxFree: kind === 'etf' || kind === 'etn', marginRate: terms.marginRate, creditOk: terms.creditOk, creditReason: terms.reason };
   }
 
   if (path === '/hall' && method === 'GET') {
@@ -323,7 +329,8 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     return {
       season: season && {
         id: season.id, name: season.name, startDate: season.start_date, endDate: season.end_date,
-        seed: season.seed, feeRate: season.fee_rate, taxRate: season.tax_rate, notice: season.notice || ''
+        seed: season.seed, feeRate: season.fee_rate, taxRate: season.tax_rate, notice: season.notice || '',
+        creditMode: season.credit_mode || 'off', creditOn: E.creditOn(season, isAdmin)
       },
       next, joined: !!account, participants: count ? count.n : 0, isAdmin, ...sessionInfo(now)
     };
@@ -392,23 +399,26 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       if (!account) throw new HttpError(409, '시즌에 참가하면 계좌를 공유할 수 있습니다', 'not_joined');
       if (account.status !== 'active') throw new HttpError(403, '이용이 제한된 계정입니다');
       nick = profile.name || account.nickname;
-      const [view, board] = await Promise.all([accountView(db, season, account, now), liveBoard(db, season, now).catch(() => null)]);
+      const [view, board] = await Promise.all([accountView(db, season, account, now, isAdmin), liveBoard(db, season, now).catch(() => null)]);
       const me = board ? board.rows.find((r) => r.uid === uid) : null;
       const pos = (p) => ({
         code: p.code, name: p.name, qty: p.qty, avgPrice: p.avgPrice, price: p.price,
-        value: p.value, pnl: p.pnl, pnlRate: round2(p.pnlRate)
+        value: p.value, pnl: p.pnl, pnlRate: round2(p.pnlRate), ...(p.lot ? { lot: p.lot } : {})
       });
       const base = { v: 1, kind, seasonName: season.name, at: now, live: view.live, closing: view.closing };
       if (kind === 'account') {
-        const list = view.positions.slice().sort((x, y) => y.value - x.value);
+        // 신용·담보 잔고도 보유 종목으로 싣는다 (구분 표시). 빚은 따로 — 순자산이 빌린 돈을 뺀 값임을 카드에서도 알 수 있게
+        const list = view.positions.concat(view.credit.lots.filter((l) => l.qty > 0).map((l) => ({ ...l, lot: l.kind })))
+          .sort((x, y) => y.value - x.value);
         card = {
           ...base, seed: season.seed, principal: view.principal, equity: view.equity, pnl: view.equity - view.principal, returnRate: round2(view.returnRate),
-          cash: view.cash, stock: view.stock, realizedPnl: view.realizedPnl,
+          cash: view.cash, stock: view.stock, realizedPnl: view.realizedPnl, debt: view.credit.debt,
           rank: me ? me.rank : null, participants: board ? board.rows.length : null,
           holdings: list.length, positions: list.slice(0, SHARE_POS_MAX).map(pos)
         };
       } else {
-        const p = view.positions.find((x) => x.code === input.code);
+        const lotP = view.credit.lots.find((x) => x.code === input.code && x.qty > 0);
+        const p = view.positions.find((x) => x.code === input.code) || (lotP ? { ...lotP, lot: lotP.kind } : null);
         if (!p) throw new HttpError(409, '보유 중인 종목만 공유할 수 있습니다', 'no_position');
         card = { ...base, position: pos(p) };
       }
@@ -507,8 +517,12 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     if (!season) return { season: null };
     return memo(`crowd:${season.id}:${code}`, 60000, async () => {
       const [posRes, dayRes] = await Promise.all([
-        db.prepare(`SELECT p.qty, p.cost FROM positions p JOIN accounts a ON a.season_id = p.season_id AND a.uid = p.uid
-                     WHERE p.season_id=? AND p.code=? AND a.status='active'`).bind(season.id, code).all(),
+        // 회원별 보유 — 현금 보유와 신용·담보 잔고를 합친다
+        db.prepare(`SELECT SUM(x.qty) AS qty, SUM(x.cost) AS cost FROM (
+                       SELECT uid, qty, cost FROM positions WHERE season_id=? AND code=?
+                       UNION ALL SELECT uid, qty, cost FROM lots WHERE season_id=? AND code=? AND qty > 0) x
+                     JOIN accounts a ON a.season_id=? AND a.uid = x.uid WHERE a.status='active' GROUP BY x.uid`)
+          .bind(season.id, code, season.id, code, season.id).all(),
         db.prepare(`SELECT f.side, COUNT(DISTINCT f.uid) AS n FROM fills f JOIN accounts a ON a.season_id = f.season_id AND a.uid = f.uid
                      WHERE f.season_id=? AND f.code=? AND f.at >= ? AND a.status='active' GROUP BY f.side`).bind(season.id, code, kstDayStart(now)).all()
       ]);
@@ -535,8 +549,9 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     if (!season) return { season: null, items: [] };
     return memo(`crowdtop:${season.id}:${type}`, 300000, async () => {
       const sql = type === 'held'
-        ? `SELECT p.code, MAX(p.name) AS name, COUNT(*) AS count FROM positions p JOIN accounts a ON a.season_id = p.season_id AND a.uid = p.uid
-           WHERE p.season_id=? AND a.status='active' GROUP BY p.code HAVING count >= ? ORDER BY count DESC, p.code LIMIT 10`
+        ? `SELECT x.code, MAX(x.name) AS name, COUNT(DISTINCT x.uid) AS count FROM (
+             SELECT uid, code, name FROM positions WHERE season_id=?1 UNION ALL SELECT uid, code, name FROM lots WHERE season_id=?1 AND qty > 0) x
+           JOIN accounts a ON a.season_id=?1 AND a.uid = x.uid WHERE a.status='active' GROUP BY x.code HAVING count >= ?2 ORDER BY count DESC, x.code LIMIT 10`
         : `SELECT f.code, MAX(f.name) AS name, COUNT(DISTINCT f.uid) AS count FROM fills f JOIN accounts a ON a.season_id = f.season_id AND a.uid = f.uid
            WHERE f.season_id=? AND f.side='buy' AND f.at >= ? AND a.status='active' GROUP BY f.code HAVING count >= ? ORDER BY count DESC, f.code LIMIT 10`;
       const st = type === 'held' ? db.prepare(sql).bind(season.id, CROWD_MIN) : db.prepare(sql).bind(season.id, kstDayStart(now), CROWD_MIN);
@@ -561,7 +576,9 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       asOf: board.asOf, live: board.live, closing: board.closing,
       // uid 는 내보내지 않는다 — 순위표에는 닉네임만 (key 는 갱신 간 순위 변동 표시용 해시). 실명은 관리자에게만
       rows: board.rows.map((r) => ({ key: rowKey(r.uid), rank: r.rank, nickname: nicks.get(r.uid) || '회원',
-        ...(isAdmin ? { realName: r.nickname } : {}), equity: r.equity, principal: season.seed + (r.deposits || 0), fills: r.fills, me: r.uid === uid })),
+        ...(isAdmin ? { realName: r.nickname } : {}), equity: r.equity, principal: season.seed + (r.deposits || 0), fills: r.fills, me: r.uid === uid,
+        // 신용·담보대출을 쓰는 계좌 — 순자산은 빚을 뺀 값이지만 빌린 돈으로 굴리는 중임을 알 수 있게
+        credit: r.debt > 0 || r.cash < 0 })),
       me: me ? { rank: me.rank, equity: me.equity, principal: season.seed + (me.deposits || 0) } : null
     };
   }
@@ -590,8 +607,9 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       await db.batch([
         db.prepare(`INSERT INTO attendance (season_id, uid, ymd, amount, bonus, streak, at) VALUES (?,?,?,?,?,?,?)`)
           .bind(season.id, uid, t.ymd, ATTEND_AMOUNT, bonus, streak, now),
-        db.prepare(`UPDATE accounts SET cash = cash + ?, deposits = deposits + ? WHERE season_id=? AND uid=? AND status='active'`)
-          .bind(total, total, season.id, uid)
+        // 입금 — 미수(cash_short)가 있으면 먼저 갚는다
+        db.prepare(`UPDATE accounts SET ${K.SQL_CREDIT}, deposits = deposits + ? WHERE season_id=? AND uid=? AND status='active'`)
+          .bind(total, total, total, season.id, uid)
       ]);
     } catch (e) {
       // 같은 순간 두 번 눌렀다 — PK 가 막고 batch 전체가 되돌려진다
@@ -605,7 +623,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
   if (path === '/account' && method === 'GET') {
     const [view, board, corpActions] = await Promise.all([
       // 순위표는 시즌 전체 보유 종목 시세가 필요해 실패할 일이 더 많다 — 실패해도 계좌는 보여 주고 순위만 비운다
-      accountView(db, season, account, now), liveBoard(db, season, now).catch(() => null), C.accountActions(db, season, uid, now)
+      accountView(db, season, account, now, isAdmin), liveBoard(db, season, now).catch(() => null), C.accountActions(db, season, uid, now)
     ]);
     if (!board) return { ...view, rank: null, participants: null, corpActions };
     // 순위표는 10초 캐시라 방금 계산한 내 자산과 어긋날 수 있다 — 내 줄만 방금 값으로 바꿔 순위를 다시 매긴다.
@@ -627,7 +645,8 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       if (input.side === 'sell' && quote && await C.sellBlocked(db, season, uid, quote, now)) {
         throw new E.OrderError('권리 변동(액면분할 등)을 반영하고 있습니다. 1~2분 뒤 다시 주문해 주세요', 'corp_action');
       }
-      const order = await E.acceptOrder(db, season, account, input, quote, kind === 'etf' || kind === 'etn', now);
+      const terms = K.stockTerms(kind, quote && quote.name, quote);
+      const order = await E.acceptOrder(db, season, account, input, quote, kind === 'etf' || kind === 'etn', now, { terms, isAdmin });
       return { order: publicOrder(order) };
     } catch (e) {
       if (e instanceof E.OrderError) throw new HttpError(422, e.message, e.code);
@@ -674,7 +693,8 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       if (order.side === 'sell' && quote && await C.sellBlocked(db, season, uid, quote, now)) {
         throw new E.OrderError('권리 변동(액면분할 등)을 반영하고 있습니다. 1~2분 뒤 다시 주문해 주세요', 'corp_action');
       }
-      const r = await E.amendOrder(db, season, account, am[1], input, quote, kind === 'etf' || kind === 'etn', now);
+      const r = await E.amendOrder(db, season, account, am[1], input, quote, kind === 'etf' || kind === 'etn', now,
+        { terms: K.stockTerms(kind, quote && quote.name, quote), isAdmin });
       return { order: publicOrder(r.order), replaced: r.replaced };
     } catch (e) {
       if (e instanceof E.OrderError) throw new HttpError(422, e.message, e.code);
@@ -758,33 +778,189 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     const bId = mm && mm[2] ? mm[2] : (mm ? '' : 'ffffffff');
     // taxFree — 매도 세금 0원이 ETF·ETN 면제인지, 소액이라 원 미만이 버려진 것인지 화면이 가를 수 있게
     const rows = (await db.prepare(
-      `SELECT f.id, f.code, f.name, f.side, f.qty, f.price, f.fee, f.tax, f.at, COALESCE(o.tax_free, 0) AS tax_free
+      `SELECT f.id, f.code, f.name, f.side, f.qty, f.price, f.fee, f.tax, f.at, COALESCE(o.tax_free, 0) AS tax_free,
+              f.settle_ymd, f.cash_delta, f.loan, f.interest, f.forced, o.credit, CASE WHEN f.lot_id IS NULL THEN 0 ELSE 1 END AS lot,
+              (SELECT kind FROM lots WHERE id = f.lot_id) AS lot_kind
        FROM fills f LEFT JOIN orders o ON o.id = f.order_id
        WHERE f.season_id=? AND f.uid=? AND (f.at < ? OR (f.at = ? AND f.id < ?)) ORDER BY f.at DESC, f.id DESC LIMIT 50`
     ).bind(season.id, uid, bAt, bAt, bId).all()).results || [];
     const last = rows[rows.length - 1];
-    const items = rows.map(({ tax_free, ...r }) => ({ ...r, taxFree: !!tax_free }));
+    const items = rows.map(({ tax_free, settle_ymd, cash_delta, lot_kind, lot, ...r }) => ({
+      ...r, taxFree: !!tax_free, settleYmd: settle_ymd || null, cashDelta: cash_delta, lotKind: lot ? lot_kind : null
+    }));
     return { items, next: rows.length === 50 ? `${last.at}_${last.id}` : null };
+  }
+
+  /* ── 결제·신용 ────────────────────────────────────────────
+   * 계좌 증거금률 설정 · 증권담보대출 · 신용/담보 현금상환 · 대출·이자 내역 (규칙은 credit.js)
+   */
+  if (path === '/margin-mode' && method === 'POST') {
+    if (!E.creditOn(season, isAdmin)) throw new HttpError(409, '이 시즌에는 미수·신용거래를 이용할 수 없습니다', 'credit_off');
+    const input = await body();
+    const mode = input.mode === 'spectrum' ? 'spectrum' : input.mode === 'cash' ? 'cash' : null;
+    if (!mode) throw new HttpError(400, '증거금률 설정이 올바르지 않습니다');
+    // 키움: 07:00~23:30 에 바꿀 수 있고, 바꾼 뒤의 새 주문부터 적용된다 (접수된 주문은 접수 때 증거금률 그대로)
+    const hm = E.kstNow(now).hm;
+    if (hm < 7 * 60 || hm >= 23 * 60 + 30) throw new HttpError(409, '증거금률은 07:00~23:30 에 바꿀 수 있습니다', 'hours');
+    await db.prepare(`UPDATE accounts SET margin_mode=? WHERE season_id=? AND uid=?`).bind(mode, season.id, uid).run();
+    return { ok: true, marginMode: mode };
+  }
+
+  if (path === '/loans' && method === 'POST') {
+    if (!E.creditOn(season, isAdmin)) throw new HttpError(409, '이 시즌에는 증권담보대출을 이용할 수 없습니다', 'credit_off');
+    const input = await body();
+    const code = input.code, qty = Number(input.qty), amount = Number(input.amount);
+    if (!isCode(code)) throw new HttpError(400, '종목코드가 올바르지 않습니다');
+    if (!Number.isInteger(qty) || qty <= 0) throw new HttpError(400, '담보 수량은 1주 이상이어야 합니다');
+    if (!Number.isInteger(amount) || amount < K.RULES.loanMin || amount % K.RULES.loanUnit) {
+      throw new HttpError(400, `대출 금액은 ${K.RULES.loanMin.toLocaleString()}원 이상, ${K.RULES.loanUnit.toLocaleString()}원 단위입니다`);
+    }
+    const t = E.kstNow(now);
+    if (!E.isTradingDay(t) || t.hm < K.RULES.loanFrom || t.hm >= K.RULES.loanTo) throw new HttpError(409, '증권담보대출은 거래일 08:00~17:30 에 신청할 수 있습니다', 'hours');
+    const view = await accountView(db, season, account, now, isAdmin);
+    if (view.settle.misu > 0) throw new HttpError(409, '미수금이 있으면 대출을 받을 수 없습니다', 'misu');
+    if (view.credit.calls.some((c) => c.kind !== 'misu' && c.status !== 'covered')) throw new HttpError(409, '담보부족·만기 처리 중에는 대출을 받을 수 없습니다', 'call');
+    const pos = view.positions.find((p) => p.code === code);
+    if (!pos) throw new HttpError(409, '보유 중인 종목만 담보로 잡을 수 있습니다', 'no_position');
+    const quote = await naver.getQuote(code).catch(() => null);
+    const kind = await kindOf(code, quote && quote.name);
+    const terms = K.stockTerms(kind, quote && quote.name, quote);
+    // 키움 증권담보대출 대상은 코스피·코스닥 주권 — ETF·ETN 과 증거금 100% 종목은 뺀다
+    if (kind !== 'stock' || !terms.creditOk) throw new HttpError(409, terms.reason || '담보로 잡을 수 없는 종목입니다 (주권만 가능)', 'loan_stock');
+    const pendingSell = view.openOrders.filter((o) => o.code === code && o.side === 'sell' && !o.lotId).reduce((a, o) => a + (o.qty - o.filledQty), 0);
+    const pledgeable = pos.settledQty - pendingSell;
+    if (qty > pledgeable) throw new HttpError(409, `담보로 잡을 수 있는 수량은 ${Math.max(0, pledgeable)}주입니다 (결제 전 주식·매도 주문 중인 주식 제외)`, 'qty');
+    const prevClose = quote && quote.krx && quote.krx.prevClose;
+    if (!prevClose) throw new HttpError(503, '시세를 확인하지 못했습니다. 잠시 후 다시 시도하세요');
+    const limit = Math.floor(qty * prevClose * K.RULES.loanLtv / K.RULES.loanUnit) * K.RULES.loanUnit;
+    if (amount > limit) throw new HttpError(409, `대출 가능 금액은 ${limit.toLocaleString()}원입니다 (전일종가 × 담보 ${qty}주 × ${K.RULES.loanLtv * 100}%)`, 'limit');
+    if (view.credit.loanPrincipal + amount > K.RULES.loanLimit) throw new HttpError(409, '증권담보대출 한도(10억 원)를 넘습니다', 'loan_limit');
+
+    const lotId = [season.id, uid, 'loan', code, t.ymd].join(':');
+    const posRow = await db.prepare(`SELECT qty, cost FROM positions WHERE season_id=? AND uid=? AND code=?`).bind(season.id, uid, code).first();
+    if (!posRow || posRow.qty < qty) throw new HttpError(409, '보유 수량이 바뀌었습니다. 다시 시도하세요', 'raced');
+    const moved = qty === posRow.qty ? posRow.cost : Math.round(posRow.cost * qty / posRow.qty);
+    const cs = K.cashSet(amount);
+    try {
+      await db.batch([
+        db.prepare(`UPDATE positions SET qty = qty - ?, cost = cost - ? WHERE season_id=? AND uid=? AND code=? AND qty=? AND cost=?`)
+          .bind(qty, moved, season.id, uid, code, posRow.qty, posRow.cost),
+        db.prepare(`UPDATE accounts SET cash = -1 WHERE season_id=? AND uid=? AND NOT EXISTS
+                    (SELECT 1 FROM positions WHERE season_id=? AND uid=? AND code=? AND qty=? AND cost=?)`)
+          .bind(season.id, uid, season.id, uid, code, posRow.qty - qty, posRow.cost - moved),
+        db.prepare(`DELETE FROM positions WHERE season_id=? AND uid=? AND code=? AND qty=0`).bind(season.id, uid, code),
+        db.prepare(`INSERT INTO lots (id, season_id, uid, kind, code, name, qty, cost, principal, rate, start_ymd, due_ymd, created_at)
+                    VALUES (?,?,?,'loan',?,?,?,?,?,?,?,?,?)
+                    ON CONFLICT (season_id, uid, kind, code, start_ymd) DO UPDATE SET
+                      qty = qty + excluded.qty, cost = cost + excluded.cost, principal = principal + excluded.principal, closed_at = NULL`)
+          .bind(lotId, season.id, uid, code, pos.name, qty, moved, amount, K.RULES.loanRate, t.ymd, K.addCalendarDays(t.ymd, K.RULES.loanTermDays), now),
+        db.prepare(`UPDATE accounts SET ${cs.sql} WHERE season_id=? AND uid=?`).bind(...cs.args, season.id, uid),
+        db.prepare(`INSERT INTO lot_moves (id, season_id, uid, lot_id, code, dir, qty, cost, at) VALUES (?,?,?,?,?,'in',?,?,?)`)
+          .bind(crypto.randomUUID(), season.id, uid, lotId, code, qty, moved, now),
+        db.prepare(`INSERT INTO cash_events (id, season_id, uid, kind, amount, lot_id, detail, at) VALUES (?,?,?,'loan_in',?,?,?,?)`)
+          .bind(crypto.randomUUID(), season.id, uid, amount, lotId, JSON.stringify({ code, name: pos.name, qty, prevClose }), now)
+      ]);
+    } catch (e) {
+      throw new HttpError(409, '보유 수량이 바뀌었습니다. 다시 시도하세요', 'raced');
+    }
+    mem.delete(`lb:${season.id}`);
+    return { ok: true, amount, qty, lotId };
+  }
+
+  const rp = /^\/lots\/([^/]{10,200})\/repay$/.exec(path);
+  if (rp && method === 'POST') {
+    const lotId = decodeURIComponent(rp[1]);
+    const lot = await db.prepare(`SELECT * FROM lots WHERE id=? AND season_id=? AND uid=?`).bind(lotId, season.id, uid).first();
+    if (!lot || (lot.qty <= 0 && lot.principal <= 0)) throw new HttpError(404, '상환할 잔고를 찾을 수 없습니다', 'lot');
+    const input = await body();
+    const t = E.kstNow(now);
+    const to = lot.kind === 'credit' ? K.RULES.creditRepayTo : K.RULES.loanRepayTo;
+    if (!E.isTradingDay(t) || t.hm < K.RULES.repayFrom || t.hm >= to) {
+      throw new HttpError(409, `현금상환은 거래일 08:00~${Math.floor(to / 60)}:${String(to % 60).padStart(2, '0')} 에 할 수 있습니다`, 'hours');
+    }
+    // 신용은 매수 결제일(D+2)에 융자가 실행된다 — 그 전에는 현금상환할 대출이 없다 (키움: 결제 완료 후 가능)
+    if (lot.start_ymd > t.ymd) throw new HttpError(409, `신용 융자는 결제일(${lot.start_ymd.slice(4, 6)}/${lot.start_ymd.slice(6)})에 실행됩니다. 그 뒤에 현금상환할 수 있습니다`, 'not_executed');
+    const pending = await db.prepare(`SELECT COALESCE(SUM(qty - filled_qty),0) AS q FROM orders WHERE season_id=? AND uid=? AND lot_id=? AND side='sell' AND status IN ('open','partial')`)
+      .bind(season.id, uid, lot.id).first();
+    const free = lot.qty - (pending ? pending.q : 0);
+    const qty = lot.qty === 0 ? 0 : (input.qty == null ? free : Number(input.qty));
+    if (lot.qty > 0 && (!Number.isInteger(qty) || qty <= 0 || qty > free)) throw new HttpError(409, `현금상환할 수 있는 수량은 ${free}주입니다 (매도 주문 중인 수량 제외)`, 'qty');
+    const part = lot.qty === 0 ? { principal: lot.principal, interest: K.interestAccrued(lot, t.ymd), paidPart: lot.interest_paid, cost: 0 }
+      : K.repayPortion(lot, qty, t.ymd);
+    const total = part.principal + part.interest;
+    const avail = await E.orderableCash(db, season, account, null, now);
+    if (total > avail) throw new HttpError(409, `상환에 ${total.toLocaleString()}원(원금 ${part.principal.toLocaleString()} + 이자 ${part.interest.toLocaleString()})이 필요합니다. 주문가능현금 ${Math.max(0, avail).toLocaleString()}원`, 'cash');
+    const cs = K.cashSet(-total);
+    const stmts = [
+      db.prepare(`UPDATE lots SET qty = qty - ?, cost = cost - ?, principal = principal - ?, interest_paid = interest_paid - ?,
+                    closed_at = CASE WHEN principal - ? = 0 THEN ? ELSE NULL END
+                  WHERE id=? AND qty=? AND principal=?`).bind(qty, part.cost, part.principal, part.paidPart, part.principal, now, lot.id, lot.qty, lot.principal),
+      db.prepare(`UPDATE accounts SET cash = -1 WHERE season_id=? AND uid=? AND NOT EXISTS (SELECT 1 FROM lots WHERE id=? AND qty=? AND principal=?)`)
+        .bind(season.id, uid, lot.id, lot.qty - qty, lot.principal - part.principal),
+      db.prepare(`UPDATE accounts SET ${cs.sql}, interest_paid = interest_paid + ? WHERE season_id=? AND uid=?`).bind(...cs.args, part.interest, season.id, uid),
+      // 상환 뒤 주문가능현금이 음수면 되돌린다 (그 사이 다른 매수가 체결된 경합)
+      db.prepare(`UPDATE accounts SET cash = -1 WHERE season_id=? AND uid=? AND (cash - cash_short) + ${E.ORDERABLE_ADJ_SQL}
+                    - COALESCE((SELECT SUM(reserved) FROM orders WHERE season_id=? AND uid=? AND side='buy' AND status IN ('open','partial')), 0) < 0`)
+        .bind(season.id, uid, season.id, uid, t.ymd, season.id, uid),
+      db.prepare(`INSERT INTO cash_events (id, season_id, uid, kind, amount, lot_id, detail, at) VALUES (?,?,?,'repay',?,?,?,?)`)
+        .bind(crypto.randomUUID(), season.id, uid, -total, lot.id, JSON.stringify({ code: lot.code, name: lot.name, kind: lot.kind, qty, principal: part.principal, interest: part.interest }), now)
+    ];
+    if (qty > 0) {
+      // 상환한 수량만큼 현금 보유 주식으로 돌아온다
+      stmts.push(
+        db.prepare(`INSERT INTO positions (season_id, uid, code, name, qty, cost) VALUES (?,?,?,?,?,?)
+                    ON CONFLICT (season_id, uid, code) DO UPDATE SET qty = qty + excluded.qty, cost = cost + excluded.cost`)
+          .bind(season.id, uid, lot.code, lot.name, qty, part.cost),
+        db.prepare(`INSERT INTO lot_moves (id, season_id, uid, lot_id, code, dir, qty, cost, at) VALUES (?,?,?,?,?,'out',?,?,?)`)
+          .bind(crypto.randomUUID(), season.id, uid, lot.id, lot.code, qty, part.cost, now)
+      );
+    }
+    try { await db.batch(stmts); }
+    catch (e) { throw new HttpError(409, '잔고나 예수금이 바뀌었습니다. 다시 시도하세요', 'raced'); }
+    mem.delete(`lb:${season.id}`);
+    return { ok: true, qty, principal: part.principal, interest: part.interest, total };
+  }
+
+  if (path === '/ledger' && method === 'GET') {
+    const [ev, calls] = await db.batch([
+      db.prepare(`SELECT kind, amount, lot_id, detail, at FROM cash_events WHERE season_id=? AND uid=? ORDER BY at DESC LIMIT 60`).bind(season.id, uid),
+      db.prepare(`SELECT kind, ymd, amount, ratio, due_ymd, status, detail, updated_at FROM margin_calls WHERE season_id=? AND uid=? ORDER BY ymd DESC, created_at DESC LIMIT 30`).bind(season.id, uid)
+    ]);
+    const parse = (d) => { try { return d ? JSON.parse(d) : null; } catch (e) { return null; } };
+    return {
+      events: (ev.results || []).map((r) => ({ kind: r.kind, amount: r.amount, lotId: r.lot_id, detail: parse(r.detail), at: r.at })),
+      calls: (calls.results || []).map((c) => ({ kind: c.kind, ymd: c.ymd, amount: c.amount, ratio: c.ratio, dueYmd: c.due_ymd, status: c.status, detail: parse(c.detail), updatedAt: c.updated_at }))
+    };
   }
 
   throw new HttpError(404, 'Not Found');
 }
 
-async function accountView(db, season, account, now) {
+async function accountView(db, season, account, now, isAdmin = false) {
   const uid = account.uid;
-  // 현금·보유·미체결을 한 트랜잭션(batch)으로 읽는다. 따로 읽으면 그 사이 체결이 끼어
+  const today = E.kstNow(now).ymd;
+  // 현금·보유·미체결·신용 잔고를 한 트랜잭션(batch)으로 읽는다. 따로 읽으면 그 사이 체결이 끼어
   // 체결 전 현금 + 체결 후 보유가 합쳐져 총자산이 매수 금액만큼 부풀 수 있었다
-  const [accRes, posRes, ordRes, feeRes] = await db.batch([
-    db.prepare(`SELECT cash, realized_pnl, fills, deposits FROM accounts WHERE season_id=? AND uid=?`).bind(season.id, uid),
+  const [accRes, posRes, ordRes, feeRes, lotRes, setRes, adjRes, callRes, unsetRes] = await db.batch([
+    db.prepare(`SELECT * FROM accounts WHERE season_id=? AND uid=?`).bind(season.id, uid),
     db.prepare(`SELECT code, name, qty, cost FROM positions WHERE season_id=? AND uid=? ORDER BY cost DESC`).bind(season.id, uid),
     db.prepare(`SELECT * FROM orders WHERE season_id=? AND uid=? AND status IN ('open','partial') ORDER BY accepted_at DESC`).bind(season.id, uid),
     // 매수 수수료는 매입금액에 넣지 않으므로(원가법) 평가손익·실현손익 어디에도 없다 — 합이 총손익과 맞도록 따로 보여 준다
-    db.prepare(`SELECT COALESCE(SUM(fee), 0) AS fee FROM fills WHERE season_id=? AND uid=? AND side='buy'`).bind(season.id, uid)
+    db.prepare(`SELECT COALESCE(SUM(fee), 0) AS fee FROM fills WHERE season_id=? AND uid=? AND side='buy'`).bind(season.id, uid),
+    db.prepare(`SELECT * FROM lots WHERE season_id=? AND uid=? AND (qty > 0 OR principal > 0) ORDER BY start_ymd, code`).bind(season.id, uid),
+    // 결제 전 체결의 결제일별 예수금 증감 — D+0·D+1 예수금 계산
+    db.prepare(`SELECT settle_ymd, SUM(cash_delta) AS d FROM fills WHERE season_id=? AND uid=? AND settle_ymd > ? AND cash_delta IS NOT NULL GROUP BY settle_ymd`).bind(season.id, uid, today),
+    db.prepare(`SELECT ${E.ORDERABLE_ADJ_SQL} AS adj`).bind(season.id, uid, today),
+    db.prepare(`SELECT * FROM margin_calls WHERE season_id=? AND uid=? AND status IN ('open','due','ordered','covered') ORDER BY ymd DESC LIMIT 10`).bind(season.id, uid),
+    // 결제 전 현금 매수 수량 — 담보로 잡을 수 없다 (키움: 미결제 종목 대출 불가)
+    db.prepare(`SELECT code, SUM(qty) AS q FROM fills WHERE season_id=? AND uid=? AND side='buy' AND lot_id IS NULL AND settle_ymd > ? GROUP BY code`).bind(season.id, uid, today)
   ]);
   const acc = (accRes.results && accRes.results[0]) || account;
-  const positions = posRes.results || [], orders = ordRes.results || [];
+  const positions = posRes.results || [], orders = ordRes.results || [], lots = lotRes.results || [];
   const buyFees = (feeRes.results && feeRes.results[0] && feeRes.results[0].fee) || 0;
-  const px = await pricer(db, positions.map((p) => p.code), now, false, null, closingYmd(season, now));
+  const unsettled = {};
+  for (const r of unsetRes.results || []) unsettled[r.code] = r.q;
+  const px = await pricer(db, positions.map((p) => p.code).concat(lots.map((l) => l.code)), now, false, null, closingYmd(season, now));
   let stock = 0;
   const items = positions.map((p) => {
     const price = px.priceOf(p.code);
@@ -794,18 +970,70 @@ async function accountView(db, season, account, now) {
     return {
       code: p.code, name: p.name, qty: p.qty, avgPrice: Math.round(p.cost / p.qty), cost: p.cost,
       price, value, pnl: value - p.cost, pnlRate: p.cost ? (value - p.cost) / p.cost * 100 : 0,
-      changeRate: q ? q.changeRate : null, halted: q ? q.halted : false
+      changeRate: q ? q.changeRate : null, halted: q ? q.halted : false,
+      settledQty: Math.max(0, p.qty - (unsettled[p.code] || 0)),
+      prevClose: q && q.krx ? q.krx.prevClose : null
     };
   });
+  let creditPrincipal = 0, loanPrincipal = 0, accrued = 0, lotValue = 0;
+  const lotItems = lots.map((l) => {
+    const price = px.priceOf(l.code);
+    const value = l.qty > 0 ? (price != null ? price * l.qty : l.cost) : 0;
+    const due = K.interestAccrued(l, today);
+    const days = Math.max(0, K.daysBetween(l.start_ymd, today));
+    lotValue += value; accrued += due;
+    if (l.kind === 'credit') creditPrincipal += l.principal; else loanPrincipal += l.principal;
+    const q = px.quotes[l.code];
+    return {
+      id: l.id, kind: l.kind, code: l.code, name: l.name, qty: l.qty, avgPrice: l.qty ? Math.round(l.cost / l.qty) : 0, cost: l.cost,
+      price, value, pnl: value - l.cost, pnlRate: l.cost ? (value - l.cost) / l.cost * 100 : 0,
+      changeRate: q ? q.changeRate : null, halted: q ? q.halted : false,
+      principal: l.principal, startYmd: l.start_ymd, dueYmd: l.due_ymd, days,
+      rate: l.kind === 'credit' ? K.creditRate(Math.max(1, days)) : (l.rate || K.RULES.loanRate),
+      accrued: due, interestPaid: l.interest_paid,
+      executed: l.start_ymd <= today           // 신용은 매수 결제일에 융자가 실행된다 — 그 전엔 현금상환 불가
+    };
+  });
+  stock += lotValue;
   const reserved = orders.filter((o) => o.side === 'buy').reduce((s, o) => s + o.reserved, 0);
-  const equity = acc.cash + stock;
-  // 원금 = 시드 + 출석금. 출석금은 수익이 아니므로 수익률·손익은 원금 기준 (순위는 총자산 그대로)
+  const net = acc.cash - (acc.cash_short || 0);                           // 예수금(D+2)
+  const pend = {};
+  for (const r of setRes.results || []) pend[r.settle_ymd] = r.d;
+  const d1Ymd = K.addTradingDays(today, 1);
+  const after = (ymd) => Object.keys(pend).filter((d) => d > ymd).reduce((s2, d) => s2 + pend[d], 0);
+  const d0 = net - after(today), d1 = net - after(d1Ymd);
+  const adj = (adjRes.results && adjRes.results[0] && adjRes.results[0].adj) || 0;
+  const debt = creditPrincipal + loanPrincipal + accrued;
+  const equity = net + stock - debt;
+  // 담보비율 (지금 시세 기준 참고값 — 판정은 장 마감 후 종가로 한다): (잔고 평가 + 현금 보유 × 대용비율 + 예수금) ÷ 원금
+  const principal0 = creditPrincipal + loanPrincipal;
+  const collateral = principal0 > 0
+    ? { value: lotValue + Math.floor((stock - lotValue) * K.RULES.substituteRate) + net, debt: principal0 } : null;
+  if (collateral) collateral.ratio = collateral.value / collateral.debt * 100;
+  // 원금 = 시드 + 출석금. 출석금은 수익이 아니므로 수익률·손익은 원금 기준 (순위는 순자산)
   const deposits = acc.deposits || 0, principal = season.seed + deposits;
+  const on = E.creditOn(season, isAdmin);
   return {
     season: { id: season.id, name: season.name, seed: season.seed, endDate: season.end_date, feeRate: season.fee_rate, taxRate: season.tax_rate },
-    cash: acc.cash, available: acc.cash - reserved, stock, equity, deposits, principal,
+    cash: net, available: net + adj - reserved, stock, equity, deposits, principal,
     returnRate: (equity - principal) / principal * 100,
     realizedPnl: acc.realized_pnl, buyFees, fills: acc.fills,
+    // 결제·신용 — 신용 기능이 꺼진 시즌도 값은 내려준다 (장부에 남은 잔고가 있을 수 있다)
+    settle: { d0, d1, d2: net, misu: Math.max(0, -d0), d1Ymd, d2Ymd: K.addTradingDays(today, 2) },
+    credit: {
+      on, mode: season.credit_mode || 'off', marginMode: acc.margin_mode || 'cash',
+      frozenUntil: acc.frozen_until && acc.frozen_until >= today ? acc.frozen_until : null,
+      creditPrincipal, loanPrincipal, accrued, debt, interestPaid: acc.interest_paid || 0,
+      collateral, lots: lotItems,
+      calls: (callRes.results || []).map((c) => ({ kind: c.kind, ymd: c.ymd, amount: c.amount, ratio: c.ratio, dueYmd: c.due_ymd, status: c.status })),
+      rules: {
+        stockMarginRate: K.RULES.stockMarginRate, creditDepositRate: K.RULES.creditDepositRate, creditTermDays: K.RULES.creditTermDays,
+        creditBrackets: K.RULES.creditBrackets.map((b) => ({ upto: isFinite(b.upto) ? b.upto : null, rate: b.rate })),
+        loanLtv: K.RULES.loanLtv, loanRate: K.RULES.loanRate, loanTermDays: K.RULES.loanTermDays, loanMin: K.RULES.loanMin, loanUnit: K.RULES.loanUnit,
+        maintRatio: K.RULES.maintRatio, misuOverdueRate: K.RULES.misuOverdueRate, forcedFeeRate: K.RULES.forcedFeeRate,
+        misuFreezeMin: K.RULES.misuFreezeMin, misuFreezeDays: K.RULES.misuFreezeDays
+      }
+    },
     positions: items, openOrders: orders.map(publicOrder), live: px.live, closing: px.closing, ...sessionInfo(now)
   };
 }
@@ -856,13 +1084,17 @@ function liveBoard(db, season, now) {
 
 async function leaderboard(db, season, now, official, asOfYmd) {
   // 현금과 보유를 한 트랜잭션(batch)으로 읽는다 — 사이에 체결이 끼면 그 회원 자산이 틀린 채 10초 캐시에 올라갔다
-  const [accRes, posRes] = await db.batch([
-    db.prepare(`SELECT uid, nickname, cash, fills, joined_at, deposits FROM accounts WHERE season_id=? AND status='active'`).bind(season.id),
-    db.prepare(`SELECT uid, code, qty, cost FROM positions WHERE season_id=?`).bind(season.id)
+  const [accRes, posRes, lotRes] = await db.batch([
+    db.prepare(`SELECT uid, nickname, cash, cash_short, fills, joined_at, deposits FROM accounts WHERE season_id=? AND status='active'`).bind(season.id),
+    db.prepare(`SELECT uid, code, qty, cost FROM positions WHERE season_id=?`).bind(season.id),
+    // 신용·담보 잔고 — 평가에 더하고 원금·이자는 뺀다 (순자산)
+    db.prepare(`SELECT uid, kind, code, qty, cost, principal, rate, start_ymd, interest_paid FROM lots WHERE season_id=? AND (qty > 0 OR principal > 0)`).bind(season.id)
   ]);
-  const positions = posRes.results || [];
-  const px = await pricer(db, positions.map((p) => p.code), now, official, asOfYmd, official ? null : closingYmd(season, now));
-  return { rows: E.valuate(accRes.results || [], positions, px.priceOf), asOf: now, live: px.live, closing: px.closing };
+  const positions = posRes.results || [], lots = lotRes.results || [];
+  const px = await pricer(db, positions.map((p) => p.code).concat(lots.map((l) => l.code)), now, official, asOfYmd, official ? null : closingYmd(season, now));
+  // 이자는 평가 기준일까지 — 최종 순위(official)는 그 종가 날짜, 평소엔 오늘
+  const endYmd = official && asOfYmd ? asOfYmd : E.kstNow(now).ymd;
+  return { rows: E.valuate(accRes.results || [], positions, px.priceOf, lots, endYmd), asOf: now, live: px.live, closing: px.closing };
 }
 
 // ── 관리자 ────────────────────────────────────────────────────
@@ -955,24 +1187,28 @@ async function handleAdmin(db, actor, path, method, body, now, url) {
         }
       }
       // 보내지 않은 값은 기존 값을 유지한다 (화면 폼이 시드·요율을 안 보내도 기본값으로 덮이지 않게)
+      // 신용·미수·담보대출 사용 여부(credit_mode)는 진행 중에도 바꿀 수 있다 — 끄면 새 신용매수·대출·미수 매수만 막고
+      // 이미 있는 잔고는 그대로 두고 상환·반대매매를 계속한다
       await db.prepare(
-        `UPDATE seasons SET name=?, start_date=?, end_date=?, seed=?, fee_rate=?, tax_rate=?, volume_fill=?, notice=? WHERE id=?`
+        `UPDATE seasons SET name=?, start_date=?, end_date=?, seed=?, fee_rate=?, tax_rate=?, volume_fill=?, notice=?, credit_mode=? WHERE id=?`
       ).bind(String(b.name).slice(0, 40), b.startDate, b.endDate,
         b.seed != null ? Number(b.seed) : existing.seed,
         b.feeRate != null ? Number(b.feeRate) : existing.fee_rate,
         b.taxRate != null ? Number(b.taxRate) : existing.tax_rate,
         b.volumeFill == null ? existing.volume_fill : (b.volumeFill === false ? 0 : 1),
-        b.notice != null ? (String(b.notice).slice(0, 1000) || null) : existing.notice, b.id).run();
+        b.notice != null ? (String(b.notice).slice(0, 1000) || null) : existing.notice,
+        ['off', 'admin', 'on'].includes(b.creditMode) ? b.creditMode : (existing.credit_mode || 'off'), b.id).run();
       await log('season.update', b);
       return { ok: true, updated: true };
     }
     // 기본값은 기획안 v2 — 시드 1억, 수수료 0.015%, 매도세 0.20%
     await db.prepare(
-      `INSERT INTO seasons (id, name, start_date, end_date, seed, fee_rate, tax_rate, volume_fill, notice, status)
-       VALUES (?,?,?,?,?,?,?,?,?, 'upcoming')`
+      `INSERT INTO seasons (id, name, start_date, end_date, seed, fee_rate, tax_rate, volume_fill, notice, status, credit_mode)
+       VALUES (?,?,?,?,?,?,?,?,?, 'upcoming', ?)`
     ).bind(b.id, String(b.name).slice(0, 40), b.startDate, b.endDate, Number(b.seed) || 100000000,
       b.feeRate != null ? Number(b.feeRate) : 0.00015, b.taxRate != null ? Number(b.taxRate) : 0.002,
-      b.volumeFill === false ? 0 : 1, String(b.notice || '').slice(0, 1000) || null).run();
+      b.volumeFill === false ? 0 : 1, String(b.notice || '').slice(0, 1000) || null,
+      ['off', 'admin', 'on'].includes(b.creditMode) ? b.creditMode : 'off').run();
     await log('season.create', b);
     return { ok: true, created: true };
   }
@@ -1036,6 +1272,12 @@ export async function runCron(env, now = Date.now()) {
 
   // 이 호출에서 쓴 D1 문장 수 — 여기까지 약 6건
   const stats = { q: 6 };
+  // 23:30~ 결제일 정산 (미수·동결·연체이자, 담보비율, 만기) — 키움의 미수 변제 마감 23:30 에 맞춘다
+  if (t.hm >= 23 * 60 + 30) { await S.nightly(db, season, now, stats); return; }
+  // 08:00~08:59 이자 정기징수(매월 첫 영업일)·반대매매 주문 접수 — 체결 판정보다 먼저 (반대매매는 09:00 시가에 체결)
+  if (t.hm >= E.PRE_FROM && t.hm < E.OPEN_AT) {
+    await S.morning(db, season, now, stats, { quotesFor, kindOf }).catch((e) => console.error('settle morning failed', e && e.message));
+  }
   if (t.hm >= E.PRE_FROM && t.hm < E.AFTER_TO) {
     // ⑤ 권리 변동을 가장 먼저 — 체결이 옛 수량·옛 가격으로 돌지 않게.
     //    반영이 일어난 분에는 쿼리 한도를 넘지 않도록 나머지를 다음 분으로 미룬다
@@ -1097,18 +1339,28 @@ async function fillOpenOrders(db, season, now, stats = { q: 0 }) {
   for (const r of ((await db.prepare(
     `SELECT uid, COALESCE(SUM(reserved),0) AS r FROM orders WHERE season_id=? AND side='buy' AND status IN ('open','partial') GROUP BY uid`
   ).bind(season.id).all()).results || [])) reserved[r.uid] = r.r;
+  // 주문가능현금의 나머지 한 조각 — 결제 전 증거금 매수의 외상분·미결제주식 매도의 재사용 불가분 (engine.orderableCash 와 같은 식)
+  stats.q += 1;
+  const adj = {};
+  for (const r of ((await db.prepare(
+    `SELECT uid, SUM(CASE WHEN side='buy' THEN -cash_delta - margin ELSE -margin END) AS a FROM fills
+     WHERE season_id=? AND settle_ymd > ? AND margin IS NOT NULL
+       AND uid IN (SELECT DISTINCT uid FROM orders WHERE season_id=? AND status IN ('open','partial')) GROUP BY uid`
+  ).bind(season.id, E.kstNow(now).ymd, season.id).all()).results || [])) adj[r.uid] = r.a || 0;
 
   let filled = 0;
   for (const o of orders) {
-    if (stats.q >= FILL_QUERY_BUDGET - 6) break;    // 한 건 더 체결할 여유가 없으면 다음 분으로 넘긴다
+    if (stats.q >= FILL_QUERY_BUDGET - 9) break;    // 한 건 더 체결할 여유가 없으면 다음 분으로 넘긴다 (체결 1건 = 최대 9문장)
     const acc = accounts[o.uid];
     if (!quotes[o.code] || !acc) continue;
-    const available = acc.cash - ((reserved[o.uid] || 0) - (o.side === 'buy' ? o.reserved : 0));
+    const available = (acc.cash - (acc.cash_short || 0)) + (adj[o.uid] || 0) - ((reserved[o.uid] || 0) - (o.side === 'buy' ? o.reserved : 0));
     try {
       const f = await E.tryFill(db, season, o, { quote: quotes[o.code], bars: bars[o.code] || null, account: acc, available, stats }, now);
       if (f) {
         filled++;
-        acc.cash += f.cashDelta;
+        // 읽어 둔 잔고를 이어서 쓴다 — 예수금은 cash 한 칸으로 합쳐 두고(cash_short 0), 외상·재사용 불가분은 adj 로
+        acc.cash = (acc.cash - (acc.cash_short || 0)) + f.cashDelta; acc.cash_short = 0;
+        adj[o.uid] = (adj[o.uid] || 0) + (f.availDelta - f.cashDelta);
         reserved[o.uid] = (reserved[o.uid] || 0) + f.reservedDelta;
       }
     } catch (e) { console.error('fill failed', o.id, e && e.message); }
@@ -1122,7 +1374,9 @@ async function closeOfDay(db, season, now) {
   const done = await db.prepare(`SELECT 1 AS x FROM daily_snapshots WHERE season_id=? AND date=? LIMIT 1`).bind(season.id, t.ymd).first();
   if (done) return;
 
-  const held = ((await db.prepare(`SELECT DISTINCT code FROM positions WHERE season_id=?`).bind(season.id).all()).results || []).map((r) => r.code);
+  // 신용·담보 잔고 종목도 — 밤 정산의 담보비율이 이 종가로 매겨진다
+  const held = ((await db.prepare(`SELECT code FROM positions WHERE season_id=? UNION SELECT code FROM lots WHERE season_id=? AND qty > 0`)
+    .bind(season.id, season.id).all()).results || []).map((r) => r.code);
   const have = new Set(((await db.prepare(`SELECT code FROM closes WHERE date=?`).bind(t.ymd).all()).results || []).map((r) => r.code));
   const todo = held.filter((c) => !have.has(c)).slice(0, MAX_CLOSES_PER_RUN);
   const lastTry = t.hm >= 16 * 60 + 25;    // 16:30 이 마지막 기회 — 그때까지 못 받은 종목은 직전 종가로 평가한다
@@ -1228,7 +1482,8 @@ async function carryForward(db, ymd, codes) {
 async function backfillCloses(db, season, now) {
   const t = E.kstNow(now);
   const todo = ((await db.prepare(
-    `SELECT DISTINCT code FROM positions WHERE season_id=? AND code NOT IN (SELECT code FROM closes WHERE date=?) LIMIT 15`
+    `SELECT code FROM (SELECT code FROM positions WHERE season_id=?1 UNION SELECT code FROM lots WHERE season_id=?1 AND qty > 0)
+     WHERE code NOT IN (SELECT code FROM closes WHERE date=?2) LIMIT 15`
   ).bind(season.id, t.ymd).all()).results || []).map((r) => r.code);
   if (!todo.length) return;
   const got = [], none = [];

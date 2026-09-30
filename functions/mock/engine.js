@@ -7,6 +7,10 @@
 // 금지 규칙 없이도 멈춘 가격(동시호가·VI·거래정지)으로는 체결되지 않는다.
 //
 // db 는 D1 인터페이스(prepare/bind/first/all/run/batch)만 쓴다 — 테스트에서는 sqlite 로 대체한다.
+//
+// 결제(T+2)·미수·신용·담보대출 규칙은 credit.js 에 있다. 체결은 결제일(settle_ymd)과 결제 때의 예수금 증감을 함께 남긴다.
+
+import * as K from './credit.js';
 
 // 시간외 (실전과 같이 지정가만): NXT 프리마켓 08:00~08:50, 애프터마켓 NXT 15:40~ · KRX 16:00~ → 20:00
 export const PRE_FROM    = 8 * 60;        // 08:00 프리마켓 주문 접수 시작 (08:30 부터는 정규장 장전 주문)
@@ -63,7 +67,7 @@ export class OrderError extends Error {
 
 const uuid = () => crypto.randomUUID();
 // 원 미만 절사. 27,000,000 × 0.00015 가 부동소수점에서 4049.999… 가 되므로 아주 작은 값을 더해 내린다
-const fee = (amount, rate) => Math.floor(amount * rate + 1e-6);
+export const fee = (amount, rate) => Math.floor(amount * rate + 1e-6);
 
 // ── 조회 헬퍼 ─────────────────────────────────────────────────
 export async function activeSeason(db, now = Date.now()) {
@@ -77,13 +81,38 @@ export async function getAccount(db, seasonId, uid) {
   return db.prepare(`SELECT * FROM accounts WHERE season_id=? AND uid=?`).bind(seasonId, uid).first();
 }
 
-/** 주문 가능 현금 = 현금 − 미체결 매수 주문이 묶어 둔 금액 */
-export async function availableCash(db, seasonId, uid, cash, exceptOrderId) {
+/**
+ * 주문가능현금(재사용금 포함) = 예수금(D+2) + 결제 전 매수의 외상분 − 결제 전 미결제주식 매도의 재사용 불가분 − 미체결 매수 증거금
+ *  - 증거금 100% 계좌는 외상·재사용 불가분이 0 이라 "현금 − 미체결 매수 금액" 그대로다 (예전 계산과 같다)
+ *  - 종목 증거금률 계좌는 매수 금액 중 증거금만 쓰고 나머지는 결제일까지 외상이다 (결제일에 모자라면 미수)
+ * 예전 체결(margin 이 NULL)은 계산에서 빠진다 — 증거금 100% 로 산 것이라 외상이 없다.
+ */
+export const ORDERABLE_ADJ_SQL = `COALESCE((SELECT SUM(CASE WHEN side='buy' THEN -cash_delta - margin ELSE -margin END)
+  FROM fills WHERE season_id=? AND uid=? AND settle_ymd > ? AND margin IS NOT NULL), 0)`;
+export async function orderableCash(db, season, account, exceptOrderId, now = Date.now()) {
+  const today = kstNow(now).ymd;
   const r = await db.prepare(
-    `SELECT COALESCE(SUM(reserved),0) AS r FROM orders
-     WHERE season_id=? AND uid=? AND side='buy' AND status IN ('open','partial') AND id<>?`
-  ).bind(seasonId, uid, exceptOrderId || '').first();
-  return cash - (r ? r.r : 0);
+    `SELECT COALESCE((SELECT SUM(reserved) FROM orders
+       WHERE season_id=? AND uid=? AND side='buy' AND status IN ('open','partial') AND id<>?), 0) AS r,
+            ${ORDERABLE_ADJ_SQL} AS adj`
+  ).bind(season.id, account.uid, exceptOrderId || '', season.id, account.uid, today).first();
+  return (account.cash - (account.cash_short || 0)) + (r ? r.adj : 0) - (r ? r.r : 0);
+}
+/** 예전 이름 — 증거금 100% 계좌 기준 (시험·옛 호출용) */
+export async function availableCash(db, seasonId, uid, cash, exceptOrderId) {
+  return orderableCash(db, { id: seasonId }, { uid, cash, cash_short: 0 }, exceptOrderId);
+}
+
+/** 이 회원에게 신용·미수·담보대출이 열려 있는가 — 시즌 credit_mode: off | admin(운영진만) | on */
+export function creditOn(season, isAdmin) {
+  const m = season && season.credit_mode;
+  return m === 'on' || (m === 'admin' && !!isAdmin);
+}
+/** 매수에 적용할 증거금률 — 증거금 100% 계좌·동결 계좌는 1 */
+export function effectiveRate(season, account, terms, isAdmin, now = Date.now()) {
+  if (!creditOn(season, isAdmin) || account.margin_mode !== 'spectrum') return 1;
+  if (account.frozen_until && account.frozen_until >= kstNow(now).ymd) return 1;
+  return terms ? terms.marginRate : 1;
 }
 
 // ── 참가 ──────────────────────────────────────────────────────
@@ -103,6 +132,7 @@ export async function join(db, season, uid, nickname, now = Date.now()) {
  */
 export async function acceptOrder(db, season, account, input, quote, taxFree, now = Date.now(), opts = {}) {
   // opts.replaces — 정정: 이 원주문을 닫고 그 자리에 새 주문을 넣는다 (주문가능금액·매도가능수량에서 원주문 몫은 뺀다)
+  // opts.terms — 종목 증거금률·신용 가능 여부 (credit.stockTerms), opts.isAdmin — 시즌 credit_mode 가 admin 일 때
   const orig = opts.replaces || null;
   const t = kstNow(now);
   const side = input.side, type = input.type;
@@ -111,6 +141,12 @@ export async function acceptOrder(db, season, account, input, quote, taxFree, no
   if (type !== 'market' && type !== 'limit') throw new OrderError('주문 종류가 올바르지 않습니다');
   if (!Number.isInteger(qty) || qty <= 0) throw new OrderError('수량은 1주 이상의 정수여야 합니다');
   if (!input.clientOrderId || String(input.clientOrderId).length > 64) throw new OrderError('주문 식별값이 없습니다');
+  // 신용매수(credit='buy') · 신용·담보 잔고 매도상환(lotId) — 정정은 원주문 값을 그대로 잇는다
+  const credit = orig ? (orig.credit || null) : (input.credit === 'buy' && side === 'buy' ? 'buy' : null);
+  const lotId = orig ? (orig.lot_id || null) : (side === 'sell' && input.lotId ? String(input.lotId) : null);
+  const terms = opts.terms || { marginRate: 1, creditOk: false, reason: null };
+  if (credit && !creditOn(season, opts.isAdmin)) throw new OrderError('신용거래를 이용할 수 없습니다', 'credit_off');
+  if (credit && !terms.creditOk) throw new OrderError(terms.reason || '신용거래가 불가능한 종목입니다', 'credit_stock');
 
   // 같은 주문이 재전송되면 새로 받지 않고 기존 주문을 돌려준다 (네트워크 재시도로 두 번 사지 않게)
   const dup = await db.prepare(`SELECT * FROM orders WHERE uid=? AND client_order_id=?`)
@@ -177,19 +213,43 @@ export async function acceptOrder(db, season, account, input, quote, taxFree, no
   if (recent && recent.n >= 30) throw new OrderError('주문 요청이 너무 많습니다. 잠시 후 다시 시도하세요', 'rate');
 
   let reserved = 0;
+  let marginRate = null;
   if (side === 'buy') {
     // 시장가는 현재가 기준으로 묶는다 (실전은 상한가 기준이지만 그러면 전액 매수가 안 된다 — 기획안 12-1).
     // 체결가가 올라 모자라면 살 수 있는 수량까지만 체결된다.
     const est = (limit || cur) * qty;
-    reserved = est + fee(est, season.fee_rate);
-    const avail = await availableCash(db, season.id, account.uid, account.cash, orig && orig.id);
-    if (reserved > avail) throw new OrderError('주문 가능 금액이 부족합니다', 'cash');
+    // 증거금: 신용매수는 보증금률(현금), 그 밖은 계좌·종목 증거금률 (증거금 100% 계좌는 매수 금액 전부)
+    marginRate = orig ? (orig.margin_rate != null ? orig.margin_rate : 1)
+      : (credit ? K.RULES.creditDepositRate : effectiveRate(season, account, terms, opts.isAdmin, now));
+    reserved = K.marginFor(est, fee(est, season.fee_rate), marginRate);
+    const avail = await orderableCash(db, season, account, orig && orig.id, now);
+    if (reserved > avail) {
+      throw new OrderError(marginRate < 1 && !credit && avail < 0 ? '미수금이 있어 매수할 수 없습니다' : '주문 가능 금액이 부족합니다', 'cash');
+    }
+    if (credit) {
+      // 신용 한도 — 계좌 20억 (잔고 융자금 + 미체결 신용매수의 융자 예정분 + 이번 주문)
+      const used = await db.prepare(
+        `SELECT COALESCE((SELECT SUM(principal) FROM lots WHERE season_id=? AND uid=? AND kind='credit' AND qty > 0), 0)
+              + COALESCE((SELECT SUM(reserved * (1 - margin_rate) / margin_rate) FROM orders
+                  WHERE season_id=? AND uid=? AND credit='buy' AND status IN ('open','partial') AND id<>?), 0) AS u`
+      ).bind(season.id, account.uid, season.id, account.uid, orig ? orig.id : '').first();
+      if ((used ? used.u : 0) + est * (1 - marginRate) > K.RULES.creditLimit) throw new OrderError('신용 한도(20억 원)를 넘습니다', 'credit_limit');
+    }
+  } else if (lotId) {
+    // 신용·담보 잔고 매도상환 — 그 잔고의 수량 안에서
+    const lot = await db.prepare(`SELECT qty, code FROM lots WHERE id=? AND season_id=? AND uid=?`).bind(lotId, season.id, account.uid).first();
+    if (!lot || lot.code !== quote.code) throw new OrderError('상환할 잔고를 찾을 수 없습니다', 'lot');
+    const pending = await db.prepare(
+      `SELECT COALESCE(SUM(qty - filled_qty),0) AS q FROM orders
+       WHERE season_id=? AND uid=? AND lot_id=? AND side='sell' AND status IN ('open','partial') AND id<>?`
+    ).bind(season.id, account.uid, lotId, orig ? orig.id : '').first();
+    if (qty > lot.qty - (pending ? pending.q : 0)) throw new OrderError('상환 가능 수량이 부족합니다', 'qty');
   } else {
     const pos = await db.prepare(`SELECT qty FROM positions WHERE season_id=? AND uid=? AND code=?`)
       .bind(season.id, account.uid, quote.code).first();
     const pending = await db.prepare(
       `SELECT COALESCE(SUM(qty - filled_qty),0) AS q FROM orders
-       WHERE season_id=? AND uid=? AND code=? AND side='sell' AND status IN ('open','partial') AND id<>?`
+       WHERE season_id=? AND uid=? AND code=? AND side='sell' AND lot_id IS NULL AND status IN ('open','partial') AND id<>?`
     ).bind(season.id, account.uid, quote.code, orig ? orig.id : '').first();
     const sellable = (pos ? pos.qty : 0) - (pending ? pending.q : 0);
     if (qty > sellable) throw new OrderError('매도 가능 수량이 부족합니다', 'qty');
@@ -201,11 +261,13 @@ export async function acceptOrder(db, season, account, input, quote, taxFree, no
   const id = uuid();
   const insert = db.prepare(
     `INSERT INTO orders (id, client_order_id, season_id, uid, code, name, side, type, qty, limit_price,
-       reserved, vol_at_accept, pre_open, marketable, tax_free, trade_date, accepted_at, updated_at, session, nxt_vol_at_accept, orig_order_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+       reserved, vol_at_accept, pre_open, marketable, tax_free, trade_date, accepted_at, updated_at, session, nxt_vol_at_accept, orig_order_id,
+       credit, lot_id, margin_rate)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(id, String(input.clientOrderId), season.id, account.uid, quote.code, quote.name || quote.code,
     side, type, qty, limit, reserved, preOpen ? 0 : (quote.krx.volume || 0), preOpen, marketable,
-    taxFree ? 1 : 0, t.ymd, now, now, session, (quote.nxt && quote.nxt.volume) || 0, orig ? orig.id : null);
+    taxFree ? 1 : 0, t.ymd, now, now, session, (quote.nxt && quote.nxt.volume) || 0, orig ? orig.id : null,
+    credit, lotId, marginRate);
   if (orig) {
     // 원주문 닫기 + 새 주문 넣기를 한 트랜잭션으로. 그 사이 크론이 원주문을 체결했으면(filled_qty 변화) 통째로 되돌린다.
     // 일부 체결된 원주문은 체결된 만큼으로 줄여 '체결'로, 아니면 '정정'으로 닫는다.
@@ -245,7 +307,8 @@ export async function acceptOrder(db, season, account, input, quote, taxFree, no
 
 export async function cancelOrder(db, uid, orderId, now = Date.now()) {
   const r = await db.prepare(
-    `UPDATE orders SET status='cancelled', reserved=0, updated_at=? WHERE id=? AND uid=? AND status IN ('open','partial')`
+    // 반대매매(forced)는 회원이 취소할 수 없다 — 실전도 입금으로만 자동취소된다
+    `UPDATE orders SET status='cancelled', reserved=0, updated_at=? WHERE id=? AND uid=? AND status IN ('open','partial') AND forced IS NULL`
   ).bind(now, orderId, uid).run();
   return r.meta.changes > 0;
 }
@@ -257,9 +320,10 @@ export async function cancelOrder(db, uid, orderId, now = Date.now()) {
  *  - 수량 늘리기: 없다 (새 주문을 내야 한다)
  * @returns { order, replaced }
  */
-export async function amendOrder(db, season, account, orderId, input, quote, taxFree, now = Date.now()) {
+export async function amendOrder(db, season, account, orderId, input, quote, taxFree, now = Date.now(), opts = {}) {
   const order = await db.prepare(`SELECT * FROM orders WHERE id=? AND uid=?`).bind(orderId, account.uid).first();
   if (!order) throw new OrderError('주문을 찾을 수 없습니다', 'not_found');
+  if (order.forced) throw new OrderError('반대매매 주문은 정정할 수 없습니다', 'forced');
   // 같은 정정이 재전송되면 이미 만든 새 주문을 돌려준다
   if (input.clientOrderId) {
     const dup = await db.prepare(`SELECT * FROM orders WHERE uid=? AND client_order_id=?`).bind(account.uid, String(input.clientOrderId)).first();
@@ -294,7 +358,7 @@ export async function amendOrder(db, season, account, orderId, input, quote, tax
   if (!input.clientOrderId) throw new OrderError('주문 식별값이 없습니다');
   const created = await acceptOrder(db, season, account, {
     clientOrderId: input.clientOrderId, code: order.code, side: order.side, type, qty, limitPrice
-  }, quote, taxFree, now, { replaces: order });
+  }, quote, taxFree, now, { ...opts, replaces: order });
   return { order: created, replaced: true };
 }
 
@@ -410,14 +474,17 @@ export async function tryFill(db, season, order, ctx, now = Date.now()) {
   if (!ctx.account) count(1);
   const account = ctx.account || await getAccount(db, season.id, order.uid);
   if (!account) return null;
+  const feeRate = order.forced ? K.RULES.forcedFeeRate : season.fee_rate;     // 반대매매는 청산거래 수수료 0.3%
+  const rate = order.margin_rate != null ? order.margin_rate : 1;              // 예전 주문(NULL)은 증거금 100%
+  const isCredit = isBuy && order.credit === 'buy';
   let cancelRest = false;
   if (isBuy) {
-    // 이 주문 몫으로 쓸 수 있는 현금 = 현금 − 다른 주문이 묶어 둔 금액
-    const budget = ctx.available != null ? ctx.available
-      : await availableCash(db, season.id, order.uid, account.cash, order.id);
-    const affordable = Math.floor(budget / (price * (1 + season.fee_rate)));
+    // 이 주문 몫으로 쓸 수 있는 현금 = 주문가능현금 (다른 주문이 묶어 둔 증거금은 뺀다)
+    const budget = ctx.available != null ? ctx.available : await orderableCash(db, season, account, order.id, now);
+    const need = (q) => K.marginFor(price * q, fee(price * q, feeRate), rate);
+    const affordable = Math.floor(budget / (price * (rate + feeRate)));
     if (affordable < qty) { qty = Math.max(0, affordable); cancelRest = true; }
-    while (qty > 0 && price * qty + fee(price * qty, season.fee_rate) > budget) qty--;   // 절사 오차 보정
+    while (qty > 0 && need(qty) > budget) qty--;   // 절사·올림 오차 보정
     if (qty <= 0) {
       count(1);
       await db.prepare(`UPDATE orders SET status='cancelled', reserved=0, reason='주문 가능 금액 부족', updated_at=?
@@ -427,18 +494,72 @@ export async function tryFill(db, season, order, ctx, now = Date.now()) {
   }
 
   const amount = price * qty;
-  const f = fee(amount, season.fee_rate);
+  const f = fee(amount, feeRate);
   const tax = (!isBuy && !order.tax_free) ? fee(amount, season.tax_rate) : 0;
   const newFilled = order.filled_qty + qty;
   const done = newFilled >= order.qty;
   const status = done ? 'filled' : (cancelRest ? 'cancelled' : 'partial');
-  const newReserved = (isBuy && !done && !cancelRest) ? Math.max(0, order.reserved - (amount + f)) : 0;
+  const used = isBuy ? K.marginFor(amount, f, rate) : 0;                        // 이 체결이 쓴 증거금
+  const newReserved = (isBuy && !done && !cancelRest) ? Math.max(0, order.reserved - used) : 0;
+  const settle = K.addTradingDays(t.ymd, K.RULES.settleDays);
+
+  // 매도상환할 신용·담보 잔고
+  let lot = null;
+  if (!isBuy && order.lot_id) {
+    count(1);
+    lot = ctx.lot || await db.prepare(`SELECT * FROM lots WHERE id=?`).bind(order.lot_id).first();
+    if (!lot || lot.qty < qty) {
+      count(1);
+      await db.prepare(`UPDATE orders SET status='cancelled', reserved=0, reason='상환 가능 수량 부족', updated_at=?
+                        WHERE id=? AND status IN ('open','partial') AND filled_qty=?`).bind(now, order.id, order.filled_qty).run();
+      return null;
+    }
+  }
+
+  // 결제 때 예수금 증감(cashDelta)과 증거금 계산용 값(margin)
+  let cashDelta, margin, loan = null, interest = null, repay = null;
+  if (isCredit) {
+    // 신용매수 — 보증금(현금)과 수수료만 내 돈, 나머지는 결제일(D+2)에 융자
+    const deposit = Math.ceil(amount * rate);
+    loan = amount - deposit;
+    cashDelta = -(deposit + f);
+    margin = deposit + f;
+  } else if (isBuy) {
+    cashDelta = -(amount + f);
+    margin = used;
+  } else if (lot) {
+    // 매도상환 — 결제일에 융자·대출 원금과 이자를 갚고 남는 돈이 예수금으로 (모자라면 미수)
+    repay = K.repayPortion(lot, qty, settle);
+    loan = repay.principal;
+    interest = repay.interest;
+    cashDelta = (amount - f - tax) - repay.principal - repay.interest;
+    margin = 0;
+  } else {
+    cashDelta = amount - f - tax;
+    margin = 0;
+    // 결제 전 주식(증거금으로 산 것)을 팔면 매도대금 × 증거금률만 다시 쓸 수 있다 — 나머지는 결제 때까지 묶인다 (키움 [0398]).
+    // 결제된 주식부터 판 것으로 본다.
+    if (account.margin_mode === 'spectrum') {
+      count(1);
+      const u = await db.prepare(
+        `SELECT COALESCE(SUM(f.qty),0) AS q, COALESCE(SUM(f.margin),0) AS m, COALESCE(SUM(-f.cash_delta),0) AS a,
+                COALESCE((SELECT qty FROM positions WHERE season_id=? AND uid=? AND code=?), 0) AS held
+         FROM fills f WHERE f.season_id=? AND f.uid=? AND f.code=? AND f.side='buy' AND f.lot_id IS NULL
+           AND f.settle_ymd > ? AND f.margin IS NOT NULL`
+      ).bind(season.id, order.uid, order.code, season.id, order.uid, order.code, t.ymd).first();
+      if (u && u.q > 0 && u.a > u.m) {
+        const unsettledSold = Math.max(0, qty - Math.max(0, u.held - u.q));
+        margin = Math.round(price * unsettledSold * (1 - u.m / u.a));
+      }
+    }
+  }
 
   // 주문 잠금·잔고·보유·체결 기록을 batch 하나(= 한 트랜잭션)로 처리한다.
   // 예전에는 잠금을 먼저 따로 걸었는데, 그 뒤 batch 가 실패하고 되돌리기까지 실패하면 주문만 '체결'로 남고
   // 장부는 비었다. 되돌리기가 그 사이 회원이 취소한 주문을 다시 살려 내기도 했다.
   const fillId = uuid();
   const key = [season.id, order.uid, order.code];
+  const cs = K.cashSet(cashDelta);
   const stmts = [
     // 1) 주문 행 잠금 — filled_qty 가 읽은 값 그대로일 때만. 이 체결의 id 를 남겨 아래 가드가 "내가 잡았는지" 확인한다
     db.prepare(
@@ -449,32 +570,71 @@ export async function tryFill(db, season, order, ctx, now = Date.now()) {
     //    CHECK(cash >= 0) 위반을 일부러 일으켜 batch 전체를 되돌린다.
     //    동시에 들어온 매도 두 건 중 뒤엣것이 이미 지워진 보유 행을 팔아 현금만 생기던 구멍을 막는다
     //    (UPDATE positions 는 행이 없으면 0행 변경으로 조용히 넘어가서 CHECK 가 걸리지 않았다).
+    //    잔고 매도상환은 lots.qty CHECK(>= 0) 가 같은 일을 한다.
     db.prepare(
       `UPDATE accounts SET cash = -1 WHERE season_id=? AND uid=? AND (
          NOT EXISTS (SELECT 1 FROM orders WHERE id=? AND last_fill_id=?)`
-      + (isBuy ? ')' : ` OR COALESCE((SELECT qty FROM positions WHERE season_id=? AND uid=? AND code=?), 0) < ?)`)
-    ).bind(season.id, order.uid, order.id, fillId, ...(isBuy ? [] : [...key, qty]))
+      + (isBuy || lot ? ')' : ` OR COALESCE((SELECT qty FROM positions WHERE season_id=? AND uid=? AND code=?), 0) < ?)`)
+    ).bind(season.id, order.uid, order.id, fillId, ...(isBuy || lot ? [] : [...key, qty]))
   ];
-  stmts.push(...(isBuy ? [
-    db.prepare(`UPDATE accounts SET cash = cash - ?, fills = fills + 1 WHERE season_id=? AND uid=?`)
-      .bind(amount + f, season.id, order.uid),
-    db.prepare(`INSERT INTO positions (season_id, uid, code, name, qty, cost) VALUES (?,?,?,?,?,?)
-                ON CONFLICT (season_id, uid, code) DO UPDATE SET qty = qty + excluded.qty, cost = cost + excluded.cost, name = excluded.name`)
-      .bind(...key, order.name, qty, amount)
-  ] : [
+  if (isCredit) {
+    const lotId = [season.id, order.uid, 'credit', order.code, settle].join(':');
+    stmts.push(
+      db.prepare(`UPDATE accounts SET ${cs.sql}, fills = fills + 1 WHERE season_id=? AND uid=?`).bind(...cs.args, season.id, order.uid),
+      db.prepare(`INSERT INTO lots (id, season_id, uid, kind, code, name, qty, cost, principal, rate, start_ymd, due_ymd, created_at)
+                  VALUES (?,?,?,'credit',?,?,?,?,?,NULL,?,?,?)
+                  ON CONFLICT (season_id, uid, kind, code, start_ymd) DO UPDATE SET
+                    qty = qty + excluded.qty, cost = cost + excluded.cost, principal = principal + excluded.principal, name = excluded.name, closed_at = NULL`)
+        .bind(lotId, season.id, order.uid, order.code, order.name, qty, amount, loan, settle, K.addCalendarDays(settle, K.RULES.creditTermDays), now)
+    );
+    order._lotId = lotId;
+  } else if (isBuy) {
+    stmts.push(
+      db.prepare(`UPDATE accounts SET ${cs.sql}, fills = fills + 1 WHERE season_id=? AND uid=?`).bind(...cs.args, season.id, order.uid),
+      db.prepare(`INSERT INTO positions (season_id, uid, code, name, qty, cost) VALUES (?,?,?,?,?,?)
+                  ON CONFLICT (season_id, uid, code) DO UPDATE SET qty = qty + excluded.qty, cost = cost + excluded.cost, name = excluded.name`)
+        .bind(...key, order.name, qty, amount)
+    );
+  } else if (lot) {
+    // 실현손익 = 순매도대금 − 매도분 매입금액 (이자는 따로 — accounts.interest_paid)
+    stmts.push(
+      db.prepare(`UPDATE accounts SET ${cs.sql}, fills = fills + 1, realized_pnl = realized_pnl + ?, interest_paid = interest_paid + ?
+                  WHERE season_id=? AND uid=?`)
+        .bind(...cs.args, (amount - f - tax) - repay.cost, repay.interest, season.id, order.uid),
+      db.prepare(`UPDATE lots SET qty = qty - ?, cost = cost - ?, principal = principal - ?, interest_paid = interest_paid - ?,
+                    closed_at = CASE WHEN qty - ? = 0 THEN ? ELSE NULL END
+                  WHERE id=? AND qty=? AND principal=?`)
+        .bind(qty, repay.cost, repay.principal, repay.paidPart, qty, now, lot.id, lot.qty, lot.principal),
+      // 읽은 뒤 그 사이 잔고가 바뀌었으면(다른 체결·상환) 위 UPDATE 가 0행 — 되돌린다
+      db.prepare(`UPDATE accounts SET cash = -1 WHERE season_id=? AND uid=? AND NOT EXISTS
+                  (SELECT 1 FROM lots WHERE id=? AND qty=? AND principal=?)`)
+        .bind(season.id, order.uid, lot.id, lot.qty - qty, lot.principal - repay.principal)
+    );
+  } else {
     // 실현손익 = 순매도대금 − 매도분 매입금액(이동평균). 보유 행을 고치기 전에 읽어야 한다
-    db.prepare(`UPDATE accounts SET cash = cash + ?, fills = fills + 1,
-                  realized_pnl = realized_pnl + ? - COALESCE((SELECT CAST(ROUND(cost * 1.0 * ? / qty) AS INTEGER)
-                                                            FROM positions WHERE season_id=? AND uid=? AND code=?), 0)
-                WHERE season_id=? AND uid=?`)
-      .bind(amount - f - tax, amount - f - tax, qty, ...key, season.id, order.uid),
-    db.prepare(`UPDATE positions SET cost = cost - CAST(ROUND(cost * 1.0 * ? / qty) AS INTEGER), qty = qty - ?
-                WHERE season_id=? AND uid=? AND code=?`).bind(qty, qty, ...key),
-    db.prepare(`DELETE FROM positions WHERE season_id=? AND uid=? AND code=? AND qty=0`).bind(...key)
-  ]));
+    stmts.push(
+      db.prepare(`UPDATE accounts SET ${cs.sql}, fills = fills + 1,
+                    realized_pnl = realized_pnl + ? - COALESCE((SELECT CAST(ROUND(cost * 1.0 * ? / qty) AS INTEGER)
+                                                              FROM positions WHERE season_id=? AND uid=? AND code=?), 0)
+                  WHERE season_id=? AND uid=?`)
+        .bind(...cs.args, amount - f - tax, qty, ...key, season.id, order.uid),
+      db.prepare(`UPDATE positions SET cost = cost - CAST(ROUND(cost * 1.0 * ? / qty) AS INTEGER), qty = qty - ?
+                  WHERE season_id=? AND uid=? AND code=?`).bind(qty, qty, ...key),
+      db.prepare(`DELETE FROM positions WHERE season_id=? AND uid=? AND code=? AND qty=0`).bind(...key)
+    );
+  }
   stmts.push(db.prepare(
-    `INSERT INTO fills (id, order_id, season_id, uid, code, name, side, qty, price, fee, tax, at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
-  ).bind(fillId, order.id, season.id, order.uid, order.code, order.name, order.side, qty, price, f, tax, now));
+    `INSERT INTO fills (id, order_id, season_id, uid, code, name, side, qty, price, fee, tax, at,
+       settle_ymd, cash_delta, margin, lot_id, loan, interest, forced) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  ).bind(fillId, order.id, season.id, order.uid, order.code, order.name, order.side, qty, price, f, tax, now,
+    settle, cashDelta, margin, isCredit ? order._lotId : (lot ? lot.id : null), loan, interest, order.forced || null));
+  if (isBuy) {
+    // 3) 매수 뒤 주문가능현금이 음수면 되돌린다 — 같은 계좌의 매수 두 건이 동시에 체결돼 증거금을 넘겨 쓰는 경합
+    stmts.push(db.prepare(
+      `UPDATE accounts SET cash = -1 WHERE season_id=? AND uid=? AND (cash - cash_short) + ${ORDERABLE_ADJ_SQL}
+         - COALESCE((SELECT SUM(reserved) FROM orders WHERE season_id=? AND uid=? AND side='buy' AND status IN ('open','partial')), 0) < 0`
+    ).bind(season.id, order.uid, season.id, order.uid, t.ymd, season.id, order.uid));
+  }
 
   count(stmts.length);
   try {
@@ -485,7 +645,7 @@ export async function tryFill(db, season, order, ctx, now = Date.now()) {
     const cur = await db.prepare(`SELECT status, filled_qty FROM orders WHERE id=?`).bind(order.id).first();
     // 다른 경로가 먼저 체결·취소했다 — 정상적인 경합이므로 조용히 넘어간다
     if (!cur || cur.filled_qty !== order.filled_qty || (cur.status !== 'open' && cur.status !== 'partial')) return null;
-    if (!isBuy) {
+    if (!isBuy && !lot) {
       const pos = await db.prepare(`SELECT qty FROM positions WHERE season_id=? AND uid=? AND code=?`).bind(...key).first();
       if ((pos ? pos.qty : 0) < qty) {
         // 동시에 낸 다른 매도가 먼저 팔았다 — 매분 다시 시도해도 계속 실패하므로 취소한다
@@ -494,29 +654,46 @@ export async function tryFill(db, season, order, ctx, now = Date.now()) {
         return null;
       }
     }
-    throw e;   // 매수 현금 부족(동시 매수 경합) 등 — 다음 판정 때 새 잔고로 다시 계산한다
+    throw e;   // 매수 현금 부족(동시 매수 경합)·잔고 경합 등 — 다음 판정 때 새 잔고로 다시 계산한다
   }
   return {
     id: fillId, orderId: order.id, code: order.code, side: order.side, qty, price, fee: f, tax, status,
     // 크론이 미리 읽어 둔 잔고를 이어서 쓸 수 있게 변화량을 알려 준다
-    cashDelta: isBuy ? -(amount + f) : (amount - f - tax),
+    cashDelta, margin, settle,
+    // 주문가능현금의 변화 = 예수금 증감 + 외상분(매수) − 재사용 불가분(매도) + 풀린 증거금
+    availDelta: isBuy ? -(margin) : (cashDelta - margin),
     reservedDelta: isBuy ? newReserved - order.reserved : 0
   };
 }
 
 // ── 평가 ──────────────────────────────────────────────────────
-/** 계정들의 총자산 = 현금 + Σ 보유수량 × 평가가. priceOf(code) 가 없으면 매입가로 평가한다 */
-export function valuate(accounts, positions, priceOf) {
+/**
+ * 계정들의 순자산 = 예수금(D+2, 미수면 음수) + Σ 현금 보유 평가 + Σ 신용·담보 잔고 평가 − 융자·대출 원금 − 쌓인 미납 이자.
+ * 빌린 돈으로 산 주식이 순위를 부풀리지 않게 빚을 뺀다. 신용·담보대출이 없는 계좌는 예전(현금 + 보유 평가)과 같다.
+ * priceOf(code) 가 없으면 매입가로 평가한다.
+ * @param lots   신용·담보 잔고 (qty > 0 또는 원금이 남은 것)
+ * @param endYmd 이자를 셀 날 (오늘, KST YYYYMMDD) — 없으면 이자는 0
+ */
+export function valuate(accounts, positions, priceOf, lots = [], endYmd = null) {
   const byUid = {};
-  for (const a of accounts) byUid[a.uid] = { uid: a.uid, nickname: a.nickname, cash: a.cash, stock: 0, fills: a.fills, joined_at: a.joined_at, deposits: a.deposits || 0 };
+  for (const a of accounts) {
+    byUid[a.uid] = { uid: a.uid, nickname: a.nickname, cash: a.cash - (a.cash_short || 0), stock: 0, debt: 0, fills: a.fills, joined_at: a.joined_at, deposits: a.deposits || 0 };
+  }
   for (const p of positions) {
     const row = byUid[p.uid];
     if (!row) continue;
     const px = priceOf(p.code);
     row.stock += px != null ? px * p.qty : p.cost;
   }
+  for (const l of lots) {
+    const row = byUid[l.uid];
+    if (!row) continue;
+    const px = priceOf(l.code);
+    if (l.qty > 0) row.stock += px != null ? px * l.qty : l.cost;
+    row.debt += l.principal + (endYmd ? K.interestAccrued(l, endYmd) : 0);
+  }
   return Object.values(byUid)
-    .map((r) => ({ ...r, equity: r.cash + r.stock }))
+    .map((r) => ({ ...r, equity: r.cash + r.stock - r.debt }))
     .sort((a, b) => (b.equity - a.equity) || (a.joined_at - b.joined_at))
     .map((r, i) => ({ ...r, rank: i + 1 }));
 }
