@@ -821,7 +821,7 @@ var Mock = (function () {
         +   '<button type="button" class="seg" role="tab" data-rk="share" onclick="Mock.rankView(\'share\')">💬 커뮤니티<i class="mk-rk-dot" hidden></i></button>'
         + '</div>'
         + '<div id="rkBoard" role="tabpanel"></div><div id="rkHall"></div><div id="rkShare" role="tabpanel"></div>'
-        + '<div id="rkNick"></div>';          // 내 닉네임 — 순위·커뮤니티 아래 맨 끝
+        + '<div id="rkNick"></div>';          // 내 닉네임 — 순위 화면 맨 아래
       applyRankView();
       loadNick();
     }
@@ -904,6 +904,7 @@ var Mock = (function () {
     });
     var show = function (id, v) { var e = document.getElementById(id); if (e) e.hidden = !v; };
     show('rkBoard', !share); show('rkHall', !share); show('rkShare', share);
+    show('rkNick', !share);          // 닉네임 바꾸기는 순위 화면에만
   }
   /* 새 글 표시 — 마지막으로 커뮤니티를 본 뒤 남이 올린 글이 있으면 탭에 점을 찍는다 (이 기기 기준) */
   function seenKey() { return 'dt-invest-share-seen:' + (currentUser ? currentUser.uid : ''); }
