@@ -23,6 +23,7 @@ function rowKey(uid) {
 
 // ── 작은 메모리 캐시 (워커 인스턴스 단위) ─────────────────────
 const mem = new Map();
+const feeMemo = new Map();       // '시즌:uid' → { fills, fee } 매수 수수료 누계 (체결 수가 바뀌면 다시 읽는다)
 async function memo(key, ttlMs, produce) {
   const hit = mem.get(key);
   if (hit && Date.now() - hit.at < ttlMs) return hit.v;
@@ -941,13 +942,11 @@ async function accountView(db, season, account, now, isAdmin = false) {
   const today = E.kstNow(now).ymd;
   // 현금·보유·미체결·신용 잔고를 한 트랜잭션(batch)으로 읽는다. 따로 읽으면 그 사이 체결이 끼어
   // 체결 전 현금 + 체결 후 보유가 합쳐져 총자산이 매수 금액만큼 부풀 수 있었다
-  const [accRes, posRes, ordRes, feeRes, lotRes, setRes, adjRes, callRes, unsetRes] = await db.batch([
+  const [accRes, posRes, ordRes, lotRes, setRes, adjRes, callRes, unsetRes] = await db.batch([
     db.prepare(`SELECT * FROM accounts WHERE season_id=? AND uid=?`).bind(season.id, uid),
     db.prepare(`SELECT code, name, qty, cost FROM positions WHERE season_id=? AND uid=? ORDER BY cost DESC`).bind(season.id, uid),
     // 미체결은 시즌 전체로도 몇 건 안 된다 — (season_id, uid) 인덱스를 타면 그 회원의 지난 주문을 전부 읽는다
     db.prepare(`SELECT * FROM orders INDEXED BY idx_orders_open WHERE season_id=? AND uid=? AND status IN ('open','partial') ORDER BY accepted_at DESC`).bind(season.id, uid),
-    // 매수 수수료는 매입금액에 넣지 않으므로(원가법) 평가손익·실현손익 어디에도 없다 — 합이 총손익과 맞도록 따로 보여 준다
-    db.prepare(`SELECT COALESCE(SUM(fee), 0) AS fee FROM fills WHERE season_id=? AND uid=? AND side='buy'`).bind(season.id, uid),
     db.prepare(`SELECT * FROM lots WHERE season_id=? AND uid=? AND (qty > 0 OR principal > 0) ORDER BY start_ymd, code`).bind(season.id, uid),
     // 결제 전 체결의 결제일별 예수금 증감 — D+0·D+1 예수금 계산
     db.prepare(`SELECT settle_ymd, SUM(cash_delta) AS d FROM fills WHERE season_id=? AND uid=? AND settle_ymd > ? AND cash_delta IS NOT NULL GROUP BY settle_ymd`).bind(season.id, uid, today),
@@ -958,7 +957,22 @@ async function accountView(db, season, account, now, isAdmin = false) {
   ]);
   const acc = (accRes.results && accRes.results[0]) || account;
   const positions = posRes.results || [], orders = ordRes.results || [], lots = lotRes.results || [];
-  const buyFees = (feeRes.results && feeRes.results[0] && feeRes.results[0].fee) || 0;
+  // 매수 수수료는 매입금액에 넣지 않으므로(원가법) 평가손익·실현손익 어디에도 없다 — 합이 총손익과 맞도록 따로 보여 준다.
+  // 시즌 체결 전체를 더하므로 체결 수(accounts.fills)가 그대로면 지난 값을 쓴다 — 계좌 화면이 10초마다 부를 때마다
+  // 그 회원의 체결을 전부 읽으면 D1 읽기가 시즌 내내 늘어난다 (무료 하루 500만 행)
+  const feeKey = season.id + ':' + uid;
+  let buyFees;
+  const feeHit = feeMemo.get(feeKey);
+  if (feeHit && feeHit.fills === acc.fills) buyFees = feeHit.fee;
+  else {
+    const r = await db.prepare(`SELECT a.fills AS n, (SELECT COALESCE(SUM(fee), 0) FROM fills f WHERE f.season_id=a.season_id AND f.uid=a.uid AND f.side='buy') AS fee
+                                FROM accounts a WHERE a.season_id=? AND a.uid=?`).bind(season.id, uid).first();
+    buyFees = (r && r.fee) || 0;
+    if (r && r.n === acc.fills) {
+      feeMemo.set(feeKey, { fills: r.n, fee: buyFees });
+      if (feeMemo.size > 3000) feeMemo.delete(feeMemo.keys().next().value);
+    }
+  }
   const unsettled = {};
   for (const r of unsetRes.results || []) unsettled[r.code] = r.q;
   const px = await pricer(db, positions.map((p) => p.code).concat(lots.map((l) => l.code)), now, false, null, closingYmd(season, now));

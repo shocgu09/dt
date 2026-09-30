@@ -95,6 +95,7 @@ async function prevCloses(db, codes, t) {
  * 크론 — 보유 종목의 권리 변동을 감지하고 반영한다.
  * @returns 이번에 D1 에 쓴 계좌 수 (0 이 아니면 크론은 이번 분의 체결 판정을 건너뛴다 — 쿼리 한도)
  */
+let _corpDone = '';      // '시즌:YYYYMMDD' — 그날 점검을 다 끝냈다
 export async function runCorpActions(db, season, now, quotesFor, stats) {
   const t = E.kstNow(now);
   if (!E.isTradingDay(t)) return 0;
@@ -110,12 +111,15 @@ export async function runCorpActions(db, season, now, quotesFor, stats) {
   //    09:00 전에는 결과를 확정하지 않아(아래 settle) 같은 종목을 매분 다시 본다 — 5분에 한 번만 본다.
   //    08:00 첫 분은 반드시 보므로 프리마켓 첫 체결 전에 분할·병합을 잡는 것은 그대로다
   if (t.hm < E.OPEN_AT && t.hm % 5 !== 0) return 0;
+  // 09:00 뒤 보유 종목을 다 점검했으면 그날은 더 보지 않는다 — 매분 시즌 보유 전체를 훑던 D1 읽기 (크론은 Durable Object 하나라 이 기억이 이어진다).
+  // 그 뒤 새로 산 종목은 이미 오늘 기준가로 샀으므로 오늘 권리 변동을 반영할 보유가 없다
+  if (_corpDone === season.id + ':' + t.ymd) return 0;
   stats.q += 1;
   const held = (await db.prepare(
     `SELECT code, MAX(name) AS name FROM (SELECT code, name FROM positions WHERE season_id=?1 UNION ALL SELECT code, name FROM lots WHERE season_id=?1 AND qty > 0)
      WHERE code NOT IN (SELECT code FROM ca_checks WHERE ymd=?2) GROUP BY code LIMIT 150`
   ).bind(season.id, t.ymd).all()).results || [];
-  if (!held.length) return 0;
+  if (!held.length) { if (t.hm >= E.OPEN_AT) _corpDone = season.id + ':' + t.ymd; return 0; }
   const codes = held.map((h) => h.code);
   let quotes;
   try { quotes = await quotesFor(codes); } catch (e) { return 0; }     // 시세 장애 — 다음 분에
