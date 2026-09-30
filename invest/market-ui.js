@@ -129,7 +129,7 @@ function startHomePolling() {
 // 국내 묶음 뒤(마감된 코스피·코스닥 뒤)로 밀려 스크롤해야 보였고, '국내 장 마감' 배지 아래 있어 멈춘 것처럼 읽혔다.
 var INDEX_GROUPS = [
   { id: 'kr', label: '국내', keys: ['kospi', 'kosdaq', 'kpi200', 'fut', 'kq150'] },
-  { id: 'us', label: '미국', note: '야간선물 포함', keys: ['nightfut', 'nasdaq', 'sp500', 'dow', 'sox'] },
+  { id: 'us', label: '미국', note: '코스피 야간선물 포함', keys: ['nightfut', 'nasdaq', 'sp500', 'dow', 'sox'] },
   { id: 'etc', label: '기타', note: '아랫줄', keys: ['usd', 'vix', 'gold', 'oil', 'us10y', 'kr10y', 'kr3y', 'btc', 'eth'] }
 ];
 var INDEX_KEYS = [].concat.apply([], INDEX_GROUPS.map(function (g) { return g.keys; }));
@@ -259,10 +259,10 @@ function renderIndexPanel() {
 }
 
 // 네이버 이름이 길어 좁은 셀에서 두 줄이 된다 ("나스닥 100 선물")
-var INDEX_NAME = { nightfut: '야간선물', nasdaq: '나스닥 선물', sp500: 'S&P 선물', dow: '다우 선물', sox: '필라델피아 반도체' };
+var INDEX_NAME = { nightfut: '코스피 야간선물', nasdaq: '나스닥 선물', sp500: 'S&P 선물', dow: '다우 선물', sox: '필라델피아 반도체' };
 // 체크리스트용 이름 (셀 이름은 네이버 값을 쓰지만 목록에서는 항상 같은 말로 보인다)
 var INDEX_LABEL = {
-  kospi: '코스피', kosdaq: '코스닥', kpi200: '코스피 200', fut: '코스피 200 선물', nightfut: '코스피 200 야간선물', kq150: '코스닥 150',
+  kospi: '코스피', kosdaq: '코스닥', kpi200: '코스피 200', fut: '코스피 200 선물', nightfut: '코스피 야간선물', kq150: '코스닥 150',
   usd: '원/달러 환율', nasdaq: '나스닥 선물', sp500: 'S&P 선물', dow: '다우 선물',
   vix: 'VIX (공포지수)', sox: '필라델피아 반도체', gold: '금', oil: 'WTI 유가',
   us10y: '미국 국채 10년', kr10y: '한국 국채 10년', kr3y: '한국 국채 3년',
@@ -317,7 +317,7 @@ var INDEX_TIP = [
   '· 10분 · 15분: 거래소 규정으로 그만큼 늦은 시세입니다. 해외 선물·금·유가는 10분, VIX 는 15분 전 값입니다.',
   '· 마감: 그 시장이 쉬는 중이라 마지막 값을 보여 줍니다.',
   '· 국내 · 미국 배지: 각 시장이 지금 열려 있는지 알려 줍니다. 밤에 미국 장이 열리면 미국 묶음이 앞으로 옵니다.',
-  '· 야간선물은 18:00~05:00 에 열리는 코스피200 선물입니다.',
+  '· 코스피 야간선물은 18:00~05:00 에 열리는 코스피200 선물입니다.',
   '· ⚙ 에서 보여 줄 항목을 고를 수 있습니다.'
 ].join('\n');
 
