@@ -89,14 +89,16 @@ export async function getAccount(db, seasonId, uid) {
  */
 export const ORDERABLE_ADJ_SQL = `COALESCE((SELECT SUM(CASE WHEN side='buy' THEN -cash_delta - margin ELSE -margin END)
   FROM fills WHERE season_id=? AND uid=? AND settle_ymd > ? AND margin IS NOT NULL), 0)`;
-export async function orderableCash(db, season, account, exceptOrderId, now = Date.now()) {
+// opts.cashOnly — 현금상환·만기 자동상환용: 결제 전 증거금 매수의 외상분은 현금이 아니므로 더하지 않는다 (키움 '현금상환가능금액')
+export async function orderableCash(db, season, account, exceptOrderId, now = Date.now(), opts = {}) {
   const today = kstNow(now).ymd;
   const r = await db.prepare(
-    `SELECT COALESCE((SELECT SUM(reserved) FROM orders
+    `SELECT COALESCE((SELECT SUM(reserved) FROM orders INDEXED BY idx_orders_open
        WHERE season_id=? AND uid=? AND side='buy' AND status IN ('open','partial') AND id<>?), 0) AS r,
             ${ORDERABLE_ADJ_SQL} AS adj`
   ).bind(season.id, account.uid, exceptOrderId || '', season.id, account.uid, today).first();
-  return (account.cash - (account.cash_short || 0)) + (r ? r.adj : 0) - (r ? r.r : 0);
+  const adj = r ? r.adj : 0;
+  return (account.cash - (account.cash_short || 0)) + (opts.cashOnly ? Math.min(adj, 0) : adj) - (r ? r.r : 0);
 }
 /** 예전 이름 — 증거금 100% 계좌 기준 (시험·옛 호출용) */
 export async function availableCash(db, seasonId, uid, cash, exceptOrderId) {
@@ -230,7 +232,7 @@ export async function acceptOrder(db, season, account, input, quote, taxFree, no
       // 신용 한도 — 계좌 20억 (잔고 융자금 + 미체결 신용매수의 융자 예정분 + 이번 주문)
       const used = await db.prepare(
         `SELECT COALESCE((SELECT SUM(principal) FROM lots WHERE season_id=? AND uid=? AND kind='credit' AND qty > 0), 0)
-              + COALESCE((SELECT SUM(reserved * (1 - margin_rate) / margin_rate) FROM orders
+              + COALESCE((SELECT SUM(reserved * (1 - margin_rate) / margin_rate) FROM orders INDEXED BY idx_orders_open
                   WHERE season_id=? AND uid=? AND credit='buy' AND status IN ('open','partial') AND id<>?), 0) AS u`
       ).bind(season.id, account.uid, season.id, account.uid, orig ? orig.id : '').first();
       if ((used ? used.u : 0) + est * (1 - marginRate) > K.RULES.creditLimit) throw new OrderError('신용 한도(20억 원)를 넘습니다', 'credit_limit');
@@ -240,7 +242,7 @@ export async function acceptOrder(db, season, account, input, quote, taxFree, no
     const lot = await db.prepare(`SELECT qty, code FROM lots WHERE id=? AND season_id=? AND uid=?`).bind(lotId, season.id, account.uid).first();
     if (!lot || lot.code !== quote.code) throw new OrderError('상환할 잔고를 찾을 수 없습니다', 'lot');
     const pending = await db.prepare(
-      `SELECT COALESCE(SUM(qty - filled_qty),0) AS q FROM orders
+      `SELECT COALESCE(SUM(qty - filled_qty),0) AS q FROM orders INDEXED BY idx_orders_open
        WHERE season_id=? AND uid=? AND lot_id=? AND side='sell' AND status IN ('open','partial') AND id<>?`
     ).bind(season.id, account.uid, lotId, orig ? orig.id : '').first();
     if (qty > lot.qty - (pending ? pending.q : 0)) throw new OrderError('상환 가능 수량이 부족합니다', 'qty');
@@ -248,7 +250,7 @@ export async function acceptOrder(db, season, account, input, quote, taxFree, no
     const pos = await db.prepare(`SELECT qty FROM positions WHERE season_id=? AND uid=? AND code=?`)
       .bind(season.id, account.uid, quote.code).first();
     const pending = await db.prepare(
-      `SELECT COALESCE(SUM(qty - filled_qty),0) AS q FROM orders
+      `SELECT COALESCE(SUM(qty - filled_qty),0) AS q FROM orders INDEXED BY idx_orders_open
        WHERE season_id=? AND uid=? AND code=? AND side='sell' AND lot_id IS NULL AND status IN ('open','partial') AND id<>?`
     ).bind(season.id, account.uid, quote.code, orig ? orig.id : '').first();
     const sellable = (pos ? pos.qty : 0) - (pending ? pending.q : 0);
@@ -539,7 +541,8 @@ export async function tryFill(db, season, order, ctx, now = Date.now()) {
     margin = 0;
     // 결제 전 주식(증거금으로 산 것)을 팔면 매도대금 × 증거금률만 다시 쓸 수 있다 — 나머지는 결제 때까지 묶인다 (키움 [0398]).
     // 결제된 주식부터 판 것으로 본다.
-    if (account.margin_mode === 'spectrum') {
+    // 계좌 설정과 무관하게 본다 — 종목별로 산 뒤 100% 로 바꾸고 팔면 매도대금 전액이 재사용되던 구멍 (현금 100% 로 산 체결은 외상이 없어 0 이 된다)
+    {
       count(1);
       const u = await db.prepare(
         `SELECT COALESCE(SUM(f.qty),0) AS q, COALESCE(SUM(f.margin),0) AS m, COALESCE(SUM(-f.cash_delta),0) AS a,
@@ -561,11 +564,11 @@ export async function tryFill(db, season, order, ctx, now = Date.now()) {
   const key = [season.id, order.uid, order.code];
   const cs = K.cashSet(cashDelta);
   const stmts = [
-    // 1) 주문 행 잠금 — filled_qty 가 읽은 값 그대로일 때만. 이 체결의 id 를 남겨 아래 가드가 "내가 잡았는지" 확인한다
+    // 1) 주문 행 잠금 — filled_qty·qty 가 읽은 값 그대로일 때만 (그 사이 수량을 줄이는 정정이 들어왔으면 옛 수량으로 체결하지 않는다). 이 체결의 id 를 남겨 아래 가드가 "내가 잡았는지" 확인한다
     db.prepare(
       `UPDATE orders SET filled_qty=?, reserved=?, status=?, reason=?, updated_at=?, last_fill_id=?
-       WHERE id=? AND status IN ('open','partial') AND filled_qty=?`
-    ).bind(newFilled, newReserved, status, cancelRest ? '주문 가능 금액 초과로 일부 체결' : null, now, fillId, order.id, order.filled_qty),
+       WHERE id=? AND status IN ('open','partial') AND filled_qty=? AND qty=?`
+    ).bind(newFilled, newReserved, status, cancelRest ? '주문 가능 금액 초과로 일부 체결' : null, now, fillId, order.id, order.filled_qty, order.qty),
     // 2) 가드 — 잠금을 다른 경로(화면 폴링·크론)가 먼저 가져갔거나, 매도할 보유 수량이 모자라면
     //    CHECK(cash >= 0) 위반을 일부러 일으켜 batch 전체를 되돌린다.
     //    동시에 들어온 매도 두 건 중 뒤엣것이 이미 지워진 보유 행을 팔아 현금만 생기던 구멍을 막는다
@@ -632,7 +635,7 @@ export async function tryFill(db, season, order, ctx, now = Date.now()) {
     // 3) 매수 뒤 주문가능현금이 음수면 되돌린다 — 같은 계좌의 매수 두 건이 동시에 체결돼 증거금을 넘겨 쓰는 경합
     stmts.push(db.prepare(
       `UPDATE accounts SET cash = -1 WHERE season_id=? AND uid=? AND (cash - cash_short) + ${ORDERABLE_ADJ_SQL}
-         - COALESCE((SELECT SUM(reserved) FROM orders WHERE season_id=? AND uid=? AND side='buy' AND status IN ('open','partial')), 0) < 0`
+         - COALESCE((SELECT SUM(reserved) FROM orders INDEXED BY idx_orders_open WHERE season_id=? AND uid=? AND side='buy' AND status IN ('open','partial')), 0) < 0`
     ).bind(season.id, order.uid, season.id, order.uid, t.ymd, season.id, order.uid));
   }
 

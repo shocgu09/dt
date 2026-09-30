@@ -880,7 +880,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     }
     // 신용은 매수 결제일(D+2)에 융자가 실행된다 — 그 전에는 현금상환할 대출이 없다 (키움: 결제 완료 후 가능)
     if (lot.start_ymd > t.ymd) throw new HttpError(409, `신용 융자는 결제일(${lot.start_ymd.slice(4, 6)}/${lot.start_ymd.slice(6)})에 실행됩니다. 그 뒤에 현금상환할 수 있습니다`, 'not_executed');
-    const pending = await db.prepare(`SELECT COALESCE(SUM(qty - filled_qty),0) AS q FROM orders WHERE season_id=? AND uid=? AND lot_id=? AND side='sell' AND status IN ('open','partial')`)
+    const pending = await db.prepare(`SELECT COALESCE(SUM(qty - filled_qty),0) AS q FROM orders INDEXED BY idx_orders_open WHERE season_id=? AND uid=? AND lot_id=? AND side='sell' AND status IN ('open','partial')`)
       .bind(season.id, uid, lot.id).first();
     const free = lot.qty - (pending ? pending.q : 0);
     const qty = lot.qty === 0 ? 0 : (input.qty == null ? free : Number(input.qty));
@@ -888,8 +888,8 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     const part = lot.qty === 0 ? { principal: lot.principal, interest: K.interestAccrued(lot, t.ymd), paidPart: lot.interest_paid, cost: 0 }
       : K.repayPortion(lot, qty, t.ymd);
     const total = part.principal + part.interest;
-    const avail = await E.orderableCash(db, season, account, null, now);
-    if (total > avail) throw new HttpError(409, `상환에 ${total.toLocaleString()}원(원금 ${part.principal.toLocaleString()} + 이자 ${part.interest.toLocaleString()})이 필요합니다. 주문가능현금 ${Math.max(0, avail).toLocaleString()}원`, 'cash');
+    const avail = await E.orderableCash(db, season, account, null, now, { cashOnly: true });
+    if (total > avail) throw new HttpError(409, `상환에 ${total.toLocaleString()}원(원금 ${part.principal.toLocaleString()} + 이자 ${part.interest.toLocaleString()})이 필요합니다. 현금상환가능금액 ${Math.max(0, avail).toLocaleString()}원 (결제 전 외상 매수분 제외)`, 'cash');
     const cs = K.cashSet(-total);
     const stmts = [
       db.prepare(`UPDATE lots SET qty = qty - ?, cost = cost - ?, principal = principal - ?, interest_paid = interest_paid - ?,
@@ -900,7 +900,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       db.prepare(`UPDATE accounts SET ${cs.sql}, interest_paid = interest_paid + ? WHERE season_id=? AND uid=?`).bind(...cs.args, part.interest, season.id, uid),
       // 상환 뒤 주문가능현금이 음수면 되돌린다 (그 사이 다른 매수가 체결된 경합)
       db.prepare(`UPDATE accounts SET cash = -1 WHERE season_id=? AND uid=? AND (cash - cash_short) + ${E.ORDERABLE_ADJ_SQL}
-                    - COALESCE((SELECT SUM(reserved) FROM orders WHERE season_id=? AND uid=? AND side='buy' AND status IN ('open','partial')), 0) < 0`)
+                    - COALESCE((SELECT SUM(reserved) FROM orders INDEXED BY idx_orders_open WHERE season_id=? AND uid=? AND side='buy' AND status IN ('open','partial')), 0) < 0`)
         .bind(season.id, uid, season.id, uid, t.ymd, season.id, uid),
       db.prepare(`INSERT INTO cash_events (id, season_id, uid, kind, amount, lot_id, detail, at) VALUES (?,?,?,'repay',?,?,?,?)`)
         .bind(crypto.randomUUID(), season.id, uid, -total, lot.id, JSON.stringify({ code: lot.code, name: lot.name, kind: lot.kind, qty, principal: part.principal, interest: part.interest }), now)
@@ -944,7 +944,8 @@ async function accountView(db, season, account, now, isAdmin = false) {
   const [accRes, posRes, ordRes, feeRes, lotRes, setRes, adjRes, callRes, unsetRes] = await db.batch([
     db.prepare(`SELECT * FROM accounts WHERE season_id=? AND uid=?`).bind(season.id, uid),
     db.prepare(`SELECT code, name, qty, cost FROM positions WHERE season_id=? AND uid=? ORDER BY cost DESC`).bind(season.id, uid),
-    db.prepare(`SELECT * FROM orders WHERE season_id=? AND uid=? AND status IN ('open','partial') ORDER BY accepted_at DESC`).bind(season.id, uid),
+    // 미체결은 시즌 전체로도 몇 건 안 된다 — (season_id, uid) 인덱스를 타면 그 회원의 지난 주문을 전부 읽는다
+    db.prepare(`SELECT * FROM orders INDEXED BY idx_orders_open WHERE season_id=? AND uid=? AND status IN ('open','partial') ORDER BY accepted_at DESC`).bind(season.id, uid),
     // 매수 수수료는 매입금액에 넣지 않으므로(원가법) 평가손익·실현손익 어디에도 없다 — 합이 총손익과 맞도록 따로 보여 준다
     db.prepare(`SELECT COALESCE(SUM(fee), 0) AS fee FROM fills WHERE season_id=? AND uid=? AND side='buy'`).bind(season.id, uid),
     db.prepare(`SELECT * FROM lots WHERE season_id=? AND uid=? AND (qty > 0 OR principal > 0) ORDER BY start_ymd, code`).bind(season.id, uid),
@@ -1289,7 +1290,8 @@ export async function runCron(env, now = Date.now()) {
     // ⑤ 권리 변동을 가장 먼저 — 체결이 옛 수량·옛 가격으로 돌지 않게.
     //    반영이 일어난 분에는 쿼리 한도를 넘지 않도록 나머지를 다음 분으로 미룬다
     const applied = await C.runCorpActions(db, season, now, quotesFor, stats).catch((e) => { console.error('corp failed', e && e.message); return 0; });
-    if (!applied) await fillOpenOrders(db, season, now, stats);
+    // 체결 판정이 예외로 끝나도(네이버 장애 등) 아래 장 마감 처리·스냅샷은 돌아야 한다
+    if (!applied) await fillOpenOrders(db, season, now, stats).catch((e) => console.error('fill failed', e && e.message));
   }
   // 종가 저장·스냅샷은 한 번 끝나면 다시 하지 않는다 (16:30 까지 시도)
   if (t.hm >= 15 * 60 + 40 && t.hm < 16 * 60 + 30) await closeOfDay(db, season, now);
@@ -1343,11 +1345,11 @@ async function fillOpenOrders(db, season, now, stats = { q: 0 }) {
   // 계정과 묶인 증거금을 한 번에 읽어 둔다 (주문마다 읽으면 D1 쿼리가 두 배)
   const accounts = {};
   for (const a of ((await db.prepare(
-    `SELECT * FROM accounts WHERE season_id=? AND uid IN (SELECT DISTINCT uid FROM orders WHERE season_id=? AND status IN ('open','partial'))`
+    `SELECT * FROM accounts WHERE season_id=? AND uid IN (SELECT DISTINCT uid FROM orders INDEXED BY idx_orders_open WHERE season_id=? AND status IN ('open','partial'))`
   ).bind(season.id, season.id).all()).results || [])) accounts[a.uid] = a;
   const reserved = {};
   for (const r of ((await db.prepare(
-    `SELECT uid, COALESCE(SUM(reserved),0) AS r FROM orders WHERE season_id=? AND side='buy' AND status IN ('open','partial') GROUP BY uid`
+    `SELECT uid, COALESCE(SUM(reserved),0) AS r FROM orders INDEXED BY idx_orders_open WHERE season_id=? AND side='buy' AND status IN ('open','partial') GROUP BY uid`
   ).bind(season.id).all()).results || [])) reserved[r.uid] = r.r;
   // 주문가능현금의 나머지 한 조각 — 결제 전 증거금 매수의 외상분·미결제주식 매도의 재사용 불가분 (engine.orderableCash 와 같은 식)
   stats.q += 1;
@@ -1355,7 +1357,7 @@ async function fillOpenOrders(db, season, now, stats = { q: 0 }) {
   for (const r of ((await db.prepare(
     `SELECT uid, SUM(CASE WHEN side='buy' THEN -cash_delta - margin ELSE -margin END) AS a FROM fills
      WHERE season_id=? AND settle_ymd > ? AND margin IS NOT NULL
-       AND uid IN (SELECT DISTINCT uid FROM orders WHERE season_id=? AND status IN ('open','partial')) GROUP BY uid`
+       AND uid IN (SELECT DISTINCT uid FROM orders INDEXED BY idx_orders_open WHERE season_id=? AND status IN ('open','partial')) GROUP BY uid`
   ).bind(season.id, E.kstNow(now).ymd, season.id).all()).results || [])) adj[r.uid] = r.a || 0;
 
   let filled = 0;

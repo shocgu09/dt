@@ -30,6 +30,7 @@ export async function nightly(db, season, now, stats = { q: 0 }) {
   const next = K.addTradingDays(S, 1);
   const stmts = [];
   const push = (st) => { stmts.push(st); };
+  let reads = 0;                       // 반복 안에서 따로 읽는 문장 (미수 해소) — 문장 한도에 함께 센다
 
   // ① 미수 — 결제일 기준 예수금 E = 예수금(D+2) − 결제 전 체결 증감 전부, 충당 X = E + 결제 전 매도대금
   stats.q += 1;
@@ -45,7 +46,7 @@ export async function nightly(db, season, now, stats = { q: 0 }) {
        OR EXISTS (SELECT 1 FROM fills f WHERE f.season_id=a.season_id AND f.uid=a.uid AND f.settle_ymd > ? AND f.cash_delta IS NOT NULL))`
   ).bind(S, S, season.id, S).all()).results || [];
   for (const a of rows) {
-    if (stmts.length >= BUDGET - 6) { stats.more = true; break; }
+    if (stmts.length + reads >= BUDGET - 6) { stats.more = true; break; }
     const net = a.cash - a.cash_short;
     const settled = net - a.pend_all;            // 오늘 결제까지 끝난 예수금
     const cover = net - a.pend_buy;              // + 결제 전 매도대금 (매도로 미수가 충당되는지)
@@ -59,6 +60,11 @@ export async function nightly(db, season, now, stats = { q: 0 }) {
         push(callUpsert(db, season, a.uid, 'misu', S, misu, null, cover < 0 ? next : null, cover < 0 ? 'due' : 'covered',
           { settled, cover, frozenUntil: freeze }, now));
       } else if (a.misu_accrued_ymd !== S) {
+        // 결제일마다 판정 — 첫날 10만 원 이하라 동결을 피했어도 미수가 불어나 10만 원을 넘으면 그날부터 동결 (키움: 결제일 23:30 기준)
+        if (misu > K.RULES.misuFreezeMin && !(a.frozen_until && a.frozen_until >= S)) {
+          const freeze = K.addCalendarDays(S, K.RULES.misuFreezeDays);
+          push(db.prepare(`UPDATE accounts SET frozen_until=? WHERE season_id=? AND uid=? AND (frozen_until IS NULL OR frozen_until < ?)`).bind(freeze, season.id, a.uid, S));
+        }
         // 이어지는 미수 — 지난 정산 이후 달력일만큼 연체이자
         const days = K.daysBetween(a.misu_accrued_ymd || a.misu_since, S);
         const fee = overdueFee(misu, days, S);
@@ -76,16 +82,18 @@ export async function nightly(db, season, now, stats = { q: 0 }) {
       }
     } else if (a.misu_since) {
       // 미수 해소 — 마지막 정산일부터 오늘까지의 연체이자를 매기고 닫는다
-      stats.q += 1;
+      stats.q += 1; reads++;
       // 해소일까지의 연체이자는 마지막으로 확인한 미수 원금에 매긴다 (그 뒤 결제로 갚아졌다)
       const last = await db.prepare(`SELECT amount FROM margin_calls WHERE season_id=? AND uid=? AND kind='misu' ORDER BY ymd DESC LIMIT 1`).bind(season.id, a.uid).first();
       const days = K.daysBetween(a.misu_accrued_ymd || a.misu_since, S);
       const fee = last && days > 0 ? overdueFee(last.amount, days, S) : 0;
       if (fee > 0) {
         const cs = K.cashSet(-fee);
-        push(db.prepare(`UPDATE accounts SET ${cs.sql}, interest_paid = interest_paid + ? WHERE season_id=? AND uid=?`).bind(...cs.args, fee, season.id, a.uid));
-        push(db.prepare(`INSERT INTO cash_events (id, season_id, uid, kind, amount, lot_id, detail, at) VALUES (?,?,?,'overdue_fee',?,NULL,?,?)`)
-          .bind(uuid(), season.id, a.uid, -fee, JSON.stringify({ misu: last.amount, days, since: a.misu_since, resolved: S }), now));
+        // 겹쳐 돈 정산이 이미 닫았으면(misu_since 가 비었으면) 다시 빼지 않는다
+        push(db.prepare(`UPDATE accounts SET ${cs.sql}, interest_paid = interest_paid + ? WHERE season_id=? AND uid=? AND misu_since IS ?`).bind(...cs.args, fee, season.id, a.uid, a.misu_since));
+        push(db.prepare(`INSERT INTO cash_events (id, season_id, uid, kind, amount, lot_id, detail, at)
+                         SELECT ?,?,?,'overdue_fee',?,NULL,?,? WHERE EXISTS (SELECT 1 FROM accounts WHERE season_id=? AND uid=? AND misu_since IS ?)`)
+          .bind(uuid(), season.id, a.uid, -fee, JSON.stringify({ misu: last.amount, days, since: a.misu_since, resolved: S }), now, season.id, a.uid, a.misu_since));
       }
       push(db.prepare(`UPDATE accounts SET misu_since=NULL, misu_accrued_ymd=NULL WHERE season_id=? AND uid=?`).bind(season.id, a.uid));
       push(db.prepare(`UPDATE margin_calls SET status='resolved', updated_at=? WHERE season_id=? AND uid=? AND kind='misu' AND status<>'resolved'`).bind(now, season.id, a.uid));
@@ -93,7 +101,7 @@ export async function nightly(db, season, now, stats = { q: 0 }) {
   }
 
   // ② 담보비율 · ③ 만기 — 원금이 남은 잔고가 있는 계좌
-  if (stmts.length >= BUDGET - 6) stats.more = true;
+  if (stmts.length + reads >= BUDGET - 6) stats.more = true;
   else {
     stats.q += 4;
     const [lotRes, posRes, accRes, callRes] = await db.batch([
@@ -111,7 +119,7 @@ export async function nightly(db, season, now, stats = { q: 0 }) {
     for (const a of accRes.results || []) acct(a.uid).net = a.cash - a.cash_short;
     for (const c of callRes.results || []) if (byUid[c.uid]) byUid[c.uid].calls.push(c);
     for (const uid of Object.keys(byUid)) {
-      if (stmts.length >= BUDGET - 3) { stats.more = true; break; }
+      if (stmts.length + reads >= BUDGET - 3) { stats.more = true; break; }
       const u = byUid[uid];
       const r = collateralOf(u.lots, u.pos, u.net);
       const open = u.calls.filter((c) => c.kind === 'collateral');
@@ -139,7 +147,7 @@ export async function nightly(db, season, now, stats = { q: 0 }) {
     }
   }
   // 신용·담보 잔고를 다 갚았거나 반대매매로 다 팔린 계좌 — 위 반복은 원금이 남은 계좌만 보므로 남은 담보부족·만기 알림을 여기서 닫는다
-  if (stmts.length < BUDGET - 1) {
+  if (stmts.length + reads < BUDGET - 1) {
     push(db.prepare(`UPDATE margin_calls SET status='resolved', updated_at=? WHERE season_id=? AND kind IN ('collateral','expiry') AND status IN ('open','due','ordered')
                      AND uid NOT IN (SELECT uid FROM lots WHERE season_id=? AND principal > 0)`).bind(now, season.id, season.id));
   }
@@ -202,15 +210,17 @@ async function monthlyInterest(db, season, now, stats) {
     if (cash[l.uid] == null) cash[l.uid] = Math.max(0, l.net);
     const take = Math.min(due, cash[l.uid]);
     cash[l.uid] -= take;
-    stmts.push(db.prepare(`UPDATE lots SET interest_paid = interest_paid + ?, paid_through=? WHERE id=? AND (paid_through IS NULL OR paid_through < ?)`)
-      .bind(take, end, l.id, end));
+    // 크론이 겹쳐 두 번 돌아도 한 번만 빼도록 — 이 잔고·이 기간의 이자 기록이 없을 때만 출금하고 기록한다 (배치는 차례로 한 트랜잭션씩 돈다)
+    const notYet = `NOT EXISTS (SELECT 1 FROM cash_events WHERE lot_id=? AND kind='interest' AND json_extract(detail, '$.through')=?)`;
     if (take > 0) {
       stmts.push(
-        db.prepare(`UPDATE accounts SET ${K.SQL_DEBIT}, interest_paid = interest_paid + ? WHERE season_id=? AND uid=?`).bind(take, take, take, season.id, l.uid),
-        db.prepare(`INSERT INTO cash_events (id, season_id, uid, kind, amount, lot_id, detail, at) VALUES (?,?,?,'interest',?,?,?,?)`)
-          .bind(uuid(), season.id, l.uid, -take, l.id, JSON.stringify({ code: l.code, name: l.name, kind: l.kind, through: end, due, unpaid: due - take }), now)
+        db.prepare(`UPDATE accounts SET ${K.SQL_DEBIT}, interest_paid = interest_paid + ? WHERE season_id=? AND uid=? AND ${notYet}`).bind(take, take, take, season.id, l.uid, l.id, end),
+        db.prepare(`INSERT INTO cash_events (id, season_id, uid, kind, amount, lot_id, detail, at) SELECT ?,?,?,'interest',?,?,?,? WHERE ${notYet}`)
+          .bind(uuid(), season.id, l.uid, -take, l.id, JSON.stringify({ code: l.code, name: l.name, kind: l.kind, through: end, due, unpaid: due - take }), now, l.id, end)
       );
     }
+    stmts.push(db.prepare(`UPDATE lots SET interest_paid = interest_paid + ?, paid_through=? WHERE id=? AND (paid_through IS NULL OR paid_through < ?)`)
+      .bind(take, end, l.id, end));
   }
   stats.q += stmts.length;
   await db.batch(stmts);
@@ -234,6 +244,14 @@ async function forcedOrders(db, season, now, stats, helpers) {
   }
 }
 
+// 반대매매 주문 식별값 — 같은 알림(margin_calls 한 줄)이 due → ordered → due 로 다음 날 다시 오면 새 주문이어야 한다.
+// 예전에는 날짜가 없어 이튿날 추가 반대매매가 INSERT OR IGNORE 에 막혔고, 64자로 자르며 lotId 뒷부분이 잘려
+// 같은 종목의 두 번째 잔고 주문도 사라졌다. f:(2) + uuid(36) + :날짜(9) + :코드(7) + :해시(9) = 63자
+function shortHash(s) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return h.toString(36).padStart(7, '0').slice(-8);
+}
 function forcedInsert(db, season, c, uid, code, name, qty, taxFree, lotId, now) {
   const t = E.kstNow(now);
   return db.prepare(
@@ -241,7 +259,7 @@ function forcedInsert(db, season, c, uid, code, name, qty, taxFree, lotId, now) 
        reserved, vol_at_accept, pre_open, marketable, tax_free, trade_date, accepted_at, updated_at, session, nxt_vol_at_accept,
        credit, lot_id, margin_rate, forced, reason)
      VALUES (?,?,?,?,?,?,'sell','market',?,NULL,0,0,1,0,?,?,?,?,'regular',0,NULL,?,NULL,?,?)`
-  ).bind(uuid(), `forced:${c.id}:${code}:${lotId || ''}`.slice(0, 64), season.id, uid, code, name, qty, taxFree ? 1 : 0, t.ymd, now, now,
+  ).bind(uuid(), `f:${c.id}:${t.ymd}:${code}:${lotId ? shortHash(lotId) : ''}`, season.id, uid, code, name, qty, taxFree ? 1 : 0, t.ymd, now, now,
     lotId, c.kind, c.kind === 'misu' ? '미수 반대매매' : c.kind === 'collateral' ? '담보부족 반대매매' : '만기 미상환 반대매매');
 }
 
@@ -255,7 +273,8 @@ async function forcedMisu(db, season, c, now, stats, helpers) {
     db.prepare(`SELECT code, name, qty FROM positions WHERE season_id=? AND uid=?`).bind(season.id, c.uid),
     // 종목 선정: ① 미수가 난 결제일의 매수 종목 ② 최근 매수 순 (키움)
     db.prepare(`SELECT code, MAX(at) AS last, MAX(CASE WHEN settle_ymd=? THEN 1 ELSE 0 END) AS cause FROM fills WHERE season_id=? AND uid=? AND side='buy' AND lot_id IS NULL GROUP BY code`).bind(c.ymd, season.id, c.uid),
-    db.prepare(`SELECT code, COALESCE(SUM(qty - filled_qty),0) AS q FROM orders WHERE season_id=? AND uid=? AND side='sell' AND lot_id IS NULL AND status IN ('open','partial') GROUP BY code`).bind(season.id, c.uid)
+    // 이미 들어간 반대매매 주문만 — 회원이 걸어 둔 매도(상한가 지정가 등)를 빼면 반대매매를 피할 수 있었다
+    db.prepare(`SELECT code, COALESCE(SUM(qty - filled_qty),0) AS q FROM orders WHERE season_id=? AND uid=? AND side='sell' AND lot_id IS NULL AND forced IS NOT NULL AND status IN ('open','partial') GROUP BY code`).bind(season.id, c.uid)
   ]);
   const a = accRes.results[0];
   const cover = (a.cash - a.cash_short) - pendRes.results[0].d;          // 결제 전 매도대금·입금까지 합친 충당액
@@ -269,8 +288,15 @@ async function forcedMisu(db, season, c, now, stats, helpers) {
   for (const r of recentRes.results || []) recent[r.code] = r;
   const pendSell = {};
   for (const r of sellRes.results || []) pendSell[r.code] = r.q;
-  const pos = (posRes.results || []).map((p) => ({ ...p, free: p.qty - (pendSell[p.code] || 0) })).filter((p) => p.free > 0);
-  const quotes = pos.length ? await helpers.quotesFor(pos.map((p) => p.code)) : {};
+  const all = (posRes.results || []).map((p) => ({ ...p, free: p.qty - (pendSell[p.code] || 0) }));
+  const quotes = all.length ? await helpers.quotesFor(all.map((p) => p.code)) : {};
+  // 아침 반대매매를 하루 놓쳐 어제·오늘 알림을 함께 처리할 때 — 먼저 들어간 반대매매 주문의 예상 매도대금만큼은 이미 갚을 몫으로 본다
+  for (const p of all) {
+    const n = pendSell[p.code] || 0;
+    const base = n && quotes[p.code] && quotes[p.code].krx && quotes[p.code].krx.prevClose;
+    if (base) need -= n * K.lowerLimit(base, (await helpers.kindOf(p.code, p.name)) !== 'stock') * (1 - K.RULES.forcedCostRate);
+  }
+  const pos = all.filter((p) => p.free > 0);
   const mk = (code) => { const m = quotes[code] && quotes[code].market; return m === '코스피' ? 0 : m === '코스닥' ? 1 : 2; };
   pos.sort((x, y) => ((recent[y.code] || {}).cause || 0) - ((recent[x.code] || {}).cause || 0)
     || mk(x.code) - mk(y.code) || ((recent[y.code] || {}).last || 0) - ((recent[x.code] || {}).last || 0) || x.code.localeCompare(y.code));
@@ -300,7 +326,7 @@ async function forcedCollateral(db, season, c, now, stats, helpers) {
     db.prepare(`SELECT * FROM lots WHERE season_id=? AND uid=? AND principal > 0 ORDER BY start_ymd DESC, code`).bind(season.id, c.uid),
     db.prepare(`SELECT code, qty, cost FROM positions WHERE season_id=? AND uid=?`).bind(season.id, c.uid),
     db.prepare(`SELECT cash, cash_short FROM accounts WHERE season_id=? AND uid=?`).bind(season.id, c.uid),
-    db.prepare(`SELECT lot_id, COALESCE(SUM(qty - filled_qty),0) AS q FROM orders WHERE season_id=? AND uid=? AND side='sell' AND lot_id IS NOT NULL AND status IN ('open','partial') GROUP BY lot_id`).bind(season.id, c.uid)
+    db.prepare(`SELECT lot_id, COALESCE(SUM(qty - filled_qty),0) AS q FROM orders WHERE season_id=? AND uid=? AND side='sell' AND lot_id IS NOT NULL AND forced IS NOT NULL AND status IN ('open','partial') GROUP BY lot_id`).bind(season.id, c.uid)
   ]);
   const lots = lotRes.results || [], positions = posRes.results || [];
   const codes = Array.from(new Set(lots.map((l) => l.code).concat(positions.map((p) => p.code))));
@@ -342,7 +368,7 @@ async function forcedExpiry(db, season, c, now, stats, helpers) {
   }
   // 먼저 현금으로 자동상환 (주문가능현금이 원금 + 이자 이상일 때)
   const acc = await E.getAccount(db, season.id, lot.uid);
-  const avail = await E.orderableCash(db, season, acc, null, now);
+  const avail = await E.orderableCash(db, season, acc, null, now, { cashOnly: true });
   const part = lot.qty > 0 ? K.repayPortion(lot, lot.qty, t.ymd)
     : { principal: lot.principal, interest: K.interestAccrued(lot, t.ymd), paidPart: lot.interest_paid, cost: 0 };
   const total = part.principal + part.interest;
@@ -369,7 +395,7 @@ async function forcedExpiry(db, season, c, now, stats, helpers) {
     return;
   }
   // 부족하면 잔고 전량 반대매매 — 매도대금으로 갚고 모자라면 미수
-  const pend = await db.prepare(`SELECT COALESCE(SUM(qty - filled_qty),0) AS q FROM orders WHERE lot_id=? AND side='sell' AND status IN ('open','partial')`).bind(lot.id).first();
+  const pend = await db.prepare(`SELECT COALESCE(SUM(qty - filled_qty),0) AS q FROM orders WHERE lot_id=? AND side='sell' AND forced IS NOT NULL AND status IN ('open','partial')`).bind(lot.id).first();
   const free = lot.qty - (pend ? pend.q : 0);
   const stmts = [];
   if (free > 0) {
