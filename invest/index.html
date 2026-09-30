@@ -22,7 +22,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"></noscript>
   <link rel="stylesheet" href="../tokens.css?v=3">
-  <link rel="stylesheet" href="style.css?v=54">
+  <link rel="stylesheet" href="style.css?v=55">
   <link rel="icon" href="../icon-192.png?v=3">
 </head>
 <body>
@@ -93,8 +93,9 @@
 
           <div class="search-wrap">
             <input type="text" id="stockSearch" class="search-input" autocomplete="off" aria-label="종목 검색"
-                   placeholder="종목 · 코인 검색 (예: ㅅㅅㅈㅈ, 엔비디아, 비트코인)"
+                   placeholder="종목·코인 검색 (예: ㅅㅅㅈㅈ, 엔비디아)"
                    onfocus="loadMaster(); Coin.ensureInfos()" oninput="onSearchInput(this.value)">
+            <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>
             <button class="search-clear" onclick="clearSearch()" aria-label="검색어 지우기">✕</button>
             <div class="search-results" id="searchResults" role="listbox" aria-label="검색 결과" style="display:none"></div>
           </div>
@@ -272,7 +273,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="market.js?v=35"></script>
-  <script src="market-ui.js?v=56"></script>
+  <script src="market-ui.js?v=57"></script>
   <script src="coin.js?v=7"></script>
   <script src="us.js?v=6"></script>
   <script src="app.js?v=70"></script>

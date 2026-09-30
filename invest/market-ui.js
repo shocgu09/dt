@@ -499,9 +499,12 @@ function clearSearch() {
   // 250ms 입력 대기 중이거나 도착 전인 검색이 비운 뒤에 목록을 다시 열지 않게 끊는다
   clearTimeout(searchTimer);
   _searchSeq++;
-  document.getElementById('stockSearch').value = '';
+  var input = document.getElementById('stockSearch');
+  input.value = '';
   var box = document.getElementById('searchResults');
   box.innerHTML = ''; box.style.display = 'none';
+  // 지운 뒤 바로 다시 칠 수 있게 입력칸으로 돌려놓는다 (✕ 버튼은 비면 사라져 포커스가 허공에 남았다)
+  input.focus();
 }
 
 /* ===== 관심종목 ===== */
