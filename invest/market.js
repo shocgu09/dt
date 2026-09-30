@@ -369,6 +369,7 @@ var Poller = (function () {
       Object.keys(jobs).forEach(function (k) { clearTimeout(jobs[k].timer); jobs[k].gen++; run(k); });
     },
     activeKeys: function () { return Object.keys(jobs); },
+    isIdle: isIdle,
     /** 조작이 있을 때마다 부른다. 쉬다가 돌아온 거면 늦춰 둔 작업을 바로 한 번씩 돌린다 */
     touch: function () {
       var wasIdle = isIdle();
@@ -382,6 +383,28 @@ var Poller = (function () {
 ['pointerdown', 'keydown', 'wheel', 'touchstart', 'mousemove', 'scroll'].forEach(function (ev) {
   window.addEventListener(ev, function () { Poller.touch(); }, { capture: true, passive: true });
 });
+
+/* ===== 목록이 화면에 보이는지 =====
+ * 시세 홈 아래쪽 코인·미국 목록은 스크롤해 내려가야 보인다. 안 보이는 목록까지 5~10초마다 받으면
+ * 워커 무료 한도(하루 10만 요청)를 회원 한 명이 수천 건씩 쓴다 — 안 보이면 60초로 늦추고, 보이는 순간 바로 한 번 받는다
+ */
+var _onScreen = {};        // id -> true | false (모르면 보인다고 본다)
+var _onShow = {};
+var _visObs = typeof IntersectionObserver === 'function' ? new IntersectionObserver(function (ents) {
+  ents.forEach(function (e) {
+    var id = e.target.id, was = _onScreen[id];
+    _onScreen[id] = e.isIntersecting;
+    if (e.isIntersecting && was === false && _onShow[id]) _onShow[id]();
+  });
+}) : null;
+function watchOnScreen(el, onShow) {
+  if (!_visObs || !el || !el.id || el.dataset.visObs) return;
+  el.dataset.visObs = '1';
+  delete _onScreen[el.id];
+  _onShow[el.id] = onShow;
+  _visObs.observe(el);
+}
+function isOnScreen(id) { return _onScreen[id] !== false; }
 
 /** 장중/장외에 따라 달라지는 폴링 주기 — Poller.add 의 ms 자리에 넘긴다 */
 function pollMs(openMs, closedMs) {

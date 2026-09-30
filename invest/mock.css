@@ -551,3 +551,6 @@
   .mk-lot { flex-wrap: wrap; }
   .mk-lot-repay { margin: 0 12px 10px auto; }
 }
+
+/* 면책 줄 안의 글자 링크 (규칙 전체 보기) */
+.mk-link { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: var(--primary-light); text-decoration: underline; cursor: pointer; }

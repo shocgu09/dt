@@ -625,16 +625,24 @@ function setWatchView(v) {
 })();
 
 /** 스파크라인 — 전용 경량 엔드포인트(40포인트). 장 시작 전에는 워커가 일봉으로 대체해 준다. */
+// 5분 캐시 — 40개 점이라 1분마다 받아도 모양이 거의 같고, 끝점은 옆의 현재가(5초)로 바꿔 끼운다.
+// 카드마다 1분 1회씩 받던 것이 홈 요청의 약 1/4 이었다 (워커 무료 한도). 같은 종목을 동시에 부르면 한 번만 받는다
+var _sparkWait = {};
 async function ensureSparkline(code) {
   var hit = sparkCache[code];
-  if (hit && Date.now() - hit.at < 60000) return hit.values;
+  if (hit && Date.now() - hit.at < 300000) return hit.values;
+  if (_sparkWait[code]) return _sparkWait[code];
+  _sparkWait[code] = loadSparkline(code);
+  try { return await _sparkWait[code]; } finally { delete _sparkWait[code]; }
+}
+async function loadSparkline(code) {
   try {
     var d = await Market.spark(code);
     var vals = Array.isArray(d.points) ? d.points : [];
     sparkCache[code] = { values: vals, span: d.span || 'intraday', at: Date.now() };
     return vals;
   } catch (e) {
-    sparkCache[code] = { values: [], span: '', at: Date.now() };
+    sparkCache[code] = { values: [], span: '', at: Date.now() - 240000 };   // 실패는 1분 뒤 다시
     return [];
   }
 }

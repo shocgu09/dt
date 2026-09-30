@@ -157,7 +157,10 @@ var Coin = (function () {
   }
 
   /** 시세 홈 목록 폴링 주기 — 전체(약 290개)를 펼쳤을 때는 10초 */
-  function listPollMs() { return listAll ? 10000 : 5000; }
+  function listPollMs() {
+    if (typeof isOnScreen === 'function' && !isOnScreen('coinList')) return 60000;
+    return listAll ? 10000 : 5000;
+  }
 
   function toggleAll() {
     listAll = !listAll;
@@ -167,6 +170,7 @@ var Coin = (function () {
   async function loadList() {
     var el = document.getElementById('coinList');
     if (!el) return;
+    if (typeof watchOnScreen === 'function') watchOnScreen(el, function () { if (Poller.activeKeys().indexOf('coins') >= 0) Poller.add('coins', loadList, listPollMs); });
     var sort = listSort, all = listAll;
     var want = sort + (all ? ':all' : '');
     if (el.dataset.want !== want) { el.dataset.want = want; el.innerHTML = '<div class="loading">불러오는 중...</div>'; listKey = ''; }

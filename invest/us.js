@@ -132,7 +132,10 @@ var Us = (function () {
   }
 
   /** 시세 홈 목록 폴링 주기 — 미국 장(프리~애프터) 중 10초, 그 밖에는 2분 */
-  function listPollMs() { return active() ? 10000 : 120000; }
+  function listPollMs() {
+    if (!active()) return 120000;
+    return (typeof isOnScreen === 'function' && !isOnScreen('usList')) ? 60000 : 10000;
+  }
 
   function toggleAll() {
     listAll = !listAll;
@@ -142,6 +145,7 @@ var Us = (function () {
   async function loadList() {
     var el = document.getElementById('usList');
     if (!el) return;
+    if (typeof watchOnScreen === 'function') watchOnScreen(el, function () { if (Poller.activeKeys().indexOf('usList') >= 0) Poller.add('usList', loadList, listPollMs); });
     var sort = listSort, all = listAll;
     var want = sort + (all ? ':all' : '');
     if (el.dataset.want !== want) { el.dataset.want = want; el.innerHTML = '<div class="loading">불러오는 중...</div>'; listKey = ''; }
