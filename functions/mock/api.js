@@ -1015,7 +1015,7 @@ async function accountView(db, season, account, now, isAdmin = false) {
   const on = E.creditOn(season, isAdmin);
   return {
     season: { id: season.id, name: season.name, seed: season.seed, endDate: season.end_date, feeRate: season.fee_rate, taxRate: season.tax_rate },
-    cash: net, available: net + adj - reserved, stock, equity, deposits, principal,
+    cash: net, available: net + adj - reserved, reserved, stock, equity, deposits, principal,
     returnRate: (equity - principal) / principal * 100,
     realizedPnl: acc.realized_pnl, buyFees, fills: acc.fills,
     // 결제·신용 — 신용 기능이 꺼진 시즌도 값은 내려준다 (장부에 남은 잔고가 있을 수 있다)

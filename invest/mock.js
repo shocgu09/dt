@@ -255,7 +255,7 @@ var Mock = (function () {
    *   - 시즌 관리 패널(details): 열림 상태와 입력 중인 글자
    *   - 체결 내역(#mkHistory): "불러오기"로 받아 둔 목록
    */
-  var KEEP_ON_REPAINT = ['details.mk-admin', '#mkHistory'];
+  var KEEP_ON_REPAINT = ['details.mk-admin', '#mkHistory', '#mkLedger'];
   function paint(el, html) {
     var kept = KEEP_ON_REPAINT.map(function (sel) { return el.querySelector(sel); });
     el.innerHTML = html;
@@ -289,7 +289,8 @@ var Mock = (function () {
 
     var a = account, s = a.season;
     var principal = a.principal || s.seed;          // 원금 = 시드 + 출석금 (옛 워커 응답에는 없다)
-    var evalPnl = a.positions.reduce(function (t, p) { return t + p.pnl; }, 0);
+    var evalPnl = a.positions.reduce(function (t, p) { return t + p.pnl; }, 0)
+      + ((a.credit && a.credit.lots) || []).reduce(function (t, l) { return t + (l.qty > 0 ? l.pnl : 0); }, 0);
     var h = '<div class="mk-card mk-summary">'
       + '<div class="mk-sum-head"><span>' + escapeHtml(s.name) + '</span><span class="mk-sum-end">' + escapeHtml(s.endDate) + ' 종료' + InfoTip.btn('계좌 보는 법', [
           '· 총자산 = 현금 + 보유 주식 (현재가로 평가)',
@@ -298,14 +299,14 @@ var Mock = (function () {
           '· 실현손익: 판 금액에서 수수료·세금과 산 금액(평균 단가)을 뺀 손익',
           '· 매수 수수료는 산 금액에 넣지 않습니다. 평가손익 + 실현손익 − 매수 수수료 = 총손익입니다.',
           '· 원금 = 시드머니 + 출석금. 출석금은 수익이 아니라서 손익·수익률은 원금 기준으로 계산합니다 (순위는 총자산 기준).'
-        ].join('\n'), 'sm') + '</span></div>'
+        ].concat(a.credit && creditActive(a) ? ['· 신용·담보대출·미수가 있으면 총자산은 순자산입니다: 예수금 + 보유 주식 − 융자·대출 원금 − 쌓인 이자'] : []).join('\n'), 'sm') + '</span></div>'
       + '<div class="mk-eq">' + won(a.equity) + '</div>'
       + '<div class="mk-eq-sub">' + rateHtml(a.returnRate) + ' <span class="' + signClass(a.equity - principal) + '">'
       +   (a.equity - principal > 0 ? '+' : '') + fmtNum(a.equity - principal) + '원</span>'
       +   '<span class="mk-dim"> · 시작 ' + fmtCompact(s.seed) + '원</span></div>'
       + '<div class="mk-grid">'
       // 총자산 = 현금 + 보유 주식. 미체결 매수가 묶어 둔 돈은 '주문 가능'에서 빠지므로 따로 밝혀 합이 맞게 한다
-      +   cell('주문 가능', won(a.available) + (a.cash > a.available ? '<small class="mk-cell-sub">주문 대기 ' + won(a.cash - a.available) + '</small>' : ''))
+      +   cell('주문 가능', won(a.available) + ((a.reserved != null ? a.reserved : a.cash - a.available) > 0 ? '<small class="mk-cell-sub">주문 대기 ' + won(a.reserved != null ? a.reserved : a.cash - a.available) + '</small>' : ''))
       +   cell('보유 주식', won(a.stock))
       +   cell('평가손익', '<span class="' + signClass(evalPnl) + '">' + (evalPnl > 0 ? '+' : '') + fmtNum(evalPnl) + '원</span>')
       // 매수 수수료는 매입금액에 넣지 않는다 — 평가손익 + 실현손익 − 매수 수수료 = 위 총손익이 되도록 함께 적는다
@@ -318,10 +319,15 @@ var Mock = (function () {
       + '</div>'
       + '</div>';
 
+    h += creditHtml(a);
     h += '<div id="mkAttend"></div>';
     h += corpHtml(a.corpActions);
 
-    h += '<section class="m-section"><div class="m-head"><h3>📦 보유 종목</h3><span class="m-hint">' + a.positions.length + '종목</span></div>';
+    var lots = (a.credit && a.credit.lots) || [];
+    var lotRows = lots.map(function (l, i) { return l.qty > 0 || l.principal > 0 ? lotRowHtml(l, i) : ''; }).join('');
+    h += '<section class="m-section"><div class="m-head"><h3>📦 보유 종목</h3><span class="m-hint">' + a.positions.length + '종목'
+      + (lotRows ? ' · 신용·담보 ' + lots.filter(function (l) { return l.qty > 0 || l.principal > 0; }).length + '건' : '') + '</span></div>';
+    h += lotRows;
     h += a.positions.length ? a.positions.filter(function (p) { return CODE_RE.test(p.code); }).map(function (p) {
       return '<button class="mk-pos" onclick="openStock(\'' + p.code + '\',\'' + escapeJsArg(p.name) + '\')">'
         + stockLogoHtml(p.code, p.name, null, 'sm')
@@ -331,7 +337,7 @@ var Mock = (function () {
         + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(p.value) + '원</span>'
         +   '<span class="mk-pos-pnl ' + signClass(p.pnl) + '">' + (p.pnl > 0 ? '+' : '') + fmtNum(p.pnl) + '원 (' + fmtRate(p.pnlRate) + ')</span></span>'
         + '</button>';
-    }).join('') : '<div class="empty">보유 종목이 없습니다.<br>시세 탭에서 종목을 선택해 매수할 수 있습니다.</div>';
+    }).join('') : (lotRows ? '' : '<div class="empty">보유 종목이 없습니다.<br>시세 탭에서 종목을 선택해 매수할 수 있습니다.</div>');
     h += '</section>';
 
     if (a.openOrders.length) {
@@ -355,6 +361,210 @@ var Mock = (function () {
     // 시즌이 바뀌었거나 10분이 지났으면(남은 횟수가 날짜 따라 바뀐다) 다시 받는다
     if (_reviewFor === s.id && Date.now() - _reviewAt < 600000) renderReview();
     else loadReview(s.id);
+  }
+
+  /* ===== 결제·미수·신용·담보대출 =====
+   * 규칙은 워커(credit.js, 키움증권 기준)가 정하고 계좌 응답의 credit.rules 로 내려준다. 화면은 보여 주고 요청만 한다.
+   * 시즌 credit_mode 가 켜진 회원(creditOn)이거나, 이미 빚·미수가 있는 계좌에만 보인다.
+   */
+  function cr() { return account && account.credit; }
+  function creditOnNow() { var c = cr(); return !!(c && c.on); }
+  function lotsOf(code) { var c = cr(); return c ? c.lots.filter(function (l) { return l.code === code && l.qty > 0; }) : []; }
+  function hasAny(code) { return !!holding(code) || lotsOf(code).length > 0; }
+  function pctTxt(r) { return (Math.round(r * 1000) / 10) + '%'; }
+  function lotLabel(l) { return (l.kind === 'credit' ? '신용' : '담보') + ' ' + md(l.startYmd); }
+
+  function creditActive(a) {
+    var c = a.credit, st = a.settle;
+    if (!c || !st) return false;
+    return c.on || c.debt > 0 || st.misu > 0 || a.cash < 0 || (c.calls && c.calls.length > 0);
+  }
+
+  /** 반대매매·담보부족·미수 알림 한 줄 */
+  function callLine(c) {
+    var amt = won(c.amount);
+    if (c.kind === 'misu') {
+      if (c.status === 'covered') return '<div class="mk-alert warn">미수금 <b>' + amt + '</b> · 결제 전 매도대금으로 갚아집니다 · 연체이자 연 9.7%</div>';
+      if (c.status === 'ordered') return '<div class="mk-alert bad">미수 반대매매 주문 · ' + md(c.dueYmd) + ' 09:00 시가 · 미수금 ' + amt + '</div>';
+      return '<div class="mk-alert bad">미수금 <b>' + amt + '</b> · ' + md(c.dueYmd) + ' 09:00 시가에 반대매매됩니다 (수수료 0.3%)</div>';
+    }
+    if (c.kind === 'collateral') {
+      var r = c.ratio != null ? ' ' + pctTxt(c.ratio) : '';
+      if (c.status === 'open') return '<div class="mk-alert bad">담보비율' + r + ' · 140% 미만 · 다음 거래일 장 마감까지 <b>' + amt + '</b>을 채우지 않으면 반대매매됩니다</div>';
+      if (c.status === 'due') return '<div class="mk-alert bad">담보부족 · ' + md(c.dueYmd) + ' 09:00 시가에 반대매매됩니다 (부족액 ' + amt + ')</div>';
+      return '<div class="mk-alert bad">담보부족 반대매매 주문 · 09:00 시가</div>';
+    }
+    if (c.kind === 'expiry') return '<div class="mk-alert warn">대출 만기 · ' + md(c.dueYmd) + ' 아침 예수금으로 자동상환하고, 모자라면 반대매매됩니다</div>';
+    return '';
+  }
+
+  function creditHtml(a) {
+    if (!creditActive(a)) return '';
+    var c = a.credit, st = a.settle, R = c.rules || {};
+    var h = '<div class="mk-card mk-credit">'
+      + '<div class="mk-sum-head"><span>💳 예수금 · 신용</span><span>' + InfoTip.btn('결제·신용 규칙', [
+          '· 주식은 체결일 포함 3영업일째(T+2)에 결제됩니다. 매도대금은 결제 전이라도 바로 다시 매수할 수 있습니다.',
+          '· 증거금률 "종목별": 대부분 종목 ' + pctTxt(R.stockMarginRate || 0.4) + '만 현금으로 내고 나머지는 결제일까지 외상입니다 (레버리지·인버스·ETN 100%). 결제일에 예수금이 모자라면 미수금입니다.',
+          '· 미수금은 결제일 23:30까지 못 갚으면 다음 거래일 09:00 시가에 반대매매됩니다. 10만 원이 넘으면 30일간 증거금 100%(미수동결). 연체이자 연 9.7%.',
+          '· 신용매수: 보증금 ' + pctTxt(R.creditDepositRate || 0.45) + '(현금), 나머지는 결제일에 융자 · 기간 ' + (R.creditTermDays || 180) + '일 · 이자 7일 이하 5.4% / 15일 이하 7.7% / 90일 이하 8.5% / 90일 초과 9.1% (보유기간 전체에 적용) · 매월 첫 영업일에 전월분 이자 출금',
+          '· 증권담보대출: 결제된 주식을 담보로 전일종가의 ' + pctTxt(R.loanLtv || 0.7) + ' · 연 ' + ((R.loanRate || 0.0865) * 100).toFixed(2) + '% · ' + (R.loanTermDays || 180) + '일',
+          '· 담보비율(신용·대출 합산)이 140% 아래로 내려가면 다음 거래일 장 마감까지 채워야 하고, 못 채우면 그다음 거래일 09:00 시가에 반대매매됩니다.',
+          '· 순위와 순자산은 빌린 돈(원금)과 쌓인 이자를 뺀 금액입니다.'
+        ].join('\n'), 'sm') + '</span></div>';
+    (c.calls || []).forEach(function (x) { h += callLine(x); });
+    if (c.frozenUntil) h += '<div class="mk-alert warn">🔒 미수동결 · ' + md(c.frozenUntil) + '까지 증거금 100%로만 매수할 수 있습니다</div>';
+    h += '<div class="mk-grid mk-grid3">'
+      + cell('예수금', won(st.d0))
+      + cell('D+1 (' + md(st.d1Ymd) + ')', '<span class="' + (st.d1 < 0 ? 'down' : '') + '">' + won(st.d1) + '</span>')
+      + cell('D+2 (' + md(st.d2Ymd) + ')', '<span class="' + (st.d2 < 0 ? 'down' : '') + '">' + won(st.d2) + '</span>')
+      + '</div><div class="mk-grid">'
+      + cell('미수금', st.misu > 0 ? '<span class="down">' + won(st.misu) + '</span>' : '0원')
+      + cell('주문가능현금', won(a.available))
+      + (c.creditPrincipal || c.on ? cell('신용융자', won(c.creditPrincipal)) : '')
+      + (c.loanPrincipal || c.on ? cell('담보대출', won(c.loanPrincipal)) : '')
+      + (c.debt ? cell('쌓인 이자', won(c.accrued) + '<small class="mk-cell-sub">낸 이자 ' + won(c.interestPaid) + '</small>') : '')
+      + (c.collateral ? cell('담보비율', '<span class="' + (c.collateral.ratio < 140 ? 'down' : '') + '">' + Math.round(c.collateral.ratio) + '%</span>'
+          + '<small class="mk-cell-sub">140% 미만이면 반대매매 · 지금 시세 기준</small>') : '')
+      + '</div>';
+    if (c.on) {
+      var m = c.marginMode === 'spectrum';
+      h += '<div class="mk-field mk-cr-mode"><span>증거금률</span><div class="seg-row sub mk-seg2" role="group" aria-label="계좌 증거금률">'
+        + '<button class="seg' + (!m ? ' on' : '') + '" aria-pressed="' + !m + '" onclick="Mock.setMarginMode(\'cash\', this)">100% (현금)</button>'
+        + '<button class="seg' + (m ? ' on' : '') + '" aria-pressed="' + m + '" onclick="Mock.setMarginMode(\'spectrum\', this)">종목별 (미수)</button>'
+        + '</div></div>'
+        + '<div class="mk-note" style="margin-top:4px">' + (m ? '대부분 종목을 ' + pctTxt(R.stockMarginRate || 0.4) + ' 증거금으로 매수합니다. 결제일(D+2)까지 부족분을 채우지 못하면 미수 → 반대매매.' : '예수금 안에서만 매수합니다 (미수 없음). 신용매수는 주문창에서 고릅니다.') + '</div>'
+        + '<div class="mk-cr-btns"><button class="mini-btn" onclick="Mock.openLoan()">증권담보대출</button>'
+        + '<button class="mini-btn" onclick="Mock.loadLedger()">대출·이자 내역</button></div>';
+    } else {
+      h += '<div class="mk-cr-btns"><button class="mini-btn" onclick="Mock.loadLedger()">대출·이자 내역</button></div>';
+    }
+    h += '<div id="mkLedger"></div></div>';
+    return h;
+  }
+
+  /** 보유 종목 목록의 신용·담보 잔고 줄 */
+  function lotRowHtml(l, i) {
+    return '<div class="mk-pos mk-lot">'
+      + '<button class="mk-lot-open" onclick="openStock(\'' + l.code + '\',\'' + escapeJsArg(l.name) + '\')">'
+      + stockLogoHtml(l.code, l.name, null, 'sm')
+      + '<span class="mk-pos-main"><span class="mk-pos-name"><i class="mk-tag ' + (l.kind === 'credit' ? 'cr' : 'ln') + '">' + (l.kind === 'credit' ? '신용' : '담보') + '</i> ' + escapeHtml(l.name)
+      +   (l.halted ? ' <i class="mk-tag">정지</i>' : '') + '</span>'
+      +   '<span class="mk-pos-sub">' + fmtNum(l.qty) + '주 · 평단 ' + fmtNum(l.avgPrice) + '원 · ' + (l.kind === 'credit' ? '융자' : '대출') + ' ' + fmtCompact(l.principal) + '원</span>'
+      +   '<span class="mk-pos-sub">' + md(l.startYmd) + ' ' + (l.executed ? '실행' : '실행 예정') + ' · 만기 ' + md(l.dueYmd) + ' · ' + (l.rate * 100).toFixed(2) + '% · 이자 ' + fmtNum(l.accrued) + '원</span></span>'
+      + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(l.value) + '원</span>'
+      +   '<span class="mk-pos-pnl ' + signClass(l.pnl) + '">' + (l.pnl > 0 ? '+' : '') + fmtNum(l.pnl) + '원 (' + fmtRate(l.pnlRate) + ')</span></span>'
+      + '</button>'
+      + (l.executed ? '<button class="mini-btn mk-lot-repay" onclick="Mock.repayLot(' + i + ', this)">현금상환</button>' : '')
+      + '</div>';
+  }
+
+  async function setMarginMode(mode, btn) {
+    if (btn) btn.disabled = true;
+    try {
+      await api('/margin-mode', 'POST', { mode: mode });
+      toast(mode === 'spectrum' ? '증거금률: 종목별 (새 주문부터)' : '증거금률: 100% (새 주문부터)', '');
+    } catch (e) { alert(e.message); }
+    await refreshAccount();
+  }
+
+  async function repayLot(i, btn) {
+    var c = cr(); var l = c && c.lots[i];
+    if (!l) return;
+    var total = l.principal + l.accrued;
+    if (!confirm(l.name + ' ' + lotLabel(l) + ' ' + fmtNum(l.qty) + '주를 현금상환할까요?\n원금 ' + fmtNum(l.principal) + '원 + 이자 약 ' + fmtNum(l.accrued) + '원 = 약 ' + fmtNum(total) + '원이 예수금에서 나갑니다.\n상환한 주식은 현금 보유로 바뀝니다.')) return;
+    if (btn) btn.disabled = true;
+    try {
+      var r = await api('/lots/' + encodeURIComponent(l.id) + '/repay', 'POST', {});
+      toast(l.name + ' 현금상환 · 원금 ' + fmtNum(r.principal) + '원 · 이자 ' + fmtNum(r.interest) + '원', '');
+    } catch (e) { alert(e.message); }
+    await refreshAccount();
+  }
+
+  var LEDGER_KIND = { loan_in: '대출 입금', repay: '현금상환', interest: '이자', overdue_fee: '미수 연체이자' };
+  var CALL_KIND = { misu: '미수', collateral: '담보부족', expiry: '만기' };
+  var CALL_STATUS = { open: '추가담보 요구', due: '반대매매 예정', ordered: '반대매매 주문', covered: '매도대금으로 충당', resolved: '해소' };
+  async function loadLedger() {
+    var el = document.getElementById('mkLedger');
+    if (!el) return;
+    el.innerHTML = '<div class="loading">불러오는 중</div>';
+    try {
+      var d = await api('/ledger');
+      var rows = (d.events || []).map(function (e) {
+        var det = e.detail || {};
+        return '<div class="mk-led"><span>' + escapeHtml(kstHM(e.at)) + '</span><span>' + (LEDGER_KIND[e.kind] || e.kind)
+          + (det.name ? ' · ' + escapeHtml(det.name) : '') + (det.interest ? ' <i class="mk-dim">(이자 ' + fmtNum(det.interest) + ')</i>' : '') + '</span>'
+          + '<b class="' + signClass(e.amount) + '">' + (e.amount > 0 ? '+' : '') + fmtNum(e.amount) + '원</b></div>';
+      }).concat((d.calls || []).map(function (c) {
+        return '<div class="mk-led"><span>' + md(c.ymd.slice(0, 8)) + '</span><span>' + (CALL_KIND[c.kind] || c.kind) + ' · ' + (CALL_STATUS[c.status] || c.status)
+          + (c.ratio ? ' · ' + pctTxt(c.ratio) : '') + '</span><b>' + fmtNum(c.amount) + '원</b></div>';
+      }));
+      el.innerHTML = rows.length ? '<div class="mk-ledger">' + rows.join('') + '</div>' : '<div class="empty">대출·이자 내역이 없습니다</div>';
+    } catch (e) { el.innerHTML = '<div class="empty">' + escapeHtml(e.message) + '</div>'; }
+  }
+
+  /* ----- 증권담보대출 (보조 창) ----- */
+  function openLoan() {
+    if (!account || !creditOnNow()) return;
+    var opts = account.positions.filter(function (p) { return p.settledQty > 0 && CODE_RE.test(p.code); });
+    closeSheet();
+    var first = opts[0];
+    aux = { kind: 'loan', code: first ? first.code : '', qty: first ? first.settledQty : '', amount: '', rem: first ? first.settledQty : 0, busy: false, cid: null };
+    renderAux();
+  }
+  function loanPos() { return account && account.positions.filter(function (p) { return p.code === aux.code; })[0]; }
+  function loanLimit() {
+    var p = loanPos(), R = (cr() && cr().rules) || {};
+    var q = Math.floor(Number(aux.qty)) || 0;
+    if (!p || !p.prevClose || !q) return 0;
+    return Math.floor(q * p.prevClose * (R.loanLtv || 0.7) / (R.loanUnit || 10000)) * (R.loanUnit || 10000);
+  }
+  function loanHtml() {
+    var opts = account.positions.filter(function (p) { return p.settledQty > 0 && CODE_RE.test(p.code); });
+    var R = (cr() && cr().rules) || {};
+    if (!opts.length) {
+      return auxHead('증권담보대출') + '<div class="empty">담보로 잡을 수 있는 주식이 없습니다.<br>결제(체결 후 2영업일)가 끝난 현금 보유 주식만 담보가 됩니다.</div>';
+    }
+    return auxHead('증권담보대출')
+      + '<div class="mk-info">결제된 주식을 담보로 전일종가의 <b>' + pctTxt(R.loanLtv || 0.7) + '</b>까지 · 연 <b>' + ((R.loanRate || 0.0865) * 100).toFixed(2) + '%</b> · ' + (R.loanTermDays || 180) + '일 · 대출금은 바로 예수금에 들어옵니다</div>'
+      + '<div class="mk-field"><span>담보 종목</span><select class="f-input" onchange="Mock.auxSel(\'code\', this)" aria-label="담보 종목">'
+      + opts.map(function (p) { return '<option value="' + p.code + '"' + (p.code === aux.code ? ' selected' : '') + '>' + escapeHtml(p.name) + ' · 결제 ' + fmtNum(p.settledQty) + '주</option>'; }).join('')
+      + '</select></div>'
+      + '<div class="mk-field"><span>담보 수량</span>' + stepperHtml('qty', aux.qty, '주', '담보 수량') + '</div>'
+      + '<div class="mk-field"><span>대출 금액</span>' + stepperHtml('amount', aux.amount, '원', '대출 금액', '10만 원 이상, 1만 원 단위') + '</div>'
+      + '<div class="mk-pct"><button type="button" class="mini-btn" onclick="Mock.auxSet(\'amount\', \'max\')">한도까지</button><span class="mk-dim" id="mkLoanLimit"></span></div>'
+      + '<div class="mk-calc" id="mkAuxCalc"></div>'
+      + '<div class="mk-help">담보로 잡은 주식은 "담보" 잔고로 옮겨집니다. 팔면 매도대금으로 먼저 대출을 갚고(매도상환), 계좌 탭에서 현금상환할 수 있습니다.</div>'
+      + '<div class="mk-sheet-msg" id="mkAuxMsg" role="alert"></div>'
+      + '<button class="mk-submit buy" id="mkAuxGo" onclick="Mock.auxSubmit()">대출 받기</button>';
+  }
+  function loanParts() {
+    var lim = loanLimit(), p = loanPos(), R = (cr() && cr().rules) || {};
+    var el = document.getElementById('mkLoanLimit');
+    if (el) el.textContent = '한도 ' + fmtNum(lim) + '원';
+    var box = document.getElementById('mkAuxCalc');
+    if (!box) return;
+    var amt = Math.floor(Number(aux.amount)) || 0;
+    box.innerHTML = row('전일종가', p && p.prevClose ? won(p.prevClose) : '-')
+      + row('대출 한도', won(lim))
+      + row('하루 이자 (약)', won(Math.floor(amt * (R.loanRate || 0.0865) / 365)))
+      + row('대출 후 예수금', won((account.cash || 0) + amt));
+  }
+  async function loanSubmit() {
+    var a = aux, qty = Math.floor(Number(a.qty)) || 0, amt = Math.floor(Number(a.amount)) || 0, R = (cr() && cr().rules) || {};
+    if (!a.code) return auxMsg('담보 종목을 고르세요', 'err');
+    if (qty <= 0) return auxMsg('담보 수량을 입력하세요', 'err');
+    if (amt < (R.loanMin || 100000) || amt % (R.loanUnit || 10000)) return auxMsg('대출 금액은 10만 원 이상, 1만 원 단위입니다', 'err');
+    if (amt > loanLimit()) return auxMsg('한도(' + fmtNum(loanLimit()) + '원)를 넘습니다', 'err');
+    setAuxBusy(true, '대출 신청 중');
+    try {
+      var r = await api('/loans', 'POST', { code: a.code, qty: qty, amount: amt });
+      if (aux === a) closeAux();
+      toast('증권담보대출 ' + fmtNum(r.amount) + '원 입금 · 담보 ' + fmtNum(r.qty) + '주', '');
+    } catch (e) {
+      if (aux !== a) return;
+      setAuxBusy(false);
+      auxMsg(e.message, 'err');
+    } finally { refreshAccount(); }
   }
 
   /* ===== AI 계좌 평가 =====
@@ -528,15 +738,21 @@ var Mock = (function () {
 
   function cell(k, v) { return '<div class="mk-cell"><span class="mk-cell-k">' + k + '</span><span class="mk-cell-v">' + v + '</span></div>'; }
 
+  function ordTags(o) {
+    if (o.forced) return '<i class="mk-tag bad">반대매매</i> ';
+    if (o.credit === 'buy') return '<i class="mk-tag cr">신용</i> ';
+    if (o.lotId) return '<i class="mk-tag cr">상환</i> ';
+    return '';
+  }
   function orderRowHtml(o) {
     var sideTxt = o.side === 'buy' ? '매수' : '매도';
     var okId = UUID_RE.test(String(o.id || ''));      // onclick 에 넣기 전에 모양을 확인한다
     return '<div class="mk-ord">'
       + '<span class="mk-side ' + (o.side === 'buy' ? 'buy' : 'sell') + '">' + sideTxt + '</span>'
-      + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(o.name) + '</span>'
+      + '<span class="mk-ord-main"><span class="mk-pos-name">' + ordTags(o) + escapeHtml(o.name) + '</span>'
       +   '<span class="mk-pos-sub">' + (o.type === 'market' ? '시장가' : '지정가 ' + fmtNum(o.limitPrice) + '원')
-      +   ' · ' + fmtNum(o.filledQty) + '/' + fmtNum(o.qty) + '주</span></span>'
-      + (okId
+      +   ' · ' + fmtNum(o.filledQty) + '/' + fmtNum(o.qty) + '주' + (o.forced ? ' · ' + escapeHtml(o.reason || '반대매매') + ' · 09:00 시가' : '') + '</span></span>'
+      + (okId && !o.forced
           ? '<span class="mk-acts">'
             + '<button class="mini-btn mk-act" onclick="Mock.openAmend(\'' + o.id + '\')">정정</button>'
             + '<button class="mini-btn danger mk-act" onclick="Mock.cancel(\'' + o.id + '\', this)">취소</button>'
@@ -655,7 +871,9 @@ var Mock = (function () {
           '거래가 적은 종목은 여러 번에 나눠 체결되거나 체결되지 않을 수 있습니다.',
           '시장가 매수는 현재가 기준으로 주문 가능 금액을 잡습니다. 체결가가 올라 금액이 모자라면 살 수 있는 수량까지만 체결되고 나머지는 취소됩니다.',
           '거래일마다 <b>출석</b>하면 10만 원, 5일 연속마다 보너스 20만 원이 현금으로 들어옵니다. 순위는 총자산 기준이고, 출석금은 원금에 더해져 수익률에는 들어가지 않습니다.',
-          '신용 · 미수 · 공매도는 없습니다.'
+          s.creditOn
+            ? '결제는 실제와 같이 <b>T+2</b>입니다. 계좌 증거금률을 "종목별"로 바꾸면 <b>미수</b>(대부분 40% 증거금)를 쓸 수 있고, <b>신용매수</b>(보증금 45%) · <b>증권담보대출</b>(전일종가 70%)도 됩니다. 이자 · 연체이자 · 담보비율 140% · 반대매매 규칙은 키움증권과 같습니다. 순위는 빌린 돈을 뺀 순자산 기준입니다. 공매도는 없습니다.'
+            : '신용 · 미수 · 공매도는 없습니다.'
         ])
       + '<div class="mk-jf-h">🏷️ 닉네임</div>'
       + '<p class="mk-jf-lead">순위표와 커뮤니티에는 실명 대신 닉네임이 보입니다. <span id="mkJoinAuto"></span></p>'
@@ -730,8 +948,9 @@ var Mock = (function () {
         return '<div class="mk-ord">'
           + '<span class="mk-side ' + (f.side === 'buy' ? 'buy' : 'sell') + '">' + (f.side === 'buy' ? '매수' : '매도') + '</span>'
           + stockLogoHtml(f.code, f.name, null, 'sm')
-          + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(f.name) + '</span>'
-          +   '<span class="mk-pos-sub">' + escapeHtml(kstHM(f.at)) + ' · ' + fmtNum(f.qty) + '주 × ' + fmtNum(f.price) + '원</span></span>'
+          + '<span class="mk-ord-main"><span class="mk-pos-name">' + histTags(f) + escapeHtml(f.name) + '</span>'
+          +   '<span class="mk-pos-sub">' + escapeHtml(kstHM(f.at)) + ' · ' + fmtNum(f.qty) + '주 × ' + fmtNum(f.price) + '원'
+          +   (f.settleYmd ? ' · 결제 ' + md(f.settleYmd) : '') + '</span></span>'
           + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(f.qty * f.price) + '원</span>'
           +   '<span class="mk-pos-sub">' + costText(f) + '</span></span>'
           + '</div>';
@@ -748,9 +967,17 @@ var Mock = (function () {
     }
   }
 
-  /** 체결 한 건의 비용 — 매수는 수수료만, 매도는 수수료와 거래세가 따로 붙는다 */
+  function histTags(f) {
+    if (f.forced) return '<i class="mk-tag bad">반대매매</i> ';
+    if (f.credit === 'buy') return '<i class="mk-tag cr">신용</i> ';
+    if (f.lotKind) return '<i class="mk-tag cr">' + (f.lotKind === 'credit' ? '신용상환' : '담보상환') + '</i> ';
+    return '';
+  }
+  /** 체결 한 건의 비용 — 매수는 수수료만, 매도는 수수료와 거래세가 따로 붙는다. 신용은 융자·상환 원금과 이자도 */
   function costText(f) {
+    if (f.side === 'buy' && f.credit === 'buy' && f.loan) return '수수료 ' + fmtNum(f.fee) + '원 · 융자 ' + fmtNum(f.loan) + '원';
     if (f.side === 'buy') return '수수료 ' + fmtNum(f.fee) + '원';
+    if (f.loan) return '상환 ' + fmtNum(f.loan) + '원 · 이자 ' + fmtNum(f.interest || 0) + '원 · 수수료·세금 ' + fmtNum(f.fee + f.tax) + '원';
     // 면제는 ETF·ETN 일 때만 — 소액 매도는 세금이 원 미만이라 0원이 될 뿐 면제가 아니다 (옛 워커는 taxFree 를 안 준다)
     if (!f.tax && f.taxFree) return '수수료 ' + fmtNum(f.fee) + '원 · 세금 면제';
     return '수수료 ' + fmtNum(f.fee) + '원 · 세금 ' + fmtNum(f.tax) + '원';
@@ -860,7 +1087,8 @@ var Mock = (function () {
         _prevRank[k] = r.rank;
         return '<div class="mk-rank' + (r.me ? ' me' : '') + move + '">'
           + '<span class="mk-rank-no">' + medal + '</span>'
-          + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(r.nickname) + (r.realName ? ' <small class="mk-real" title="실명 (관리자에게만 보임)">' + escapeHtml(r.realName) + '</small>' : '') + (r.me ? ' <i class="mk-tag">나</i>' : '') + '</span>'
+          + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(r.nickname) + (r.realName ? ' <small class="mk-real" title="실명 (관리자에게만 보임)">' + escapeHtml(r.realName) + '</small>' : '') + (r.me ? ' <i class="mk-tag">나</i>' : '')
+          +   (r.credit ? ' <i class="mk-tag cr" title="신용·담보대출·미수 사용 중 — 순자산은 빌린 돈을 뺀 금액">신용</i>' : '') + '</span>'
           +   '<span class="mk-pos-sub">체결 ' + fmtNum(r.fills) + '건</span></span>'
           + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(r.equity) + '</span>'
           +   '<span class="mk-pos-pnl ' + signClass(rr) + '">' + fmtRate(rr) + '</span></span>'
@@ -1535,30 +1763,41 @@ var Mock = (function () {
     if (!on || !curStock || !season || !season.season) { if (old) old.remove(); return; }
     var host = document.getElementById('stockDetail');
     if (!host || host.style.display === 'none') { if (old) old.remove(); return; }
-    var pos = holding(curStock.code);
+    var pos = holding(curStock.code), lots = lotsOf(curStock.code);
     // 계좌를 새로 받을 때마다 불린다 — 버튼 구성이 그대로면 보유 줄만 고친다 (누르는 중인 버튼이 사라지지 않게)
-    var key = [curStock.code, season.joined ? 1 : 0, pos ? pos.qty + ':' + pos.cost : ''].join('|');
+    var key = [curStock.code, season.joined ? 1 : 0, pos ? pos.qty + ':' + pos.cost : '', lots.map(function (l) { return l.id + ':' + l.qty; }).join(',')].join('|');
     if (old && old.dataset.key === key && old.parentNode === host) { paintHold(); return; }
     if (old) old.remove();
     var bar = document.createElement('div');
     bar.id = 'mkTradeBar';
     bar.className = 'mk-tradebar';
     bar.dataset.key = key;
-    bar.innerHTML = (pos ? '<div class="mk-hold" id="mkHold">' + holdHtml(pos) + '</div>' : '')
+    bar.innerHTML = (pos || lots.length ? '<div class="mk-hold" id="mkHold">' + holdLines(curStock.code) + '</div>' : '')
       + '<div class="mk-tb-btns">'
       + (season.joined
           ? '<button class="mk-buy" onclick="Mock.openSheet(\'buy\')">매수</button>'
-            + '<button class="mk-sell" onclick="Mock.openSheet(\'sell\')"' + (pos ? '' : ' disabled title="보유한 주식이 없습니다"') + '>매도</button>'
+            + '<button class="mk-sell" onclick="Mock.openSheet(\'sell\')"' + (pos || lots.length ? '' : ' disabled title="보유한 주식이 없습니다"') + '>매도</button>'
           : '<button class="mk-buy" onclick="switchTab(\'account\'); Mock.openJoinFlow()">모의투자 참가하고 매수하기</button>')
       + '</div>';
     host.appendChild(bar);
   }
 
+  /** 종목 상세 보유 줄 — 현금 보유와 신용·담보 잔고 */
+  function holdLines(code) {
+    var pos = holding(code), out = [];
+    if (pos) out.push(holdHtml(pos));
+    lotsOf(code).forEach(function (l) {
+      var px = livePrice(code); if (px == null) px = l.price;
+      var value = px != null ? px * l.qty : l.cost, pnl = value - l.cost;
+      out.push('<i class="mk-tag ' + (l.kind === 'credit' ? 'cr' : 'ln') + '">' + lotLabel(l) + '</i> <b>' + fmtNum(l.qty) + '주</b> · 평단 ' + fmtNum(l.avgPrice) + '원'
+        + ' · <span class="' + signClass(pnl) + '">' + (pnl > 0 ? '+' : '') + fmtNum(pnl) + '원</span>');
+    });
+    return out.join('<br>');
+  }
   function paintHold() {
     var el = document.getElementById('mkHold');
     if (!el || !curStock) return;
-    var pos = holding(curStock.code);
-    if (pos) el.innerHTML = holdHtml(pos);
+    if (hasAny(curStock.code)) el.innerHTML = holdLines(curStock.code);
   }
 
   /** 종목 상세의 시세 틱마다 (market-ui.js loadStockQuote 가 부른다) — 보유 손익과 시장가 주문창 계산을 현재가에 맞춘다 */
@@ -1572,13 +1811,15 @@ var Mock = (function () {
   /* ===== 주문창 ===== */
   async function openSheet(side) {
     if (!curStock) return;
-    if (side === 'sell' && !holding(curStock.code)) side = 'buy';
+    if (side === 'sell' && !hasAny(curStock.code)) side = 'buy';
     var q = liveQuote(curStock.code);
     // 시간외에는 화면에 보이는 그 시장의 가격(q.price), 정규장에는 KRX 가격을 기본값으로
     var px = q ? (phaseInfo().limitOnly ? (q.price || (q.krx && q.krx.price)) : ((q.krx && q.krx.price) || q.price)) : 0;
     // ETF·ETN 여부를 이미 알면 바로 쓴다 — 모르면 일반 주식 호가단위로 시작하고 아래에서 받아 고친다
     var tf = _kind[curStock.code];
-    sheet = { code: curStock.code, name: curStock.name, side: side, type: 'limit', price: px || 0, qty: '', taxFree: tf != null ? tf : false, busy: false, orderId: null };
+    var lots0 = lotsOf(curStock.code);
+    sheet = { code: curStock.code, name: curStock.name, side: side, type: 'limit', price: px || 0, qty: '', taxFree: tf != null ? tf : false, busy: false, orderId: null,
+      fund: 'cash', lotId: holding(curStock.code) || !lots0.length ? '' : lots0[0].id, terms: _terms[curStock.code] || null };
     renderSheet();
     var mySheet = sheet;
     // 장 구간(정규장·시간외)이 바뀌었을 수 있으니 열 때마다 최신 상태를 받는다 — 통째로 다시 그리지 않고 안내·계산 부분만 갱신
@@ -1587,7 +1828,14 @@ var Mock = (function () {
     try {
       var k = await api('/kind?code=' + encodeURIComponent(sheet.code) + '&name=' + encodeURIComponent(sheet.name || ''));
       if (k && k.code) _kind[k.code] = !!k.taxFree;
-      if (sheet === mySheet && sheet.code === k.code && sheet.taxFree !== !!k.taxFree) { sheet.taxFree = !!k.taxFree; refreshSheetParts(); }
+      if (k && k.code && k.marginRate != null) _terms[k.code] = { marginRate: k.marginRate, creditOk: !!k.creditOk, creditReason: k.creditReason || null };
+      if (sheet === mySheet && sheet.code === k.code) {
+        var tChanged = !sheet.terms && _terms[k.code];
+        sheet.terms = _terms[k.code] || sheet.terms;
+        if (sheet.fund === 'credit' && sheet.terms && !sheet.terms.creditOk) sheet.fund = 'cash';
+        if (sheet.taxFree !== !!k.taxFree) { sheet.taxFree = !!k.taxFree; refreshSheetParts(); }
+        if (tChanged && creditOnNow()) renderSheet();
+      }
     } catch (e) { /* 호가단위는 서버가 다시 확인한다 */ }
   }
 
@@ -1672,16 +1920,33 @@ var Mock = (function () {
     var fee = Math.floor(amount * fr + 1e-6);
     var tax = (s.side === 'sell' && !s.taxFree) ? Math.floor(amount * tr + 1e-6) : 0;
     var pos = holding(s.code);
+    var rate = s.side === 'buy' ? buyRate() : 1;
+    var lot = s.side === 'sell' && s.lotId ? lotsOf(s.code).filter(function (l) { return l.id === s.lotId; })[0] : null;
+    var pendSell = function (match) {
+      return a ? a.openOrders.filter(function (o) { return o.side === 'sell' && match(o); }).reduce(function (t, o) { return t + (o.qty - o.filledQty); }, 0) : 0;
+    };
     var maxQty = s.side === 'buy'
-      ? (price > 0 && a ? Math.floor(a.available / (price * (1 + fr))) : 0)
-      : (pos ? pos.qty - (a ? a.openOrders.filter(function (o) { return o.code === s.code && o.side === 'sell'; })
-                                  .reduce(function (t, o) { return t + (o.qty - o.filledQty); }, 0) : 0) : 0);
-    return { price: price, qty: qty, amount: amount, fee: fee, tax: tax, maxQty: Math.max(0, maxQty), held: pos ? pos.qty : 0 };
+      ? (price > 0 && a ? Math.floor(a.available / (price * (rate + fr))) : 0)
+      : lot ? lot.qty - pendSell(function (o) { return o.lotId === lot.id; })
+      : (pos ? pos.qty - pendSell(function (o) { return o.code === s.code && !o.lotId; }) : 0);
+    // 매수에 드는 증거금 (100% 면 매수 금액 전부) · 신용은 보증금
+    var need = rate >= 1 ? amount + fee : Math.ceil(amount * rate) + fee;
+    return { price: price, qty: qty, amount: amount, fee: fee, tax: tax, maxQty: Math.max(0, maxQty), held: lot ? lot.qty : (pos ? pos.qty : 0), rate: rate, need: need, lot: lot };
+  }
+
+  /** 매수 증거금률 — 신용은 보증금률, 증거금 100% 계좌·동결 계좌는 1, 종목별 계좌는 그 종목 증거금률 */
+  function buyRate() {
+    var c = cr();
+    if (!c || !sheet) return 1;
+    if (sheet.fund === 'credit') return (c.rules && c.rules.creditDepositRate) || 0.45;
+    if (!c.on || c.marginMode !== 'spectrum' || c.frozenUntil) return 1;
+    return sheet.terms && sheet.terms.marginRate ? sheet.terms.marginRate : 0.4;
   }
 
   /** 수량 옆 안내 — 매도는 '보유'가 아니라 미체결 매도를 뺀 '매도 가능' 수량이다 */
   function maxText(n) {
     if (sheet.side === 'buy') return '최대 ' + fmtNum(n.maxQty) + '주';
+    if (n.lot) return '상환 가능 ' + fmtNum(n.maxQty) + '주';
     return '매도 가능 ' + fmtNum(n.maxQty) + '주' + (n.held !== n.maxQty ? ' (보유 ' + fmtNum(n.held) + '주)' : '');
   }
 
@@ -1700,9 +1965,23 @@ var Mock = (function () {
   function calcHtml(n) {
     var isBuy = sheet.side === 'buy', a = account;
     // 시장가는 체결가가 정해지지 않았다 — 지금 시세로 어림한 값임을 밝힌다
-    return row(sheet.type === 'market' ? '예상 주문 금액' : '주문 금액', won(n.amount))
-      + row('수수료' + (n.tax || !isBuy ? ' · 세금' : ''), won(n.fee + n.tax))
-      + (a ? row(isBuy ? '주문 후 주문 가능 금액' : '받을 금액', won(isBuy ? a.available - n.amount - n.fee : n.amount - n.fee - n.tax)) : '');
+    var out = row(sheet.type === 'market' ? '예상 주문 금액' : '주문 금액', won(n.amount))
+      + row('수수료' + (n.tax || !isBuy ? ' · 세금' : ''), won(n.fee + n.tax));
+    if (isBuy && sheet.fund === 'credit') {
+      var dep = Math.ceil(n.amount * n.rate);
+      out += row('보증금 (' + pctTxt(n.rate) + ')', won(dep)) + row('융자 (결제일 실행)', won(n.amount - dep));
+    } else if (isBuy && n.rate < 1) {
+      out += row('필요 증거금 (' + pctTxt(n.rate) + ')', won(n.need)) + row('결제일(D+2)에 낼 나머지', won(n.amount + n.fee - n.need));
+    }
+    if (!isBuy && n.lot) {
+      var part = n.qty >= n.lot.qty ? 1 : n.qty / n.lot.qty;
+      var pr = Math.round(n.lot.principal * part), it = Math.round(n.lot.accrued * part);
+      out += row((n.lot.kind === 'credit' ? '융자' : '대출') + ' 상환', won(pr)) + row('이자 (약, 결제일까지)', won(it));
+      var net = n.amount - n.fee - n.tax - pr - it;
+      return out + (a ? row('받을 금액 (약)', won(net)) : '')
+        + (net < 0 && n.qty ? '<div class="mk-help">매도대금이 갚을 돈보다 적습니다 · 모자라는 ' + won(-net) + '은 결제일에 미수가 됩니다</div>' : '');
+    }
+    return out + (a ? row(isBuy ? '주문 후 주문 가능 금액' : '받을 금액', won(isBuy ? a.available - n.need : n.amount - n.fee - n.tax)) : '');
   }
 
   function renderSheet() {
@@ -1720,7 +1999,7 @@ var Mock = (function () {
     var isBuy = s.side === 'buy';
     // 보유가 없으면 매도 탭을 막는다 — 종목 상세 하단 바의 매도 버튼과 같은 기준
     // (매도 중에 전량 체결돼 보유가 0이 된 경우는 지금 보고 있는 탭이라 그대로 둔다)
-    var noHolding = !holding(s.code);
+    var noHolding = !hasAny(s.code);
     var limitOnly = phaseInfo().limitOnly;
     s._limitOnly = limitOnly;
     if (limitOnly && s.type === 'market') {     // 시간외에는 실전과 같이 지정가만
@@ -1735,6 +2014,7 @@ var Mock = (function () {
       +   '<button class="seg' + (isBuy ? ' on buy' : '') + '" aria-pressed="' + isBuy + '" onclick="Mock.setSheet(\'side\',\'buy\')">매수</button>'
       +   '<button class="seg' + (!isBuy ? ' on sell' : '') + '" aria-pressed="' + !isBuy + '" onclick="Mock.setSheet(\'side\',\'sell\')"' + (isBuy && noHolding ? ' disabled title="보유한 주식이 없습니다"' : '') + '>매도</button>'
       + '</div>'
+      + fundHtml(s)
       + '<div class="seg-row sub mk-seg2" role="group" aria-label="주문 종류">'
       +   '<button class="seg' + (s.type === 'limit' ? ' on' : '') + '" aria-pressed="' + (s.type === 'limit') + '" onclick="Mock.setSheet(\'type\',\'limit\')">지정가</button>'
       +   '<button class="seg' + (s.type === 'market' ? ' on' : '') + '" aria-pressed="' + (s.type === 'market') + '" onclick="Mock.setSheet(\'type\',\'market\')"' + (limitOnly ? ' disabled' : '') + '>시장가</button>'
@@ -1762,6 +2042,30 @@ var Mock = (function () {
   }
   function row(k, v) { return '<div class="mk-calc-row"><span>' + k + '</span><b>' + v + '</b></div>'; }
 
+  /** 매수: 현금 / 신용 · 매도: 현금 보유 / 신용·담보 잔고 (신용 기능이 켜졌거나 잔고가 있을 때만) */
+  function fundHtml(s) {
+    if (s.side === 'buy') {
+      if (!creditOnNow()) return '';
+      var t = s.terms, no = t && !t.creditOk, c = cr(), R = (c && c.rules) || {};
+      var note = s.fund === 'credit'
+        ? '보증금 ' + pctTxt(R.creditDepositRate || 0.45) + ' · 나머지는 결제일에 융자 · ' + (R.creditTermDays || 180) + '일 · 이자 5.4~9.1%'
+        : (buyRate() < 1 ? '증거금률 ' + pctTxt(buyRate()) + ' (종목별) · 결제일에 모자라면 미수' : '증거금 100% (현금)');
+      return '<div class="seg-row sub mk-seg2" role="group" aria-label="매수 자금">'
+        + '<button class="seg' + (s.fund !== 'credit' ? ' on' : '') + '" aria-pressed="' + (s.fund !== 'credit') + '" onclick="Mock.setSheet(\'fund\',\'cash\')">현금</button>'
+        + '<button class="seg' + (s.fund === 'credit' ? ' on' : '') + '" aria-pressed="' + (s.fund === 'credit') + '" onclick="Mock.setSheet(\'fund\',\'credit\')"'
+        +   (no ? ' disabled title="' + escapeHtml(t.creditReason || '신용 불가 종목') + '"' : '') + '>신용</button>'
+        + '</div><div class="mk-dim mk-fund-note">' + escapeHtml(no && s.fund !== 'credit' ? (t.creditReason || '신용 불가 종목') : note) + '</div>';
+    }
+    var lots = lotsOf(s.code);
+    if (!lots.length) return '';
+    var pos = holding(s.code);
+    var opts = (pos ? [['', '현금 보유 · ' + fmtNum(pos.qty) + '주']] : [])
+      .concat(lots.map(function (l) { return [l.id, lotLabel(l) + ' · ' + fmtNum(l.qty) + '주 (매도상환)']; }));
+    return '<div class="mk-field"><span>매도할 잔고</span><select class="f-input" aria-label="매도할 잔고" onchange="Mock.setSheet(\'lotId\', this.value)">'
+      + opts.map(function (o) { return '<option value="' + escapeHtml(o[0]) + '"' + (o[0] === (s.lotId || '') ? ' selected' : '') + '>' + escapeHtml(o[1]) + '</option>'; }).join('')
+      + '</select></div>';
+  }
+
   /** 입력 중에 바뀔 수 있는 부분만 갱신 — 안내문·최대 수량·계산 행 (포커스와 키보드는 그대로) */
   function refreshSheetParts() {
     if (!sheet || !document.getElementById('mkSheet') || document.getElementById('mkPending')) return;
@@ -1776,9 +2080,11 @@ var Mock = (function () {
 
   function setSheet(key, val) {
     if (!sheet || sheet.busy) return;
-    if (key === 'side' && val === 'sell' && sheet.side !== 'sell' && !holding(sheet.code)) return;
+    if (key === 'side' && val === 'sell' && sheet.side !== 'sell' && !hasAny(sheet.code)) return;
+    if (key === 'fund' && val === 'credit' && (!creditOnNow() || (sheet.terms && !sheet.terms.creditOk))) return;
     sheet[key] = val;
-    if (key === 'side') sheet.qty = '';
+    if (key === 'side' || key === 'fund' || key === 'lotId') sheet.qty = '';
+    if (key === 'side' && val === 'sell') { var l0 = lotsOf(sheet.code); sheet.lotId = holding(sheet.code) || !l0.length ? '' : l0[0].id; }
     renderSheet();
   }
 
@@ -1850,8 +2156,8 @@ var Mock = (function () {
         if (n.price > upper || n.price < lower) return '가격제한폭을 벗어났습니다 (' + fmtNum(lower) + '~' + fmtNum(upper) + '원)';
       }
     }
-    if (sheet.side === 'buy' && account && n.amount + n.fee > account.available) return '주문 가능 금액이 부족합니다';
-    if (sheet.side === 'sell' && n.qty > n.maxQty) return '매도 가능 수량이 부족합니다 (' + fmtNum(n.maxQty) + '주)';
+    if (sheet.side === 'buy' && account && n.need > account.available) return account.available < 0 && n.rate < 1 && sheet.fund !== 'credit' ? '미수금이 있어 매수할 수 없습니다' : '주문 가능 금액이 부족합니다';
+    if (sheet.side === 'sell' && n.qty > n.maxQty) return (n.lot ? '상환 가능 수량이 부족합니다 (' : '매도 가능 수량이 부족합니다 (') + fmtNum(n.maxQty) + '주)';
     return null;
   }
 
@@ -1866,7 +2172,7 @@ var Mock = (function () {
     // 같은 주문이 두 번 들어가지 않도록 주문마다 고유값을 붙인다 (서버가 재전송을 같은 주문으로 본다).
     // 고유값은 주문창에 붙여 둔다 — 15초 시간 초과 뒤 다시 누르면 같은 값으로 보내야 서버가 중복을 막는다.
     // 종목·매매·종류·수량·가격이 바뀌었을 때만 새로 만든다 (거절된 주문은 서버에 남지 않아 같은 값으로 다시 보내도 된다)
-    var cidKey = [sheet.code, sheet.side, sheet.type, n.qty, sheet.type === 'limit' ? n.price : ''].join('|');
+    var cidKey = [sheet.code, sheet.side, sheet.type, n.qty, sheet.type === 'limit' ? n.price : '', sheet.fund || '', sheet.lotId || ''].join('|');
     if (!sheet.cid || sheet.cidKey !== cidKey) {
       sheet.cid = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2);
       sheet.cidKey = cidKey;
@@ -1876,7 +2182,9 @@ var Mock = (function () {
     try {
       var d = await api('/orders', 'POST', {
         clientOrderId: cid, code: sheet.code, side: sheet.side, type: sheet.type, qty: n.qty,
-        limitPrice: sheet.type === 'limit' ? n.price : undefined
+        limitPrice: sheet.type === 'limit' ? n.price : undefined,
+        credit: sheet.side === 'buy' && sheet.fund === 'credit' ? 'buy' : undefined,
+        lotId: sheet.side === 'sell' && sheet.lotId ? sheet.lotId : undefined
       });
       if (sheet !== mySheet) {                // 기다리는 사이 창이 닫혔다 — 접수 사실은 알리고 뒤에서 지켜본다
         toast(d.order.name + ' 주문 접수 · 체결되면 알려 드립니다', '');
@@ -1914,7 +2222,7 @@ var Mock = (function () {
     var wrap = document.createElement('div');
     wrap.id = 'mkPending';
     wrap.className = 'mk-pending';
-    var sideTxt = o.side === 'buy' ? '매수' : '매도';
+    var sideTxt = o.credit === 'buy' ? '신용매수' : o.lotId ? '매도상환' : (o.side === 'buy' ? '매수' : '매도');
     var typeTxt = o.type === 'market' ? '시장가' : '지정가 ' + fmtNum(o.limitPrice) + '원';
     wrap.innerHTML = '<div class="mk-pending-head"><span class="mk-spin" aria-hidden="true"></span>'
       + '<b>' + (filledQty ? '일부 체결 · 잔량 대기' : '주문 접수 완료 · 체결 대기') + '</b></div>'
@@ -1991,6 +2299,7 @@ var Mock = (function () {
    */
   var aux = null;
   var _kind = {};              // 종목코드 → ETF·ETN 여부 (호가단위용)
+  var _terms = {};             // 종목코드 → { marginRate, creditOk, creditReason } (증거금률·신용 가능)
 
   function closeAux() {
     aux = null;
@@ -2084,12 +2393,14 @@ var Mock = (function () {
   function renderAux() {
     if (!aux) return;
     if (aux.kind === 'amend') auxShell(amendHtml(), aux.side === 'buy' ? 'buy' : 'sell', '주문 정정');
+    else if (aux.kind === 'loan') auxShell(loanHtml(), 'buy', '증권담보대출');
     refreshAuxParts();
   }
 
   function refreshAuxParts() {
     if (!aux) return;
     if (aux.kind === 'amend') amendParts();
+    else if (aux.kind === 'loan') loanParts();
   }
 
   function auxInput(key, el) {
@@ -2104,7 +2415,11 @@ var Mock = (function () {
   function auxStep(key, dir) {
     if (!aux || aux.busy) return;
     var cur = Number(auxGet(key)) || 0, v;
-    if (key === 'qty') {
+    if (key === 'amount') {
+      // 대출 금액 — 100만 원씩, 한도 안에서
+      v = Math.min(loanLimit(), Math.max(100000, (cur || 0) + dir * 1000000));
+      v = Math.floor(v / 10000) * 10000;
+    } else if (key === 'qty') {
       var max = aux.rem;
       if (!cur) cur = max;
       v = Math.min(max, Math.max(1, cur + dir));
@@ -2120,6 +2435,7 @@ var Mock = (function () {
 
   function auxSet(key, val) {
     if (!aux || aux.busy) return;
+    if (aux.kind === 'loan' && key === 'amount' && val === 'max') val = loanLimit();
     auxPut(key, val);
     if (key === 'type' && val === 'limit' && aux.kind === 'amend' && !aux.price) aux.price = curPrice(aux.code) || '';
     renderAux();
@@ -2128,12 +2444,19 @@ var Mock = (function () {
   function auxSel(key, el) {
     if (!aux || aux.busy) return;
     auxPut(key, el.value);
+    if (aux.kind === 'loan' && key === 'code') {
+      // 종목을 바꾸면 담보 수량을 그 종목의 결제된 수량으로
+      var p = loanPos();
+      aux.rem = p ? p.settledQty : 0; aux.qty = aux.rem; aux.amount = '';
+      renderAux(); return;
+    }
     refreshAuxParts();
   }
 
   function auxSubmit() {
     if (!aux || aux.busy) return;
     if (aux.kind === 'amend') return amendSubmit();
+    if (aux.kind === 'loan') return loanSubmit();
   }
 
   /** 지정가가 호가단위에 안 맞으면 가까운 호가로 맞추고 한 번 더 누르게 한다 (주문창과 같은 방식) */
@@ -2402,6 +2725,8 @@ var Mock = (function () {
       + '<div class="form-row"><input type="date" class="f-input" id="mkSstart" aria-label="시작일">'
       + '<input type="date" class="f-input" id="mkSend" aria-label="종료일"></div>'
       + '<textarea class="f-textarea" id="mkSnotice" maxlength="1000" placeholder="전달사항 (선택) — 참가 안내 창에 표시됩니다" style="min-height:80px" aria-label="전달사항"></textarea>'
+      + '<label class="mk-note" style="margin:0" for="mkScredit">미수 · 신용 · 담보대출</label>'
+      + '<select class="f-input" id="mkScredit" aria-label="미수 · 신용 · 담보대출"><option value="off">끄기</option><option value="admin">관리자만 (시험용)</option><option value="on">전체 회원</option></select>'
       + '<div class="form-row">'
       +   '<button class="btn-submit" onclick="Mock.saveSeason(this)">시즌 저장</button>'
       +   '<button class="btn-ghost" onclick="Mock.newSeasonForm()">새 시즌</button>'
@@ -2458,7 +2783,8 @@ var Mock = (function () {
             +   '<span class="mk-season-sub">' + escapeHtml(x.id) + ' · ' + escapeHtml(x.start_date) + ' ~ ' + escapeHtml(x.end_date)
             +     ' · 참가 ' + fmtNum(x.participants || 0) + '명'
             +     ' · 시드 ' + fmtCompact(x.seed) + '원'
-            +     (x.finals ? ' · 최종순위 확정' : '') + '</span>'
+            +     (x.finals ? ' · 최종순위 확정' : '')
+            +     (x.credit_mode && x.credit_mode !== 'off' ? ' · 미수·신용 ' + (x.credit_mode === 'on' ? '전체' : '관리자만') : '') + '</span>'
             + '</button></div>';
         }).join('')
       + '<p class="mk-note">행을 누르면 위 폼에 값이 채워집니다. 시작·종료는 날짜에 맞춰 자동 처리됩니다.</p>';
@@ -2549,7 +2875,7 @@ var Mock = (function () {
     var st = (SEASON_STATUS[x.status] || {}).text || x.status;
     var rule = x.status === 'closed' ? '종료된 시즌은 수정할 수 없습니다.'
       : x.status === 'upcoming' ? '시작 전이라 모든 값을 바꿀 수 있습니다.'
-      : '진행 중인 시즌은 이름 · 종료일 · 전달사항만 바꿀 수 있습니다.';
+      : '진행 중인 시즌은 이름 · 종료일 · 전달사항 · 미수·신용 설정만 바꿀 수 있습니다.';
     el.innerHTML = '<b>' + escapeHtml(x.name) + '</b> (' + escapeHtml(x.id) + ' · ' + escapeHtml(st) + ') 값이 채워져 있습니다. ' + rule;
   }
 
@@ -2565,6 +2891,7 @@ var Mock = (function () {
     };
     set('mkSid', x.id); set('mkSname', x.name);
     set('mkSstart', x.start_date); set('mkSend', x.end_date); set('mkSnotice', x.notice || '');
+    var crSel = document.getElementById('mkScredit'); if (crSel) crSel.value = x.credit_mode || 'off';
     var st = document.getElementById('mkSstatus');
     if (st) {
       st.innerHTML = x.status === 'closed'
@@ -2598,6 +2925,7 @@ var Mock = (function () {
     set('mkSid', cur.id); set('mkSname', cur.name);
     set('mkSstart', cur.startDate || cur.start_date); set('mkSend', cur.endDate || cur.end_date);
     set('mkSnotice', cur.notice || '');
+    var crSel = document.getElementById('mkScredit'); if (crSel && !crSel.dataset.touched) { crSel.value = cur.creditMode || cur.credit_mode || 'off'; crSel.onchange = function () { crSel.dataset.touched = '1'; }; }
     updateFormNote();
   }
 
@@ -2606,7 +2934,9 @@ var Mock = (function () {
     var v = function (id) { return document.getElementById(id).value.trim(); };
     btn.disabled = true;
     try {
-      var r = await api('/admin/seasons', 'POST', { id: v('mkSid'), name: v('mkSname'), startDate: v('mkSstart'), endDate: v('mkSend'), notice: v('mkSnotice') });
+      var crSel = document.getElementById('mkScredit');
+      var r = await api('/admin/seasons', 'POST', { id: v('mkSid'), name: v('mkSname'), startDate: v('mkSstart'), endDate: v('mkSend'), notice: v('mkSnotice'),
+        creditMode: crSel ? crSel.value : undefined });
       st.innerHTML = '<span class="ok">✅ ' + (r.updated ? '기존 시즌을 고쳤습니다.' : '새 시즌을 만들었습니다.') + '</span>';
       await loadSeasons();
       await refreshSeason();
@@ -2622,6 +2952,7 @@ var Mock = (function () {
     openSheet: openSheet, closeSheet: closeSheet, tryCloseSheet: tryCloseSheet, setSheet: setSheet, input: input, step: step, pct: pct, submit: submit,
     askReview: askReview,
     openAmend: openAmend, closeAux: closeAux,
+    setMarginMode: setMarginMode, repayLot: repayLot, loadLedger: loadLedger, openLoan: openLoan,
     auxInput: auxInput, auxStep: auxStep, auxSet: auxSet, auxSel: auxSel, auxSubmit: auxSubmit,
     loadCorpAdmin: loadCorpAdmin, caApply: caApply, caDismiss: caDismiss,
     mountAdmin: mountAdmin,

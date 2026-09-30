@@ -522,3 +522,32 @@
 .mk-att-done { display: block; text-align: center; padding: 10px; font-weight: 800; color: #4ade80; border: 1px solid var(--border); background: var(--bg2); }
 .mk-att-off { display: block; text-align: center; padding: 10px; font-size: .82rem; color: var(--text3); border: 1px dashed var(--border); }
 .mk-att-note { font-size: .7rem; color: var(--text3); margin-top: 8px; line-height: 1.5; }
+
+/* ===== 예수금 · 신용 (결제 T+2 · 미수 · 신용융자 · 증권담보대출) ===== */
+.mk-credit { border-top-color: var(--stock-down); }
+.mk-credit .mk-grid + .mk-grid { margin-top: -1px; }
+.mk-grid3 { grid-template-columns: 1fr 1fr 1fr; }
+.mk-alert { font-size: .8rem; font-weight: 700; line-height: 1.5; padding: 9px 12px; margin: 0 0 8px; border: 1px solid var(--border); border-left: 3px solid var(--warning, #fbbf24); color: var(--text); }
+.mk-alert.bad { border-left-color: var(--accent); color: var(--accent); }
+.mk-alert b { font-weight: 800; }
+.mk-cr-mode { margin-top: 14px; }
+.mk-cr-btns { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.mk-tag.cr { background: var(--stock-down); }
+.mk-tag.ln { background: var(--text3); }
+.mk-tag.bad { background: var(--accent); }
+.mk-lot { cursor: default; padding: 0; align-items: stretch; }
+.mk-lot:hover { background: var(--bg2); }
+.mk-lot-open { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; padding: 11px 12px; background: none; border: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.mk-lot-open:hover { background: var(--bg3); }
+.mk-lot-repay { align-self: center; margin-right: 10px; flex-shrink: 0; }
+.mk-ledger { border: 1px solid var(--border); margin-top: 10px; }
+.mk-led { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: .76rem; font-variant-numeric: tabular-nums; }
+.mk-led:last-child { border-bottom: none; }
+.mk-led > span:first-child { color: var(--text3); font-weight: 600; }
+.mk-led b.up { color: var(--stock-up); } .mk-led b.down { color: var(--stock-down); }
+.mk-fund-note { margin: 6px 0 10px; line-height: 1.5; }
+@media (max-width: 420px) {
+  .mk-grid3 { grid-template-columns: 1fr 1fr; }
+  .mk-lot { flex-wrap: wrap; }
+  .mk-lot-repay { margin: 0 12px 10px auto; }
+}
