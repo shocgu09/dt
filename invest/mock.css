@@ -490,3 +490,10 @@
 #mkJoinNick { width: 100%; margin: 4px 0 0; }
 /* 관리자에게만 오는 실명 — 닉네임 옆에 작게 */
 .mk-real { font-size: .68rem; font-weight: 600; color: var(--text3); margin-left: 4px; }
+
+/* 명예의 전당 — 참가자 수 · 내 순위 */
+.mk-hall-n { font-size: .7rem; font-weight: 600; color: var(--text3); margin-left: 6px; }
+.mk-hall-row.me { color: var(--primary-light); }
+.mk-hall-row.me b { font-weight: 800; }
+.mk-next { font-size: .86rem; color: var(--text2); margin-top: 6px; }
+.mk-next b { color: var(--text); }

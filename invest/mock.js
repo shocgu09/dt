@@ -269,9 +269,7 @@ var Mock = (function () {
 
     if (!season.season) {
       paint(el, '<div class="mk-card"><h3>지금은 진행 중인 시즌이 없습니다</h3>'
-        + (season.next
-            ? '<p>다음 시즌 <b>' + escapeHtml(season.next.name) + '</b> — ' + escapeHtml(season.next.start_date) + ' 시작</p>'
-            : '<p>다음 시즌 일정이 정해지면 여기에 표시됩니다.</p>')
+        + nextSeasonHtml()
         + '<button class="mini-btn" onclick="switchTab(\'ranking\')">지난 시즌 결과 보기</button></div>'
       );
       return;
@@ -743,6 +741,19 @@ var Mock = (function () {
     return '수수료 ' + fmtNum(f.fee) + '원 · 세금 ' + fmtNum(f.tax) + '원';
   }
 
+  var _nextAskAt = 0;
+  /** 다음 시즌 안내 — '2026년 4분기 · 10/1(목) 시작 · 12/31(목) 종료' (계좌·랭킹 탭 공통) */
+  function nextSeasonHtml() {
+    var n = season && season.next;
+    if (!n) return '<p class="mk-next">다음 시즌 일정이 정해지면 여기에 표시됩니다.</p>';
+    var md = function (iso) {
+      var d = new Date(iso + 'T00:00:00Z');
+      return (d.getUTCMonth() + 1) + '/' + d.getUTCDate() + '(' + '일월화수목금토'.charAt(d.getUTCDay()) + ')';
+    };
+    return '<p class="mk-next">다음 시즌 <b>' + escapeHtml(n.name) + '</b> · ' + md(n.start_date) + ' 시작'
+      + (n.end_date ? ' · ' + md(n.end_date) + ' 종료' : '') + '</p>';
+  }
+
   /* ===== 랭킹 ===== */
   var _rankBuilt = false, _hallHtml = null, _prevRank = {}, _prevSeasonId = null, _rankSeq = 0;
 
@@ -794,7 +805,15 @@ var Mock = (function () {
       // 시즌이 막 끝났다 — 한 번 받아 둔 명예의 전당에 방금 끝난 시즌이 빠져 있으니 다시 받는다
       if (e.code === 'no_season' && _prevSeasonId) { _hallHtml = null; _prevSeasonId = null; }
       if (e.code !== 'no_season') h += '<div class="empty">' + escapeHtml(e.message) + '</div>';
-      else h += '<div class="mk-card"><h3>지금은 진행 중인 시즌이 없습니다</h3></div>';
+      else {
+        // 시즌이 방금 끝났으면 들고 있던 시즌 정보에 다음 시즌이 없다 — 한 번 새로 받는다
+        // (순위 탭은 10초마다 돈다 — 다음 시즌이 아직 없으면 5분에 한 번만 다시 묻는다)
+        if (!(season && season.next) && Date.now() - _nextAskAt > 300000) {
+          _nextAskAt = Date.now();
+          try { await refreshSeason(); } catch (e2) { /* 안내만 빠진다 */ }
+        }
+        h += '<div class="mk-card"><h3>지금은 진행 중인 시즌이 없습니다</h3>' + nextSeasonHtml() + '</div>';
+      }
     }
     if (_hallHtml === null) try {
       _hallHtml = '';
@@ -802,13 +821,24 @@ var Mock = (function () {
       if (hall.items.length) {
         var by = {};
         hall.items.forEach(function (r) { (by[r.season_id] = by[r.season_id] || { name: r.season_name, rows: [] }).rows.push(r); });
+        var info = hall.seasons || {};
         _hallHtml = '<section class="m-section"><div class="m-head"><h3>🏛 명예의 전당</h3></div>'
           + Object.keys(by).map(function (k) {
-              return '<div class="mk-hall"><div class="mk-hall-name">' + escapeHtml(by[k].name) + '</div>'
+              var si = info[k] || {}, seed = by[k].rows[0].seed, me = si.me;
+              return '<div class="mk-hall"><div class="mk-hall-name">' + escapeHtml(by[k].name)
+                +   (si.participants ? '<span class="mk-hall-n">' + fmtNum(si.participants) + '명 참가</span>' : '') + '</div>'
                 + by[k].rows.slice(0, 3).map(function (r) {
-                    return '<div class="mk-hall-row"><span>' + (['🥇', '🥈', '🥉'][r.rank - 1] || r.rank) + ' ' + escapeHtml(r.nickname) + (r.realName ? ' <small class="mk-real" title="실명 (관리자에게만 보임)">' + escapeHtml(r.realName) + '</small>' : '') + '</span>'
+                    return '<div class="mk-hall-row' + (r.me ? ' me' : '') + '"><span>' + (['🥇', '🥈', '🥉'][r.rank - 1] || r.rank) + ' ' + escapeHtml(r.nickname)
+                      + (r.realName ? ' <small class="mk-real" title="실명 (관리자에게만 보임)">' + escapeHtml(r.realName) + '</small>' : '')
+                      + (r.me ? ' <i class="mk-tag">나</i>' : '') + '</span>'
                       + '<span>' + fmtNum(r.equity) + '원 (' + fmtRate((r.equity - r.seed) / r.seed * 100) + ')</span></div>';
-                  }).join('') + '</div>';
+                  }).join('')
+                // 1~3위 밖이면 내 최종 순위를 따로 — '5위 / 7명'
+                + (me && me.rank > 3
+                    ? '<div class="mk-hall-row me"><span>내 순위 <b>' + me.rank + '위</b> / ' + fmtNum(si.participants) + '명</span>'
+                      + '<span>' + fmtNum(me.equity) + '원 (' + fmtRate((me.equity - seed) / seed * 100) + ')</span></div>'
+                    : '')
+                + '</div>';
             }).join('') + '</section>';
       }
     } catch (e) { /* 명예의 전당은 없어도 된다 */ }

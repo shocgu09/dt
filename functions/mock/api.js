@@ -280,7 +280,18 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     ).all()).results || [];
     // 저장된 이름은 그때의 실명이다 — 지난 시즌도 지금 닉네임으로 보여 준다
     const nicks = await N.nicksFor(db, rows.map((r) => r.uid));
-    return { items: rows.map(({ uid: u, nickname, ...r }) => ({ ...r, nickname: nicks.get(u) || '회원', ...(isAdmin ? { realName: nickname } : {}) })) };
+    // 시즌별 참가자 수와 내 최종 순위 — 1~3위 밖이어도 '5위 / 7명'처럼 볼 수 있게 (내 것만, 남의 순위는 top 10 까지만)
+    const [cnt, mine] = await db.batch([
+      db.prepare(`SELECT season_id, COUNT(*) AS n FROM final_rankings GROUP BY season_id`),
+      db.prepare(`SELECT season_id, rank, equity FROM final_rankings WHERE uid=?`).bind(uid)
+    ]);
+    const seasons = {};
+    for (const c of cnt.results || []) seasons[c.season_id] = { participants: c.n, me: null };
+    for (const m of mine.results || []) if (seasons[m.season_id]) seasons[m.season_id].me = { rank: m.rank, equity: m.equity };
+    return {
+      items: rows.map(({ uid: u, nickname, ...r }) => ({ ...r, nickname: nicks.get(u) || '회원', me: u === uid, ...(isAdmin ? { realName: nickname } : {}) })),
+      seasons
+    };
   }
 
   /* ── 닉네임 — 참가하지 않은 회원도 (커뮤니티 댓글에 쓰인다) ── */
