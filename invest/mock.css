@@ -507,7 +507,8 @@
 
 /* 출석 체크 — 계좌 요약 카드 머리 줄 오른쪽 작은 버튼 */
 .mk-summary .mk-sum-head { align-items: center; gap: 8px; min-height: 28px; }
-.mk-summary .mk-sum-head > .mk-sum-end { min-width: 0; flex-wrap: wrap; }
+.mk-summary .mk-sum-head > .mk-sum-end:first-child { min-width: 0; flex-wrap: wrap; }
+.mk-summary .mk-sum-head > .mk-sum-end:last-child { flex: 0 0 auto; gap: 8px; }
 #mkAttend { flex: 0 0 auto; }
 .mk-att-chip {
   font: inherit; font-size: .74rem; font-weight: 800; white-space: nowrap; cursor: pointer;
