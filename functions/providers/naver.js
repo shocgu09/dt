@@ -52,8 +52,12 @@ function mapQuote(s) {
   //  - 거래량·시가·고가·저가는 증권사 앱과 같게 통합 기준을 쓴다.
   const over = s.overMarketPriceInfo;
   const integ = s.integratedPriceInfo;
-  const session = over && over.overMarketStatus === 'OPEN'
-    && (over.tradingSessionType === 'PRE_MARKET' || over.tradingSessionType === 'AFTER_MARKET')
+  // NXT 프리마켓은 08:50, 애프터마켓은 20:00 에 끝나는데 네이버는 그 뒤로도 잠깐(실측 09:00:34) 'PRE_MARKET OPEN' 을 준다 —
+  // 그동안 KRX 가 이미 열렸어도 끝난 프리마켓 가격이 현재가로 보였다. 시각으로 한 번 더 거른다
+  const hm = (Math.floor(Date.now() / 60000) + 9 * 60) % 1440;
+  const live = over && (over.tradingSessionType === 'PRE_MARKET' ? hm >= 8 * 60 && hm < 8 * 60 + 50
+    : over.tradingSessionType === 'AFTER_MARKET' ? hm >= 15 * 60 + 30 && hm < 20 * 60 : false);
+  const session = over && over.overMarketStatus === 'OPEN' && live
     && num(over.overPrice) != null
     ? over.tradingSessionType : null;
   const px = session ? over : s;
