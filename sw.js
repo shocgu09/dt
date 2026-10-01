@@ -95,19 +95,20 @@ self.addEventListener('push', event => {
     data = { body: event.data ? event.data.text() : '' };
   }
 
-  const { title, body, convId, unreadCount } = data;
+  const { title, body, convId, unreadCount, url, tag } = data;
 
   // 해당 대화방을 보고 있으면 알림 생략
   if (convId && _viewingConvId === convId) return;
 
   event.waitUntil(
     self.registration.showNotification(title || 'DT Club', {
-      body: body || '새 메시지가 도착했습니다',
+      body: body || (convId || !url ? '새 메시지가 도착했습니다' : ''),
       icon: '/icon-192.png',
       badge: '/icon-badge-96.png',
-      tag: convId ? `dm-${convId}` : 'dm-general',
+      // 재테크 알림은 종류별 tag (같은 브리핑·같은 주문 알림은 하나로 겹친다)
+      tag: convId ? `dm-${convId}` : (tag || 'dm-general'),
       renotify: true,
-      data: { convId }
+      data: { convId, url: typeof url === 'string' && url.startsWith('/') ? url : null }
     }).then(() => {
       if (navigator.setAppBadge) {
         if (unreadCount > 0) return navigator.setAppBadge(unreadCount);
@@ -123,6 +124,26 @@ self.addEventListener('push', event => {
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   const convId = event.notification.data?.convId;
+  const url = event.notification.data?.url;
+
+  // 재테크 알림 — 그 화면(/invest/?briefing=… · ?tab=account 등)으로 연다. 열린 창이 있으면 그 창을 옮긴다
+  if (url && !convId) {
+    event.waitUntil(
+      self.registration.getNotifications().then(remaining => {
+        if (navigator.setAppBadge) remaining.length > 0 ? navigator.setAppBadge(remaining.length) : navigator.clearAppBadge();
+      }).catch(() => {}).then(() =>
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+          for (const c of list) {
+            if (c.url.startsWith(self.location.origin) && 'navigate' in c) {
+              return c.navigate(url).then(nc => (nc || c).focus()).catch(() => clients.openWindow(url));
+            }
+          }
+          return clients.openWindow(url);
+        })
+      )
+    );
+    return;
+  }
 
   event.waitUntil(
     // 해당 대화의 알림 모두 닫기

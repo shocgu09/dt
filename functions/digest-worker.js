@@ -125,7 +125,25 @@ export default {
           return new Response(JSON.stringify({ error: 'Firestore 저장 실패', detail: err }), { status: 500, headers: jsonHeaders });
         }
         const result = await fsResp.json();
-        return new Response(JSON.stringify({ success: true, docId: result.name?.split('/').pop(), tickers }), { headers: jsonHeaders });
+        const docId = result.name?.split('/').pop();
+        // 회원들에게 새 브리핑 알림 (알림을 켠 회원만, dt-push 가 40건씩 — 끝까지 이어서). 실패해도 저장은 끝났다
+        let notified = null;
+        if (docId && env.PUSH && env.INTERNAL_PUSH_KEY && b.notify !== false) {
+          notified = 0;
+          try {
+            let cursor = 0;
+            for (let i = 0; i < 20 && cursor != null; i++) {
+              const r = await env.PUSH.fetch('https://dt-push/api/internal/broadcast', {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Internal-Key': env.INTERNAL_PUSH_KEY },
+                body: JSON.stringify({ briefingId: docId, title, cursor })
+              });
+              const d = await r.json();
+              notified += d.sent || 0;
+              cursor = d.next;
+            }
+          } catch (e) { console.error('briefing notify failed', e && e.message); }
+        }
+        return new Response(JSON.stringify({ success: true, docId, tickers, notified }), { headers: jsonHeaders });
       } catch (e) {
         return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: jsonHeaders });
       }

@@ -80,6 +80,7 @@ function showMain() {
   _briefingsReady = loadBriefings();
   loadConfig();
   initMockMode();
+  var nb = document.getElementById('notiBtn'); if (nb) nb.style.display = '';
   // 종목 마스터(약 190KB)는 검색창에 포커스가 갈 때 받는다 (index.html onfocus) — 검색하지 않는 회원은 받지 않는다
   applyDeepLink();
 }
@@ -91,17 +92,19 @@ function showMain() {
 // 함수로 둔다 — Firebase 초기화가 실패하면 이 줄이 실행되기 전에 showGate 가 불린다
 function deepLinkKey() { return 'dt-invest-deeplink'; }
 
-function parseDeepLink(code, bid, coin, us) {
+function parseDeepLink(code, bid, coin, us, tab) {
   if (code && /^[0-9A-Z]{6}$/.test(code)) return { code: code };
   if (coin && /^KRW-[A-Z0-9]{1,15}$/.test(coin)) return { coin: coin };
   if (us && /^[A-Za-z0-9]{1,8}(_[a-z])?(\.[A-Z])?$/.test(us)) return { us: us };
   if (bid && isDocId(bid)) return { briefing: bid };
+  // 알림에서 연다 — 모의투자 계좌·랭킹 탭
+  if (tab === 'account' || tab === 'ranking') return { tab: tab };
   return null;
 }
 
 function readDeepLink() {
   var p = new URLSearchParams(location.search);
-  return parseDeepLink(p.get('code'), p.get('briefing'), p.get('coin'), p.get('us'));
+  return parseDeepLink(p.get('code'), p.get('briefing'), p.get('coin'), p.get('us'), p.get('tab'));
 }
 
 function rememberDeepLink() {
@@ -119,7 +122,7 @@ function takeDeepLink() {
   var link = readDeepLink();
   if (link) return link;
   if (saved && saved.link && Date.now() - (saved.at || 0) < 3600000) {
-    return parseDeepLink(saved.link.code, saved.link.briefing, saved.link.coin, saved.link.us);
+    return parseDeepLink(saved.link.code, saved.link.briefing, saved.link.coin, saved.link.us, saved.link.tab);
   }
   return null;
 }
@@ -131,6 +134,7 @@ function applyDeepLink() {
   else if (link.coin && window.Coin) Coin.open(link.coin, '', { replace: true });
   else if (link.us && window.Us) Us.open(link.us, '', { replace: true });
   else if (link.briefing) openBriefing(link.briefing);
+  else if (link.tab) openMockTab(link.tab);
 }
 
 /* ===== 브리핑 열기 (딥링크 · 종목 상세의 "언급된 시황") ===== */
@@ -285,6 +289,15 @@ async function toggleMockMode() {
   } finally {
     btn.disabled = false;
   }
+}
+
+/** 알림에서 계좌·랭킹 탭으로 — 모의투자 모드가 꺼져 있으면 켜고 연다 */
+async function openMockTab(tab) {
+  try {
+    await loadMockAssets();
+    if (!Mock.isOn()) await Mock.setMode(true, false);
+    switchTab(tab);
+  } catch (e) { /* 모의투자를 못 불러오면 시세 탭 그대로 */ }
 }
 
 /* ===== 탭 ===== */
@@ -594,7 +607,8 @@ async function submitComment(briefingId, parentId, btn) {
     var ref = db.collection('invest_briefings').doc(briefingId);
     // 댓글과 댓글 수를 한 배치로 쓴다 — 하나만 성공해 숫자가 어긋나는 일을 막는다
     var batch = db.batch();
-    batch.set(ref.collection('comments').doc(), {
+    var cref = ref.collection('comments').doc();
+    batch.set(cref, {
       authorUid: currentUser.uid,
       authorName: myName,
       isAdmin: isAdmin,
@@ -606,6 +620,8 @@ async function submitComment(briefingId, parentId, btn) {
     });
     batch.update(ref, { commentCount: firebase.firestore.FieldValue.increment(1) });
     await batch.commit();
+    // 답글이면 원댓글 작성자에게 알림 (서버가 Firestore 에서 확인한다)
+    if (parentId && window.InvestNotify) InvestNotify.commentPosted(briefingId, cref.id);
     input.value = '';
     var slot = parentId && document.getElementById('rf-' + parentId);
     if (slot) slot.innerHTML = '';
@@ -984,8 +1000,12 @@ async function submitBriefing() {
       payload.generatedBy = 'admin';
       payload.commentCount = 0;
       payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-      await db.collection('invest_briefings').add(payload);
-      status.innerHTML = '<span class="ok">✅ 브리핑이 게시되었습니다.</span>';
+      var added = await db.collection('invest_briefings').add(payload);
+      status.innerHTML = '<span class="ok">✅ 브리핑이 게시되었습니다. 알림을 보내는 중…</span>';
+      // 회원들에게 새 브리핑 알림 (알림을 켠 회원만) — 실패해도 게시는 끝났다
+      if (window.InvestNotify) InvestNotify.briefingPosted(added.id).then(function (n) {
+        if (status) status.innerHTML = '<span class="ok">✅ 브리핑이 게시되었습니다.' + (n != null ? ' 알림 ' + n + '건 발송' : '') + '</span>';
+      });
     }
     resetBriefingForm();
     await loadBriefings();

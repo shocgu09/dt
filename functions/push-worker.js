@@ -12,10 +12,11 @@
  */
 
 import { verifyIdToken, bearerToken } from './lib/verify-id-token.js';
+import { profileOf } from './lib/profile.js';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
@@ -35,6 +36,19 @@ export default {
           return await handleUnsubscribe(request, env);
         case '/api/push':
           return await handlePush(request, env);
+        // ── 재테크 알림 ──
+        case '/api/prefs':
+          return await handlePrefs(request, env);
+        case '/api/notify/briefing':
+          return await handleBriefingNotify(request, env);
+        case '/api/notify/test':
+          return await handleTestNotify(request, env);
+        case '/api/notify/comment':
+          return await handleCommentNotify(request, env);
+        case '/api/internal/notify':
+          return await handleInternalNotify(request, env);
+        case '/api/internal/broadcast':
+          return await handleInternalBroadcast(request, env);
         case '/api/health':
           return jsonResponse({ status: 'ok' });
         default:
@@ -64,12 +78,15 @@ async function handleSubscribe(request, env) {
   const subHash = await hashString(subscription.endpoint);
   const subKey = `sub:${uid}:${subHash}`;
 
-  // KV에 구독 저장
-  await env.PUSH_SUBS.put(subKey, JSON.stringify({
-    subscription,
-    createdAt: Date.now(),
-    userAgent: request.headers.get('User-Agent') || ''
-  }));
+  // KV에 구독 저장 — 앱을 열 때마다 다시 등록하므로, 같은 구독이면 쓰지 않는다 (KV 쓰기 무료 하루 1,000건)
+  const prev = await env.PUSH_SUBS.get(subKey, 'json');
+  if (!prev || JSON.stringify(prev.subscription) !== JSON.stringify(subscription)) {
+    await env.PUSH_SUBS.put(subKey, JSON.stringify({
+      subscription,
+      createdAt: Date.now(),
+      userAgent: request.headers.get('User-Agent') || ''
+    }));
+  }
 
   // 해당 유저의 구독 인덱스 업데이트
   const indexKey = `subs-index:${uid}`;
@@ -78,6 +95,7 @@ async function handleSubscribe(request, env) {
     existing.push(subKey);
     await env.PUSH_SUBS.put(indexKey, JSON.stringify(existing));
   }
+  await addToAll(env, uid);
 
   return jsonResponse({ success: true });
 }
@@ -448,4 +466,185 @@ function jsonResponse(data, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
   });
+}
+
+
+/* ===================================================================
+ * 재테크 알림 — 시황 브리핑 새 글 · 내 댓글에 답글 · 내 공유글 댓글 · 체결 · 미수/담보부족/반대매매
+ *  - 회원별 설정: prefs:{uid}  (없으면 모두 켬)
+ *  - 브리핑 일괄 발송용 전체 목록: idx:all  (구독이 있는 uid)
+ *  - 서버끼리(dt-stock·dt-digest)는 X-Internal-Key 로 부른다
+ *  - 무료 요금제는 호출 한 번에 외부 요청 50건 — 한 번에 PUSH_BUDGET 건까지만 보내고 나머지는 cursor 로 이어서
+ * =================================================================== */
+const PUSH_BUDGET = 40;
+const PREF_KEYS = ['briefing', 'reply', 'share', 'fill', 'margin'];
+
+async function addToAll(env, uid) {
+  const all = await env.PUSH_SUBS.get('idx:all', 'json') || [];
+  if (!all.includes(uid)) { all.push(uid); await env.PUSH_SUBS.put('idx:all', JSON.stringify(all)); }
+}
+
+async function prefsOf(env, uid) {
+  const p = await env.PUSH_SUBS.get('prefs:' + uid, 'json') || {};
+  const out = {};
+  for (const k of PREF_KEYS) out[k] = p[k] !== false;
+  return out;
+}
+
+function internalOk(request, env) {
+  const k = request.headers.get('X-Internal-Key');
+  return !!(env.INTERNAL_PUSH_KEY && k && k === env.INTERNAL_PUSH_KEY);
+}
+
+/** 한 회원의 모든 기기에 보낸다. budget.left 를 깎고, 설정이 꺼져 있으면 건너뛴다 */
+async function sendToUid(env, uid, msg, budget) {
+  if (msg.kind) {
+    const p = await prefsOf(env, uid);
+    if (p[msg.kind] === false) return { sent: 0, skipped: 'pref' };
+  }
+  const indexKey = 'subs-index:' + uid;
+  const subKeys = await env.PUSH_SUBS.get(indexKey, 'json') || [];
+  if (!subKeys.length) return { sent: 0, skipped: 'nosub' };
+  const payload = JSON.stringify({
+    title: String(msg.title || 'DT Club').slice(0, 60), body: String(msg.body || '').slice(0, 140),
+    url: typeof msg.url === 'string' && msg.url.startsWith('/') ? msg.url : '/invest/',
+    tag: String(msg.tag || msg.kind || 'invest').slice(0, 60), kind: msg.kind || null
+  });
+  let sent = 0;
+  const invalid = [];
+  for (const subKey of subKeys) {
+    if (budget.left <= 0) break;
+    const subData = await env.PUSH_SUBS.get(subKey, 'json');
+    if (!subData) { invalid.push(subKey); continue; }
+    budget.left--;
+    try {
+      const r = await sendWebPush(subData.subscription, payload, env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY);
+      if (r.ok) sent++;
+      else if (r.status === 404 || r.status === 410) invalid.push(subKey);
+    } catch (e) { console.error('push send error', e && e.message); }
+  }
+  if (invalid.length) {
+    for (const k of invalid) await env.PUSH_SUBS.delete(k);
+    await env.PUSH_SUBS.put(indexKey, JSON.stringify(subKeys.filter((k) => !invalid.includes(k))));
+  }
+  return { sent };
+}
+
+/* 알림 설정 — GET: 내 설정·구독 여부 / POST {prefs:{briefing:true,...}} */
+async function handlePrefs(request, env) {
+  const auth = await verifyAuth(request, env);
+  if (!auth.ok) return jsonResponse({ error: 'Unauthorized' }, 401);
+  if (request.method === 'POST') {
+    const b = await request.json().catch(() => ({}));
+    const cur = await prefsOf(env, auth.uid);
+    for (const k of PREF_KEYS) if (b.prefs && typeof b.prefs[k] === 'boolean') cur[k] = b.prefs[k];
+    await env.PUSH_SUBS.put('prefs:' + auth.uid, JSON.stringify(cur));
+    return jsonResponse({ prefs: cur });
+  }
+  const subs = await env.PUSH_SUBS.get('subs-index:' + auth.uid, 'json') || [];
+  return jsonResponse({ prefs: await prefsOf(env, auth.uid), devices: subs.length });
+}
+
+/* 서버 → 회원 알림 묶음 {messages:[{uid, kind, title, body, url, tag}]} (dt-stock 크론·커뮤니티 댓글) */
+async function handleInternalNotify(request, env) {
+  if (!internalOk(request, env)) return jsonResponse({ error: 'Forbidden' }, 403);
+  const b = await request.json().catch(() => ({}));
+  const list = Array.isArray(b.messages) ? b.messages.slice(0, 60) : [];
+  const budget = { left: PUSH_BUDGET };
+  let sent = 0;
+  for (const m of list) {
+    if (budget.left <= 0) break;
+    if (!m || typeof m.uid !== 'string' || !m.uid) continue;
+    sent += (await sendToUid(env, m.uid, m, budget)).sent;
+  }
+  return jsonResponse({ sent });
+}
+
+/** 전체 회원에게 (설정이 켜진 회원만) — cursor 부터 PUSH_BUDGET 건씩. 다 보내면 next 가 null */
+async function broadcast(env, msg, cursor) {
+  const all = await env.PUSH_SUBS.get('idx:all', 'json') || [];
+  const budget = { left: PUSH_BUDGET };
+  let i = Math.max(0, Number(cursor) || 0), sent = 0;
+  for (; i < all.length && budget.left > 0; i++) sent += (await sendToUid(env, all[i], msg, budget)).sent;
+  return { sent, next: i < all.length ? i : null };
+}
+
+/* dt-digest(AI 브리핑)가 부른다 {briefingId, title, cursor} */
+async function handleInternalBroadcast(request, env) {
+  if (!internalOk(request, env)) return jsonResponse({ error: 'Forbidden' }, 403);
+  const b = await request.json().catch(() => ({}));
+  if (!/^[A-Za-z0-9]{10,40}$/.test(String(b.briefingId || ''))) return jsonResponse({ error: 'bad id' }, 400);
+  return jsonResponse(await broadcast(env, briefingMsg(b.briefingId, b.title), b.cursor));
+}
+
+function briefingMsg(id, title) {
+  return { kind: 'briefing', title: '📰 새 시황 브리핑', body: String(title || '').slice(0, 100), url: '/invest/?briefing=' + id, tag: 'briefing-' + id };
+}
+
+async function firestoreGet(env, path, token) {
+  const r = await fetch(`https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID || 'dt-club'}/databases/(default)/documents/${path}`,
+    { headers: { Authorization: 'Bearer ' + token }, signal: AbortSignal.timeout(8000) });
+  if (!r.ok) return null;
+  return (await r.json()).fields || null;
+}
+
+/* 관리자가 브리핑을 게시한 직후 화면이 부른다 {briefingId, cursor} — 한 브리핑은 한 번만 (cursor 0 일 때 표시를 남긴다) */
+async function handleBriefingNotify(request, env) {
+  const auth = await verifyAuth(request, env);
+  if (!auth.ok) return jsonResponse({ error: 'Unauthorized' }, 401);
+  const token = bearerToken(request);
+  const prof = await profileOf(env, auth.uid, token);
+  if (!['admin', 'superadmin'].includes(prof.role)) return jsonResponse({ error: 'Forbidden' }, 403);
+  const b = await request.json().catch(() => ({}));
+  const id = String(b.briefingId || '');
+  if (!/^[A-Za-z0-9]{10,40}$/.test(id)) return jsonResponse({ error: 'bad id' }, 400);
+  const cursor = Number(b.cursor) || 0;
+  if (cursor === 0) {
+    if (await env.PUSH_SUBS.get('sent:briefing:' + id)) return jsonResponse({ sent: 0, next: null, already: true });
+    await env.PUSH_SUBS.put('sent:briefing:' + id, '1', { expirationTtl: 7 * 86400 });
+  }
+  const f = await firestoreGet(env, 'invest_briefings/' + id, token);
+  if (!f) return jsonResponse({ error: 'not found' }, 404);
+  const title = f.title && f.title.stringValue;
+  return jsonResponse(await broadcast(env, briefingMsg(id, title), cursor));
+}
+
+/* 시황 댓글을 단 직후 화면이 부른다 {briefingId, commentId} — 답글이면 원댓글 작성자에게 */
+const _commentSeen = new Map();
+async function handleCommentNotify(request, env) {
+  const auth = await verifyAuth(request, env);
+  if (!auth.ok) return jsonResponse({ error: 'Unauthorized' }, 401);
+  const token = bearerToken(request);
+  const b = await request.json().catch(() => ({}));
+  const bid = String(b.briefingId || ''), cid = String(b.commentId || '');
+  if (!/^[A-Za-z0-9]{10,40}$/.test(bid) || !/^[A-Za-z0-9]{10,40}$/.test(cid)) return jsonResponse({ error: 'bad id' }, 400);
+  if (_commentSeen.has(cid)) return jsonResponse({ sent: 0 });
+  _commentSeen.set(cid, 1); if (_commentSeen.size > 2000) _commentSeen.delete(_commentSeen.keys().next().value);
+  const c = await firestoreGet(env, `invest_briefings/${bid}/comments/${cid}`, token);
+  if (!c) return jsonResponse({ error: 'not found' }, 404);
+  // 본인이 방금 쓴 댓글만 (남의 댓글로 알림을 다시 울리지 못하게)
+  if ((c.authorUid && c.authorUid.stringValue) !== auth.uid) return jsonResponse({ error: 'Forbidden' }, 403);
+  const at = c.createdAt && Date.parse(c.createdAt.timestampValue);
+  if (!at || Date.now() - at > 10 * 60e3) return jsonResponse({ sent: 0 });
+  const parentId = c.parentId && c.parentId.stringValue;
+  if (!parentId) return jsonResponse({ sent: 0 });
+  const p = await firestoreGet(env, `invest_briefings/${bid}/comments/${parentId}`, token);
+  const to = p && p.authorUid && p.authorUid.stringValue;
+  if (!to || to === auth.uid) return jsonResponse({ sent: 0 });
+  const who = (c.authorName && c.authorName.stringValue) || '회원';
+  const text = (c.body && c.body.stringValue) || '';
+  const r = await sendToUid(env, to, { kind: 'reply', title: '💬 내 댓글에 답글', body: who + ': ' + text.slice(0, 80),
+    url: '/invest/?briefing=' + bid, tag: 'reply-' + bid }, { left: PUSH_BUDGET });
+  return jsonResponse(r);
+}
+
+/* 알림 설정 창의 '테스트 알림' — 나에게만 (1분에 한 번) */
+const _testAt = new Map();
+async function handleTestNotify(request, env) {
+  const auth = await verifyAuth(request, env);
+  if (!auth.ok) return jsonResponse({ error: 'Unauthorized' }, 401);
+  if (Date.now() - (_testAt.get(auth.uid) || 0) < 60e3) return jsonResponse({ error: '1분 뒤에 다시 보내 주세요' }, 429);
+  _testAt.set(auth.uid, Date.now());
+  const r = await sendToUid(env, auth.uid, { title: '🔔 재테크 알림 테스트', body: '이 기기에서 재테크 알림을 받을 수 있습니다', url: '/invest/', tag: 'invest-test' }, { left: 10 });
+  return jsonResponse(r);
 }

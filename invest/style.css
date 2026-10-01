@@ -1255,3 +1255,36 @@ body.wg-noscroll { overflow: hidden; }
 
 /* 한글 제목은 어절 단위로 줄바꿈 (넘칠 때만 단어 안에서 끊는다) */
 h1, h2, h3, h4 { word-break: keep-all; overflow-wrap: break-word; }
+
+/* ===== 재테크 알림 설정 (🔔) ===== */
+.nt-wrap { position: fixed; inset: 0; z-index: 1200; display: flex; align-items: flex-end; justify-content: center; }
+.nt-dim { position: absolute; inset: 0; background: rgba(0, 0, 0, .55); }
+.nt-sheet { position: relative; width: min(520px, 100%); max-height: 88vh; overflow-y: auto; background: var(--bg2);
+  border: 1px solid var(--border); border-top: 3px solid var(--primary); padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
+@media (min-width: 600px) { .nt-wrap { align-items: center; } }
+.nt-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.nt-head h3 { margin: 0; font-size: 1.02rem; font-weight: 800; }
+.nt-loading { padding: 24px 0; text-align: center; color: var(--text3); font-size: .85rem; }
+.nt-dev { display: flex; flex-direction: column; gap: 10px; padding: 12px; margin-bottom: 12px; background: var(--bg);
+  border: 1px solid var(--border); font-size: .82rem; font-weight: 600; color: var(--text2); line-height: 1.5; }
+.nt-dev.on { flex-direction: row; align-items: center; gap: 8px; color: var(--text); border-left: 3px solid var(--driver, #4ade80); }
+.nt-dev.warn { border-left: 3px solid var(--warning, #fbbf24); }
+.nt-dot { width: 7px; height: 7px; background: var(--driver, #4ade80); flex-shrink: 0; }
+.nt-enable { width: 100%; }
+.nt-list { border: 1px solid var(--border); }
+.nt-row { display: flex; align-items: center; gap: 12px; padding: 12px; cursor: pointer; position: relative; }
+.nt-row + .nt-row { border-top: 1px solid var(--border); }
+.nt-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.nt-txt b { font-size: .88rem; font-weight: 700; color: var(--text); }
+.nt-txt em { font-style: normal; font-size: .74rem; color: var(--text3); font-weight: 600; }
+/* 스위치 — 각진 토글 (실제 체크박스는 접근성용으로 겹쳐 둔다) */
+.nt-sw { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.nt-switch { flex-shrink: 0; width: 42px; height: 22px; background: var(--bg); border: 1px solid var(--border); position: relative; transition: background .15s; }
+.nt-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: var(--text3); transition: transform .15s, background .15s; }
+.nt-sw:checked + .nt-switch { background: rgba(var(--primary-rgb), .18); border-color: var(--primary); }
+.nt-sw:checked + .nt-switch::after { transform: translateX(20px); background: var(--primary); }
+.nt-sw:focus-visible + .nt-switch { outline: 2px solid var(--primary); outline-offset: 2px; }
+.nt-sw:disabled + .nt-switch { opacity: .5; }
+.nt-note { margin: 10px 2px 0; font-size: .74rem; color: var(--text3); line-height: 1.5; }
+@media (prefers-reduced-motion: reduce) { .nt-switch, .nt-switch::after { transition: none; } }
+.nt-on-txt { flex: 1; }

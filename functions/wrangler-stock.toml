@@ -35,6 +35,11 @@ crons = ["* 23 * * SUN-THU", "* 0-10 * * MON-FRI", "0-5 11 * * MON-FRI", "30-44 
 
 # 크론 작업을 실제로 도는 곳 (dt-stock-worker.js 의 MockCron) — 무료 요금제는 SQLite 방식만 된다.
 # 저장소는 쓰지 않는다. 크론 호출 CPU 10ms 한도를 피하려고 둔다
+# 재테크 알림(체결·미수·담보부족·공유글 댓글) — dt-push 로 직접. 키는 secret INTERNAL_PUSH_KEY
+[[services]]
+binding = "PUSH"
+service = "dt-push"
+
 [[durable_objects.bindings]]
 name = "MOCK_CRON"
 class_name = "MockCron"

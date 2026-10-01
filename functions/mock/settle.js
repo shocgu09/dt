@@ -13,6 +13,7 @@
 // 무료 요금제 D1 쿼리 한도(호출당 50) 때문에 한 번에 다 못 하면 다음 분 크론이 이어서 한다.
 // 모든 단계는 다시 돌아도 같은 결과가 되게 만든다 (처리 표시: misu_accrued_ymd, margin_calls 의 (종류, 날짜) 유일키, 주문 client_order_id 유일키).
 
+import * as Notify from './notify.js';
 import * as E from './engine.js';
 import * as K from './credit.js';
 
@@ -30,7 +31,8 @@ export async function nightly(db, season, now, stats = { q: 0 }) {
   const next = K.addTradingDays(S, 1);
   const stmts = [];
   const push = (st) => { stmts.push(st); };
-  let reads = 0;                       // 반복 안에서 따로 읽는 문장 (미수 해소) — 문장 한도에 함께 센다
+  let reads = 0;
+  const notes = [];                    // 정산이 실제로 저장된 뒤에 보낼 알림                       // 반복 안에서 따로 읽는 문장 (미수 해소) — 문장 한도에 함께 센다
 
   // ① 미수 — 결제일 기준 예수금 E = 예수금(D+2) − 결제 전 체결 증감 전부, 충당 X = E + 결제 전 매도대금
   stats.q += 1;
@@ -59,6 +61,7 @@ export async function nightly(db, season, now, stats = { q: 0 }) {
                          WHERE season_id=? AND uid=? AND misu_since IS NULL`).bind(S, S, freeze, freeze, season.id, a.uid));
         push(callUpsert(db, season, a.uid, 'misu', S, misu, null, cover < 0 ? next : null, cover < 0 ? 'due' : 'covered',
           { settled, cover, frozenUntil: freeze }, now));
+        if (cover < 0) notes.push(Notify.marginNote(a.uid, 'misu', { amount: misu, due: next }));
       } else if (a.misu_accrued_ymd !== S) {
         // 결제일마다 판정 — 첫날 10만 원 이하라 동결을 피했어도 미수가 불어나 10만 원을 넘으면 그날부터 동결 (키움: 결제일 23:30 기준)
         if (misu > K.RULES.misuFreezeMin && !(a.frozen_until && a.frozen_until >= S)) {
@@ -79,6 +82,7 @@ export async function nightly(db, season, now, stats = { q: 0 }) {
         }
         // 반대매매로도 충당되지 않았으면 다시 잡는다 (거래정지로 못 팔았거나 체결가가 낮았던 경우 — 추가 반대매매)
         push(callUpsert(db, season, a.uid, 'misu', S, misu, null, cover < 0 ? next : null, cover < 0 ? 'due' : 'covered', { settled, cover }, now));
+        if (cover < 0) notes.push(Notify.marginNote(a.uid, 'misu', { amount: misu, due: next }));
       }
     } else if (a.misu_since) {
       // 미수 해소 — 마지막 정산일부터 오늘까지의 연체이자를 매기고 닫는다
@@ -130,9 +134,11 @@ export async function nightly(db, season, now, stats = { q: 0 }) {
           // 추가담보 기한(다음 거래일)이 지났는데 여전히 부족 — 다음 거래일 아침 반대매매
           push(db.prepare(`UPDATE margin_calls SET status='due', due_ymd=?, amount=?, ratio=?, updated_at=? WHERE id=?`)
             .bind(next, deficit, r.ratio, now, earlier.id));
+          notes.push(Notify.marginNote(uid, 'collateral-due', { amount: deficit, due: next }));
         } else if (!open.some((c) => c.ymd <= S)) {
           // 오늘 이미 통보한 계좌는 건너뛴다 — 다시 넣으면 매분 같은 계좌가 문장 한도를 차지해 뒤 계좌가 영영 판정되지 않는다
           push(callUpsert(db, season, uid, 'collateral', S, deficit, r.ratio, K.addTradingDays(S, 2), 'open', { value: r.value, debt: r.debt }, now));
+          notes.push(Notify.marginNote(uid, 'collateral', { amount: deficit, ratio: r.ratio }));
         }
       } else if (open.length) {
         push(db.prepare(`UPDATE margin_calls SET status='resolved', ratio=?, updated_at=? WHERE season_id=? AND uid=? AND kind='collateral' AND status IN ('open','due','ordered')`)
@@ -143,6 +149,7 @@ export async function nightly(db, season, now, stats = { q: 0 }) {
         if (l.due_ymd > S) continue;
         if (u.calls.some((c) => c.kind === 'expiry' && c.status !== 'resolved' && JSON.parse(c.detail || '{}').lotId === l.id)) continue;
         push(callUpsert(db, season, uid, 'expiry', l.due_ymd + ':' + l.code, l.principal, null, next, 'due', { lotId: l.id, code: l.code }, now));
+        notes.push(Notify.marginNote(uid, 'expiry', { due: next }));
       }
     }
   }
@@ -152,6 +159,7 @@ export async function nightly(db, season, now, stats = { q: 0 }) {
                      AND uid NOT IN (SELECT uid FROM lots WHERE season_id=? AND principal > 0)`).bind(now, season.id, season.id));
   }
   if (stmts.length) { stats.q += stmts.length; await db.batch(stmts); }
+  if (stats.notes) stats.notes.push(...notes.filter(Boolean));
 }
 
 /** 담보비율 = (잔고 평가 + 현금 보유 × 대용비율 + 예수금) ÷ 원금 합계. 종가가 없으면 매입가로 본다 */

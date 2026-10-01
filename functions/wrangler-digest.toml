@@ -1,3 +1,8 @@
 name = "dt-digest"
 main = "digest-worker.js"
 compatibility_date = "2024-09-23"
+
+# 재테크 알림 — dt-push 로 직접 (공개 URL 을 거치지 않는다). 키는 secret INTERNAL_PUSH_KEY
+[[services]]
+binding = "PUSH"
+service = "dt-push"

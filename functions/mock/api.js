@@ -11,6 +11,7 @@ import * as C from './corp.js';
 import * as N from './nick.js';
 import * as K from './credit.js';
 import * as S from './settle.js';
+import * as Notify from './notify.js';
 
 const isCode = (c) => /^[0-9A-Z]{6}$/.test(c || '');
 
@@ -495,7 +496,13 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
         db.prepare(countSql).bind(share.id, share.id)
       ]);
       const count = await db.prepare(`SELECT comment_count AS n FROM shares WHERE id=?`).bind(share.id).first();
-      return { comment: publicComment({ id, uid, nickname: nick, body: text, created_at: now }, uid, isAdmin, await N.nicksFor(db, [uid])), commentCount: count ? count.n : null };
+      const nicks = await N.nicksFor(db, [uid]);
+      // 내 공유글에 남이 댓글을 달면 알림 (닉네임으로)
+      if (share.uid !== uid) {
+        await Notify.sendNotes(env, [{ uid: share.uid, kind: 'share', tag: 'share-' + share.id, url: '/invest/?tab=ranking',
+          title: '💬 내 공유글에 댓글', body: (nicks.get(uid) || '회원') + ': ' + text.slice(0, 80) }]);
+      }
+      return { comment: publicComment({ id, uid, nickname: nick, body: text, created_at: now }, uid, isAdmin, nicks), commentCount: count ? count.n : null };
     }
     if (withComments && sm[2] && method === 'DELETE') {
       const c = await db.prepare(`SELECT * FROM share_comments WHERE id=? AND share_id=?`).bind(sm[2], share.id).first();
@@ -1328,9 +1335,9 @@ export async function runCron(env, now = Date.now()) {
   if (!season) return;
 
   // 이 호출에서 쓴 D1 문장 수 — 여기까지 약 6건
-  const stats = { q: 6 };
+  const stats = { q: 6, notes: [] };
   // 23:30~ 결제일 정산 (미수·동결·연체이자, 담보비율, 만기) — 키움의 미수 변제 마감 23:30 에 맞춘다
-  if (t.hm >= 23 * 60 + 30) { await S.nightly(db, season, now, stats); return stats; }
+  if (t.hm >= 23 * 60 + 30) { await S.nightly(db, season, now, stats); await Notify.sendNotes(env, stats.notes); return stats; }
   // 08:00~08:59 이자 정기징수(매월 첫 영업일)·반대매매 주문 접수 — 체결 판정보다 먼저 (반대매매는 09:00 시가에 체결)
   if (t.hm >= E.PRE_FROM && t.hm < E.OPEN_AT) {
     await S.morning(db, season, now, stats, { quotesFor, kindOf }).catch((e) => console.error('settle morning failed', e && e.message));
@@ -1348,6 +1355,7 @@ export async function runCron(env, now = Date.now()) {
   if (t.hm >= E.AFTER_TO) await backfillCloses(db, season, now);
   // 시즌 마지막 날 20:00 — 애프터마켓까지 끝난 평가액(마지막 시간외 가격 포함)으로 최종 순위를 확정한다
   if (t.hm >= E.AFTER_TO && t.iso >= season.end_date) await finalizeLastDay(db, season, now);
+  await Notify.sendNotes(env, stats.notes);
   // stats.more — 문장 한도 때문에 남긴 일이 있다 (MockCron 이 몇 초 뒤 새 호출로 이어서 돈다)
   return stats;
 }
@@ -1419,6 +1427,7 @@ async function fillOpenOrders(db, season, now, stats = { q: 0 }) {
       const f = await E.tryFill(db, season, o, { quote: quotes[o.code], bars: bars[o.code] || null, account: acc, available, stats }, now);
       if (f) {
         filled++;
+        if (f.status !== 'partial' && stats.notes) stats.notes.push(Notify.fillNote(o, f));   // 화면을 안 보고 있을 때 체결 마무리 알림
         // 읽어 둔 잔고를 이어서 쓴다 — 예수금은 cash 한 칸으로 합쳐 두고(cash_short 0), 외상·재사용 불가분은 adj 로
         acc.cash = (acc.cash - (acc.cash_short || 0)) + f.cashDelta; acc.cash_short = 0;
         adj[o.uid] = (adj[o.uid] || 0) + (f.availDelta - f.cashDelta);

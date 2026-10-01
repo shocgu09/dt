@@ -22,7 +22,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"></noscript>
   <link rel="stylesheet" href="../tokens.css?v=3">
-  <link rel="stylesheet" href="style.css?v=65">
+  <link rel="stylesheet" href="style.css?v=66">
   <link rel="icon" href="../icon-192.png?v=3">
 </head>
 <body>
@@ -33,6 +33,7 @@
       <div class="header-actions">
         <!-- 모의투자 모드 — 켜면 계좌·랭킹·매수/매도가 생긴다. 회원 확인 뒤에만 보인다 -->
         <button id="mockToggle" onclick="toggleMockMode()" class="mock-btn" aria-pressed="false" style="display:none"><span class="dot"></span>모의투자</button>
+        <button id="notiBtn" onclick="InvestNotify.open()" class="theme-btn" aria-label="재테크 알림 설정" title="알림 설정" style="display:none">🔔</button>
         <button id="themeToggle" onclick="toggleTheme()" class="theme-btn" aria-label="테마 변경">🌙</button>
       </div>
     </header>
@@ -280,7 +281,8 @@
   <script src="market-ui.js?v=70"></script>
   <script src="coin.js?v=9"></script>
   <script src="us.js?v=10"></script>
-  <script src="app.js?v=102"></script>
+  <script src="notify.js?v=1"></script>
+  <script src="app.js?v=103"></script>
   <script src="../last-seen.js?v=1"></script>
   <script src="../kb.js?v=3"></script>
 </body>
