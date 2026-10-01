@@ -168,6 +168,7 @@ var Mock = (function () {
       renderBar();
       if (currentTab === 'account') renderAccount();
       renderTradeBar();
+      if (sheet && !sheet.busy) refreshSheetParts();
       // 체결이 늘었으면 열어 둔 체결 내역도 다시 받는다 — 위 보유 종목은 바뀌었는데 아래 내역에는 새 체결이 없었다
       if (prevFills != null && d.fills !== prevFills) {
         var hist = document.getElementById('mkHistory');
@@ -1828,6 +1829,7 @@ var Mock = (function () {
     bar.className = 'mk-tradebar';
     bar.dataset.key = key;
     bar.innerHTML = (pos || lots.length ? '<div class="mk-hold" id="mkHold">' + holdLines(curStock.code) + '</div>' : '')
+      + '<div id="mkTbPend">' + (season.joined ? pendListHtml(curStock.code) : '') + '</div>'
       + '<div class="mk-tb-btns">'
       + (season.joined
           ? '<button class="mk-buy" onclick="Mock.openSheet(\'buy\')">매수</button>'
@@ -1835,6 +1837,29 @@ var Mock = (function () {
           : '<button class="mk-buy" onclick="switchTab(\'account\'); Mock.openJoinFlow()">모의투자 참가하고 매수하기</button>')
       + '</div>';
     host.appendChild(bar);
+  }
+
+  /** 이 종목의 체결 대기 주문 — 종목 상세와 주문창에 같은 모양으로. 금액은 아직 체결 안 된 수량 기준 (시장가는 지금 시세로 어림) */
+  function pendOf(code) { return account && account.openOrders ? account.openOrders.filter(function (o) { return o.code === code; }) : []; }
+  function pendListHtml(code, orders) {
+    var list = orders || pendOf(code);
+    if (!list.length) return '';
+    var px = livePrice(code), buyAmt = 0, sellAmt = 0;
+    var rows = list.map(function (o) {
+      var left = o.qty - o.filledQty, isBuy = o.side === 'buy';
+      var p = o.type === 'limit' ? o.limitPrice : px;
+      var amt = p != null ? p * left : null;
+      if (amt != null) { if (isBuy) buyAmt += amt; else sellAmt += amt; }
+      var okId = UUID_RE.test(String(o.id || ''));
+      return '<div class="mk-pl-row"><span class="mk-side ' + (isBuy ? 'buy' : 'sell') + '">' + (isBuy ? '매수' : '매도') + '</span>'
+        + '<span class="mk-pl-main">' + ordTags(o) + (o.type === 'limit' ? fmtNum(o.limitPrice) + '원' : '시장가')
+        +   ' · ' + (o.filledQty ? fmtNum(o.filledQty) + '/' : '') + fmtNum(o.qty) + '주</span>'
+        + '<b class="mk-pl-amt">' + (amt != null ? (o.type === 'market' ? '약 ' : '') + won(amt) : '-') + '</b>'
+        + (okId && !o.forced ? '<button class="mini-btn danger mk-pl-x" onclick="Mock.cancel(\'' + o.id + '\', this)">취소</button>' : '')
+        + '</div>';
+    }).join('');
+    var sums = [buyAmt ? '<b class="up">매수 ' + won(buyAmt) + '</b>' : '', sellAmt ? '<b class="down">매도 ' + won(sellAmt) + '</b>' : ''].filter(Boolean).join(' · ');
+    return '<div class="mk-pendlist"><div class="mk-pl-head"><span><i class="mk-pend-dot" aria-hidden="true"></i>체결 대기 ' + list.length + '건</span><span>' + sums + '</span></div>' + rows + '</div>';
   }
 
   /** 종목 상세 보유 줄 — 현금 보유와 신용·담보 잔고 */
@@ -1850,8 +1875,11 @@ var Mock = (function () {
     return out.join('<br>');
   }
   function paintHold() {
+    if (!curStock) return;
+    var pe = document.getElementById('mkTbPend');
+    if (pe && season && season.joined) pe.innerHTML = pendListHtml(curStock.code);
     var el = document.getElementById('mkHold');
-    if (!el || !curStock) return;
+    if (!el) return;
     if (hasAny(curStock.code)) el.innerHTML = holdLines(curStock.code);
   }
 
@@ -2074,6 +2102,7 @@ var Mock = (function () {
       +   '<button class="seg' + (isBuy ? ' on buy' : '') + '" aria-pressed="' + isBuy + '" onclick="Mock.setSheet(\'side\',\'buy\')">매수</button>'
       +   '<button class="seg' + (!isBuy ? ' on sell' : '') + '" aria-pressed="' + !isBuy + '" onclick="Mock.setSheet(\'side\',\'sell\')"' + (isBuy && noHolding ? ' disabled title="보유한 주식이 없습니다"' : '') + '>매도</button>'
       + '</div>'
+      + '<div id="mkSheetPend">' + pendListHtml(s.code) + '</div>'
       + fundHtml(s)
       + '<div class="seg-row sub mk-seg2" role="group" aria-label="주문 종류">'
       +   '<button class="seg' + (s.type === 'limit' ? ' on' : '') + '" aria-pressed="' + (s.type === 'limit') + '" onclick="Mock.setSheet(\'type\',\'limit\')">지정가</button>'
@@ -2136,6 +2165,7 @@ var Mock = (function () {
     var note = document.getElementById('mkSessionNote'); if (note) note.innerHTML = sessionNote();
     var mx = document.getElementById('mkMaxQty'); if (mx) mx.textContent = maxText(n);
     var calc = document.querySelector('#mkSheet .mk-calc'); if (calc) calc.innerHTML = calcHtml(n);
+    var sp = document.getElementById('mkSheetPend'); if (sp) sp.innerHTML = pendListHtml(sheet.code);
   }
 
   function setSheet(key, val) {
@@ -3008,7 +3038,7 @@ var Mock = (function () {
   return {
     isOn: function () { return on; },
     setMode: setMode, onTab: onTab, renderTradeBar: renderTradeBar, onQuote: onQuote, onEscape: onEscape,
-    pendChipHtml: pendChipHtml,
+    pendChipHtml: pendChipHtml, pendListHtml: pendListHtml,
     join: join, openJoinFlow: openJoinFlow, joinStep2: joinStep2, closeJoin: closeJoin, cancel: cancel, loadHistory: loadHistory,
     openSheet: openSheet, closeSheet: closeSheet, tryCloseSheet: tryCloseSheet, setSheet: setSheet, input: input, step: step, pct: pct, submit: submit,
     askReview: askReview,
