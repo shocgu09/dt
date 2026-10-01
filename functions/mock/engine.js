@@ -368,10 +368,11 @@ export async function amendOrder(db, season, account, orderId, input, quote, tax
 export async function expireStale(db, now = Date.now()) {
   const t = kstNow(now);
   const r = await db.prepare(
-    `UPDATE orders SET status='expired', reserved=0, updated_at=?, reason='장 마감'
+    `UPDATE orders SET status='expired', reserved=0, updated_at=?,
+       reason=CASE WHEN trade_date = ? AND session = 'pre' THEN '프리마켓 종료' WHEN trade_date = ? AND session = 'after' THEN '애프터마켓 종료' ELSE '장 마감' END
      WHERE status IN ('open','partial') AND (trade_date < ? OR (trade_date = ? AND (
        (session = 'regular' AND ? >= ${FILL_TO}) OR (session = 'pre' AND ? >= ${PRE_TO}) OR (session = 'after' AND ? >= ${AFTER_TO}))))`
-  ).bind(now, t.ymd, t.ymd, t.hm, t.hm, t.hm).run();
+  ).bind(now, t.ymd, t.ymd, t.ymd, t.ymd, t.hm, t.hm, t.hm).run();
   return r.meta.changes;
 }
 
@@ -440,9 +441,14 @@ export async function tryFill(db, season, order, ctx, now = Date.now()) {
   } else if (order.pre_open && order.filled_qty === 0 && !order.vol_at_accept) {
     // 09:00 전에 받은 주문 — 시가 단일가. 오늘 날짜의 첫 분봉이 생겨야 "장이 열렸다"고 본다
     // (시세 필드만 보면 개장 직후 몇 초간 전일 값이 남아 있을 수 있다)
-    if (!todayBars.length) return null;
-    const open = todayBars[0].o;
-    if (hits(open)) { price = open; volCap = todayBars[0].v || 0; }
+    // 네이버 분봉은 개장 뒤 1~2분 늦게 생기는 종목이 있다 (2026-10-01 실측: 09:01 에 09:00 봉 없음) —
+    // 개장 1분이 지났고 시세에 오늘 시가·거래량이 있으면 그 시가로 체결한다 (전일 값이 남는 개장 직후 몇 초는 지났다)
+    let open = todayBars.length ? todayBars[0].o : null, openVol = todayBars.length ? (todayBars[0].v || 0) : 0;
+    if (open == null && t.hm >= OPEN_AT + 1 && q.marketStatus === 'OPEN' && q.krx.open > 0 && (q.krx.volume || 0) > 0) {
+      open = q.krx.open; openVol = q.krx.volume;
+    }
+    if (open == null) return null;
+    if (hits(open)) { price = open; volCap = openVol; }
     else {
       // 시가에 안 닿은 지정가는 이제부터 일반 대기 주문이 된다
       count(1);
