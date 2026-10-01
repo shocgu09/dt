@@ -215,7 +215,7 @@ var Mock = (function () {
       + '<span class="mk-bar-go">' + (src._stale ? escapeHtml(hmOf(src._recvAt)) + ' 기준' : '계좌 →') + '</span>';
   }
 
-  /** 상단 바의 체결 대기 칩 — 한 건이면 종목·방향·수량, 여러 건이면 건수. 매수만 빨강·매도만 파랑·섞이면 앰버 */
+  /** 상단 바의 체결 대기 칩 — 한 건이면 종목·방향·수량, 여러 건이면 매수·매도 건수. 매수만 빨강·매도만 파랑·섞이면 앰버 */
   function pendChipHtml(orders) {
     var list = orders || [];
     if (!list.length) return '';
@@ -227,7 +227,10 @@ var Mock = (function () {
       txt = escapeHtml(o.name) + ' ' + (o.forced ? '반대매매' : (o.side === 'buy' ? '매수' : '매도')) + ' '
         + (o.filledQty ? fmtNum(o.filledQty) + '/' : '') + fmtNum(o.qty) + '주';
     } else {
-      txt = '주문 ' + fmtNum(list.length) + '건';
+      // 여러 건 — 매수·매도를 따로 센다 (한쪽만 있으면 그쪽만)
+      var sells = list.length - buys;
+      txt = [buys ? '<b class="up">매수 ' + fmtNum(buys) + '건</b>' : '', sells ? '<b class="down">매도 ' + fmtNum(sells) + '건</b>' : '']
+        .filter(Boolean).join('<i class="mk-pend-sep"> · </i>');
     }
     return '<span class="mk-bar-pend ' + cls + '"><i class="mk-pend-dot" aria-hidden="true"></i>'
       + '<span class="mk-pend-txt">' + txt + '</span><em>체결 대기</em></span>';

@@ -581,3 +581,5 @@
   .mk-bar.has-pend .mk-bar-pend { order: 10; flex: 1 1 100%; }
   .mk-bar.has-pend .mk-bar-pend em { margin-left: auto; }
 }
+.mk-pend-txt b { font-weight: 800; }
+.mk-pend-sep { font-style: normal; color: var(--text3); }
