@@ -1740,7 +1740,8 @@ async function loadStockQuote() {
     if (!box) return;
     // 시계 대신 서버 상태를 신뢰 — 단 KRX 상태는 NXT 프리·애프터마켓(08:00~08:50 · 15:40~) 동안 CLOSE 라
     // 거래가 도는데 '장 마감'으로 보이고 폴링이 60초로 느려졌다. NXT 세션이 열려 있으면 열린 것으로 본다
-    setMarketStatus(q.session ? 'OPEN' : q.marketStatus);
+    // 동시호가(08:30~09:00 · 15:20~15:30)에 예상체결가가 오면 열린 것으로 본다 — 08:50~09:00 은 KRX·NXT 모두 CLOSE 라 60초 폴링으로 늦어졌다
+    setMarketStatus(q.session || q.expect ? 'OPEN' : q.marketStatus);
     // 딥링크로 코드만 알고 들어왔으면 이름을 시세 응답으로 채운다 (제목·최근 본 종목·공유 문구)
     if (q.name && curStock.name === code) {
       curStock.name = String(q.name);
@@ -1761,7 +1762,8 @@ async function loadStockQuote() {
       box.innerHTML =
           '<div class="sd-price" id="pxVal"></div>'
         + '<div class="sd-chg" id="pxChg"></div>'
-        + '<div class="sd-asof" id="pxAsOf"></div>';
+        + '<div class="sd-asof" id="pxAsOf"></div>'
+        + '<div class="sd-expect" id="pxExp" hidden></div>';
       box.dataset.built = '1';
     }
 
@@ -1785,6 +1787,22 @@ async function loadStockQuote() {
       // 평소(네이버 · KRX)와 다른 값을 보여 줄 때만 ! 로 이유를 밝힌다
       + (alt ? InfoTip.btn('대체 시세', '네이버 시세를 받지 못해 ' + (q.source === 'daum' ? '다음' : '야후') + ' 값을 대신 보여 줍니다. 몇 분 늦을 수 있고, 네이버 연결이 돌아오면 다시 네이버 값으로 바뀝니다.', 'sm')
         : sess ? InfoTip.btn('넥스트레이드(NXT) 시세', 'KRX 정규장(09:00~15:30) 밖이라 대체거래소 넥스트레이드의 체결가를 보여 줍니다.\n프리마켓 08:00~08:50 · 애프터마켓 15:40~20:00\n상·하한가 표시도 NXT 기준입니다.', 'sm') : '');
+
+    // 동시호가 예상체결가 — 이 동안은 체결이 없어 현재가가 마지막 체결가에 멈춘다 (워커가 08:30~09:00 · 15:20~15:30 에만 붙인다)
+    var xEl = document.getElementById('pxExp');
+    if (xEl) {
+      var ex = q.expect;
+      xEl.hidden = !ex;
+      if (ex) {
+        var xc = signClass(ex.change);
+        xEl.innerHTML = '<span class="sd-ex-tag">동시호가</span> 예상체결가 <b class="' + xc + '">' + fmtNum(ex.price) + '</b> '
+          + '<span class="' + xc + '">' + signMark(ex.change) + ' ' + fmtNum(Math.abs(ex.change)) + ' (' + fmtRate(ex.changeRate) + ')</span>'
+          + (ex.volume ? '<span class="sd-ex-vol"> · 예상 ' + fmtCompact(ex.volume) + '주</span>' : '')
+          + InfoTip.btn('예상체결가', '동시호가(장 시작 전 08:30~09:00 · 장 마감 전 15:20~15:30)에는 주문을 모아 두었다가 한 번에 체결합니다.\n'
+            + '그동안 현재가는 마지막 체결가에 멈추고, 지금까지 들어온 주문으로 계산한 예상 체결가를 보여 줍니다. 시가·종가는 이 가격 근처에서 정해집니다.\n'
+            + '출처: 한국투자증권', 'sm');
+      }
+    }
 
     // 상·하한가 — 프리·애프터마켓에는 NXT 가격을 보여 주므로 그 시장의 상태로 (KRX 값은 전날 것이 밤새 남아 있다)
     var ls = q.session ? (q.nxt && q.nxt.limitState) : q.limitState;

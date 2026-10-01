@@ -182,6 +182,28 @@ export const kis = {
       { FID_COND_MRKT_DIV_CODE: mrkt, FID_INPUT_ISCD: code });
   },
 
+  /** 주식 호가·예상체결 원본 (FHKST01010200) — output2 에 동시호가 예상체결가가 온다 */
+  async askingExpRaw(env, code) {
+    return getJson(env, '/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn', 'FHKST01010200',
+      { FID_COND_MRKT_DIV_CODE: 'J', FID_INPUT_ISCD: code });
+  },
+
+  /** 동시호가 예상체결가 { price, change, changeRate, volume } — 예상가가 없으면(장중·휴장) null */
+  async expected(env, code) {
+    const o = (await this.askingExpRaw(env, code)).output2 || {};
+    const price = n(o.antc_cnpr);
+    if (!(price > 0)) return null;
+    // 부호코드: 1 상한 2 상승 3 보합 4 하한 5 하락 (네이버와 같다)
+    const s = o.antc_cntg_vrss_sign, sign = s === '1' || s === '2' ? 1 : (s === '4' || s === '5' ? -1 : 0);
+    return {
+      price,
+      change: sign * Math.abs(n(o.antc_cntg_vrss) || 0),
+      changeRate: sign * Math.abs(n(o.antc_cntg_prdy_ctrt) || 0),
+      volume: n(o.antc_vol),
+      source: 'kis'
+    };
+  },
+
   async getFutures(env, mrkt, session, code = frontMonthCode()) {
     const j = await this.futuresRaw(env, mrkt, code);
     return mapFutures(j.output1 || {}, code, session);

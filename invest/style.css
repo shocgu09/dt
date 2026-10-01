@@ -533,6 +533,11 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
 .sd-chg { font-size: .88rem; font-weight: 800; margin-top: 3px; }
 .sd-chg .vs { color: var(--text3); font-weight: 600; font-size: .78rem; margin-left: 4px; }
 .sd-asof { font-size: .72rem; color: var(--text3); margin-top: 6px; }
+.sd-expect { font-size: .8rem; color: var(--text2); margin-top: 6px; padding: 6px 8px; border: 1px solid var(--border); background: var(--bg3); }
+.sd-expect b { font-weight: 800; }
+.sd-expect .info-tip.sm { float: right; margin-left: 8px; }
+.sd-ex-tag { display: inline-block; font-size: .68rem; font-weight: 700; padding: 1px 5px; margin-right: 4px; color: var(--on-primary); background: var(--primary); }
+.sd-ex-vol { color: var(--text3); }
 .state-dot { font-weight: 800; padding: 1px 6px; margin-left: 3px; }
 .state-dot.live { background: rgba(74,222,128,.14); color: #4ade80; }
 .state-dot.closed { background: var(--bg3); color: var(--text3); }

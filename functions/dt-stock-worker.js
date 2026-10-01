@@ -191,9 +191,9 @@ export default {
     try {
       if (path === '/api/quote') {
         // 호가를 펼친 종목 화면은 시세와 호가를 한 요청으로 받는다 — 3초 폴링 두 줄이 한 줄이 돼 요청 수가 절반
-        if (q.get('book') !== '1') return json(await handleQuote(env, q.get('code')));
+        if (q.get('book') !== '1') return json(await withExpect(env, await handleQuote(env, q.get('code')), q.get('code')));
         const [quote, book] = await Promise.all([handleQuote(env, q.get('code')), handleBook(env, q.get('code'))]);
-        return json({ ...quote, book });
+        return json({ ...(await withExpect(env, quote, q.get('code'))), book });
       }
       if (path === '/api/quotes') return json(await handleQuotes(env, q.get('codes')));
       if (path === '/api/book')   return json(await handleBook(env, q.get('code')));
@@ -285,6 +285,27 @@ async function handleQuote(env, code) {
       catch (e2) { return await yahoo.getQuote(code); }
     }
   });
+}
+
+/* 동시호가(장전 08:30~09:00 · 장 마감 15:20~15:30)에는 KRX 체결이 없어 네이버 현재가가 마지막 체결가에 멈춘다.
+ * 증권사 앱처럼 예상체결가를 보이도록 종목 상세(단건 시세)에만 KIS 예상체결가를 붙인다 — 목록(여러 종목)은 KIS 호출이 많아 붙이지 않는다.
+ * KIS 는 장이 끝난 뒤·휴장일에도 지난 예상가를 그대로 주므로(2026-10-01 실측) 시각과 휴장일(D1)로 거른다.
+ * KIS 가 늦거나 실패해도 시세는 기다리지 않는다 (2.5초) */
+function auctionWindow(d = new Date()) {
+  const k = new Date(d.getTime() + 9 * 3600 * 1000);
+  const day = k.getUTCDay(), hm = k.getUTCHours() * 60 + k.getUTCMinutes();
+  if (day === 0 || day === 6) return false;
+  return (hm >= 8 * 60 + 30 && hm < 9 * 60) || (hm >= 15 * 60 + 20 && hm < 15 * 60 + 30);
+}
+async function withExpect(env, quote, code) {
+  if (!quote || quote.error || !isCode(code) || !auctionWindow() || !kis.enabled(env)) return quote;
+  if (env.MOCK_DB && (await holidaySet(env.MOCK_DB).catch(() => new Set())).has(kstStamp().ymd)) return quote;
+  const ex = await Promise.race([
+    // 실패도 5초 담아 둔다 — KIS 가 막혔을 때 시세 요청마다 다시 부르지 않게
+    memo(`ex:${code}`, 5, () => kis.expected(env, code).then((v) => ({ v }), (e) => { console.warn('kis expect failed', String(e && e.message).slice(0, 120)); return { v: null }; })),
+    new Promise((r) => setTimeout(() => r(null), 2500))
+  ]).catch(() => null);
+  return ex && ex.v ? { ...quote, expect: ex.v } : quote;
 }
 
 /**
