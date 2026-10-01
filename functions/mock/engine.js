@@ -588,10 +588,12 @@ export async function tryFill(db, season, order, ctx, now = Date.now()) {
       + (isBuy || lot ? ')' : ` OR COALESCE((SELECT qty FROM positions WHERE season_id=? AND uid=? AND code=?), 0) < ?)`)
     ).bind(season.id, order.uid, order.id, fillId, ...(isBuy || lot ? [] : [...key, qty]))
   ];
+  // 주문 건수(순위표 등) — 이 주문의 첫 체결일 때만 센다. 위 잠금이 filled_qty 를 확인하므로 두 번 세지 않는다
+  const firstFill = order.filled_qty === 0 ? 1 : 0;
   if (isCredit) {
     const lotId = [season.id, order.uid, 'credit', order.code, settle].join(':');
     stmts.push(
-      db.prepare(`UPDATE accounts SET ${cs.sql}, fills = fills + 1 WHERE season_id=? AND uid=?`).bind(...cs.args, season.id, order.uid),
+      db.prepare(`UPDATE accounts SET ${cs.sql}, fills = fills + 1, orders = orders + ${firstFill} WHERE season_id=? AND uid=?`).bind(...cs.args, season.id, order.uid),
       db.prepare(`INSERT INTO lots (id, season_id, uid, kind, code, name, qty, cost, principal, rate, start_ymd, due_ymd, created_at)
                   VALUES (?,?,?,'credit',?,?,?,?,?,NULL,?,?,?)
                   ON CONFLICT (season_id, uid, kind, code, start_ymd) DO UPDATE SET
@@ -601,7 +603,7 @@ export async function tryFill(db, season, order, ctx, now = Date.now()) {
     order._lotId = lotId;
   } else if (isBuy) {
     stmts.push(
-      db.prepare(`UPDATE accounts SET ${cs.sql}, fills = fills + 1 WHERE season_id=? AND uid=?`).bind(...cs.args, season.id, order.uid),
+      db.prepare(`UPDATE accounts SET ${cs.sql}, fills = fills + 1, orders = orders + ${firstFill} WHERE season_id=? AND uid=?`).bind(...cs.args, season.id, order.uid),
       db.prepare(`INSERT INTO positions (season_id, uid, code, name, qty, cost) VALUES (?,?,?,?,?,?)
                   ON CONFLICT (season_id, uid, code) DO UPDATE SET qty = qty + excluded.qty, cost = cost + excluded.cost, name = excluded.name`)
         .bind(...key, order.name, qty, amount)
@@ -609,7 +611,7 @@ export async function tryFill(db, season, order, ctx, now = Date.now()) {
   } else if (lot) {
     // 실현손익 = 순매도대금 − 매도분 매입금액 (이자는 따로 — accounts.interest_paid)
     stmts.push(
-      db.prepare(`UPDATE accounts SET ${cs.sql}, fills = fills + 1, realized_pnl = realized_pnl + ?, interest_paid = interest_paid + ?
+      db.prepare(`UPDATE accounts SET ${cs.sql}, fills = fills + 1, orders = orders + ${firstFill}, realized_pnl = realized_pnl + ?, interest_paid = interest_paid + ?
                   WHERE season_id=? AND uid=?`)
         .bind(...cs.args, (amount - f - tax) - repay.cost, repay.interest, season.id, order.uid),
       db.prepare(`UPDATE lots SET qty = qty - ?, cost = cost - ?, principal = principal - ?, interest_paid = interest_paid - ?,
@@ -624,7 +626,7 @@ export async function tryFill(db, season, order, ctx, now = Date.now()) {
   } else {
     // 실현손익 = 순매도대금 − 매도분 매입금액(이동평균). 보유 행을 고치기 전에 읽어야 한다
     stmts.push(
-      db.prepare(`UPDATE accounts SET ${cs.sql}, fills = fills + 1,
+      db.prepare(`UPDATE accounts SET ${cs.sql}, fills = fills + 1, orders = orders + ${firstFill},
                     realized_pnl = realized_pnl + ? - COALESCE((SELECT CAST(ROUND(cost * 1.0 * ? / qty) AS INTEGER)
                                                               FROM positions WHERE season_id=? AND uid=? AND code=?), 0)
                   WHERE season_id=? AND uid=?`)
@@ -688,7 +690,7 @@ export async function tryFill(db, season, order, ctx, now = Date.now()) {
 export function valuate(accounts, positions, priceOf, lots = [], endYmd = null) {
   const byUid = {};
   for (const a of accounts) {
-    byUid[a.uid] = { uid: a.uid, nickname: a.nickname, cash: a.cash - (a.cash_short || 0), stock: 0, debt: 0, fills: a.fills, joined_at: a.joined_at, deposits: a.deposits || 0 };
+    byUid[a.uid] = { uid: a.uid, nickname: a.nickname, cash: a.cash - (a.cash_short || 0), stock: 0, debt: 0, fills: a.fills, orders: a.orders || 0, joined_at: a.joined_at, deposits: a.deposits || 0 };
   }
   for (const p of positions) {
     const row = byUid[p.uid];

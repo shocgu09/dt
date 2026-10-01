@@ -916,7 +916,7 @@ var Mock = (function () {
           '시세는 네이버 증권 기준입니다. 정규장은 KRX 가격, 프리 · 애프터마켓은 NXT · KRX 시간외 가격을 따르며 지연 · 오류가 있을 수 있습니다. 시세 제공 오류로 인한 체결은 확인 후 정정 또는 취소될 수 있습니다.',
           '체결은 실제 호가창이 아니라 <b>주문 뒤에 실제로 거래된 가격 · 수량</b>으로 판정합니다. 판정은 최대 1분 간격이라 실제보다 늦게 체결이 표시될 수 있고, 시장가는 판정 시점의 현재가로 체결되어 호가 스프레드 · 잔량 · VI 는 반영되지 않습니다.',
           '주문은 거래일(주말 · 휴장일 제외)에만 접수됩니다. 액면분할 · 병합 · 무상증자는 보유 수량에, 유상증자 권리락은 현금으로 자동 반영됩니다. 현금배당은 반영되지 않습니다.',
-          '순위표에 <b>닉네임 · 총자산 · 수익률 · 체결 건수</b>' + (s.creditOn ? '와 신용 · 미수 · 대출 사용 여부' : '') + '가 회원들에게 공개됩니다. 실명과 보유 종목은 공개되지 않습니다. 종목별 보유 인원 · 평균 수익률은 3명 이상일 때 이름 없이 합계로만 보입니다.',
+          '순위표에 <b>닉네임 · 총자산 · 수익률 · 주문 건수</b>' + (s.creditOn ? '와 신용 · 미수 · 대출 사용 여부' : '') + '가 회원들에게 공개됩니다. 실명과 보유 종목은 공개되지 않습니다. 종목별 보유 인원 · 평균 수익률은 3명 이상일 때 이름 없이 합계로만 보입니다.',
           '1인 1계정입니다. 부정한 방법이 확인되면 순위에서 제외됩니다.'
         ])
       + '<div class="mk-jf-h">📌 매매 규칙</div>'
@@ -1005,18 +1005,9 @@ var Mock = (function () {
     if (moreBtn) { moreBtn.disabled = true; moreBtn.textContent = '불러오는 중'; }
     if (reset) { histNext = null; el.innerHTML = '<div class="loading">불러오는 중</div>'; }
     try {
-      var d = await api('/history' + (histNext ? '?before=' + histNext : ''));
-      var rows = d.items.map(function (f) {
-        return '<div class="mk-ord">'
-          + '<span class="mk-side ' + (f.side === 'buy' ? 'buy' : 'sell') + '">' + (f.side === 'buy' ? '매수' : '매도') + '</span>'
-          + stockLogoHtml(f.code, f.name, null, 'sm')
-          + '<span class="mk-ord-main"><span class="mk-pos-name">' + histTags(f) + escapeHtml(f.name) + '</span>'
-          +   '<span class="mk-pos-sub">' + escapeHtml(kstHM(f.at)) + ' · ' + fmtNum(f.qty) + '주 × ' + fmtNum(f.price) + '원'
-          +   (f.settleYmd ? ' · 결제 ' + md(f.settleYmd) : '') + '</span></span>'
-          + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(f.qty * f.price) + '원</span>'
-          +   '<span class="mk-pos-sub">' + costText(f) + '</span></span>'
-          + '</div>';
-      }).join('');
+      // 주문별로 묶어서 받는다 — 한 주문이 여러 번에 나눠 체결되면 평균가·총수량 한 줄 (누르면 체결 건별로 펼친다)
+      var d = await api('/history?by=order' + (histNext ? '&before=' + histNext : ''));
+      var rows = d.items.map(histOrderHtml).join('');
       if (reset) el.innerHTML = rows || '<div class="empty">체결 내역이 없습니다.</div>';
       else { var more = el.querySelector('.mk-more'); if (more) more.remove(); el.insertAdjacentHTML('beforeend', rows); }
       histNext = d.next;
@@ -1027,6 +1018,48 @@ var Mock = (function () {
     } finally {
       _histBusy = false;
     }
+  }
+
+  /** 주문 한 줄 — 체결 수량·평균가와 미체결(대기·취소·만료) 수량을 따로 */
+  function histOrderHtml(o) {
+    var okId = UUID_RE.test(String(o.orderId || ''));
+    var left = o.qty - o.fillQty;
+    var leftTxt = left > 0
+      ? ' · <span class="mk-hist-left">미체결 ' + fmtNum(left) + '주' + (o.status === 'open' || o.status === 'partial' ? ' 대기' : o.status === 'cancelled' ? ' 취소' : o.status === 'expired' ? ' 만료' : '') + '</span>'
+      : '';
+    var multi = o.fills > 1 && okId;
+    return '<div class="mk-hist' + (multi ? ' multi' : '') + '" id="mkh-' + (okId ? o.orderId : '') + '">'
+      + '<div class="mk-ord"' + (multi ? ' role="button" tabindex="0" aria-expanded="false" onclick="Mock.toggleFills(\'' + o.orderId + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();Mock.toggleFills(\'' + o.orderId + '\')}"' : '') + '>'
+      + '<span class="mk-side ' + (o.side === 'buy' ? 'buy' : 'sell') + '">' + (o.side === 'buy' ? '매수' : '매도') + '</span>'
+      + stockLogoHtml(o.code, o.name, null, 'sm')
+      + '<span class="mk-ord-main"><span class="mk-pos-name">' + histTags(o) + escapeHtml(o.name) + '</span>'
+      +   '<span class="mk-pos-sub">' + escapeHtml(kstHM(o.lastAt)) + ' · 체결 ' + fmtNum(o.fillQty) + '주 × ' + (o.fills > 1 ? '평균 ' : '') + fmtNum(o.avgPrice) + '원'
+      +   leftTxt + (o.settleYmd ? ' · 결제 ' + md(o.settleYmd) : '')
+      +   (multi ? ' · <span class="mk-hist-more">' + fmtNum(o.fills) + '건 ▾</span>' : '') + '</span></span>'
+      + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(o.amount) + '원</span>'
+      +   '<span class="mk-pos-sub">' + costText(o) + '</span></span>'
+      + '</div><div class="mk-hist-fills" hidden></div></div>';
+  }
+  /** 여러 번에 나눠 체결된 주문 — 체결 건별로 펼친다 (처음 펼칠 때 한 번 받는다) */
+  async function toggleFills(orderId) {
+    if (!UUID_RE.test(String(orderId))) return;
+    var box = document.getElementById('mkh-' + orderId);
+    if (!box) return;
+    var list = box.querySelector('.mk-hist-fills'), head = box.querySelector('.mk-ord'), more = box.querySelector('.mk-hist-more');
+    var open = list.hidden;
+    list.hidden = !open;
+    if (head) head.setAttribute('aria-expanded', String(open));
+    if (more) more.textContent = more.textContent.replace(open ? '▾' : '▴', open ? '▴' : '▾');
+    if (!open || list.dataset.loaded) return;
+    list.innerHTML = '<div class="mk-hist-fill loading">불러오는 중</div>';
+    try {
+      var d = await api('/history/fills?order=' + encodeURIComponent(orderId));
+      list.innerHTML = d.items.map(function (f, i) {
+        return '<div class="mk-hist-fill"><span>' + (i + 1) + '</span><span>' + escapeHtml(hmOf(f.at)) + '</span>'
+          + '<span>' + fmtNum(f.qty) + '주 × ' + fmtNum(f.price) + '원</span><b>' + fmtNum(f.qty * f.price) + '원</b></div>';
+      }).join('');
+      list.dataset.loaded = '1';
+    } catch (e) { list.innerHTML = '<div class="mk-hist-fill">' + escapeHtml(e.message) + '</div>'; }
   }
 
   function histTags(f) {
@@ -1146,7 +1179,7 @@ var Mock = (function () {
           + '<span class="mk-rank-no">' + medal + '</span>'
           + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(r.nickname) + (r.realName ? ' <small class="mk-real" title="실명 (관리자에게만 보임)">' + escapeHtml(r.realName) + '</small>' : '') + (r.me ? ' <i class="mk-tag">나</i>' : '')
           +   (r.credit ? ' <i class="mk-tag cr" title="신용·담보대출·미수 사용 중 — 순자산은 빌린 돈을 뺀 금액">신용</i>' : '') + '</span>'
-          +   '<span class="mk-pos-sub">체결 ' + fmtNum(r.fills) + '건</span></span>'
+          +   '<span class="mk-pos-sub">주문 ' + fmtNum(r.orders != null ? r.orders : r.fills) + '건</span></span>'
           + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(r.equity) + '</span>'
           +   '<span class="mk-pos-pnl ' + signClass(rr) + '">' + fmtRate(rr) + '</span></span>'
           + '</div>';
@@ -3039,7 +3072,7 @@ var Mock = (function () {
   return {
     isOn: function () { return on; },
     setMode: setMode, onTab: onTab, renderTradeBar: renderTradeBar, onQuote: onQuote, onEscape: onEscape,
-    pendChipHtml: pendChipHtml, pendListHtml: pendListHtml,
+    pendChipHtml: pendChipHtml, pendListHtml: pendListHtml, histOrderHtml: histOrderHtml, toggleFills: toggleFills,
     join: join, openJoinFlow: openJoinFlow, joinStep2: joinStep2, closeJoin: closeJoin, cancel: cancel, loadHistory: loadHistory,
     openSheet: openSheet, closeSheet: closeSheet, tryCloseSheet: tryCloseSheet, setSheet: setSheet, input: input, step: step, pct: pct, submit: submit,
     askReview: askReview,

@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   nickname     TEXT NOT NULL,
   cash         INTEGER NOT NULL CHECK (cash >= 0),
   fills        INTEGER NOT NULL DEFAULT 0,
+  orders       INTEGER NOT NULL DEFAULT 0,      -- 체결된 주문 건수 (첫 체결 때 +1)
   realized_pnl INTEGER NOT NULL DEFAULT 0,
   joined_at    INTEGER NOT NULL,
   status       TEXT NOT NULL DEFAULT 'active',    -- active | hidden

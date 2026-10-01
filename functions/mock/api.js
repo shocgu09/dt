@@ -577,7 +577,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       asOf: board.asOf, live: board.live, closing: board.closing,
       // uid 는 내보내지 않는다 — 순위표에는 닉네임만 (key 는 갱신 간 순위 변동 표시용 해시). 실명은 관리자에게만
       rows: board.rows.map((r) => ({ key: rowKey(r.uid), rank: r.rank, nickname: nicks.get(r.uid) || '회원',
-        ...(isAdmin ? { realName: r.nickname } : {}), equity: r.equity, principal: season.seed + (r.deposits || 0), fills: r.fills, me: r.uid === uid,
+        ...(isAdmin ? { realName: r.nickname } : {}), equity: r.equity, principal: season.seed + (r.deposits || 0), fills: r.fills, orders: r.orders, me: r.uid === uid,
         // 신용·담보대출을 쓰는 계좌 — 순자산은 빚을 뺀 값이지만 빌린 돈으로 굴리는 중임을 알 수 있게
         credit: r.debt > 0 || r.cash < 0 })),
       me: me ? { rank: me.rank, equity: me.equity, principal: season.seed + (me.deposits || 0) } : null
@@ -770,6 +770,40 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     };
   }
 
+  /* 체결 내역 — 주문별로 묶어서 (증권사 '주문별 체결' 보기). 한 주문이 여러 번에 나눠 체결되면 평균가·총수량 한 줄,
+     체결 건별은 /history/fills?order= 로 펼친다. 다음 페이지 기준은 (마지막 체결 시각, 주문 id) */
+  if (path === '/history' && method === 'GET' && url.searchParams.get('by') === 'order') {
+    const cur = String(url.searchParams.get('before') || '');
+    const mm = /^(\d{1,15})_([0-9a-f-]{36})$/i.exec(cur);
+    const bAt = mm ? Number(mm[1]) : now + 1, bId = mm ? mm[2] : 'ffffffff';
+    const rows = (await db.prepare(
+      `SELECT g.*, (SELECT kind FROM lots WHERE id = g.lot_id) AS lot_kind FROM (
+       SELECT o.id, o.code, o.name, o.side, o.type, o.qty, o.filled_qty, o.status, o.limit_price, o.credit, o.forced, o.reason,
+              COALESCE(o.tax_free, 0) AS tax_free, MAX(f.at) AS last_at, MIN(f.at) AS first_at, COUNT(*) AS n,
+              SUM(f.qty) AS fq, SUM(f.qty * f.price) AS amt, SUM(f.fee) AS fee, SUM(f.tax) AS tax,
+              SUM(COALESCE(f.loan, 0)) AS loan, SUM(COALESCE(f.interest, 0)) AS interest, MAX(f.settle_ymd) AS settle_ymd, MAX(f.lot_id) AS lot_id
+       FROM fills f JOIN orders o ON o.id = f.order_id
+       WHERE f.season_id=? AND f.uid=?
+       GROUP BY o.id
+       HAVING MAX(f.at) < ? OR (MAX(f.at) = ? AND o.id < ?)) g
+       ORDER BY g.last_at DESC, g.id DESC LIMIT 30`
+    ).bind(season.id, uid, bAt, bAt, bId).all()).results || [];
+    const last = rows[rows.length - 1];
+    const items = rows.map((r) => ({
+      orderId: r.id, code: r.code, name: r.name, side: r.side, type: r.type, qty: r.qty, filledQty: r.filled_qty, status: r.status,
+      limitPrice: r.limit_price, credit: r.credit, forced: r.forced, reason: r.reason, taxFree: !!r.tax_free,
+      lastAt: r.last_at, firstAt: r.first_at, fills: r.n, fillQty: r.fq, amount: r.amt, avgPrice: r.fq ? Math.round(r.amt / r.fq) : null,
+      fee: r.fee, tax: r.tax, loan: r.loan, interest: r.interest, settleYmd: r.settle_ymd || null, lotKind: r.lot_kind || null
+    }));
+    return { items, next: rows.length === 30 ? `${last.last_at}_${last.id}` : null };
+  }
+  if (path === '/history/fills' && method === 'GET') {
+    const oid = String(url.searchParams.get('order') || '');
+    if (!/^[0-9a-f-]{36}$/i.test(oid)) throw new HttpError(400, '주문을 찾을 수 없습니다');
+    const rows = (await db.prepare(`SELECT id, qty, price, fee, tax, at, loan, interest FROM fills WHERE order_id=? AND uid=? ORDER BY at, id`)
+      .bind(oid, uid).all()).results || [];
+    return { items: rows };
+  }
   if (path === '/history' && method === 'GET') {
     // 다음 페이지 기준은 (시각, id) — 크론 한 번의 체결은 모두 같은 시각이라 시각만 쓰면 경계에서 빠진다.
     // before 는 "시각" 또는 "시각_id" (옛 화면이 보내는 숫자도 받는다)
@@ -1039,7 +1073,7 @@ async function accountView(db, season, account, now, isAdmin = false) {
     season: { id: season.id, name: season.name, seed: season.seed, endDate: season.end_date, feeRate: season.fee_rate, taxRate: season.tax_rate },
     cash: net, available: net + adj - reserved, reserved, stock, equity, deposits, principal,
     returnRate: (equity - principal) / principal * 100,
-    realizedPnl: acc.realized_pnl, buyFees, fills: acc.fills,
+    realizedPnl: acc.realized_pnl, buyFees, fills: acc.fills, orders: acc.orders || 0,
     // 결제·신용 — 신용 기능이 꺼진 시즌도 값은 내려준다 (장부에 남은 잔고가 있을 수 있다)
     settle: { d0, d1, d2: net, misu: Math.max(0, -d0), d1Ymd, d2Ymd: K.addTradingDays(today, 2) },
     credit: {
@@ -1107,7 +1141,7 @@ function liveBoard(db, season, now) {
 async function leaderboard(db, season, now, official, asOfYmd) {
   // 현금과 보유를 한 트랜잭션(batch)으로 읽는다 — 사이에 체결이 끼면 그 회원 자산이 틀린 채 10초 캐시에 올라갔다
   const [accRes, posRes, lotRes] = await db.batch([
-    db.prepare(`SELECT uid, nickname, cash, cash_short, fills, joined_at, deposits FROM accounts WHERE season_id=? AND status='active'`).bind(season.id),
+    db.prepare(`SELECT uid, nickname, cash, cash_short, fills, orders, joined_at, deposits FROM accounts WHERE season_id=? AND status='active'`).bind(season.id),
     db.prepare(`SELECT uid, code, qty, cost FROM positions WHERE season_id=?`).bind(season.id),
     // 신용·담보 잔고 — 평가에 더하고 원금·이자는 뺀다 (순자산)
     db.prepare(`SELECT uid, kind, code, qty, cost, principal, rate, start_ymd, interest_paid FROM lots WHERE season_id=? AND (qty > 0 OR principal > 0)`).bind(season.id)

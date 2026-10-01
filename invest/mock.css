@@ -596,3 +596,16 @@
 .mk-pl-amt { flex-shrink: 0; font-weight: 800; color: var(--text); }
 .mk-pl-x { flex-shrink: 0; min-height: 28px; padding: 0 9px; font-size: .72rem; }
 .mk-sheet .mk-pendlist { margin: 0 0 12px; }
+
+/* 체결 내역 — 주문별 한 줄, 여러 번에 나눠 체결된 주문은 눌러서 펼친다 */
+.mk-hist.multi > .mk-ord { cursor: pointer; }
+.mk-hist.multi > .mk-ord:hover { background: rgba(var(--primary-rgb), .05); }
+.mk-hist.multi > .mk-ord:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.mk-hist-more { color: var(--primary-light); font-weight: 700; }
+.mk-hist-left { color: var(--text3); font-weight: 700; }
+.mk-hist-fills { margin: -2px 0 8px 46px; border-left: 2px solid var(--border); }
+.mk-hist-fill { display: grid; grid-template-columns: 22px 64px 1fr auto; gap: 8px; align-items: center;
+  padding: 5px 10px; font-size: .74rem; color: var(--text2); font-variant-numeric: tabular-nums; }
+.mk-hist-fill span:first-child { color: var(--text3); }
+.mk-hist-fill b { color: var(--text); font-weight: 700; }
+.mk-hist-fill.loading { display: block; color: var(--text3); }
