@@ -131,7 +131,7 @@ export default {
       const { results } = await memo('health', 60, async () => ({
         results: Object.fromEntries(await Promise.all([
           probe('naver.quote', () => naver.getQuote('005930')),
-          probe('naver.book',  () => naver.getOrderBook('005930')),
+          probe('naver.book',  () => naver.getOrderBook('005930').catch((e) => { if (/book empty/.test(e.message)) return {}; throw e; })),   // 빈 호가(개장 뒤 20분·장외)는 장애가 아니다
           probe('naver.index', () => naver.getIndex()),
           probe('daum.quote',  () => daum.getQuote('005930')),
           probe('yahoo.quote', () => yahoo.getQuote('005930', 'KOSPI')),
@@ -309,7 +309,12 @@ async function handleBook(env, code) {
   // 호가는 네이버에만 있다 — 실패하면 폴백 없이 명시적으로 알린다
   return memo(`b:${code}`, TTL.book, async () => {
     try { return await naver.getOrderBook(code); }
-    catch (e) { return { code, unavailable: true, reason: '호가 일시 제공 중단', source: 'naver' }; }
+    catch (e) {
+      // 네이버 호가는 20분 지연이라 개장 뒤 20분 동안은 빈 칸이다 (2026-10-01 실측)
+      const hm = (Math.floor(Date.now() / 60000) + 9 * 60) % 1440;
+      const early = hm >= 8 * 60 && hm < 9 * 60 + 20;
+      return { code, unavailable: true, reason: !/book empty/.test(e && e.message) ? '호가 일시 제공 중단' : early ? '호가는 20분 지연이라 09:20 부터 보입니다' : '지금은 호가 정보가 없습니다', source: 'naver' };
+    }
   });
 }
 

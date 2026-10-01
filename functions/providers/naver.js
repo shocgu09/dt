@@ -154,7 +154,7 @@ export const naver = {
     const d = await getJson(`https://m.stock.naver.com/api/stock/${code}/askingPrice`);
     const map = (arr) => (arr || []).map((x) => ({
       price: num(x.price), count: num(x.count), rate: Number(x.rate) || 0
-    }));
+    })).filter((x) => x.price != null && x.price > 0);   // 장 시작 20분 동안(20분 지연 데이터)은 가격이 빈 칸으로 온다
     const ask = map(d.sellInfo);   // 매도호가: 높은 가격 → 낮은 가격
     const bid = map(d.buyInfos);   // 매수호가: 높은 가격 → 낮은 가격
     if (!ask.length && !bid.length) throw new Error('naver: book empty');
