@@ -189,8 +189,6 @@ var Mock = (function () {
         if (currentTab === 'account') renderAccount();
         return;
       }
-      // 시세를 못 받았다 — 옛 값을 실시간처럼 두지 않고 받은 시각을 밝힌다 (다음 갱신이 성공하면 새 응답으로 사라진다)
-      if (account) { account._stale = true; renderBar(); }
       if (currentTab === 'account') renderAccount(e.message);
     }
   }
@@ -213,7 +211,7 @@ var Mock = (function () {
       + rateHtml(src.returnRate)
       + (src.rank ? '<span class="mk-bar-rank">' + src.rank + '위<i>/' + fmtNum(src.participants) + '</i></span>' : '')
       + pendChipHtml(account.openOrders)
-      + '<span class="mk-bar-go">' + (src._stale ? escapeHtml(hmOf(src._recvAt)) + ' 기준' : '계좌 →') + '</span>';
+      + '<span class="mk-bar-go">계좌 →</span>';
   }
 
   /** 상단 바의 체결 대기 칩 — 한 건이면 종목·방향·수량, 여러 건이면 매수·매도 건수. 매수만 빨강·매도만 파랑·섞이면 앰버 */
@@ -341,8 +339,7 @@ var Mock = (function () {
       +   cell('실현손익', '<span class="' + signClass(a.realizedPnl) + '">' + (a.realizedPnl > 0 ? '+' : '') + fmtNum(a.realizedPnl) + '원</span>'
             + (a.buyFees ? '<small class="mk-cell-sub">매수 수수료 −' + fmtNum(a.buyFees) + '원</small>' : ''))
       + '</div>'
-      + '<div class="mk-note">' + (a._stale ? '<b>' + escapeHtml(hmOf(a._recvAt)) + ' 기준 평가</b> · 최신 시세를 받지 못했습니다'
-          : a.closing ? '시즌 종료 · 최종 순위 집계 중'
+      + '<div class="mk-note">' + (a.closing ? '시즌 종료 · 최종 순위 집계 중'
           : (a.live ? '실시간 평가 (08:00~20:00, 시간외 포함)' : '장 마감 · 최종 체결가 기준 평가') + ' · 최종 순위는 마지막 날 20:00 평가액 기준')
       + '</div>'
       + '</div>';
