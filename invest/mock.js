@@ -366,12 +366,13 @@ var Mock = (function () {
     }).join('') : (lotRows ? '' : '<div class="empty">보유 종목이 없습니다.<br>시세 탭에서 종목을 선택해 매수할 수 있습니다.</div>');
     h += '</section>';
 
-    h += creditHtml(a);
-
+    // 미체결 주문은 보유 종목 바로 아래 — 방금 낸 주문을 보유와 함께 본다
     if (a.openOrders.length) {
       h += '<section class="m-section"><div class="m-head"><h3>⏳ 미체결 주문</h3><span class="m-hint">' + a.openOrders.length + '건</span></div>'
         + a.openOrders.map(orderRowHtml).join('') + '</section>';
     }
+
+    h += creditHtml(a);
 
     h += reviewSectionHtml();
 
