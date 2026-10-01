@@ -295,15 +295,15 @@ var Mock = (function () {
       + ((a.credit && a.credit.lots) || []).reduce(function (t, l) { return t + (l.qty > 0 ? l.pnl : 0); }, 0);
     var h = '<div class="mk-card mk-summary">'
       + '<div class="mk-sum-head"><span class="mk-sum-end">' + escapeHtml(s.name) + '<span class="mk-dim">· ' + (md(s.endDate) || escapeHtml(s.endDate)) + ' 종료</span></span>'
-      // 오른쪽: 출석 체크 작은 버튼(renderAttend 가 채운다) + 계좌 보는 법
-      + '<span class="mk-sum-end"><span id="mkAttend"></span>' + InfoTip.btn('계좌 보는 법', [
+      // 오른쪽: 계좌 보는 법 + 출석 체크 작은 버튼(renderAttend 가 채운다)
+      + '<span class="mk-sum-end">' + InfoTip.btn('계좌 보는 법', [
           '· 총자산 = 현금 + 보유 주식 (현재가로 평가)',
           '· 주문 가능: 현금에서 미체결 매수 주문이 묶어 둔 돈(주문 대기)을 뺀 금액' + (a.credit && creditActive(a) ? ' (증거금률 "종목별"이면 결제 전 외상분을 더하고, 결제 전에 산 주식을 되판 대금 중 재사용할 수 없는 몫을 뺍니다)' : ''),
           '· 평가손익: 보유 주식의 지금 가치 − 산 금액',
           '· 실현손익: 판 금액에서 수수료·세금과 산 금액(평균 단가)을 뺀 손익',
           '· 매수 수수료는 산 금액에 넣지 않습니다. 평가손익 + 실현손익 − 매수 수수료' + (a.credit && creditActive(a) ? ' − 이자(낸 이자 + 쌓인 이자)' : '') + ' = 총손익입니다.',
           '· 원금 = 시드머니 + 출석금. 출석금은 수익이 아니라서 손익·수익률은 원금 기준으로 계산합니다 (순위는 총자산 기준).'
-        ].concat(a.credit && creditActive(a) ? ['· 신용·담보대출·미수가 있으면 총자산은 순자산입니다: 예수금 + 보유 주식 − 융자·대출 원금 − 쌓인 이자'] : []).join('\n'), 'sm') + '</span></div>'
+        ].concat(a.credit && creditActive(a) ? ['· 신용·담보대출·미수가 있으면 총자산은 순자산입니다: 예수금 + 보유 주식 − 융자·대출 원금 − 쌓인 이자'] : []).join('\n'), 'sm') + '<span id="mkAttend"></span></span></div>'
       + '<div class="mk-eq">' + won(a.equity) + '</div>'
       + '<div class="mk-eq-sub">' + rateHtml(a.returnRate) + ' <span class="' + signClass(a.equity - principal) + '">'
       +   (a.equity - principal > 0 ? '+' : '') + fmtNum(a.equity - principal) + '원</span>'
