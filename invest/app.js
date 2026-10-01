@@ -35,28 +35,36 @@ function toggleTheme() {
   if (btn) btn.textContent = saved === 'light' ? '☀️' : '🌙';
 })();
 
-/* ===== Firebase 초기화 + 회원 게이트 ===== */
+/* ===== Firebase 초기화 + 회원 확인 =====
+ * 시황 · 시세는 비회원(게스트 = 익명 로그인)도 본다. 모의투자 · 댓글 · 관심종목 · 알림만 회원 전용이다.
+ * 로그인 세션이 없으면 메인 화면처럼 게스트로 조용히 로그인한다 (공유 링크로 바로 들어온 경우).
+ * 강퇴·탈퇴로 role 이 없는 계정도 게스트와 같게 본다. */
 try {
   firebase.initializeApp(firebaseConfig);
   db = firebase.firestore();
-  var _authUid = null;
+  var _shownFor = null;     // 화면을 그린 계정 — 'guest' 또는 회원 uid
   firebase.auth().onAuthStateChanged(function(user) {
-    // 다른 탭에서 계정을 바꾸면 이 탭도 새 회원으로 다시 그린다 — 앞 회원의 관심종목·권한이 남지 않게
-    var uid = user && !user.isAnonymous ? user.uid : null;
-    if (_authUid && uid !== _authUid) { location.reload(); return; }
-    _authUid = uid;
+    if (!user) {
+      firebase.auth().signInAnonymously().catch(function () { showGate(); });
+      return;
+    }
+    // 다른 탭에서 로그인·로그아웃·계정 전환을 하면 이 탭도 새로 그린다 — 앞 계정의 관심종목·권한이 남지 않게
+    var key = user.isAnonymous ? 'guest' : user.uid;
+    if (_shownFor && key !== _shownFor) { location.reload(); return; }
     currentUser = user;
-    if (!user || user.isAnonymous) { showGate(); return; }
+    if (user.isAnonymous) { _shownFor = key; showMain(); return; }
     db.collection('users').doc(user.uid).get().then(function(doc) {
       var data = doc.exists ? doc.data() : null;
       var role = data && data.role;
-      if (!role) { showGate(); return; }
-      isMember = true;
-      isAdmin = (role === 'admin' || role === 'superadmin');
-      if (typeof purgeLegacyRecent === 'function') purgeLegacyRecent();
-      myName = (data && (data.name || data.displayName)) || user.displayName || '회원';
+      _shownFor = key;
+      if (role) {
+        isMember = true;
+        isAdmin = (role === 'admin' || role === 'superadmin');
+        if (typeof purgeLegacyRecent === 'function') purgeLegacyRecent();
+        myName = (data && (data.name || data.displayName)) || user.displayName || '회원';
+      }
       showMain();
-    }).catch(function() { showGate(); });
+    }).catch(function() { _shownFor = key; showMain(); });
   });
 } catch (e) {
   console.log('Firebase 미연결', e);
@@ -80,7 +88,7 @@ function showMain() {
   _briefingsReady = loadBriefings();
   loadConfig();
   initMockMode();
-  var nb = document.getElementById('notiBtn'); if (nb) nb.style.display = '';
+  var nb = document.getElementById('notiBtn'); if (nb && isMember) nb.style.display = '';
   // 종목 마스터(약 190KB)는 검색창에 포커스가 갈 때 받는다 (index.html onfocus) — 검색하지 않는 회원은 받지 않는다
   applyDeepLink();
 }
@@ -134,7 +142,7 @@ function applyDeepLink() {
   else if (link.coin && window.Coin) Coin.open(link.coin, '', { replace: true });
   else if (link.us && window.Us) Us.open(link.us, '', { replace: true });
   else if (link.briefing) openBriefing(link.briefing);
-  else if (link.tab) openMockTab(link.tab);
+  else if (link.tab && isMember) openMockTab(link.tab);
 }
 
 /* ===== 브리핑 열기 (딥링크 · 종목 상세의 "언급된 시황") ===== */
@@ -267,11 +275,17 @@ function loadMockAssets() {
   return _mockLoading;
 }
 
-/** 회원 확인 뒤 버튼을 보여 주고, 지난번에 켜 둔 회원은 그대로 켠다 */
+/** 회원 전용 기능을 게스트가 눌렀을 때 — 로그인 화면(메인)으로 안내한다 */
+function askMemberLogin(subject) {
+  if (confirm(subject + ' DT Club 회원만 이용할 수 있습니다.\n로그인하러 갈까요?')) location.href = '/';
+}
+
+/** 버튼을 보여 주고, 지난번에 켜 둔 회원은 그대로 켠다. 게스트에게도 버튼은 보이고, 누르면 로그인 안내 */
 function initMockMode() {
   var btn = document.getElementById('mockToggle');
   if (!btn || !currentUser) return;
   btn.style.display = '';
+  if (!isMember) return;
   var saved = null;
   try { saved = localStorage.getItem('dt-invest-mock:' + currentUser.uid); } catch (e) {}
   // 자동 복원은 조용히 — 방문할 때마다 계좌 탭으로 끌고 가거나 참가 창을 띄우지 않는다
@@ -279,6 +293,7 @@ function initMockMode() {
 }
 
 async function toggleMockMode() {
+  if (!isMember) { askMemberLogin('모의투자는'); return; }
   var btn = document.getElementById('mockToggle');
   btn.disabled = true;
   try {
@@ -293,6 +308,7 @@ async function toggleMockMode() {
 
 /** 알림에서 계좌·랭킹 탭으로 — 모의투자 모드가 꺼져 있으면 켜고 연다 */
 async function openMockTab(tab) {
+  if (!isMember) return;
   try {
     await loadMockAssets();
     if (!Mock.isOn()) await Mock.setMode(true, false);
@@ -483,7 +499,7 @@ function commentAuthorHtml(c) {
 }
 
 async function loadComments(id) {
-  if (!db) return;
+  if (!db || !isMember) return;
   try {
     var snap = await db.collection('invest_briefings').doc(id)
       .collection('comments').orderBy('createdAt', 'asc').limit(300).get();
@@ -502,6 +518,11 @@ async function loadComments(id) {
 function renderComments(id) {
   var sec = document.getElementById('cs-' + id);
   if (!sec) return;
+  if (!isMember) {
+    sec.innerHTML = '<div class="empty">댓글은 DT Club 회원만 보고 남길 수 있습니다.<br>'
+      + '<a class="mini-btn" style="margin-top:8px;display:inline-block" href="/">로그인하러 가기 →</a></div>';
+    return;
+  }
   var list = commentCache[id];
 
   var h = '<div class="comment-form">';

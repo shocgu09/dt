@@ -3417,16 +3417,13 @@ async function loadHomePreview() {
   _loadInvestBriefing();
 }
 
-// 재테크 브리핑 — 회원 전용이라 Firestore에서 직접 읽는다 (digest 워커 경유 X)
+// 재테크 브리핑 — Firestore에서 직접 읽는다 (digest 워커 경유 X). 게스트(익명 로그인)도 읽을 수 있다 (2026-10-01 변경)
 var _investBriefingLoaded = false;
 async function _loadInvestBriefing() {
   if (_investBriefingLoaded) return;
   var el = document.getElementById('home-briefing-invest');
   if (!el) return;
-  if (state.isGuest || !state.currentUserId) {
-    el.innerHTML = '<div class="home-preview-empty">🔒 회원 전용입니다. 로그인 후 확인해 주세요</div>';
-    return;
-  }
+  if (!state.currentUserId) return;     // 로그인(게스트 포함)이 끝나면 다시 불린다
   if (!state.db) return;
   try {
     var snap = await state.db.collection('invest_briefings')

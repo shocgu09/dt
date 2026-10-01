@@ -463,11 +463,11 @@ service cloud.firestore {
     // ══════════════════════════════════════════════════════════
 
     // ── invest_briefings 컬렉션 (관리자 시황 브리핑) ──────────
-    // - 실제 회원만 읽기 (게스트·비회원 차단)
+    // - 읽기는 게스트(익명 로그인)까지 — 시황은 비회원에게도 연다 (2026-10-01). 댓글은 아래처럼 회원만
     // - 작성·수정·삭제는 관리자
     // - 회원은 commentCount만, 그것도 ±1 로만 변경 가능 (댓글 작성/삭제 시)
     match /invest_briefings/{briefingId} {
-      allow read: if isRealUser();
+      allow read: if isAuth();
       allow create, delete: if isAdmin();
       allow update: if isAdmin()
         || (isRealUser()

@@ -41,15 +41,15 @@
     <!-- 로딩 -->
     <div id="bootLoading" class="loading">불러오는 중...</div>
 
-    <!-- 회원 전용 게이트 -->
+    <!-- 접속 실패 안내 (로그인 서버에 닿지 못했을 때만 — 게스트도 시황·시세는 본다) -->
     <div id="gate" class="gate" style="display:none">
-      <span class="gate-icon">🔒</span>
-      <h2>DT Club 회원 전용입니다</h2>
+      <span class="gate-icon">⚠️</span>
+      <h2>재테크를 불러오지 못했습니다</h2>
       <p>
-        재테크 공간은 동호회 회원만 이용할 수 있습니다.<br>
-        로그인 후 다시 방문해 주세요.
+        연결이 불안정하거나 브라우저가 사이트 데이터를 막고 있습니다.<br>
+        새로고침하거나 홈에서 다시 들어와 주세요.
       </p>
-      <a href="/">로그인하러 가기 →</a>
+      <a href="/">홈으로 가기 →</a>
     </div>
 
     <!-- 본문 -->
@@ -277,12 +277,12 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="market.js?v=40"></script>
-  <script src="market-ui.js?v=71"></script>
+  <script src="market.js?v=41"></script>
+  <script src="market-ui.js?v=72"></script>
   <script src="coin.js?v=9"></script>
   <script src="us.js?v=10"></script>
   <script src="notify.js?v=3"></script>
-  <script src="app.js?v=105"></script>
+  <script src="app.js?v=106"></script>
   <script src="../last-seen.js?v=1"></script>
   <script src="../kb.js?v=3"></script>
 </body>

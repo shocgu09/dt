@@ -2250,6 +2250,8 @@ async function loadCrowdTop() {
   var sec = document.getElementById('crowdSection');
   var el = document.getElementById('crowdList');
   if (!sec || !el) return;
+  // 모의투자 집계(회원 전용 API)라 게스트는 부르지 않고 칸을 숨긴다
+  if (typeof isMember !== 'undefined' && !isMember) { Poller.remove('crowdTop'); hideCrowdSection(); return; }
   var type = crowdType;
   var seq = ++_crowdTopSeq;
   var switching = el.dataset.type !== type;
