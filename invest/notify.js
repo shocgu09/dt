@@ -65,8 +65,7 @@ var InvestNotify = (function () {
     }
     if (!supported()) return '<div class="nt-dev warn">이 브라우저는 알림을 지원하지 않습니다.</div>';
     if (Notification.permission === 'denied') return '<div class="nt-dev warn">이 기기에서 알림이 차단되어 있습니다. 브라우저(또는 휴대폰) 설정에서 DT Club 알림을 허용해 주세요.</div>';
-    if (here) return '<div class="nt-dev on"><i class="nt-dot"></i><span class="nt-on-txt">이 기기에서 알림을 받고 있습니다</span>'
-      + '<button class="mini-btn" onclick="InvestNotify.test(this)">테스트</button></div>';
+    if (here) return '<div class="nt-dev on"><i class="nt-dot"></i><span class="nt-on-txt">이 기기에서 알림을 받고 있습니다</span></div>';
     return '<div class="nt-dev"><span>이 기기는 아직 알림을 받지 않습니다</span>'
       + '<button class="btn-submit nt-enable" onclick="InvestNotify.enable(this)">이 기기에서 알림 받기</button></div>';
   }
@@ -141,19 +140,6 @@ var InvestNotify = (function () {
     finally { el.disabled = false; }
   }
 
-  async function test(btn) {
-    if (btn) btn.disabled = true;
-    try {
-      // 이 기기로만 보낸다 (계정에 기기가 여러 대면 다른 기기로 가 버렸다)
-      var reg = await navigator.serviceWorker.getRegistration('/');
-      var sub = reg && await reg.pushManager.getSubscription();
-      var d = await call('/api/notify/test', 'POST', { endpoint: sub ? sub.endpoint : '' });
-      showToast(d.sent ? '테스트 알림을 보냈습니다' : '보낼 기기가 없습니다 — 알림을 다시 켜 주세요');
-    }
-    catch (e) { showToast(e.message); }
-    finally { if (btn) setTimeout(function () { btn.disabled = false; }, 3000); }
-  }
-
   /** 관리자가 브리핑을 새로 게시한 뒤 — 회원들에게 일괄 발송 (한 번에 40건씩 이어서). 받은 회원 수를 돌려준다 */
   async function briefingPosted(id) {
     var cursor = 0, members = 0;
@@ -172,5 +158,5 @@ var InvestNotify = (function () {
     call('/api/notify/comment', 'POST', { briefingId: briefingId, commentId: commentId }).catch(function () {});
   }
 
-  return { open: open, close: close, enable: enable, setPref: setPref, test: test, briefingPosted: briefingPosted, commentPosted: commentPosted };
+  return { open: open, close: close, enable: enable, setPref: setPref, briefingPosted: briefingPosted, commentPosted: commentPosted };
 })();
