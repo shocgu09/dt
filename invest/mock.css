@@ -629,3 +629,8 @@
 .mk-hist .mk-hist-cost { grid-column: 3 / 5; grid-row: 3; }
 .mk-hist.multi .mk-hist-cost { grid-column: 3; }
 .mk-hist.multi .mk-hist-more { grid-column: 4; grid-row: 3; text-align: right; align-self: end; }
+
+/* 미체결 주문 — 종목을 누르면 종목 화면 */
+.mk-ord-open { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.mk-ord-open:hover .mk-pos-name { color: var(--primary-light); text-decoration: underline; text-underline-offset: 2px; }
+.mk-ord-open:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }

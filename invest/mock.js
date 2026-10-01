@@ -805,9 +805,12 @@ var Mock = (function () {
     var okId = UUID_RE.test(String(o.id || ''));      // onclick 에 넣기 전에 모양을 확인한다
     return '<div class="mk-ord">'
       + '<span class="mk-side ' + (o.side === 'buy' ? 'buy' : 'sell') + '">' + sideTxt + '</span>'
-      + '<span class="mk-ord-main"><span class="mk-pos-name">' + ordTags(o) + escapeHtml(o.name) + '</span>'
+      // 종목을 누르면 종목 화면으로 (정정·취소 버튼은 따로)
+      + (CODE_RE.test(o.code) ? '<button type="button" class="mk-ord-main mk-ord-open" onclick="openStock(\'' + o.code + '\',\'' + escapeJsArg(o.name) + '\')">' : '<span class="mk-ord-main">')
+      +   '<span class="mk-pos-name">' + ordTags(o) + escapeHtml(o.name) + '</span>'
       +   '<span class="mk-pos-sub">' + (o.type === 'market' ? '시장가' : '지정가 ' + fmtNum(o.limitPrice) + '원')
-      +   ' · ' + fmtNum(o.filledQty) + '/' + fmtNum(o.qty) + '주' + (o.forced ? ' · ' + escapeHtml(o.reason || '반대매매') + ' · 09:00 시가' : '') + '</span></span>'
+      +   ' · ' + fmtNum(o.filledQty) + '/' + fmtNum(o.qty) + '주' + (o.forced ? ' · ' + escapeHtml(o.reason || '반대매매') + ' · 09:00 시가' : '') + '</span>'
+      + (CODE_RE.test(o.code) ? '</button>' : '</span>')
       + (okId && !o.forced
           ? '<span class="mk-acts">'
             + '<button class="mini-btn mk-act" onclick="Mock.openAmend(\'' + o.id + '\')">정정</button>'
