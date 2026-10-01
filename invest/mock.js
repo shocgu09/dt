@@ -206,11 +206,31 @@ var Mock = (function () {
     var src = (typeof currentTab !== 'undefined' && currentTab === 'ranking' && _boardMe
       && account.season && _boardMe.seasonId === account.season.id) ? _boardMe : account;
     el.style.display = '';
+    el.classList.toggle('has-pend', !!(account.openOrders && account.openOrders.length));
     el.innerHTML = '<span class="mk-bar-label">💼 내 자산</span>'
       + '<b class="mk-bar-eq">' + won(src.equity) + '</b>'
       + rateHtml(src.returnRate)
       + (src.rank ? '<span class="mk-bar-rank">' + src.rank + '위<i>/' + fmtNum(src.participants) + '</i></span>' : '')
+      + pendChipHtml(account.openOrders)
       + '<span class="mk-bar-go">' + (src._stale ? escapeHtml(hmOf(src._recvAt)) + ' 기준' : '계좌 →') + '</span>';
+  }
+
+  /** 상단 바의 체결 대기 칩 — 한 건이면 종목·방향·수량, 여러 건이면 건수. 매수만 빨강·매도만 파랑·섞이면 앰버 */
+  function pendChipHtml(orders) {
+    var list = orders || [];
+    if (!list.length) return '';
+    var buys = list.filter(function (o) { return o.side === 'buy'; }).length;
+    var cls = buys === list.length ? 'buy' : buys === 0 ? 'sell' : 'mix';
+    var txt;
+    if (list.length === 1) {
+      var o = list[0];
+      txt = escapeHtml(o.name) + ' ' + (o.forced ? '반대매매' : (o.side === 'buy' ? '매수' : '매도')) + ' '
+        + (o.filledQty ? fmtNum(o.filledQty) + '/' : '') + fmtNum(o.qty) + '주';
+    } else {
+      txt = '주문 ' + fmtNum(list.length) + '건';
+    }
+    return '<span class="mk-bar-pend ' + cls + '"><i class="mk-pend-dot" aria-hidden="true"></i>'
+      + '<span class="mk-pend-txt">' + txt + '</span><em>체결 대기</em></span>';
   }
 
   /* ===== 탭 전환 훅 (app.js switchTab 에서 호출) ===== */
@@ -2985,6 +3005,7 @@ var Mock = (function () {
   return {
     isOn: function () { return on; },
     setMode: setMode, onTab: onTab, renderTradeBar: renderTradeBar, onQuote: onQuote, onEscape: onEscape,
+    pendChipHtml: pendChipHtml,
     join: join, openJoinFlow: openJoinFlow, joinStep2: joinStep2, closeJoin: closeJoin, cancel: cancel, loadHistory: loadHistory,
     openSheet: openSheet, closeSheet: closeSheet, tryCloseSheet: tryCloseSheet, setSheet: setSheet, input: input, step: step, pct: pct, submit: submit,
     askReview: askReview,

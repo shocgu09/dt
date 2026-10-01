@@ -557,3 +557,27 @@
 
 /* 면책 줄 안의 글자 링크 (규칙 전체 보기) */
 .mk-link { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: var(--primary-light); text-decoration: underline; cursor: pointer; }
+
+/* 상단 바 — 체결 대기 칩 (한 건이면 종목·수량, 여러 건이면 건수) */
+.mk-bar-pend {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0; flex: 0 1 auto;
+  padding: 3px 8px; background: var(--bg); border: 1px solid var(--border); border-left-width: 3px;
+  font-size: .74rem; font-weight: 700; line-height: 1.3;
+}
+.mk-bar-pend.buy { border-left-color: var(--stock-up); }
+.mk-bar-pend.sell { border-left-color: var(--stock-down); }
+.mk-bar-pend.mix { border-left-color: var(--primary); }
+.mk-pend-dot { flex-shrink: 0; width: 6px; height: 6px; background: var(--primary); animation: mkPend 1.4s ease-in-out infinite; }
+.mk-bar-pend.buy .mk-pend-dot { background: var(--stock-up); }
+.mk-bar-pend.sell .mk-pend-dot { background: var(--stock-down); }
+.mk-pend-txt { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); font-variant-numeric: tabular-nums; }
+.mk-bar-pend em { flex-shrink: 0; font-style: normal; color: var(--text3); white-space: nowrap; }
+@keyframes mkPend { 0%, 100% { opacity: 1; } 50% { opacity: .2; } }
+@media (prefers-reduced-motion: reduce) { .mk-pend-dot { animation: none; } }
+.mk-bar-eq, .mk-bar-rank, .mk-bar-go, .mk-bar-label { white-space: nowrap; }
+/* 폰: 칩은 바 안의 두 번째 줄로 (첫 줄의 자산·순위는 그대로) */
+@media (max-width: 480px) {
+  .mk-bar.has-pend { flex-wrap: wrap; row-gap: 7px; }
+  .mk-bar.has-pend .mk-bar-pend { order: 10; flex: 1 1 100%; }
+  .mk-bar.has-pend .mk-bar-pend em { margin-left: auto; }
+}
