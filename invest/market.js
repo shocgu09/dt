@@ -1213,6 +1213,8 @@ var InfoTip = (function () {
   }, true);
   document.addEventListener('focusin', function (e) {
     var t = trigger(e.target);
+    // 키보드로 옮겨 온 포커스일 때만 — 스크립트가 창을 열며 준 포커스로는 펼치지 않는다
+    try { if (t && !t.matches(':focus-visible')) return; } catch (err) { /* 옛 브라우저는 그대로 */ }
     if (t && t !== cur) show(t, 'focus');
   });
   document.addEventListener('focusout', function (e) {

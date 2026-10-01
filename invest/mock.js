@@ -828,7 +828,8 @@ var Mock = (function () {
   function focusDialog(wrap) {
     var dlg = wrap.querySelector('[role="dialog"]');
     if (!dlg) return;
-    var first = dlg.querySelector('input:not([disabled]), textarea, button:not([disabled]):not([aria-label="닫기"])');
+    // 제목 옆 ! 설명 버튼은 건너뛴다 — 포커스를 받으면 설명이 펼쳐져, 창을 열 때마다 주문 규칙이 떠 있었다
+    var first = dlg.querySelector('input:not([disabled]), textarea, button:not([disabled]):not([aria-label="닫기"]):not(.info-tip)');
     try { (first || dlg).focus({ preventScroll: true }); } catch (e) {}
   }
 
