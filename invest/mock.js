@@ -87,19 +87,18 @@ var Mock = (function () {
   /** 위 형식에서 시각만 ("10:42") */
   function hmOf(ms) { return kstHM(ms).split(' ').slice(-1)[0]; }
 
-  /** KRX 호가단위 — 서버(engine.js)와 같은 표 */
+  /** KRX 호가단위 — 서버(engine.js)와 같은 표 (현행 실측 표, engine.js 주석 참고) */
   function tickSize(price, taxFree) {
     if (taxFree) return price < 2000 ? 1 : 5;
     if (price < 2000) return 1;
-    if (price < 5000) return 5;
-    if (price < 20000) return 10;
-    if (price < 50000) return 50;
-    if (price < 200000) return 100;
-    if (price < 500000) return 500;
-    return 1000;
+    if (price < 20000) return 5;
+    if (price < 50000) return 25;
+    if (price < 200000) return 50;
+    if (price < 500000) return 250;
+    return 500;
   }
 
-  /** 한 호가 올리기/내리기. 내릴 때는 한 단계 아래 가격대의 호가단위를 따른다 (예: 200,000 → 199,900) */
+  /** 한 호가 올리기/내리기. 내릴 때는 한 단계 아래 가격대의 호가단위를 따른다 (예: 200,000 → 199,950) */
   function tickStep(price, dir, taxFree) {
     var p = Number(price) || 0;
     var t = dir > 0 ? tickSize(p, taxFree) : tickSize(Math.max(1, p - 1), taxFree);

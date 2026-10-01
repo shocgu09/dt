@@ -49,16 +49,18 @@ export function kstNow(now = Date.now()) {
   };
 }
 
-/** KRX 호가단위 (2023-01-25~). ETF·ETN 은 2,000원 미만 1원, 그 이상 5원 */
+/** KRX 호가단위. ETF·ETN 은 2,000원 미만 1원, 그 이상 5원
+ * 주식은 실제 체결 가격으로 확인한 현행 표다 (2026-10-01 실측: KRX 단독·NXT 상장 종목 모두 9/22 이후 체결가가
+ * 5천~2만 5원 · 2만~5만 25원 · 5만~20만 50원 · 20만~50만 250원 · 50만~ 500원 단위 — 2023-01-25 표의 절반).
+ * 예전 표로는 화면에 보이는 실제 가격(삼성전자 265,750 등)의 지정가 주문이 '호가단위 오류'로 거절됐다 */
 export function tickSize(price, taxFree) {
   if (taxFree) return price < 2000 ? 1 : 5;
   if (price < 2000) return 1;
-  if (price < 5000) return 5;
-  if (price < 20000) return 10;
-  if (price < 50000) return 50;
-  if (price < 200000) return 100;
-  if (price < 500000) return 500;
-  return 1000;
+  if (price < 20000) return 5;
+  if (price < 50000) return 25;
+  if (price < 200000) return 50;
+  if (price < 500000) return 250;
+  return 500;
 }
 
 export class OrderError extends Error {
