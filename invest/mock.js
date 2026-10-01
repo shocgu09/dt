@@ -2849,8 +2849,6 @@ var Mock = (function () {
       + '<div class="form-row"><input type="date" class="f-input" id="mkSstart" aria-label="시작일">'
       + '<input type="date" class="f-input" id="mkSend" aria-label="종료일"></div>'
       + '<textarea class="f-textarea" id="mkSnotice" maxlength="1000" placeholder="전달사항 (선택) — 참가 안내 창에 표시됩니다" style="min-height:80px" aria-label="전달사항"></textarea>'
-      + '<label class="mk-note" style="margin:0" for="mkScredit">미수 · 신용 · 담보대출</label>'
-      + '<select class="f-input" id="mkScredit" aria-label="미수 · 신용 · 담보대출"><option value="off">끄기</option><option value="admin">관리자만</option><option value="on">전체 회원</option></select>'
       + '<div class="form-row">'
       +   '<button class="btn-submit" onclick="Mock.saveSeason(this)">시즌 저장</button>'
       +   '<button class="btn-ghost" onclick="Mock.newSeasonForm()">새 시즌</button>'
@@ -2908,7 +2906,7 @@ var Mock = (function () {
             +     ' · 참가 ' + fmtNum(x.participants || 0) + '명'
             +     ' · 시드 ' + fmtCompact(x.seed) + '원'
             +     (x.finals ? ' · 최종순위 확정' : '')
-            +     (x.credit_mode && x.credit_mode !== 'off' ? ' · 미수·신용 ' + (x.credit_mode === 'on' ? '전체' : '관리자만') : '') + '</span>'
+            + '</span>'
             + '</button></div>';
         }).join('')
       + '<p class="mk-note">행을 누르면 위 폼에 값이 채워집니다. 시작·종료는 날짜에 맞춰 자동 처리됩니다.</p>';
@@ -3015,13 +3013,12 @@ var Mock = (function () {
     };
     set('mkSid', x.id); set('mkSname', x.name);
     set('mkSstart', x.start_date); set('mkSend', x.end_date); set('mkSnotice', x.notice || '');
-    var crSel = document.getElementById('mkScredit'); if (crSel) crSel.value = x.credit_mode || 'off';
     var st = document.getElementById('mkSstatus');
     if (st) {
       st.innerHTML = x.status === 'closed'
         ? '<span class="err">종료된 시즌은 수정할 수 없습니다. 값만 참고용으로 채웠습니다.</span>'
         : '<span class="ok">' + escapeHtml(x.name) + ' 값을 채웠습니다.'
-          + (x.status !== 'upcoming' ? ' 진행 중이라 이름 · 종료일 · 전달사항 · 미수·신용 설정만 바뀝니다.' : '') + '</span>';
+          + (x.status !== 'upcoming' ? ' 진행 중이라 이름 · 종료일 · 전달사항만 바뀝니다.' : '') + '</span>';
     }
     updateFormNote();
     var f = document.getElementById('mkSid');
@@ -3049,7 +3046,6 @@ var Mock = (function () {
     set('mkSid', cur.id); set('mkSname', cur.name);
     set('mkSstart', cur.startDate || cur.start_date); set('mkSend', cur.endDate || cur.end_date);
     set('mkSnotice', cur.notice || '');
-    var crSel = document.getElementById('mkScredit'); if (crSel && !crSel.dataset.touched) { crSel.value = cur.creditMode || cur.credit_mode || 'off'; crSel.onchange = function () { crSel.dataset.touched = '1'; }; }
     updateFormNote();
   }
 
@@ -3058,9 +3054,7 @@ var Mock = (function () {
     var v = function (id) { return document.getElementById(id).value.trim(); };
     btn.disabled = true;
     try {
-      var crSel = document.getElementById('mkScredit');
-      var r = await api('/admin/seasons', 'POST', { id: v('mkSid'), name: v('mkSname'), startDate: v('mkSstart'), endDate: v('mkSend'), notice: v('mkSnotice'),
-        creditMode: crSel ? crSel.value : undefined });
+      var r = await api('/admin/seasons', 'POST', { id: v('mkSid'), name: v('mkSname'), startDate: v('mkSstart'), endDate: v('mkSend'), notice: v('mkSnotice') });
       st.innerHTML = '<span class="ok">✅ ' + (r.updated ? '기존 시즌을 고쳤습니다.' : '새 시즌을 만들었습니다.') + '</span>';
       await loadSeasons();
       await refreshSeason();

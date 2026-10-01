@@ -1264,7 +1264,8 @@ async function handleAdmin(db, actor, path, method, body, now, url) {
     ).bind(b.id, String(b.name).slice(0, 40), b.startDate, b.endDate, Number(b.seed) || 100000000,
       b.feeRate != null ? Number(b.feeRate) : 0.00015, b.taxRate != null ? Number(b.taxRate) : 0.002,
       b.volumeFill === false ? 0 : 1, String(b.notice || '').slice(0, 1000) || null,
-      ['off', 'admin', 'on'].includes(b.creditMode) ? b.creditMode : 'off').run();
+      // 미수·신용·담보대출은 전체 회원 기본 (2026-10-01 결정 — 관리 화면의 선택칸은 없앴다)
+      ['off', 'admin', 'on'].includes(b.creditMode) ? b.creditMode : 'on').run();
     await log('season.create', b);
     return { ok: true, created: true };
   }
