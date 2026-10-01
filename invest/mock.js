@@ -472,7 +472,7 @@ var Mock = (function () {
         + '<button class="seg' + (!m ? ' on' : '') + '" aria-pressed="' + !m + '" onclick="Mock.setMarginMode(\'cash\', this)">100% (현금)</button>'
         + '<button class="seg' + (m ? ' on' : '') + '" aria-pressed="' + m + '" onclick="Mock.setMarginMode(\'spectrum\', this)">종목별 (미수)</button>'
         + '</div></div>'
-        + '<div class="mk-note" style="margin-top:4px">' + (m ? '대부분 종목을 ' + pctTxt(R.stockMarginRate || 0.4) + ' 증거금으로 매수합니다. 결제일(D+2)까지 부족분을 채우지 못하면 미수 → 반대매매.' : '예수금 안에서만 매수합니다 (미수 없음). 신용매수는 주문창에서 고릅니다.') + '</div>'
+        + '<div class="mk-note" style="margin-top:4px">' + (m ? '대부분 종목을 ' + pctTxt(R.stockMarginRate || 0.4) + ' 증거금으로 매수합니다. 결제일(D+2)까지 부족분을 채우지 못하면 미수 → 반대매매.' : '새로 사는 주문은 예수금 안에서만 매수합니다. 이미 "종목별"로 산 주식의 외상분은 결제일에 빠져나가니 D+2 예수금을 함께 확인하세요. 신용매수는 주문창에서 고릅니다.') + '</div>'
         + '<div class="mk-cr-btns"><button class="mini-btn" onclick="Mock.openLoan()">증권담보대출</button>'
         + '<button class="mini-btn" onclick="Mock.loadLedger()">대출·이자 내역</button></div>';
     } else {
