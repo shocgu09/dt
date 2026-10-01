@@ -161,23 +161,19 @@ export default {
       }, primaryOk ? 200 : 503);
     }
 
-    // 로그인 게이트 — health 제외한 모든 엔드포인트
-    //  - 시세(국내·미국·코인)는 게스트(익명 로그인)도 본다 (2026-10-01 변경 — 시황·시세는 비회원에게도 연다).
-    //    완전 무인증으로 두지 않고 Firebase 토큰은 받는다 — 아무나 프록시로 쓰지 못하게
-    //  - 모의투자(/api/mock)는 회원만: 게스트 토큰을 받지 않고, users 문서에 role 이 없으면(강퇴·탈퇴) 막는다
-    const isMock = path.startsWith('/api/mock');
+    // 회원 전용 게이트 — health 제외한 모든 엔드포인트
     let user = null;
     if (env.REQUIRE_AUTH !== 'false') {
-      user = await verifyIdToken(bearerToken(request), env.FIREBASE_PROJECT_ID, { allowAnonymous: !isMock });
-      if (!user) return json({ error: isMock ? '모의투자는 DT Club 회원만 이용할 수 있습니다' : '로그인이 필요합니다' }, 401);
-      if (isMock) {
-        const prof = await profileOf(env, user.sub, bearerToken(request));
-        if (!prof.role) return json({ error: 'DT Club 회원만 이용할 수 있습니다' }, 403);
-      }
+      // 게스트(익명 로그인)는 공용 모듈에서 걸러진다 — 폐쇄형 동호회 전제
+      user = await verifyIdToken(bearerToken(request), env.FIREBASE_PROJECT_ID);
+      if (!user) return json({ error: '회원 전용입니다' }, 401);
+      // 토큰이 살아 있어도 users 문서에 role 이 없으면(강퇴·탈퇴) 회원이 아니다 — 시세도 막는다
+      const prof = await profileOf(env, user.sub, bearerToken(request));
+      if (!prof.role) return json({ error: 'DT Club 회원만 이용할 수 있습니다' }, 403);
     }
 
     // 모의투자 — 장부(D1)를 다루므로 인증을 끈 개발 모드에서는 열지 않는다
-    if (isMock) {
+    if (path.startsWith('/api/mock')) {
       if (!user) return json({ error: '회원 전용입니다' }, 401);
       try {
         const out = await handleMock(request, env, user, bearerToken(request), url);

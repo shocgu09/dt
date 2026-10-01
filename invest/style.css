@@ -1293,3 +1293,7 @@ h1, h2, h3, h4 { word-break: keep-all; overflow-wrap: break-word; }
 .nt-note { margin: 10px 2px 0; font-size: .74rem; color: var(--text3); line-height: 1.5; }
 @media (prefers-reduced-motion: reduce) { .nt-switch, .nt-switch::after { transition: none; } }
 .nt-on-txt { flex: 1; }
+
+/* 게스트(비회원)가 연 시세 탭 — 시세 화면을 숨기고 로그인 안내만 (app.js showMarketLock) */
+#tab-market.guest-locked > :not(.guest-lock) { display: none !important; }
+#tab-market .guest-lock { margin-top: 16px; }

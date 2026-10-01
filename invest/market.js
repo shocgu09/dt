@@ -483,7 +483,6 @@ function sanitizeGroups(list) {
  * @param basePos '기본'의 자리 — 주지 않으면 지금 자리를 그룹 수에 맞춰 유지한다 */
 async function saveWatchGroups(groups, basePos) {
   if (!db || !currentUser) throw new Error('로그인이 필요합니다');
-  watchMemberOnly();
   var clean = sanitizeGroups(groups);
   var pos = Math.max(0, Math.min(clean.length, Math.round(basePos != null ? basePos : watchBasePos) || 0));
   await db.collection('stock_watchlist').doc(currentUser.uid).set({
@@ -496,7 +495,6 @@ async function saveWatchGroups(groups, basePos) {
 /** '기본' 그룹 이름 바꾸기 */
 async function saveWatchBaseName(name) {
   if (!db || !currentUser) throw new Error('로그인이 필요합니다');
-  watchMemberOnly();
   var clean = String(name || '').trim().slice(0, WG_NAME_MAX) || '기본';
   await db.collection('stock_watchlist').doc(currentUser.uid).set({
     baseName: clean, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -513,7 +511,7 @@ function ensureWatchlist() {
 }
 
 async function loadWatchlist() {
-  if (!db || !currentUser || (typeof isMember !== 'undefined' && !isMember)) return [];
+  if (!db || !currentUser) return [];
   try {
     var doc = await db.collection('stock_watchlist').doc(currentUser.uid).get();
     watchlist = (doc.exists && Array.isArray(doc.data().codes)) ? doc.data().codes : [];
@@ -527,16 +525,10 @@ async function loadWatchlist() {
   return watchlist;
 }
 
-var WATCHLIST_MAX = 50;
-
-/** 관심종목은 회원 계정에 저장한다 — 게스트(익명 로그인)는 Firestore 규칙에서도 막힌다 */
-function watchMemberOnly() {
-  if (typeof isMember !== 'undefined' && !isMember) throw new Error('관심종목은 DT Club 회원만 담을 수 있습니다. 로그인 후 이용해 주세요.');
-}      // firestore.rules 의 stock_watchlist 상한과 같다
+var WATCHLIST_MAX = 50;      // firestore.rules 의 stock_watchlist 상한과 같다
 
 async function toggleWatch(code) {
   if (!db || !currentUser) return false;
-  watchMemberOnly();
   if (!/^[0-9A-Z]{6}$/.test(String(code || ''))) throw new Error('종목코드가 올바르지 않습니다');
   await ensureWatchlist();
   var on = watchlist.indexOf(code) === -1;
@@ -565,7 +557,6 @@ function isWatched(code) {
 
 /** 한 그룹에 넣거나 뺀다 — 'all' 은 기본(codes). 관심 그룹 창의 체크박스가 쓴다 */
 async function setWatchIn(groupId, code, on) {
-  watchMemberOnly();
   if (!/^[0-9A-Z]{6}$/.test(String(code || ''))) throw new Error('종목코드가 올바르지 않습니다');
   await ensureWatchlist();
   if (groupId === 'all') {
@@ -587,7 +578,6 @@ async function setWatchIn(groupId, code, on) {
 /** 관심 코인 토글 — 주식과 같은 방식(원소 단위 arrayUnion/arrayRemove) */
 async function toggleCoinWatch(market) {
   if (!db || !currentUser) return false;
-  watchMemberOnly();
   if (!/^KRW-[A-Z0-9]{1,15}$/.test(String(market || ''))) throw new Error('코인 코드가 올바르지 않습니다');
   await ensureWatchlist();
   var on = coinWatchlist.indexOf(market) === -1;
@@ -609,7 +599,6 @@ async function toggleCoinWatch(market) {
 /** 관심 미국 주식 토글 — 주식·코인과 같은 방식(원소 단위 arrayUnion/arrayRemove) */
 async function toggleUsWatch(code) {
   if (!db || !currentUser) return false;
-  watchMemberOnly();
   if (!/^[A-Za-z0-9]{1,8}(_[a-z])?(\.[A-Z])?$/.test(String(code || ''))) throw new Error('종목코드가 올바르지 않습니다');
   await ensureWatchlist();
   var on = usWatchlist.indexOf(code) === -1;

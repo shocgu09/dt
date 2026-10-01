@@ -36,7 +36,7 @@ function toggleTheme() {
 })();
 
 /* ===== Firebase 초기화 + 회원 확인 =====
- * 시황 · 시세는 비회원(게스트 = 익명 로그인)도 본다. 모의투자 · 댓글 · 관심종목 · 알림만 회원 전용이다.
+ * 시황은 비회원(게스트 = 익명 로그인)도 읽는다. 시세 · 모의투자 · 댓글 · 알림은 회원 전용이다 (2026-10-01).
  * 로그인 세션이 없으면 메인 화면처럼 게스트로 조용히 로그인한다 (공유 링크로 바로 들어온 경우).
  * 강퇴·탈퇴로 role 이 없는 계정도 게스트와 같게 본다. */
 try {
@@ -138,11 +138,13 @@ function takeDeepLink() {
 function applyDeepLink() {
   var link = takeDeepLink();
   if (!link) return;
+  // 게스트는 시황 링크만 연다 — 종목·코인·미국 주식 링크는 잠긴 시세 탭으로
+  if (!isMember && !link.briefing) { if (link.code || link.coin || link.us) switchTab('market'); return; }
   if (link.code && typeof openStock === 'function') openStock(link.code, '', { replace: true });
   else if (link.coin && window.Coin) Coin.open(link.coin, '', { replace: true });
   else if (link.us && window.Us) Us.open(link.us, '', { replace: true });
   else if (link.briefing) openBriefing(link.briefing);
-  else if (link.tab && isMember) openMockTab(link.tab);
+  else if (link.tab) openMockTab(link.tab);
 }
 
 /* ===== 브리핑 열기 (딥링크 · 종목 상세의 "언급된 시황") ===== */
@@ -275,7 +277,7 @@ function loadMockAssets() {
   return _mockLoading;
 }
 
-/** 회원 전용 기능을 게스트가 눌렀을 때 — 로그인 화면(메인)으로 안내한다 */
+/** 회원 전용 기능을 게스트가 눌렀을 때 — 로그인 화면(메인)으로 안내한다. subject 는 조사까지 ('모의투자는') */
 function askMemberLogin(subject) {
   if (confirm(subject + ' DT Club 회원만 이용할 수 있습니다.\n로그인하러 갈까요?')) location.href = '/';
 }
@@ -323,6 +325,9 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.toggle('active', b.dataset.tab === tab); });
   document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.toggle('active', c.id === 'tab-' + tab); });
 
+  // 시세는 회원 전용 — 게스트에게는 탭 안에 안내만 보이고 시세를 부르지 않는다
+  if (tab === 'market' && !isMember) { showMarketLock(); return; }
+
   // 시세 탭을 벗어나면 폴링을 반드시 멈춘다 (배터리·네이버 트래픽)
   if (prev === 'market' && tab !== 'market' && typeof leaveMarketTab === 'function') leaveMarketTab();
   if (tab === 'market' && typeof enterMarketTab === 'function') enterMarketTab();
@@ -334,6 +339,20 @@ function switchTab(tab) {
     if (d && !d.value) d.value = todayStr();
     renderAdminBriefingList();
   }
+}
+
+/** 게스트가 연 시세 탭 — 시세 화면은 숨기고 로그인 안내만 */
+function showMarketLock() {
+  var tabEl = document.getElementById('tab-market');
+  if (!tabEl) return;
+  tabEl.classList.add('guest-locked');
+  if (tabEl.querySelector('.guest-lock')) return;
+  var box = document.createElement('div');
+  box.className = 'gate guest-lock';
+  box.innerHTML = '<span class="gate-icon">🔒</span><h2>시세는 회원 전용입니다</h2>'
+    + '<p>국내·미국 주식과 코인 시세는 DT Club 회원만 볼 수 있습니다.<br>시황 브리핑은 로그인 없이 읽을 수 있습니다.</p>'
+    + '<a href="/">로그인하러 가기 →</a>';
+  tabEl.insertBefore(box, tabEl.firstChild);
 }
 
 // 주문창·참가 절차 같은 모달이 열려 있으면 Esc 로 닫는다 (mock.js 가 핸들러를 등록한다)
@@ -979,7 +998,8 @@ async function resolveTickerNames(codes) {
       return true;
     });
   }
-  // 남은 것은 서버 검색으로, 한 번에 4개씩만
+  // 남은 것은 서버 검색으로, 한 번에 4개씩만 (시세 API 는 회원 전용 — 게스트는 코드 그대로 둔다)
+  if (!isMember) return found;
   for (var i = 0; i < todo.length; i += 4) {
     await Promise.all(todo.slice(i, i + 4).map(async function (c) {
       try {
@@ -1222,6 +1242,7 @@ function timeAgo(ts) {
 
 /** 브리핑의 종목 칩 → 시세 탭의 종목 상세로 이동 */
 function goStock(code, name) {
+  if (!isMember) { switchTab('market'); return; }
   if (typeof openStock !== 'function') return;
   openStock(code, name);
 }
