@@ -143,21 +143,27 @@ var InvestNotify = (function () {
 
   async function test(btn) {
     if (btn) btn.disabled = true;
-    try { var d = await call('/api/notify/test', 'POST', {}); showToast(d.sent ? '테스트 알림을 보냈습니다' : '보낼 기기가 없습니다 — 알림을 다시 켜 주세요'); }
+    try {
+      // 이 기기로만 보낸다 (계정에 기기가 여러 대면 다른 기기로 가 버렸다)
+      var reg = await navigator.serviceWorker.getRegistration('/');
+      var sub = reg && await reg.pushManager.getSubscription();
+      var d = await call('/api/notify/test', 'POST', { endpoint: sub ? sub.endpoint : '' });
+      showToast(d.sent ? '테스트 알림을 보냈습니다' : '보낼 기기가 없습니다 — 알림을 다시 켜 주세요');
+    }
     catch (e) { showToast(e.message); }
     finally { if (btn) setTimeout(function () { btn.disabled = false; }, 3000); }
   }
 
-  /** 관리자가 브리핑을 새로 게시한 뒤 — 회원들에게 일괄 발송 (한 번에 40건씩 이어서) */
+  /** 관리자가 브리핑을 새로 게시한 뒤 — 회원들에게 일괄 발송 (한 번에 40건씩 이어서). 받은 회원 수를 돌려준다 */
   async function briefingPosted(id) {
-    var cursor = 0, sent = 0;
+    var cursor = 0, members = 0;
     try {
       for (var i = 0; i < 30 && cursor != null; i++) {
         var d = await call('/api/notify/briefing', 'POST', { briefingId: id, cursor: cursor });
-        sent += d.sent || 0;
+        members += d.members || 0;
         cursor = d.next;
       }
-      return sent;
+      return members;
     } catch (e) { console.warn('briefing notify failed', e && e.message); return null; }
   }
 

@@ -1004,7 +1004,7 @@ async function submitBriefing() {
       status.innerHTML = '<span class="ok">✅ 브리핑이 게시되었습니다. 알림을 보내는 중…</span>';
       // 회원들에게 새 브리핑 알림 (알림을 켠 회원만) — 실패해도 게시는 끝났다
       if (window.InvestNotify) InvestNotify.briefingPosted(added.id).then(function (n) {
-        if (status) status.innerHTML = '<span class="ok">✅ 브리핑이 게시되었습니다.' + (n != null ? ' 알림 ' + n + '건 발송' : '') + '</span>';
+        if (status) status.innerHTML = '<span class="ok">✅ 브리핑이 게시되었습니다.' + (n != null ? ' 회원 ' + n + '명에게 알림을 보냈습니다.' : '') + '</span>';
       });
     }
     resetBriefingForm();

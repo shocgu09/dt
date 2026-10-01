@@ -88,12 +88,15 @@ async function handleSubscribe(request, env) {
     }));
   }
 
-  // 해당 유저의 구독 인덱스 업데이트
+  // 해당 유저의 구독 인덱스 업데이트 — 방금 쓴 기기를 맨 뒤로(최근 순), 최근 MAX_SUBS 대만 남긴다.
+  // iPhone 은 다시 구독해도 옛 주소가 410 을 주지 않아 한 계정에 20개씩 쌓였다
   const indexKey = `subs-index:${uid}`;
   const existing = await env.PUSH_SUBS.get(indexKey, 'json') || [];
-  if (!existing.includes(subKey)) {
-    existing.push(subKey);
-    await env.PUSH_SUBS.put(indexKey, JSON.stringify(existing));
+  if (existing[existing.length - 1] !== subKey) {
+    const next = existing.filter((k) => k !== subKey).concat(subKey);
+    const drop = next.slice(0, Math.max(0, next.length - MAX_SUBS));
+    for (const k of drop) await env.PUSH_SUBS.delete(k);
+    await env.PUSH_SUBS.put(indexKey, JSON.stringify(next.slice(drop.length)));
   }
   await addToAll(env, uid);
 
@@ -477,6 +480,7 @@ function jsonResponse(data, status = 200) {
  *  - 무료 요금제는 호출 한 번에 외부 요청 50건 — 한 번에 PUSH_BUDGET 건까지만 보내고 나머지는 cursor 로 이어서
  * =================================================================== */
 const PUSH_BUDGET = 40;
+const MAX_SUBS = 5;   // 한 계정에 남겨 두는 기기 수 (최근에 앱을 연 순서)
 const PREF_KEYS = ['briefing', 'reply', 'share', 'fill', 'margin'];
 
 async function addToAll(env, uid) {
@@ -497,7 +501,7 @@ function internalOk(request, env) {
 }
 
 /** 한 회원의 모든 기기에 보낸다. budget.left 를 깎고, 설정이 꺼져 있으면 건너뛴다 */
-async function sendToUid(env, uid, msg, budget) {
+async function sendToUid(env, uid, msg, budget, only) {
   if (msg.kind) {
     const p = await prefsOf(env, uid);
     if (p[msg.kind] === false) return { sent: 0, skipped: 'pref' };
@@ -505,6 +509,9 @@ async function sendToUid(env, uid, msg, budget) {
   const indexKey = 'subs-index:' + uid;
   const subKeys = await env.PUSH_SUBS.get(indexKey, 'json') || [];
   if (!subKeys.length) return { sent: 0, skipped: 'nosub' };
+  // 최근 기기부터 — 예산이 모자라면 오래된(안 쓰는) 기기가 빠지게
+  const order = only ? subKeys.filter((k) => k === only) : subKeys.slice().reverse();
+  if (!order.length) return { sent: 0, skipped: 'nosub' };
   const payload = JSON.stringify({
     title: String(msg.title || 'DT Club').slice(0, 60), body: String(msg.body || '').slice(0, 140),
     url: typeof msg.url === 'string' && msg.url.startsWith('/') ? msg.url : '/invest/',
@@ -512,7 +519,7 @@ async function sendToUid(env, uid, msg, budget) {
   });
   let sent = 0;
   const invalid = [];
-  for (const subKey of subKeys) {
+  for (const subKey of order) {
     if (budget.left <= 0) break;
     const subData = await env.PUSH_SUBS.get(subKey, 'json');
     if (!subData) { invalid.push(subKey); continue; }
@@ -564,9 +571,13 @@ async function handleInternalNotify(request, env) {
 async function broadcast(env, msg, cursor) {
   const all = await env.PUSH_SUBS.get('idx:all', 'json') || [];
   const budget = { left: PUSH_BUDGET };
-  let i = Math.max(0, Number(cursor) || 0), sent = 0;
-  for (; i < all.length && budget.left > 0; i++) sent += (await sendToUid(env, all[i], msg, budget)).sent;
-  return { sent, next: i < all.length ? i : null };
+  let i = Math.max(0, Number(cursor) || 0), sent = 0, members = 0;
+  for (; i < all.length && budget.left > 0; i++) {
+    const n = (await sendToUid(env, all[i], msg, budget)).sent;
+    sent += n;
+    if (n) members++;   // 기기가 여러 대인 회원도 한 명으로 센다 (관리자 화면에 'N명' 으로 보인다)
+  }
+  return { sent, members, next: i < all.length ? i : null };
 }
 
 /* dt-digest(AI 브리핑)가 부른다 {briefingId, title, cursor} */
@@ -645,6 +656,9 @@ async function handleTestNotify(request, env) {
   if (!auth.ok) return jsonResponse({ error: 'Unauthorized' }, 401);
   if (Date.now() - (_testAt.get(auth.uid) || 0) < 60e3) return jsonResponse({ error: '1분 뒤에 다시 보내 주세요' }, 429);
   _testAt.set(auth.uid, Date.now());
-  const r = await sendToUid(env, auth.uid, { title: '🔔 재테크 알림 테스트', body: '이 기기에서 재테크 알림을 받을 수 있습니다', url: '/invest/', tag: 'invest-test' }, { left: 10 });
+  // 누른 기기로만 보낸다 — 계정의 다른 기기(옛 구독 포함)로 가면 '테스트가 안 온다' 가 된다
+  const b = await request.json().catch(() => ({}));
+  const only = typeof b.endpoint === 'string' && b.endpoint ? `sub:${auth.uid}:${await hashString(b.endpoint)}` : null;
+  const r = await sendToUid(env, auth.uid, { title: '🔔 재테크 알림 테스트', body: '이 기기에서 재테크 알림을 받을 수 있습니다', url: '/invest/', tag: 'invest-test' }, { left: 10 }, only);
   return jsonResponse(r);
 }
