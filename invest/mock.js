@@ -294,14 +294,16 @@ var Mock = (function () {
     var evalPnl = a.positions.reduce(function (t, p) { return t + p.pnl; }, 0)
       + ((a.credit && a.credit.lots) || []).reduce(function (t, l) { return t + (l.qty > 0 ? l.pnl : 0); }, 0);
     var h = '<div class="mk-card mk-summary">'
-      + '<div class="mk-sum-head"><span>' + escapeHtml(s.name) + '</span><span class="mk-sum-end">' + escapeHtml(s.endDate) + ' 종료' + InfoTip.btn('계좌 보는 법', [
+      + '<div class="mk-sum-head"><span class="mk-sum-end">' + escapeHtml(s.name) + '<span class="mk-dim">· ' + (md(s.endDate) || escapeHtml(s.endDate)) + ' 종료</span>' + InfoTip.btn('계좌 보는 법', [
           '· 총자산 = 현금 + 보유 주식 (현재가로 평가)',
           '· 주문 가능: 현금에서 미체결 매수 주문이 묶어 둔 돈(주문 대기)을 뺀 금액' + (a.credit && creditActive(a) ? ' (증거금률 "종목별"이면 결제 전 외상분을 더하고, 결제 전에 산 주식을 되판 대금 중 재사용할 수 없는 몫을 뺍니다)' : ''),
           '· 평가손익: 보유 주식의 지금 가치 − 산 금액',
           '· 실현손익: 판 금액에서 수수료·세금과 산 금액(평균 단가)을 뺀 손익',
           '· 매수 수수료는 산 금액에 넣지 않습니다. 평가손익 + 실현손익 − 매수 수수료' + (a.credit && creditActive(a) ? ' − 이자(낸 이자 + 쌓인 이자)' : '') + ' = 총손익입니다.',
           '· 원금 = 시드머니 + 출석금. 출석금은 수익이 아니라서 손익·수익률은 원금 기준으로 계산합니다 (순위는 총자산 기준).'
-        ].concat(a.credit && creditActive(a) ? ['· 신용·담보대출·미수가 있으면 총자산은 순자산입니다: 예수금 + 보유 주식 − 융자·대출 원금 − 쌓인 이자'] : []).join('\n'), 'sm') + '</span></div>'
+        ].concat(a.credit && creditActive(a) ? ['· 신용·담보대출·미수가 있으면 총자산은 순자산입니다: 예수금 + 보유 주식 − 융자·대출 원금 − 쌓인 이자'] : []).join('\n'), 'sm') + '</span>'
+      // 출석 체크 — 머리 줄 오른쪽 작은 버튼 (renderAttend 가 채운다)
+      + '<span id="mkAttend"></span></div>'
       + '<div class="mk-eq">' + won(a.equity) + '</div>'
       + '<div class="mk-eq-sub">' + rateHtml(a.returnRate) + ' <span class="' + signClass(a.equity - principal) + '">'
       +   (a.equity - principal > 0 ? '+' : '') + fmtNum(a.equity - principal) + '원</span>'
@@ -321,8 +323,6 @@ var Mock = (function () {
       + '</div>'
       + '</div>';
 
-    h += creditHtml(a);
-    h += '<div id="mkAttend"></div>';
     h += corpHtml(a.corpActions);
 
     var lots = (a.credit && a.credit.lots) || [];
@@ -341,6 +341,8 @@ var Mock = (function () {
         + '</button>';
     }).join('') : (lotRows ? '' : '<div class="empty">보유 종목이 없습니다.<br>시세 탭에서 종목을 선택해 매수할 수 있습니다.</div>');
     h += '</section>';
+
+    h += creditHtml(a);
 
     if (a.openOrders.length) {
       h += '<section class="m-section"><div class="m-head"><h3>⏳ 미체결 주문</h3><span class="m-hint">' + a.openOrders.length + '건</span></div>'
@@ -1044,30 +1046,25 @@ var Mock = (function () {
     var el = document.getElementById('mkAttend');
     if (!el) return;
     var t = _att;
-    if (!t) { el.innerHTML = ''; return; }
-    if (t.err) { el.innerHTML = ''; return; }          // 출석은 부가 기능 — 실패해도 계좌 화면을 가리지 않는다
-    var every = t.every || 5;
-    // 연속 진행 칸 — 이번 묶음(every 일) 안에서 몇 번째인지
-    var inRun = t.streak % every || (t.streak ? every : 0);
-    if (!t.today && inRun === every) inRun = 0;        // 보너스까지 채운 뒤 아직 오늘 출석 전이면 새 묶음
-    var dots = '';
-    for (var i = 1; i <= every; i++) dots += '<i class="mk-att-dot' + (i <= inRun ? ' on' : '') + (i === every ? ' bonus' : '') + '"></i>';
-    var action;
-    if (t.today) action = '<span class="mk-att-done">✓ 오늘 출석 완료</span>';
-    else if (t.canAttend) action = '<button class="btn-submit mk-att-btn" onclick="Mock.attend(this)"' + (_attBusy ? ' disabled' : '') + '>'
-      + '출석하고 ' + fmtCompact(t.amount + (t.bonusToday ? t.bonus : 0)) + '원 받기' + '</button>';
-    else action = '<span class="mk-att-off">' + (!t.inSeason ? '시즌 기간이 아닙니다' : '오늘은 휴장일이라 출석 보상이 없습니다') + '</span>';
-    el.innerHTML = '<div class="mk-card mk-att">'
-      + '<div class="mk-att-top"><b>📅 출석 체크</b>'
-      +   '<span class="mk-att-sum">이번 시즌 ' + fmtNum(t.days) + '일 · 받은 출석금 ' + korWon(t.total) + '원</span></div>'
-      + '<div class="mk-att-mid"><span class="mk-att-dots" aria-label="연속 출석 ' + t.streak + '일">' + dots + '</span>'
-      +   '<span class="mk-att-streak">연속 <b>' + fmtNum(t.streak) + '</b>일'
-      +   (t.bonusToday ? ' · <em>오늘 출석하면 보너스 +' + fmtCompact(t.bonus) + '원</em>'
-            : ' · ' + t.untilBonus + '번 더 출석하면 보너스 +' + fmtCompact(t.bonus) + '원') + '</span></div>'
-      + '<div class="mk-att-act">' + action + '</div>'
-      + '<div class="mk-att-note">거래일 하루 1번 ' + fmtCompact(t.amount) + '원 · ' + every + '일 연속마다 +' + fmtCompact(t.bonus) + '원 (주말·휴장일은 연속이 끊기지 않습니다). 출석금은 원금에 더해지고 수익률에는 들어가지 않습니다.</div>'
-      + '</div>';
+    if (!t || t.err) { el.innerHTML = ''; return; }    // 출석은 부가 기능 — 실패해도 계좌 화면을 가리지 않는다
+    var tip = escapeHtml(attendSummary(t));
+    if (t.canAttend && !t.today) {
+      el.innerHTML = '<button class="mk-att-chip go" onclick="Mock.attend(this)" title="' + tip + '"' + (_attBusy ? ' disabled' : '') + '>'
+        + '📅 출석 +' + fmtCompact(t.amount + (t.bonusToday ? t.bonus : 0)) + '</button>';
+    } else {
+      // 출석했거나 휴장일 — 누르면 이번 시즌 출석 현황을 알려 준다
+      el.innerHTML = '<button class="mk-att-chip' + (t.today ? ' done' : '') + '" onclick="Mock.attendInfo()" title="' + tip + '">'
+        + (t.today ? '✓ 출석' : '📅 출석') + (t.streak ? ' · 연속 ' + fmtNum(t.streak) + '일' : '') + '</button>';
+    }
   }
+  function attendSummary(t) {
+    var every = t.every || 5;
+    return (t.today ? '오늘 출석 완료' : t.canAttend ? '오늘 아직 출석 전' : (!t.inSeason ? '시즌 기간이 아닙니다' : '오늘은 휴장일이라 출석 보상이 없습니다'))
+      + ' · 이번 시즌 ' + fmtNum(t.days) + '일 · 받은 출석금 ' + korWon(t.total) + '원'
+      + (t.bonusToday ? ' · 오늘 출석하면 보너스 +' + fmtCompact(t.bonus) + '원' : t.untilBonus ? ' · ' + t.untilBonus + '번 더 출석하면 보너스 +' + fmtCompact(t.bonus) + '원' : '')
+      + '\n거래일 하루 1번 ' + fmtCompact(t.amount) + '원 · ' + every + '일 연속마다 +' + fmtCompact(t.bonus) + '원. 출석금은 원금에 더해지고 수익률에는 들어가지 않습니다.';
+  }
+  function attendInfo() { if (_att && !_att.err) toast(attendSummary(_att).split('\n')[0]); }
   async function attend(btn) {
     if (_attBusy) return;
     _attBusy = true;
@@ -2101,7 +2098,7 @@ var Mock = (function () {
     var pos = holding(s.code);
     var opts = (pos ? [['', '현금 보유 · ' + fmtNum(pos.qty) + '주']] : [])
       .concat(lots.map(function (l) { return [l.id, lotLabel(l) + ' · ' + fmtNum(l.qty) + '주 (매도상환)']; }));
-    return '<div class="mk-field"><span>매도할 잔고</span><select class="f-input" aria-label="매도할 잔고" onchange="Mock.setSheet(\'lotId\', this.value)">'
+    return '<div class="mk-field mk-lot-pick"><span>매도할 잔고</span><select class="f-input" aria-label="매도할 잔고" onchange="Mock.setSheet(\'lotId\', this.value)">'
       + opts.map(function (o) { return '<option value="' + escapeHtml(o[0]) + '"' + (o[0] === (s.lotId || '') ? ' selected' : '') + '>' + escapeHtml(o[1]) + '</option>'; }).join('')
       + '</select></div>';
   }
@@ -3001,7 +2998,7 @@ var Mock = (function () {
     addHoliday: addHoliday, removeHoliday: removeHoliday,
     openShare: openShare, closeShare: closeShare, shareKind: shareKind, shareCode: shareCode, shareInput: shareInput, submitShare: submitShare,
     sharePhotos: sharePhotos, removePhoto: removePhoto, viewPhoto: viewPhoto,
-    editNick: editNick, saveNick: saveNick, attend: attend,
+    editNick: editNick, saveNick: saveNick, attend: attend, attendInfo: attendInfo,
     rankView: rankView, shareSeason: shareSeason, toggleShare: toggleShare, fullShare: fullShare, moreShares: moreShares, deleteShare: deleteShare, submitComment: submitComment, deleteComment: deleteComment
   };
 })();

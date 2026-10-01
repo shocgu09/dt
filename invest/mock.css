@@ -505,23 +505,18 @@
 .mk-sh-older { appearance: none; -webkit-appearance: none; font: inherit; cursor: pointer; }
 .mk-sh-name { color: var(--text); font-weight: 800; margin-right: 2px; }
 
-/* 출석 체크 (계좌 탭) */
-.mk-att { margin-top: 12px; }
-.mk-att-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.mk-att-top b { font-size: .92rem; font-weight: 800; }
-.mk-att-sum { margin-left: auto; font-size: .74rem; color: var(--text3); font-weight: 600; }
-.mk-att-mid { display: flex; align-items: center; gap: 10px; margin: 10px 0; flex-wrap: wrap; }
-.mk-att-dots { display: inline-flex; gap: 4px; }
-.mk-att-dot { width: 14px; height: 14px; border: 1px solid var(--border); background: var(--bg3); display: inline-block; }
-.mk-att-dot.on { background: var(--primary); border-color: var(--primary); }
-.mk-att-dot.bonus { border-color: var(--primary-light); }
-.mk-att-streak { font-size: .8rem; color: var(--text2); font-weight: 600; }
-.mk-att-streak b { color: var(--text); font-weight: 800; }
-.mk-att-streak em { font-style: normal; color: var(--primary-light); font-weight: 800; }
-.mk-att-btn { width: 100%; }
-.mk-att-done { display: block; text-align: center; padding: 10px; font-weight: 800; color: #4ade80; border: 1px solid var(--border); background: var(--bg2); }
-.mk-att-off { display: block; text-align: center; padding: 10px; font-size: .82rem; color: var(--text3); border: 1px dashed var(--border); }
-.mk-att-note { font-size: .7rem; color: var(--text3); margin-top: 8px; line-height: 1.5; }
+/* 출석 체크 — 계좌 요약 카드 머리 줄 오른쪽 작은 버튼 */
+.mk-summary .mk-sum-head { align-items: center; gap: 8px; min-height: 28px; }
+.mk-summary .mk-sum-head > .mk-sum-end { min-width: 0; flex-wrap: wrap; }
+#mkAttend { flex: 0 0 auto; }
+.mk-att-chip {
+  font: inherit; font-size: .74rem; font-weight: 800; white-space: nowrap; cursor: pointer;
+  padding: 5px 10px; min-height: 28px; border: 1px solid var(--border); background: var(--bg3); color: var(--text2);
+}
+.mk-att-chip.go { background: var(--primary); border-color: var(--primary); color: #fff; }
+.mk-att-chip.go:hover { filter: brightness(1.08); }
+.mk-att-chip.done { color: #4ade80; }
+.mk-att-chip:disabled { opacity: .6; cursor: default; }
 
 /* ===== 예수금 · 신용 (결제 T+2 · 미수 · 신용융자 · 증권담보대출) ===== */
 .mk-credit { border-top-color: var(--stock-down); }
@@ -546,6 +541,13 @@
 .mk-led > span:first-child { color: var(--text3); font-weight: 600; }
 .mk-led b.up { color: var(--stock-up); } .mk-led b.down { color: var(--stock-down); }
 .mk-fund-note { margin: 6px 0 10px; line-height: 1.5; }
+/* 매도할 잔고 — 아래 지정가/시장가 버튼과 띄우고, iOS 둥근 기본 셀렉트 대신 다른 입력칸과 같은 모양 */
+.mk-lot-pick { margin: 12px 0 14px; }
+.mk-lot-pick .f-input {
+  -webkit-appearance: none; appearance: none; border-radius: 0; min-height: 44px; padding-right: 34px; font-weight: 700;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text3) 50%), linear-gradient(135deg, var(--text3) 50%, transparent 50%);
+  background-position: calc(100% - 17px) 50%, calc(100% - 12px) 50%; background-size: 5px 5px; background-repeat: no-repeat;
+}
 @media (max-width: 420px) {
   .mk-grid3 { grid-template-columns: 1fr 1fr; }
   .mk-lot { flex-wrap: wrap; }
