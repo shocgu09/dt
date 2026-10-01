@@ -1020,24 +1020,31 @@ var Mock = (function () {
     }
   }
 
+  /** 줄바꿈은 ' · ' 사이에서만 — 숫자 중간에서 끊기지 않게 */
+  function nwJoin(parts) { return parts.map(function (p) { return '<span class="nw">' + p + '</span>'; }).join(' · '); }
+  /** 오늘 체결이면 시각만, 지난 날이면 날짜도 */
+  function histWhen(ms) {
+    var full = kstHM(ms), today = kstHM(Date.now());
+    return escapeHtml(full.split(' ')[0] === today.split(' ')[0] ? hmOf(ms) : full);
+  }
   /** 주문 한 줄 — 체결 수량·평균가와 미체결(대기·취소·만료) 수량을 따로 */
   function histOrderHtml(o) {
     var okId = UUID_RE.test(String(o.orderId || ''));
     var left = o.qty - o.fillQty;
     var leftTxt = left > 0
-      ? ' · <span class="mk-hist-left">미체결 ' + fmtNum(left) + '주' + (o.status === 'open' || o.status === 'partial' ? ' 대기' : o.status === 'cancelled' ? ' 취소' : o.status === 'expired' ? ' 만료' : '') + '</span>'
+      ? ' · <span class="mk-hist-left nw">미체결 ' + fmtNum(left) + '주' + (o.status === 'open' || o.status === 'partial' ? ' 대기' : o.status === 'cancelled' ? ' 취소' : o.status === 'expired' ? ' 만료' : '') + '</span>'
       : '';
     var multi = o.fills > 1 && okId;
     return '<div class="mk-hist' + (multi ? ' multi' : '') + '" id="mkh-' + (okId ? o.orderId : '') + '">'
       + '<div class="mk-ord"' + (multi ? ' role="button" tabindex="0" aria-expanded="false" onclick="Mock.toggleFills(\'' + o.orderId + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();Mock.toggleFills(\'' + o.orderId + '\')}"' : '') + '>'
       + '<span class="mk-side ' + (o.side === 'buy' ? 'buy' : 'sell') + '">' + (o.side === 'buy' ? '매수' : '매도') + '</span>'
       + stockLogoHtml(o.code, o.name, null, 'sm')
+      // 가운데: 이름 / 수량·가격 / 비용·결제·미체결 — 오른쪽은 금액(과 펼치기)만 두어 좁은 화면에서 가운데가 눌리지 않게
       + '<span class="mk-ord-main"><span class="mk-pos-name">' + histTags(o) + escapeHtml(o.name) + '</span>'
-      +   '<span class="mk-pos-sub">' + escapeHtml(kstHM(o.lastAt)) + ' · 체결 ' + fmtNum(o.fillQty) + '주 × ' + (o.fills > 1 ? '평균 ' : '') + fmtNum(o.avgPrice) + '원'
-      +   leftTxt + (o.settleYmd ? ' · 결제 ' + md(o.settleYmd) : '')
-      +   (multi ? ' · <span class="mk-hist-more">' + fmtNum(o.fills) + '건 ▾</span>' : '') + '</span></span>'
+      +   '<span class="mk-pos-sub">' + nwJoin([histWhen(o.lastAt), fmtNum(o.fillQty) + '주 × ' + (o.fills > 1 ? '평균 ' : '') + fmtNum(o.avgPrice) + '원']) + leftTxt + '</span>'
+      +   '<span class="mk-pos-sub mk-hist-cost">' + nwJoin(costText(o).split(' · ').concat(o.settleYmd ? ['결제 ' + md(o.settleYmd)] : [])) + '</span></span>'
       + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(o.amount) + '원</span>'
-      +   '<span class="mk-pos-sub">' + costText(o) + '</span></span>'
+      +   (multi ? '<span class="mk-pos-sub mk-hist-more">' + fmtNum(o.fills) + '건 ▾</span>' : '') + '</span>'
       + '</div><div class="mk-hist-fills" hidden></div></div>';
   }
   /** 여러 번에 나눠 체결된 주문 — 체결 건별로 펼친다 (처음 펼칠 때 한 번 받는다) */

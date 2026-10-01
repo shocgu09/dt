@@ -609,3 +609,23 @@
 .mk-hist-fill span:first-child { color: var(--text3); }
 .mk-hist-fill b { color: var(--text); font-weight: 700; }
 .mk-hist-fill.loading { display: block; color: var(--text3); }
+.mk-hist .mk-pos-num { flex-shrink: 0; }
+.mk-hist .mk-pos-sub { line-height: 1.45; }
+.mk-hist-cost { color: var(--text3); font-weight: 600; }
+.mk-hist .mk-hist-more { font-size: .72rem; }
+@media (max-width: 480px) {
+  .mk-hist-fill { grid-template-columns: 18px 44px 1fr auto; gap: 6px; padding: 5px 8px; }
+  .mk-hist-fills { margin-left: 12px; }
+}
+.mk-hist .nw { white-space: nowrap; }
+/* 체결 내역 한 줄 배치 — 1행: 이름 … 금액 / 2행: 수량·가격 / 3행: 비용·결제 (2·3행은 오른쪽 끝까지 넓게) */
+.mk-hist > .mk-ord { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; column-gap: 10px; row-gap: 2px; align-items: center; }
+.mk-hist .mk-ord-main, .mk-hist .mk-pos-num { display: contents; }
+.mk-hist .mk-side { grid-column: 1; grid-row: 1 / span 3; align-self: center; }
+.mk-hist > .mk-ord > .s-logo { grid-column: 2; grid-row: 1 / span 3; align-self: center; }
+.mk-hist .mk-pos-name { grid-column: 3; grid-row: 1; }
+.mk-hist .mk-pos-val { grid-column: 4; grid-row: 1; text-align: right; }
+.mk-hist .mk-ord-main > .mk-pos-sub:not(.mk-hist-cost) { grid-column: 3 / 5; grid-row: 2; }
+.mk-hist .mk-hist-cost { grid-column: 3 / 5; grid-row: 3; }
+.mk-hist.multi .mk-hist-cost { grid-column: 3; }
+.mk-hist.multi .mk-hist-more { grid-column: 4; grid-row: 3; text-align: right; align-self: end; }
