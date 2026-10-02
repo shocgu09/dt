@@ -1753,6 +1753,8 @@ var Mock = (function () {
     }
     if (c.kind === 'account' || c.position) h += '</div>';
 
+    // AI 장 마감 이야기에는 댓글이 없다 — 관리자 삭제 버튼만
+    if (s.ai) return h + (s.canDelete ? '<div class="mk-sc-act"><button type="button" class="mk-sc-btn danger" onclick="Mock.deleteShare(\'' + s.id + '\')">삭제</button></div>' : '') + '</article>';
     h += '<div class="mk-sc-act">'
       + '<button type="button" class="mk-sc-btn' + (open ? ' on' : '') + '" onclick="Mock.toggleShare(\'' + s.id + '\')" aria-expanded="' + open + '">'
       +   '💬 댓글 <b>' + fmtNum(s.commentCount) + '</b><span class="mk-sc-caret" aria-hidden="true">' + (open ? '▴' : '▾') + '</span></button>'

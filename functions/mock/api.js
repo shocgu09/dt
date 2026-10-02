@@ -541,6 +541,8 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     if (withComments && !sm[2] && method === 'POST') {
       // 지난 시즌 공유는 목록에서 빠진다 — 그 공유에 댓글이 새로 쌓이지 않게 한다
       if (!season || share.season_id !== season.id) throw new HttpError(409, '지난 시즌 공유에는 댓글을 달 수 없습니다', 'closed');
+      // AI 장 마감 이야기에는 댓글을 받지 않는다 (2026-10-02 사용자 결정)
+      if (String(share.uid).startsWith('ai:')) throw new HttpError(409, 'AI 글에는 댓글을 달 수 없습니다', 'no_comment');
       const input = await body();
       const text = cleanText(input.body, COMMENT_BODY_MAX, '댓글');
       if (!text) throw new HttpError(400, '댓글 내용을 입력하세요');
