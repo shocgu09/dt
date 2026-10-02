@@ -412,8 +412,11 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     const cur = String(url.searchParams.get('before') || '');
     const mm = /^(\d{1,15})_([0-9a-f-]{36})$/i.exec(cur);
     const bAt = mm ? Number(mm[1]) : now + 1, bId = mm ? mm[2] : 'ffffffff';
+    // 커뮤니티의 회원 / AI 전환 — who=members(회원 글만) | ai(AI 장 마감 이야기만), 없으면 전부 (옛 화면)
+    const who = url.searchParams.get('who');
+    const whoSql = who === 'ai' ? ` AND uid LIKE 'ai:%'` : who === 'members' ? ` AND uid NOT LIKE 'ai:%'` : '';
     const rows = (await db.prepare(
-      `SELECT * FROM shares WHERE season_id=? AND deleted_at IS NULL AND (created_at < ? OR (created_at = ? AND id < ?))
+      `SELECT * FROM shares WHERE season_id=? AND deleted_at IS NULL AND (created_at < ? OR (created_at = ? AND id < ?))${whoSql}
        ORDER BY created_at DESC, id DESC LIMIT ?`
     ).bind(pick.id, bAt, bAt, bId, SHARE_PAGE).all()).results || [];
     const last = rows[rows.length - 1];

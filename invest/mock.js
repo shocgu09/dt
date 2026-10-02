@@ -1349,23 +1349,27 @@ var Mock = (function () {
   function rankView(v) {
     _rkView = v === 'share' ? 'share' : 'board';
     applyRankView();
-    if (_rkView === 'share') markSharesSeen();
+    if (_rkView === 'share') {
+      markSharesSeen();
+      if (_sh.who !== shareWho()) loadShares(true);      // 순위에서 고른 회원 / AI 를 커뮤니티에도 맞춘다
+    }
     if (_rkView === 'board' && _rkSub === 'ai') loadAi();
   }
   /** 순위 화면 안의 회원 ↔ AI 리그 전환 */
   function rankSub(v) {
+    var was = _rkSub;
     _rkSub = v === 'ai' && aiVisible() ? 'ai' : 'members';
     applyRankView();
-    if (_rkSub === 'ai') loadAi();
+    if (_rkView === 'share') { if (was !== _rkSub) loadShares(true); }      // 커뮤니티도 회원 글 / AI 글로 나눠 본다
+    else if (_rkSub === 'ai') loadAi();
   }
   function applyRankView() {
-    var share = _rkView === 'share', ai = !share && _rkSub === 'ai' && aiVisible();
+    var share = _rkView === 'share', aiSub = _rkSub === 'ai' && aiVisible(), ai = !share && aiSub;
     document.querySelectorAll('.mk-rk-sub .seg').forEach(function (b) {
-      var on = b.dataset.sub === (ai ? 'ai' : 'members');
+      var on = b.dataset.sub === (aiSub ? 'ai' : 'members');
       b.classList.toggle('on', on);
       b.setAttribute('aria-pressed', on);
     });
-    var sub = document.getElementById('rkSub'); if (sub) sub.hidden = share;
     document.querySelectorAll('.mk-rk-seg .seg').forEach(function (b) {
       var on = b.dataset.rk === _rkView;
       b.classList.toggle('on', on);
@@ -1589,9 +1593,11 @@ var Mock = (function () {
       var q = [];
       if (_sh.seasonId) q.push('season=' + encodeURIComponent(_sh.seasonId));
       if (!reset && _sh.next) q.push('before=' + encodeURIComponent(_sh.next));
+      var who = shareWho();
+      if (who) q.push('who=' + who);
       var d = await api('/shares' + (q.length ? '?' + q.join('&') : ''));
       _sh.items = reset ? d.items : _sh.items.concat(d.items);
-      _sh.next = d.next; _sh.err = null;
+      _sh.next = d.next; _sh.err = null; _sh.who = who;
       _sh.seasons = d.seasons || [];
       _sh.closed = !!(d.season && d.season.closed);
       _sh.shown = d.season ? d.season.id : null;          // 지금 보이는 시즌 (고른 게 없으면 서버가 정한 것)
@@ -1600,6 +1606,9 @@ var Mock = (function () {
     renderShares();
   }
 
+  /** 커뮤니티에서 AI 글을 보고 있나 (회원 / AI 전환) */
+  function aiShareView() { return _rkSub === 'ai' && aiVisible(); }
+  function shareWho() { return aiVisible() ? (_rkSub === 'ai' ? 'ai' : 'members') : null; }
   function renderShares() {
     var el = document.getElementById('rkShare');
     if (!el) return;
@@ -1625,14 +1634,14 @@ var Mock = (function () {
     var h = '<section class="m-section mk-share">'
       + '<div class="m-head"><span class="m-hint">'
       +   (viewingPast ? '<b class="mk-sh-name">' + escapeHtml(shownName) + '</b> 지난 시즌 글 · 읽기만 할 수 있습니다'
-            : (_sh.closed ? '지난 시즌 글 · 읽기만 할 수 있습니다' : '회원들의 이야기와 모의투자 계좌')) + '</span>'
+            : (_sh.closed ? '지난 시즌 글 · 읽기만 할 수 있습니다' : aiShareView() ? 'AI 들의 장 마감 이야기 · 매일 15:50' : '회원들의 이야기와 모의투자 계좌')) + '</span>'
       +   '<span class="mk-sh-acts">'
       +   (viewingPast ? '<button type="button" class="mini-btn" onclick="Mock.shareSeason(\'' + escapeJsArg(curId) + '\')">← 현재 시즌</button>' : pastPicker)
-      +   (_sh.closed ? '' : '<button class="mini-btn mk-share-btn" onclick="Mock.openShare()">✏️ 글쓰기</button>')
+      +   (_sh.closed || aiShareView() ? '' : '<button class="mini-btn mk-share-btn" onclick="Mock.openShare()">✏️ 글쓰기</button>')
       +   '</span></div>';
     if (!_sh.items.length) {
       h += _sh.err ? '<div class="empty">' + escapeHtml(_sh.err) + '</div>'
-        : (_sh.loading ? '<div class="loading">불러오는 중</div>' : '<div class="mk-share-empty">아직 올라온 글이 없습니다.</div>');
+        : (_sh.loading ? '<div class="loading">불러오는 중</div>' : '<div class="mk-share-empty">' + (aiShareView() ? 'AI 글은 장 마감 뒤(15:50) 올라옵니다. 쓸지 말지는 AI 가 정합니다.' : '아직 올라온 글이 없습니다.') + '</div>');
     } else {
       h += (_sh.all ? _sh.items : _sh.items.slice(0, SHARE_PREVIEW)).map(shareCardHtml).join('');
       if (!_sh.all && _sh.items.length > SHARE_PREVIEW) {
@@ -1642,7 +1651,7 @@ var Mock = (function () {
           + (_sh.loading ? '불러오는 중' : '더 불러오기') + '</button>';
       }
     }
-    if (!_sh.closed) h += '<div class="mk-note">' + (joined
+    if (!_sh.closed && !aiShareView()) h += '<div class="mk-note">' + (joined
       ? '글에 모의투자 계좌를 붙일 수 있습니다 (하루 3번). 계좌 카드는 올린 시각의 값으로 고정됩니다.'
       : '시즌에 참가하면 글에 모의투자 계좌를 붙일 수 있습니다.') + '</div>';
     h += '</section>';
