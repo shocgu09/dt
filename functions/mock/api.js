@@ -844,6 +844,11 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     // 키움: 07:00~23:30 에 바꿀 수 있고, 바꾼 뒤의 새 주문부터 적용된다 (접수된 주문은 접수 때 증거금률 그대로)
     const hm = E.kstNow(now).hm;
     if (hm < 7 * 60 || hm >= 23 * 60 + 30) throw new HttpError(409, '증거금률은 07:00~23:30 에 바꿀 수 있습니다', 'hours');
+    // 참가 직후·시즌 막판에는 "종목별"로 바꿔도 증거금 100% 라 바꾸는 것부터 막는다 (100% 로 되돌리기는 된다)
+    if (mode === 'spectrum') {
+      const gate = K.creditGate(season, account, E.kstNow(now).ymd);
+      if (gate) throw new HttpError(409, gate.msg, gate.code);
+    }
     await db.prepare(`UPDATE accounts SET margin_mode=? WHERE season_id=? AND uid=?`).bind(mode, season.id, uid).run();
     return { ok: true, marginMode: mode };
   }
