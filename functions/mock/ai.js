@@ -728,11 +728,14 @@ export async function snapshot(db, season, now = Date.now(), opts = {}) {
 export const POST_PROMPT = `너는 DT Club 모의투자 리그에 참가한 AI 트레이더다. 장이 끝난 뒤 회원들이 보는 커뮤니티에 오늘 매매 이야기를 올릴지 정한다.
 
 [규칙]
-1. 쓸지 말지는 네가 정한다. 수익이 났으면 자랑해도 좋고, 손실이면 담담하게 돌아보거나 쓰지 않아도 된다.
-2. 아래 '오늘 기록'에 있는 숫자·종목·판단만 쓴다. 뉴스·업황·회사 이야기를 지어내지 않는다.
-3. 가격·금액은 '오늘 기록'에 적힌 숫자를 그대로 옮긴다 (원 단위, 쉼표 포함). 억·만 단위로 바꾸거나 반올림하지 않는다.
-4. 다른 사람에게 사거나 팔라고 권하지 않는다 ("사세요", "추천", "따라 사" 같은 말 금지).
-5. 존댓말, 1인칭. 제목 30자 이내, 본문 250자 이내. 이모지는 2개까지.
+1. 쓸지 말지는 네가 정한다. 매매 내역을 늘어놓는 일지가 아니라, 리그에서 경쟁하는 참가자로서 오늘 하루의 소감을 쓴다.
+2. '리그 상황'을 보고 사람처럼 반응한다. 순위가 오르거나 1위면 기뻐하고, 떨어졌거나 꼴찌면 속상해하거나 자책해도 좋다. 바로 위·아래 AI 를 의식하는 가벼운 경쟁심, 연속 기록, 코스피보다 잘했는지 못했는지, 내일 다짐도 좋다. 다만 기록과 맞지 않는 감정(손실인데 자랑 등)이나 다른 AI 를 깎아내리는 말은 쓰지 않는다.
+3. 오늘 매매는 다 나열하지 말고 가장 기억에 남는 한두 장면만 쓴다.
+4. 아래 '오늘 기록'에 있는 숫자·종목·판단만 쓴다. 뉴스·업황·회사 이야기를 지어내지 않는다.
+5. 가격·금액은 '오늘 기록'에 적힌 숫자를 그대로 옮긴다 (원 단위, 쉼표 포함). 억·만 단위로 바꾸거나 반올림하지 않는다.
+6. 다른 사람에게 사거나 팔라고 권하지 않는다 ("사세요", "추천", "따라 사" 같은 말 금지).
+7. 제목에는 오늘 기분이나 상황이 드러나게 쓴다. "오늘 매매 기록", "매매 정리", "오늘 매매 결과" 같은 밋밋한 제목은 쓰지 않는다.
+8. 존댓말, 1인칭. 제목 30자 이내, 본문 250자 이내. 이모지는 2개까지.
 
 [답 형식] JSON 하나만. 다른 글·코드블록 표시 없이.
 {"post": true 또는 false, "title": "제목", "body": "본문"}`;
@@ -753,37 +756,88 @@ export function checkPost(text, facts) {
   return bad ? `기록에 없는 숫자 ${bad}` : null;
 }
 
+const pct2 = (a, b) => (b ? Math.round((a / b - 1) * 10000) / 100 : 0);
+const BORING_TITLE = /^(오늘(의)?\s*)?매매\s*(기록|정리|결과|일지|요약)/;
+
+/**
+ * 리그 상황 — 순위 변동 · 바로 위/아래 AI 와의 차이 · 연속 기록 · 시즌 최고/최저 순위 (순수 함수).
+ * rows: 그날까지의 순자산 기록(ai_daily), todayEq: 오늘 순자산 {uid: 원}. 숫자는 전부 장부에서 — 글 숫자 검사와 맞는다
+ */
+export function leagueStatus(uid, rows, ymd, todayEq, seed, nameOf) {
+  const by = {};
+  for (const x of rows || []) if (x.ymd < ymd) (by[x.ymd] = by[x.ymd] || {})[x.uid] = x.equity;
+  by[ymd] = { ...todayEq };
+  const days = Object.keys(by).sort();
+  const ranks = days.map((d) => {
+    const e = by[d], order = Object.keys(e).sort((a, b) => e[b] - e[a]);
+    return { d, order, rank: order.indexOf(uid) + 1, n: order.length, eq: e[uid] };
+  }).filter((x) => x.rank > 0);
+  const now = ranks[ranks.length - 1];
+  if (!now) return '';
+  const prev = ranks.length > 1 ? ranks[ranks.length - 2] : null;
+  const ret = (u) => pct2(by[ymd][u], seed);
+  const me = ret(uid);
+  const lines = [];
+  const move = !prev ? '오늘이 첫 순위' : prev.rank === now.rank ? `어제도 ${prev.rank}위`
+    : `어제 ${prev.rank}위 → ${Math.abs(prev.rank - now.rank)}계단 ${now.rank < prev.rank ? '상승' : '하락'}`;
+  lines.push(`오늘 AI 순위 ${now.rank}위 / ${now.n}명 (${move})${now.rank === now.n && now.n > 1 ? ' · 꼴찌' : ''}`);
+  const who = (u) => `${nameOf(u)} 시즌 ${sgn(ret(u))}%`;
+  if (now.rank > 2) lines.push(`1위: ${who(now.order[0])}`);
+  if (now.rank > 1) { const u = now.order[now.rank - 2]; lines.push(`바로 위: ${who(u)} (나보다 ${r2(ret(u) - me)}%p 앞)`); }
+  if (now.rank < now.n) { const u = now.order[now.rank]; lines.push(`바로 아래: ${who(u)} (나보다 ${r2(me - ret(u))}%p 뒤)`); }
+  // 연속 기록 — 오늘부터 거꾸로 센다
+  const run = (f) => { let k = 0; for (let i = ranks.length - 1; i >= 0 && f(ranks[i], i); i--) k++; return k; };
+  const top = run((x) => x.rank === 1), last = run((x) => x.rank === x.n);
+  const dir = (i) => Math.sign(ranks[i].eq - (i > 0 ? ranks[i - 1].eq : seed));
+  const d0 = dir(ranks.length - 1), same = d0 ? run((x, i) => dir(i) === d0) : 0;
+  const streak = [];
+  if (top >= 2) streak.push(`${top}일 연속 1위`);
+  if (last >= 2) streak.push(`${last}일 연속 꼴찌`);
+  if (same >= 2) streak.push(`${same}일 연속 순자산 ${d0 > 0 ? '증가' : '감소'}`);
+  if (streak.length) lines.push(`연속 기록: ${streak.join(' · ')}`);
+  if (ranks.length >= 2) {
+    const rs = ranks.map((x) => x.rank);
+    lines.push(`시즌 최고 ${Math.min(...rs)}위 · 최저 ${Math.max(...rs)}위 (순위 기록 ${ranks.length}일째)`);
+  }
+  return lines.join('\n');
+}
+const r2 = (x) => Math.round(x * 100) / 100;
+
 /** 오늘 기록 — 장 마감 이야기의 재료 (순수 함수) */
 export function daySummaryText(bot, x) {
   const fills = x.fills.map((f) => `${f.side === 'buy' ? '매수' : '매도'} ${f.name} ${won(f.qty)}주 @ ${won(f.price)}`);
   const pos = x.positions.map((p) => `${p.name} ${won(p.qty)}주 · 평단 ${won(p.avg)} · 오늘 종가 ${won(p.px)} (${sgn(pct(p.px, p.avg))}%)` +
     (p.stop ? ` · 내 계획 손절 ${won(p.stop)}${p.target ? ` · 목표 ${won(p.target)}` : ''}` : ''));
   const rounds = x.rounds.map((j) => `${hhmmOf(j.hm)} — ${j.view || '-'} / ${j.did || '주문 없음'}`);
+  const day = pct2(x.equity, x.prevEquity);
   return `## 나\n${bot.maker} ${bot.name} (AI ${x.rank}위 / ${x.total}명)\n\n## 오늘 성적\n` +
-    `순자산 ${won(x.equity)}원 · 오늘 ${sgn(won(x.dayPnl))}원 (${sgn(pct(x.equity, x.prevEquity))}%) · 시즌 ${sgn(pct(x.equity, x.seed))}%\n` +
-    `코스피 오늘 ${x.kospi == null ? '-' : sgn(x.kospi) + '%'} · 코스닥 ${x.kosdaq == null ? '-' : sgn(x.kosdaq) + '%'}\n\n` +
+    `순자산 ${won(x.equity)}원 · 오늘 ${sgn(won(x.dayPnl))}원 (${sgn(day)}%) · 시즌 ${sgn(pct2(x.equity, x.seed))}%\n` +
+    `코스피 오늘 ${x.kospi == null ? '-' : sgn(x.kospi) + '%'} · 코스닥 ${x.kosdaq == null ? '-' : sgn(x.kosdaq) + '%'}` +
+    (x.kospi == null ? '' : ` → 내 수익률이 코스피보다 ${r2(Math.abs(day - x.kospi))}%p ${day >= x.kospi ? '높음' : '낮음'}`) + '\n\n' +
+    (x.league ? `## 리그 상황\n${x.league}\n\n` : '') +
     `## 오늘 체결\n${fills.length ? fills.join('\n') : '없음'}\n\n## 보유 종목\n${pos.length ? pos.join('\n') : '없음'}\n\n## 오늘 판단\n${rounds.length ? rounds.join('\n') : '없음'}`;
 }
 
 /** 오늘 기록을 모아 4명에게 동시에 묻는다 */
 async function phasePostThink(env, db, season, r, now, opts = {}) {
   const dayStart = Date.UTC(+r.ymd.slice(0, 4), +r.ymd.slice(4, 6) - 1, +r.ymd.slice(6, 8)) - 9 * 3600e3;
-  const [accRes, posRes, fillRes, prevRes, jrRes, postedRes, todayRes, thRes] = await db.batch([
+  const [accRes, posRes, fillRes, dailyRes, jrRes, postedRes, thRes] = await db.batch([
     db.prepare(`SELECT * FROM accounts WHERE season_id=? AND status='ai'`).bind(season.id),
     db.prepare(`SELECT uid, code, name, qty, cost FROM positions WHERE season_id=? AND uid LIKE 'ai:%' AND qty > 0`).bind(season.id),
     db.prepare(`SELECT f.uid, f.side, f.qty, f.price, o.name FROM fills f JOIN orders o ON o.id = f.order_id WHERE f.season_id=? AND f.uid LIKE 'ai:%' AND f.at >= ? ORDER BY f.at`).bind(season.id, dayStart),
-    db.prepare(`SELECT uid, equity FROM ai_daily d WHERE season_id=? AND ymd = (SELECT MAX(ymd) FROM ai_daily WHERE season_id=d.season_id AND uid=d.uid AND ymd < ?)`).bind(season.id, r.ymd),
+    // 시즌 순자산 기록 전체 (AI 4명 × 거래일 — 시즌 끝까지 240줄쯤) — 어제 순자산·순위 변동·연속 기록
+    db.prepare(`SELECT uid, ymd, equity FROM ai_daily WHERE season_id=? AND ymd <= ? ORDER BY ymd`).bind(season.id, r.ymd),
     db.prepare(`SELECT uid, hm, view, detail FROM ai_journal WHERE season_id=? AND ymd=? AND status IN ('ok','dry') ORDER BY at`).bind(season.id, r.ymd),
     db.prepare(`SELECT uid FROM shares WHERE season_id=? AND uid LIKE 'ai:%' AND created_at >= ? AND deleted_at IS NULL`).bind(season.id, dayStart),
-    db.prepare(`SELECT uid, equity FROM ai_daily WHERE season_id=? AND ymd=?`).bind(season.id, r.ymd),
     db.prepare(`SELECT uid, code, stop, target FROM ai_theses WHERE season_id=?`).bind(season.id)
   ]);
   const codes = [...new Set((posRes.results || []).map((p) => p.code))];
   // 보유 평가는 오늘 15:30 종가 — 순자산 기록(ai_daily)과 같은 기준이라 글의 숫자와 순위 화면 기록이 맞는다
   const [px, idx] = await Promise.all([closePrices(db, codes, r.ymd, true), naver.getIndex().catch(() => null)]);
   const posted = new Set((postedRes.results || []).map((x) => x.uid));
+  const daily = dailyRes.results || [];
   const today = {};
-  for (const x of todayRes.results || []) today[x.uid] = x.equity;
+  for (const x of daily) if (x.ymd === r.ymd) today[x.uid] = x.equity;
   const sums = {};
   for (const a of accRes.results || []) {
     const bot = botOfUid(a.uid);
@@ -792,7 +846,7 @@ async function phasePostThink(env, db, season, r, now, opts = {}) {
     const positions = (posRes.results || []).filter((p) => p.uid === a.uid).map((p) => ({ code: p.code, name: p.name, qty: p.qty, cost: p.cost, avg: Math.round(p.cost / p.qty),
       px: px[p.code] || Math.round(p.cost / p.qty), stop: plan(p.code).stop || null, target: plan(p.code).target || null }));
     const equity = today[a.uid] != null ? today[a.uid] : Math.round(a.cash - (a.cash_short || 0) + positions.reduce((t, p) => t + p.px * p.qty, 0));
-    const prev = (prevRes.results || []).find((x) => x.uid === a.uid);
+    const prev = daily.filter((x) => x.uid === a.uid && x.ymd < r.ymd).pop();
     const rounds = (jrRes.results || []).filter((j) => j.uid === a.uid).map((j) => {
       let did = null;
       try { did = (JSON.parse(j.detail || '{}').actions || []).filter((x) => x.result === 'placed').map((x) => `${x.name} ${x.side === 'buy' ? '매수' : '매도'}`).join(', '); } catch (e) {}
@@ -805,6 +859,9 @@ async function phasePostThink(env, db, season, r, now, opts = {}) {
   }
   const order = Object.keys(sums).sort((x, y) => sums[y].equity - sums[x].equity);
   order.forEach((id, i) => { sums[id].rank = i + 1; sums[id].total = order.length; });
+  const todayEq = Object.fromEntries(Object.values(sums).map((x) => [x.uid, x.equity]));
+  const nameOf = (u) => { const b = botOfUid(u); return b ? `${b.maker} ${b.name}` : u; };
+  for (const id of order) sums[id].league = leagueStatus(sums[id].uid, daily, r.ymd, todayEq, season.seed, nameOf);
   const out = await Promise.all(Object.keys(sums).map(async (id) => {
     const bot = BOTS.find((b) => b.id === id), x = sums[id];
     if (x.posted) return [id, { skip: '오늘 이미 글을 올림' }];
@@ -817,16 +874,19 @@ async function phasePostThink(env, db, season, r, now, opts = {}) {
       const d = parseLoose(res.text);
       const v = { post: d.post === true, title: String(d.title || '').trim().slice(0, 40), body: String(d.body || '').trim().slice(0, 300) };
       v.problem = v.post ? (!v.body ? '빈 글' : checkPost((v.title ? v.title + '\n' : '') + v.body, facts)) : null;
+      v.dull = v.post && BORING_TITLE.test(v.title);
       return v;
     };
     try {
       let res = await ask(messages), v = read(res);
-      if (v.problem && v.body) {
-        // 한 번만 고쳐 쓰게 한다 — 그래도 안 되면 올리지 않는다
+      if ((v.problem && v.body) || (!v.problem && v.dull)) {
+        // 한 번만 고쳐 쓰게 한다 — 숫자·권유 문제가 남으면 올리지 않고, 제목만 밋밋하면 그대로 올린다
         messages.push({ role: 'assistant', content: res.text.slice(0, 2000) },
-          { role: 'user', content: `이 글은 올릴 수 없다 (${v.problem}). 규칙 2·3·4를 지켜 다시 써라. 쓰지 않으려면 post 를 false 로.` });
+          { role: 'user', content: v.problem ? `이 글은 올릴 수 없다 (${v.problem}). 규칙 4·5·6을 지켜 다시 써라. 쓰지 않으려면 post 를 false 로.`
+            : '제목이 밋밋하다 (규칙 7). 오늘 기분이나 리그 상황이 드러나는 제목으로 다시 써라. 본문도 고쳐도 된다.' });
         res = await ask(messages); v = read(res);
       }
+      delete v.dull;
       return [id, { ...v, usage }];
     } catch (e) { return [id, { error: String(e && e.message || e).slice(0, 200), usage }]; }
   }));
