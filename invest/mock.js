@@ -1463,16 +1463,35 @@ var Mock = (function () {
         +   '<span class="mk-pos-sub">보유 ' + b.positions.length + '종목 · 현금 ' + cashPct + '% · 판단 ' + fmtNum(b.rounds) + '회' + (b.fails ? ' · 실패 ' + b.fails : '') + (b.neurons != null ? ' · ' + fmtNum(b.neurons) + '뉴런' : '') + '</span></span>'
         + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(b.equity) + '</span><span class="mk-pos-pnl ' + signClass(rr) + '">' + fmtRate(rr) + '</span></span></button>';
       if (!open) return row;
-      var det = '<div class="mk-ai-det">';
-      det += b.positions.length ? b.positions.map(function (p) {
+      // 내 계좌 화면과 같은 모양 — 요약 카드 · 📦 보유 종목 · ⏳ 미체결 (AI 계좌라 정정·취소 버튼은 없다)
+      var base = b.principal || d.seed, evalPnl = b.positions.reduce(function (t, p) { return t + (p.pnl || 0); }, 0);
+      var det = '<div class="mk-ai-det">'
+        + '<div class="mk-card mk-summary mk-ai-sum">'
+        +   '<div class="mk-eq">' + won(b.equity) + '</div>'
+        +   '<div class="mk-eq-sub">' + rateHtml(b.returnRate) + ' <span class="' + signClass(b.equity - base) + '">' + (b.equity - base > 0 ? '+' : '') + fmtNum(b.equity - base) + '원</span>'
+        +     '<span class="mk-dim"> · 시작 ' + fmtCompact(d.seed) + '원</span></div>'
+        +   '<div class="mk-grid">'
+        +     cell('주문 가능', won(b.available) + (b.reserved > 0 ? '<small class="mk-cell-sub">주문 대기 ' + won(b.reserved) + '</small>' : ''))
+        +     cell('보유 주식', won(b.stock))
+        +     cell('평가손익', '<span class="' + signClass(evalPnl) + '">' + (evalPnl > 0 ? '+' : '') + fmtNum(evalPnl) + '원</span>')
+        +     cell('실현손익', '<span class="' + signClass(b.realizedPnl || 0) + '">' + ((b.realizedPnl || 0) > 0 ? '+' : '') + fmtNum(b.realizedPnl || 0) + '원</span>'
+              + (b.buyFees ? '<small class="mk-cell-sub">매수 수수료 −' + fmtNum(b.buyFees) + '원</small>' : ''))
+        +   '</div></div>'
+        + '<div class="mk-ai-sub">📦 보유 종목 ' + b.positions.length + '종목</div>';
+      det += b.positions.length ? b.positions.filter(function (p) { return CODE_RE.test(p.code); }).map(function (p) {
         var pl = p.plan || {};
-        return '<div class="mk-ai-pos"><button type="button" class="mk-ai-go" onclick="openStock(\'' + escapeJsArg(p.code) + '\',\'' + escapeJsArg(p.name) + '\')"><b>' + escapeHtml(p.name) + '</b> ' + fmtNum(p.qty) + '주 · 평단 ' + fmtNum(p.avgPrice) + ' · 현재 ' + fmtNum(p.price) + ' <span class="' + signClass(p.pnlRate) + '">' + fmtRate(p.pnlRate) + '</span><span class="mk-ai-arrow" aria-hidden="true">›</span></button>'
-          + (pl.stop ? '<div class="mk-ai-plan">손절 ' + fmtNum(pl.stop) + (pl.target ? ' · 목표 ' + fmtNum(pl.target) : '') + (pl.holdDays ? ' · ' + pl.holdDays + '일 예정' : '') + (pl.openedYmd ? ' · ' + md(pl.openedYmd) + ' 매수' : '') + '</div>' : '')
-          + (pl.thesis ? '<div class="mk-ai-why">' + escapeHtml(pl.thesis) + '</div>' : '') + '</div>';
-      }).join('') : '<div class="mk-ai-act">보유 종목 없음</div>';
-      if (b.openOrders.length) det += '<div class="mk-ai-sub">미체결</div>' + b.openOrders.map(function (o) {
-        return '<div class="mk-ai-act">' + escapeHtml(o.name) + ' ' + (o.side === 'buy' ? '매수' : '매도') + ' ' + fmtNum(o.qty - o.filledQty) + '주' + (o.limitPrice ? ' · 지정가 ' + fmtNum(o.limitPrice) : ' · 시장가') + '</div>';
-      }).join('');
+        return '<button class="mk-pos" onclick="openStock(\'' + p.code + '\',\'' + escapeJsArg(p.name) + '\')">'
+          + stockLogoHtml(p.code, p.name, null, 'sm')
+          + '<span class="mk-pos-main"><span class="mk-pos-name">' + escapeHtml(p.name) + (p.halted ? ' <i class="mk-tag">정지</i>' : '') + '</span>'
+          +   '<span class="mk-pos-sub">' + fmtNum(p.qty) + '주 · 평단 ' + fmtNum(p.avgPrice) + '원</span></span>'
+          + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(p.value) + '원</span>'
+          +   '<span class="mk-pos-pnl ' + signClass(p.pnl) + '">' + (p.pnl > 0 ? '+' : '') + fmtNum(p.pnl) + '원 (' + fmtRate(p.pnlRate) + ')</span></span>'
+          + '</button>'
+          + (pl.stop ? '<div class="mk-ai-plan mk-ai-posplan">🎯 손절 ' + fmtNum(pl.stop) + (pl.target ? ' · 목표 ' + fmtNum(pl.target) : '') + (pl.holdDays ? ' · ' + pl.holdDays + '일 예정' : '') + (pl.openedYmd ? ' · ' + md(pl.openedYmd) + ' 매수' : '')
+            + (pl.thesis ? '<span class="mk-ai-why">' + escapeHtml(pl.thesis) + '</span>' : '') + '</div>' : '');
+      }).join('') : '<div class="empty">보유 종목이 없습니다.</div>';
+      if (b.openOrders.length) det += '<div class="mk-ai-sub">⏳ 미체결 ' + b.openOrders.length + '건</div>'
+        + b.openOrders.map(function (o) { return orderRowHtml(Object.assign({}, o, { id: null })); }).join('');
       var js = d.journal.filter(function (j) { return j.bot === b.id; }).concat(_aiMore[b.id] || []);
       det += '<div class="mk-ai-sub">최근 판단</div>' + (js.length ? journalHtml(js[0], false) : '<div class="mk-ai-act">아직 없음</div>');
       if (js.length > 1 || _aiMoreLeft[b.id]) {

@@ -1179,7 +1179,8 @@ async function aiLeague(env, db, season, now, isAdmin) {
     const u = use[a.uid] || {};
     return {
       id: bot.id, name: bot.name, maker: bot.maker, logo: bot.logo || null, model: bot.model,
-      equity: v.equity, returnRate: v.returnRate, cash: v.cash, available: v.available, stock: v.stock, fills: v.fills, orders: v.orders,
+      equity: v.equity, returnRate: v.returnRate, cash: v.cash, available: v.available, reserved: v.reserved, stock: v.stock, fills: v.fills, orders: v.orders,
+      principal: v.principal, realizedPnl: v.realizedPnl, buyFees: v.buyFees,
       positions: v.positions.map((p) => ({ ...p, plan: (({ thesis, stop, target, hold_days, opened_ymd }) => ({ thesis, stop, target, holdDays: hold_days, openedYmd: opened_ymd }))(th.find((x) => x.code === p.code) || {}) })),
       openOrders: v.openOrders,
       series: (dayRes.results || []).filter((x) => x.uid === a.uid).map((x) => ({ ymd: x.ymd, equity: x.equity })),
