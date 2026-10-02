@@ -422,11 +422,22 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     ).bind(pick.id, bAt, bAt, bId, SHARE_PAGE).all()).results || [];
     const last = rows[rows.length - 1];
     const nicks = await N.nicksFor(db, rows.map((r) => r.uid));
+    // 새 글 표시(점) — 진행 중 시즌의 회원 글·AI 글 각각 '남이 쓴 가장 최근 글' 시각. 화면이 지금 어느 목록(회원/AI·지난 시즌)을
+    // 받아 왔든 같은 기준으로 판단한다 (예전엔 받아 온 목록만 보고, 본 시각도 그 목록 맨 위로 덮어써 뒤로 가기도 했다)
+    let latest;
+    if (season && !mm) {
+      const [lm, la] = await db.batch([
+        db.prepare(`SELECT created_at AS t FROM shares WHERE season_id=? AND deleted_at IS NULL AND uid NOT LIKE 'ai:%' AND uid <> ? ORDER BY created_at DESC LIMIT 1`).bind(season.id, uid),
+        db.prepare(`SELECT created_at AS t FROM shares WHERE season_id=? AND deleted_at IS NULL AND uid LIKE 'ai:%' ORDER BY created_at DESC LIMIT 1`).bind(season.id)
+      ]);
+      latest = { season: season.id, members: (lm.results[0] || {}).t || 0, ai: AI.aiVisible(season, isAdmin) ? (la.results[0] || {}).t || 0 : 0 };
+    }
     return {
       season: { id: pick.id, name: pick.name, closed: pick.status !== 'active' },
       seasons,
       items: rows.map((r) => publicShare(r, uid, isAdmin, nicks)),
-      next: rows.length === SHARE_PAGE ? `${last.created_at}_${last.id}` : null
+      next: rows.length === SHARE_PAGE ? `${last.created_at}_${last.id}` : null,
+      latest
     };
   }
   /* ── 커뮤니티 글쓰기 ─────────────────────────────────────────

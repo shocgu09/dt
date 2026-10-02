@@ -1379,19 +1379,40 @@ var Mock = (function () {
     show('rkBoard', !share && !ai); show('rkHall', !share && !ai); show('rkShare', share); show('rkAi', ai);
     show('rkNick', !share && !ai);   // 닉네임 바꾸기는 순위 화면에만
   }
-  /* 새 글 표시 — 마지막으로 커뮤니티를 본 뒤 남이 올린 글이 있으면 탭에 점을 찍는다 (이 기기 기준) */
-  function seenKey() { return 'dt-invest-share-seen:' + (currentUser ? currentUser.uid : ''); }
+  /* 새 글 표시 — 마지막으로 커뮤니티를 본 뒤 남이 올린 글이 있으면 탭에 점을 찍는다 (이 기기 기준).
+   * 회원 글과 AI 글을 따로 기억하고, 서버가 알려 주는 진행 중 시즌의 '남이 쓴 최근 글 시각'(latest)과 비교한다.
+   * 본 시각은 앞으로만 간다 — 예전엔 지금 받아 온 목록의 맨 위 글로 덮어써서, 지난 시즌·다른 목록을 보고 오면
+   * 본 시각이 과거로 돌아가 이미 읽은 글에도 점이 떴다 (2026-10-02) */
+  var _shLatest = null;
+  function seenKey() { return 'dt-invest-share-seen2:' + (currentUser ? currentUser.uid : ''); }
+  function readSeen() {
+    var v = null;
+    try { v = JSON.parse(localStorage.getItem(seenKey()) || 'null'); } catch (e) {}
+    if (!v) {
+      // 예전 기록(한 칸)이 있으면 두 목록 모두 그 시각부터
+      var old = 0;
+      try { old = Number(localStorage.getItem('dt-invest-share-seen:' + (currentUser ? currentUser.uid : ''))) || 0; } catch (e) {}
+      v = { members: old, ai: old };
+    }
+    return v;
+  }
   function markSharesSeen() {
-    var top = _sh.items[0];
-    if (top) try { localStorage.setItem(seenKey(), String(top.createdAt)); } catch (e) {}
+    // 진행 중 시즌의 목록을 보고 있을 때만 — 지난 시즌 글을 본 것으로 새 글을 읽었다고 치지 않는다
+    var lt = _shLatest, who = _sh.who || (aiVisible() ? null : 'members');
+    if (lt && who && _sh.shown === lt.season && !_sh.loading) {
+      var seen = readSeen();
+      if ((lt[who] || 0) > (seen[who] || 0)) {
+        seen[who] = lt[who];
+        try { localStorage.setItem(seenKey(), JSON.stringify(seen)); } catch (e) {}
+      }
+    }
     updateShareDot();
   }
   function updateShareDot() {
     var dot = document.querySelector('.mk-rk-dot');
     if (!dot) return;
-    var seen = 0;
-    try { seen = Number(localStorage.getItem(seenKey())) || 0; } catch (e) {}
-    var fresh = _sh.items.some(function (x) { return !x.mine && x.createdAt > seen; });
+    var lt = _shLatest, seen = readSeen();
+    var fresh = !!lt && ((lt.members || 0) > (seen.members || 0) || (aiVisible() && (lt.ai || 0) > (seen.ai || 0)));
     dot.hidden = !fresh || _rkView === 'share';
   }
 
@@ -1640,6 +1661,7 @@ var Mock = (function () {
       _sh.seasons = d.seasons || [];
       _sh.closed = !!(d.season && d.season.closed);
       _sh.shown = d.season ? d.season.id : null;          // 지금 보이는 시즌 (고른 게 없으면 서버가 정한 것)
+      if (d.latest) _shLatest = d.latest;                // 새 글 표시 기준 (첫 페이지에만 온다)
     } catch (e) { _sh.err = e.message; }
     _sh.loading = false;
     renderShares();
