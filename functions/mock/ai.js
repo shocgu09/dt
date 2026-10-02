@@ -37,6 +37,7 @@ export const SNAP_FINAL = 16 * 60 + 30;  // 이때까지 그날 종가가 다 �
 const CALL_BUDGET = 42;
 const COST_PLACE = 8;                    // 주문 1건 = 시세 1 + D1 6~7문장 (중복 확인·차단 종목·속도 제한·주문가능금액·접수·조회)
 
+// 바꾸면 화면 설명(invest/mock.js aiRulesTip — AI 매매 규칙 !)도 같이 고친다
 export const LIMITS = {
   perStock: 0.30,      // 종목당 최대 비중
   perRound: 0.30,      // 한 번의 판단에서 새로 사는 비중 합계

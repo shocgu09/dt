@@ -1480,6 +1480,7 @@ var Mock = (function () {
     var closed = !!(d.season && d.season.closed);
     if (closed) status = '시즌 종료 · 최종 순위';
     var h = '<section class="m-section"><div class="m-head mk-ai-head"><h3>🤖 ' + escapeHtml((d.season && d.season.name) || '') + ' AI 리그' + (d.mode === 'admin' ? ' <i class="mk-tag">시험 중 · 관리자만</i>' : '') + '</h3>'
+      + aiRulesTip(d)
       // 지금 한 번 판단시키기 — 슈퍼관리자만, 작게. 정규장 밖이면 시간외 지정가로 넣는다
       + (admin && !closed ? '<button class="mk-ai-run" onclick="Mock.aiRun(this)"' + (_aiBusy ? ' disabled' : '') + ' title="지금 4명이 판단하고 주문까지 넣습니다 (정규장 밖은 시간외 지정가)">▶ 지금 판단</button>' : '')
       + '</div>'
@@ -1543,6 +1544,22 @@ var Mock = (function () {
     h += '</section>';
 
     el.innerHTML = h;
+  }
+  /** AI 리그 ! — 매매 규칙 (서버 mock/ai.js 의 ROUNDS · LIMITS · 후보 거르기 · 손절과 같게 유지할 것) */
+  function aiRulesTip(d) {
+    return InfoTip.btn('AI 매매 규칙', [
+      '· 판단: 정규장 하루 ' + (d.rounds || []).length + '번 (' + (d.rounds || []).map(hmTxt).join(' · ') + '), 4명이 같은 자료로 동시에 판단',
+      '· 조건: 시드 1억, 수수료 · 세금 · 체결 방식은 회원과 같음. 현금만 씀 (미수 · 신용 · 대출 없음)',
+      '· 후보: 코스피 · 코스닥 거래대금 상위 개별주 10개 + 보유 종목. ETF · ETN · 우선주 · 스팩, 등락률 ±15% 초과, 거래대금 300억 미만, 거래정지 종목은 사지 않음',
+      '· 판단 자료: 지수 · 해외 선물 · 환율 · 금리, 종목별 이동평균 · RSI · 거래대금 · 최근 5일 외국인 · 기관 수급 · PER · PBR · 목표가 · 뉴스 제목',
+      '· 한도: 종목당 30%, 한 번에 새로 사는 금액 30%, 동시 보유 8종목, 하루 새 종목 3개',
+      '· 과열(RSI 75 이상) · 20일 50% 이상 급등 · 상한가 근접 · 외국인 · 기관 동반 순매도 종목은 그 위험을 감수하는 이유를 밝혀야 매수',
+      '· 매수마다 손절가 · 목표가 · 보유 예정일을 정함. 판단 시각에 손절가 이하면 시장가로 자동 매도',
+      '· 오늘 산 종목은 오늘 팔지 않음 (손절은 예외)',
+      '· 판단 때마다 지난 미체결 주문은 취소하고 새로 냄. 지정가는 현재가보다 높게 걸지 않음',
+      '· 장 마감 뒤 15:30 종가로 순자산을 기록하고, 커뮤니티에 글을 쓸지는 AI 가 정함',
+      '· 회원 글 · 댓글은 읽지 않음'
+    ].join('\n'), 'sm');
   }
   function aiToggle(id) { _aiOpen[id] = !_aiOpen[id]; renderAi(); }
   function aiSeasonQ() { return _ai && _ai.season && _ai.season.id ? '&season=' + encodeURIComponent(_ai.season.id) : ''; }
