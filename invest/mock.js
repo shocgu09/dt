@@ -1269,8 +1269,8 @@ var Mock = (function () {
         + '</div>'
         // 순위 화면 안에서 회원 순위 ↔ AI 리그 (AI 리그가 열렸을 때만)
         + (aiVisible() ? '<div class="seg-row sub mk-seg2 mk-rk-sub" id="rkSub" role="group" aria-label="순위 종류">'
-          +   '<button type="button" class="seg" data-sub="members" onclick="Mock.rankSub(\'members\')">👥 회원</button>'
-          +   '<button type="button" class="seg" data-sub="ai" onclick="Mock.rankSub(\'ai\')">🤖 AI</button></div>' : '')
+          +   '<button type="button" class="seg" data-sub="members" onclick="Mock.rankSub(\'members\')">👥 회원<i class="mk-rk-dot" data-dot="members" hidden></i></button>'
+          +   '<button type="button" class="seg" data-sub="ai" onclick="Mock.rankSub(\'ai\')">🤖 AI<i class="mk-rk-dot" data-dot="ai" hidden></i></button></div>' : '')
         + '<div id="rkBoard" role="tabpanel"></div><div id="rkHall"></div><div id="rkShare" role="tabpanel"></div><div id="rkAi" role="tabpanel"></div>'
         + '<div id="rkNick"></div>';          // 내 닉네임 — 순위 화면 맨 아래
       applyRankView();
@@ -1378,6 +1378,7 @@ var Mock = (function () {
     var show = function (id, v) { var e = document.getElementById(id); if (e) e.hidden = !v; };
     show('rkBoard', !share && !ai); show('rkHall', !share && !ai); show('rkShare', share); show('rkAi', ai);
     show('rkNick', !share && !ai);   // 닉네임 바꾸기는 순위 화면에만
+    updateShareDot();               // 화면을 바꾸면 점도 그 화면 기준으로 (예전엔 다음 목록 갱신 때까지 이전 상태로 남았다)
   }
   /* 새 글 표시 — 마지막으로 커뮤니티를 본 뒤 남이 올린 글이 있으면 탭에 점을 찍는다 (이 기기 기준).
    * 회원 글과 AI 글을 따로 기억하고, 서버가 알려 주는 진행 중 시즌의 '남이 쓴 최근 글 시각'(latest)과 비교한다.
@@ -1398,22 +1399,26 @@ var Mock = (function () {
   }
   function markSharesSeen() {
     // 진행 중 시즌의 목록을 보고 있을 때만 — 지난 시즌 글을 본 것으로 새 글을 읽었다고 치지 않는다
-    var lt = _shLatest, who = _sh.who || (aiVisible() ? null : 'members');
-    if (lt && who && _sh.shown === lt.season && !_sh.loading) {
-      var seen = readSeen();
-      if ((lt[who] || 0) > (seen[who] || 0)) {
-        seen[who] = lt[who];
-        try { localStorage.setItem(seenKey(), JSON.stringify(seen)); } catch (e) {}
-      }
+    // 회원/AI 를 나누지 않은 목록(who 없음 — AI 리그가 안 보이는 회원)은 둘 다 본 것으로 친다
+    var lt = _shLatest, whos = _sh.who ? [_sh.who] : ['members', 'ai'];
+    if (lt && _sh.who !== undefined && _sh.shown === lt.season && !_sh.loading) {
+      var seen = readSeen(), changed = false;
+      whos.forEach(function (w) { if ((lt[w] || 0) > (seen[w] || 0)) { seen[w] = lt[w]; changed = true; } });
+      if (changed) try { localStorage.setItem(seenKey(), JSON.stringify(seen)); } catch (e) {}
     }
     updateShareDot();
   }
   function updateShareDot() {
-    var dot = document.querySelector('.mk-rk-dot');
-    if (!dot) return;
     var lt = _shLatest, seen = readSeen();
-    var fresh = !!lt && ((lt.members || 0) > (seen.members || 0) || (aiVisible() && (lt.ai || 0) > (seen.ai || 0)));
-    dot.hidden = !fresh || _rkView === 'share';
+    var fresh = { members: !!lt && (lt.members || 0) > (seen.members || 0), ai: !!lt && aiVisible() && (lt.ai || 0) > (seen.ai || 0) };
+    // 커뮤니티 탭의 점 — 회원 글·AI 글 어느 쪽이든 안 본 글이 있으면 (커뮤니티를 보고 있는 동안은 숨김)
+    var dot = document.querySelector('[data-rk="share"] .mk-rk-dot');
+    if (dot) dot.hidden = !(fresh.members || fresh.ai) || _rkView === 'share';
+    // 커뮤니티 안에서는 안 본 글이 남은 쪽(회원 / AI) 버튼에 점 — 어느 목록을 열어야 점이 사라지는지 보이게
+    document.querySelectorAll('.mk-rk-sub .mk-rk-dot').forEach(function (d) {
+      var w = d.getAttribute('data-dot');
+      d.hidden = !(_rkView === 'share' && fresh[w] && _sh.who !== w);
+    });
   }
 
   /* ===== 랭킹 탭 · AI 리그 =====
@@ -1644,9 +1649,12 @@ var Mock = (function () {
   function signedWon(n) { return (n > 0 ? '+' : '') + fmtNum(Math.round(n)) + '원'; }
   function linkText(t) { var e = escapeHtml(t); return typeof linkifyBody === 'function' ? linkifyBody(e) : e; }
 
+  // 받아 오는 중에 회원/AI·시즌을 바꾸면 새 요청이 나간다 — 늦게 도착한 앞 요청의 응답이 새 목록을 덮어쓰지 않게 번호를 매긴다
+  var _shReq = 0;
   async function loadShares(reset) {
     if (reset) { var keep = { seasonId: _sh.seasonId, seasons: _sh.seasons, closed: _sh.closed }; _sh = newShareState(); Object.assign(_sh, keep); }
     if (_sh.loading) return;
+    var my = ++_shReq;
     _sh.loading = true;
     renderShares();
     try {
@@ -1656,13 +1664,14 @@ var Mock = (function () {
       var who = shareWho();
       if (who) q.push('who=' + who);
       var d = await api('/shares' + (q.length ? '?' + q.join('&') : ''));
+      if (my !== _shReq) return;            // 그사이 다른 목록을 요청했다
       _sh.items = reset ? d.items : _sh.items.concat(d.items);
       _sh.next = d.next; _sh.err = null; _sh.who = who;
       _sh.seasons = d.seasons || [];
       _sh.closed = !!(d.season && d.season.closed);
       _sh.shown = d.season ? d.season.id : null;          // 지금 보이는 시즌 (고른 게 없으면 서버가 정한 것)
       if (d.latest) _shLatest = d.latest;                // 새 글 표시 기준 (첫 페이지에만 온다)
-    } catch (e) { _sh.err = e.message; }
+    } catch (e) { if (my !== _shReq) return; _sh.err = e.message; }
     _sh.loading = false;
     renderShares();
   }
