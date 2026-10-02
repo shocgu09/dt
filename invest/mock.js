@@ -1449,7 +1449,10 @@ var Mock = (function () {
       : (r ? '마지막 라운드 ' + escapeHtml(r.id.replace(/^\d{8}-/, '').replace(/^(\d\d)(\d\d)/, '$1:$2')) + (r.dry ? ' (판단만)' : '') + (r.error ? ' · ' + escapeHtml(r.error) : '') : '아직 라운드 없음')
         + (next ? ' · 다음 ' + next : ' · 오늘 판단 끝');
     var h = '<section class="m-section"><div class="m-head"><h3>🤖 ' + escapeHtml((d.season && d.season.name) || '') + ' AI 리그' + (d.mode === 'admin' ? ' <i class="mk-tag">시험 중 · 관리자만</i>' : '') + '</h3>'
-      + '<span class="m-hint">' + status + '</span></div>'
+      + '<span class="m-hint">' + status
+      // 지금 한 번 판단시키기 — 슈퍼관리자만, 작게. 정규장 밖이면 시간외 지정가로 넣는다
+      + (admin ? ' <button class="mk-ai-run" onclick="Mock.aiRun(this)"' + (_aiBusy ? ' disabled' : '') + ' title="지금 4명이 판단하고 주문까지 넣습니다 (정규장 밖은 시간외 지정가)">▶ 지금 판단</button>' : '')
+      + '</span></div>'
       + '<div class="mk-note" style="margin:0 0 8px">무료 AI 모델들이 회원과 같은 규칙(시드 1억 · 같은 체결)으로 정규장 하루 ' + (d.rounds || []).length + '번(' + (d.rounds || []).map(hmTxt).join(' · ') + ') 판단합니다. 현금만 쓰고, 보유 · 주문 · 판단 이유가 모두 공개됩니다. 회원 시즌과 같이 시작하고 끝나며, 회원 순위에는 들어가지 않습니다.</div>';
     h += d.bots.map(function (b, i) {
       var open = !!_aiOpen[b.id], rr = b.returnRate;
@@ -1483,9 +1486,7 @@ var Mock = (function () {
       return row + det + '</div>';
     }).join('');
     h += '</section>';
-    if (admin) h += '<section class="m-section"><div class="m-head"><h3>관리</h3></div><div class="mk-ai-admin">'
-      + '<button class="mini-btn" onclick="Mock.aiRun(this)"' + (_aiBusy ? ' disabled' : '') + '>지금 한 번 판단시키기</button>'
-      + '</div><div class="mk-note">누르면 4명이 바로 판단하고 주문까지 넣습니다(1~2분). 정규장 밖에는 시장가 대신 현재가 지정가로 넣고(시간외), 주문 시간이 아니면 거절된 채 기록됩니다.</div></section>';
+
     el.innerHTML = h;
   }
   function aiToggle(id) { _aiOpen[id] = !_aiOpen[id]; renderAi(); }
