@@ -234,8 +234,10 @@ export default {
   // 지정가 주문이 걸린 종목마다 분봉을 받아 판정하느라 장 초반엔 이미 12~20ms 를 쓰고 있었다(9/30 실측, 726회 중 93회 초과).
   // Durable Object 는 같은 무료 요금제에서 호출당 CPU 30초라 회원·주문이 늘어도 체결 판정이 잘리지 않는다.
   async scheduled(event, env, ctx) {
-    // AI 리그 — 정해진 시각이면 판단 라운드를 시작한다 (실제 일은 HouseAI 알람이 나눠서 한다). 체결 크론과 따로 돈다
-    if (env.HOUSE_AI) {
+    // AI 리그 — 정해진 시각이면 판단 라운드를 시작한다 (실제 일은 HouseAI 알람이 나눠서 한다). 체결 크론과 따로 돈다.
+    // 첫 판단(09:05) 전·20:00 뒤(08시대 프리마켓 크론, 23:30 밤 정산 크론)에는 할 일이 없으니 부르지 않는다 (하루 약 80번)
+    const kstHm = (Math.floor(event.scheduledTime / 60000) + 9 * 60) % 1440;
+    if (env.HOUSE_AI && kstHm >= AI.ROUNDS[0] && kstHm < 20 * 60) {
       const ai = env.HOUSE_AI.get(env.HOUSE_AI.idFromName('house-ai'), { locationHint: 'apac' });
       ctx.waitUntil(ai.tick().catch((e) => console.error('ai tick failed', e && e.stack || e)));
     }
@@ -298,10 +300,12 @@ export class HouseAI extends DurableObject {
   async alarm() { await AI.step(this.env, this.store()); }
   async prune() {
     const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10).replace(/-/g, '');
-    const old = [...(await this.ctx.storage.list({ prefix: 'st:' })).keys()].filter((k) => k.slice(3, 11) < today);
-    const done = [...(await this.ctx.storage.list({ prefix: 'done:' })).keys()].filter((k) => k.slice(5, 13) < today);
-    const snap = [...(await this.ctx.storage.list({ prefix: 'snap:' })).keys()].filter((k) => k.slice(5, 13) < today);
-    for (let i = 0; i < old.length + done.length + snap.length; i += 128) await this.ctx.storage.delete([...old, ...done, ...snap].slice(i, i + 128));
+    // 날짜가 붙은 표시(st: 기초자료 · done: 회차 · snap: 순자산 기록 · post: 마감 이야기) — 'prefix:YYYYMMDD…'
+    const keys = [];
+    for (const prefix of ['st:', 'done:', 'snap:', 'post:']) {
+      for (const k of (await this.ctx.storage.list({ prefix })).keys()) if (k.slice(prefix.length, prefix.length + 8) < today) keys.push(k);
+    }
+    for (let i = 0; i < keys.length; i += 128) await this.ctx.storage.delete(keys.slice(i, i + 128));
   }
 }
 

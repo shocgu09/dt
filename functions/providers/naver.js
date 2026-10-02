@@ -29,6 +29,26 @@ const INDEX_CODES = { KOSPI: 'kospi', KOSDAQ: 'kosdaq', KPI200: 'kpi200', FUT: '
 const FETCH_MS = 8000;
 const withTimeout = (init) => ({ ...(init || {}), signal: AbortSignal.timeout(FETCH_MS) });
 
+/** integration 응답 → 투자자별 매매동향 (최근 5거래일) */
+function mapDealTrend(d) {
+  const rows = Array.isArray(d.dealTrendInfos) ? d.dealTrendInfos : [];
+  return rows.map((r) => ({
+    date: r.bizdate,
+    individual: num(r.individualPureBuyQuant),
+    foreign: num(r.foreignerPureBuyQuant),
+    organ: num(r.organPureBuyQuant),
+    foreignHoldRate: r.foreignerHoldRatio || null,
+    close: num(r.closePrice),
+    changeRate: (function () {
+      const c = num(r.closePrice);
+      const diff = num(r.compareToPreviousClosePrice);
+      const sign = signOf(r.compareToPreviousPrice && r.compareToPreviousPrice.code);
+      if (c == null || diff == null || c === diff) return null;
+      return Math.round((sign * Math.abs(diff)) / (c - sign * Math.abs(diff)) * 10000) / 100;
+    })()
+  }));
+}
+
 export async function getJson(url) {
   const r = await fetch(url, withTimeout({ headers: HEADERS }));
   if (!r.ok) throw new Error(`naver ${r.status} ${url}`);
@@ -310,7 +330,8 @@ export const naver = {
           tradingValue: tv,
           tradingValueText: s.accumulatedTradingValueKrwHangeul || null,
           asOf: s.localTradedAt || null,
-          logo: s.itemLogoUrl || null
+          logo: s.itemLogoUrl || null,
+          endType: s.stockEndType || null      // stock | etf | etn — 이름으로 ETF 를 가리지 않아도 된다
         });
       }
     }
@@ -352,23 +373,25 @@ export const naver = {
    * integration 응답의 dealTrendInfos 에 들어 있다. 별도 엔드포인트는 없다.
    */
   async getDealTrend(code) {
+    return mapDealTrend(await getJson(`https://m.stock.naver.com/api/stock/${code}/integration`));
+  },
+
+  /**
+   * 종목 요약 지표·컨센서스·매매동향을 integration 한 번으로 — getProfile + getDealTrend 는 같은 주소를 두 번 부르고
+   * 재무(finance/quarter)까지 받는다. AI 리그 판단 카드처럼 지표 몇 개만 필요할 때 쓴다 (외부 요청 3건 → 1건)
+   */
+  async getIntegrationLite(code) {
     const d = await getJson(`https://m.stock.naver.com/api/stock/${code}/integration`);
-    const rows = Array.isArray(d.dealTrendInfos) ? d.dealTrendInfos : [];
-    return rows.map((r) => ({
-      date: r.bizdate,
-      individual: num(r.individualPureBuyQuant),
-      foreign: num(r.foreignerPureBuyQuant),
-      organ: num(r.organPureBuyQuant),
-      foreignHoldRate: r.foreignerHoldRatio || null,
-      close: num(r.closePrice),
-      changeRate: (function () {
-        const c = num(r.closePrice);
-        const diff = num(r.compareToPreviousClosePrice);
-        const sign = signOf(r.compareToPreviousPrice && r.compareToPreviousPrice.code);
-        if (c == null || diff == null || c === diff) return null;
-        return Math.round((sign * Math.abs(diff)) / (c - sign * Math.abs(diff)) * 10000) / 100;
-      })()
-    }));
+    const indicators = {};
+    for (const t of (d.totalInfos || [])) {
+      if (t && t.code && t.value != null && t.value !== 'N/A' && t.value !== '-') indicators[t.code] = String(t.value);
+    }
+    const cns = d.consensusInfo;
+    return {
+      indicators,
+      consensus: cns && num(cns.priceTargetMean) ? { targetMean: num(cns.priceTargetMean) } : null,
+      deal: mapDealTrend(d)
+    };
   },
 
 

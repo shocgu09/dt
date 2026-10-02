@@ -1396,7 +1396,7 @@ var Mock = (function () {
   }
 
   /* ===== 랭킹 탭 · AI 리그 =====
-   * 무료 모델 AI 들이 회원과 같은 규칙으로 정규장 하루 6번 판단한다 (서버 mock/ai.js). 계좌·보유·주문·판단 이유가 전부 공개된다.
+   * 무료 모델 AI 들이 회원과 같은 규칙으로 정규장 하루 8번 판단한다 (서버 mock/ai.js). 계좌·보유·주문·판단 이유가 전부 공개된다.
    * 시험 모드(ai_mode=admin)에서는 관리자에게만 보인다. 회원 순위표에는 AI 가 들어가지 않는다. */
   var _ai = null, _aiAt = 0, _aiOpen = {}, _aiBusy = false, _aiPrev = {}, _aiMore = {}, _aiMoreLeft = {}, _aiHist = {};
   function aiVisible() { return !!(season && season.season && season.season.aiVisible); }
@@ -1461,11 +1461,13 @@ var Mock = (function () {
     if (!el || !d) return;
     var admin = !!(season && season.isSuper);      // 모드 바꾸기·지금 판단시키기는 슈퍼관리자만
     var r = d.round, next = aiNextRound(d);
-    var isPost = r && /-post$/.test(r.id);
-    var status = isPost ? (r.phase !== 'done' ? '✍ 장 마감 이야기 쓰는 중' : '✍ 장 마감 이야기 끝') + (next ? ' · 다음 ' + next : '')
-      : r && r.phase !== 'done' ? '🔄 ' + escapeHtml(r.id.slice(-4).replace(/(\d\d)(\d\d)/, '$1:$2')) + ' 라운드 진행 중' + (r.left ? ' · 남은 AI ' + r.left : '')
-      : (r ? '마지막 라운드 ' + escapeHtml(r.id.replace(/^\d{8}-/, '').replace(/^(\d\d)(\d\d)/, '$1:$2')) + (r.dry ? ' (판단만)' : '') + (r.error ? ' · ' + escapeHtml(r.error) : '') : '아직 라운드 없음')
-        + (next ? ' · 다음 ' + next : ' · 오늘 판단 끝');
+    var isPost = r && (r.post || /-post$/.test(r.id));
+    // 휴장일·주말에는 '다음 09:05' 대신 다음 거래일로 (예전엔 토요일 아침에도 '다음 09:05' 가 떴다)
+    var nextTxt = d.tradingDay === false ? ' · 다음 거래일 ' + hmTxt((d.rounds || [])[0] || 545) : next ? ' · 다음 ' + next : ' · 오늘 판단 끝';
+    var rHm = r && r.hm != null ? hmTxt(r.hm) : '';
+    var status = isPost ? (r.phase !== 'done' ? '✍ 장 마감 이야기 쓰는 중' : '✍ 장 마감 이야기 끝') + nextTxt
+      : r && r.phase !== 'done' ? '🔄 ' + rHm + ' 라운드 진행 중' + (r.left ? ' · 남은 AI ' + r.left : '')
+      : (r ? '마지막 라운드 ' + rHm + (r.error ? ' · ' + escapeHtml(r.error) : '') : '아직 라운드 없음') + nextTxt;
     var h = '<section class="m-section"><div class="m-head"><h3>🤖 ' + escapeHtml((d.season && d.season.name) || '') + ' AI 리그' + (d.mode === 'admin' ? ' <i class="mk-tag">시험 중 · 관리자만</i>' : '') + '</h3>'
       + '<span class="m-hint">' + status
       // 지금 한 번 판단시키기 — 슈퍼관리자만, 작게. 정규장 밖이면 시간외 지정가로 넣는다
@@ -1517,7 +1519,7 @@ var Mock = (function () {
       var older = js.length < (b.rounds || 0) && _aiMoreLeft[b.id] !== false;   // 아직 안 받은 기록이 있나
       if (js.length > 1 || older) {
         var po = !!_aiPrev[b.id];
-        det += '<button type="button" class="mk-ai-prev" aria-expanded="' + po + '" onclick="Mock.aiPrev(\'' + escapeJsArg(b.id) + '\')">이전 판단 ' + (po ? '접기 ▲' : (js.length - 1) + '건' + (older ? '+' : '') + ' 보기 ▼') + '</button>';
+        det += '<button type="button" class="mk-ai-prev" aria-expanded="' + po + '" onclick="Mock.aiPrev(\'' + escapeJsArg(b.id) + '\')">이전 판단 ' + (po ? '접기 ▲' : (Math.max(js.length, b.rounds || 0) - 1) + '건 보기 ▼') + '</button>';
         if (po) {
           det += js.slice(1).map(function (j) { return journalHtml(j, false); }).join('');
           if (older) det += '<button type="button" class="mk-ai-prev" onclick="Mock.aiMore(\'' + escapeJsArg(b.id) + '\', this)">더 이전 기록 불러오기</button>';

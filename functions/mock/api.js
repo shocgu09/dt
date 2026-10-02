@@ -1185,21 +1185,32 @@ function aiJournalRow(j, isAdmin) {
     detail, ms: j.ms, neurons: isAdmin ? j.neurons : undefined, at: j.at };
 }
 
-/** AI 리그 화면 — AI 마다 회원 계좌 화면과 같은 계산(accountView)으로 평가하고, 계획·판단 기록을 붙인다 */
-async function aiLeague(env, db, season, now, isAdmin) {
-  const today = E.kstNow(now).ymd;
-  const [accRes, thRes, jrRes, dayRes, useRes] = await db.batch([
+/** AI 리그 화면 — AI 마다 회원 계좌 화면과 같은 계산(accountView)으로 평가하고, 계획·판단 기록을 붙인다.
+ *  모든 회원에게 같은 내용이라 10초 동안 돌려쓴다 (화면이 30초마다 부르고, 한 번에 AI 4명 계좌를 평가한다) */
+function aiLeague(env, db, season, now, isAdmin) {
+  return memo(`ai:${season.id}:${isAdmin ? 1 : 0}`, 10000, () => aiLeagueFresh(env, db, season, now, isAdmin));
+}
+const AI_JOURNAL_PER_BOT = 3;      // 화면은 AI 마다 최신 판단 1개 + 이전 판단 몇 개 — 더 오래된 것은 /ai/journal 로
+async function aiLeagueFresh(env, db, season, now, isAdmin) {
+  const t = E.kstNow(now);
+  // 판단 기록은 AI 마다 최근 몇 개만 (색인 season_id·uid·at) — 예전엔 기록 100줄(본문 JSON 포함)을 매번 읽어 보냈다
+  const [accRes, thRes, ...jrRes] = await db.batch([
     db.prepare(`SELECT * FROM accounts WHERE season_id=? AND status='ai'`).bind(season.id),
     db.prepare(`SELECT * FROM ai_theses WHERE season_id=?`).bind(season.id),
-    db.prepare(`SELECT uid, ymd, hm, round_id, status, view, detail, neurons, ms, at FROM ai_journal WHERE season_id=? ORDER BY at DESC LIMIT 100`).bind(season.id),
-    db.prepare(`SELECT uid, ymd, equity FROM ai_daily WHERE season_id=? ORDER BY ymd`).bind(season.id),
-    db.prepare(`SELECT uid, COUNT(*) AS n, SUM(CASE WHEN status='fail' THEN 1 ELSE 0 END) AS fails, SUM(COALESCE(neurons,0)) AS neurons
-                FROM ai_journal WHERE season_id=? GROUP BY uid`).bind(season.id)
+    ...AI.BOTS.map((b) => db.prepare(
+      `SELECT uid, ymd, hm, round_id, status, view, detail, neurons, ms, at FROM ai_journal WHERE season_id=? AND uid=? ORDER BY at DESC LIMIT ${AI_JOURNAL_PER_BOT}`
+    ).bind(season.id, AI.uidOf(b)))
   ]);
+  const jrRows = jrRes.flatMap((x) => x.results || []).sort((x, y) => y.at - x.at);
+  // 판단 횟수·실패·뉴런 합계는 시즌 기록 전체를 세야 한다 — 새 기록이 생겼을 때만 다시 센다
+  const lastAt = jrRows.length ? jrRows[0].at : 0;
+  const useRows = await memo(`aiuse:${season.id}:${lastAt}`, 3600e3, async () => (await db.prepare(
+    `SELECT uid, COUNT(*) AS n, SUM(CASE WHEN status='fail' THEN 1 ELSE 0 END) AS fails, SUM(COALESCE(neurons,0)) AS neurons
+     FROM ai_journal WHERE season_id=? GROUP BY uid`).bind(season.id).all()).results || []);
   const accounts = accRes.results || [];
   const views = await Promise.all(accounts.map((a) => accountView(db, season, a, now, false)));
   const use = {};
-  for (const u of useRes.results || []) use[u.uid] = u;
+  for (const u of useRows) use[u.uid] = u;
   const bots = accounts.map((a, i) => {
     const bot = AI.botOfUid(a.uid) || { id: a.uid, name: a.nickname, maker: '', model: '' };
     const v = views[i];
@@ -1211,18 +1222,20 @@ async function aiLeague(env, db, season, now, isAdmin) {
       principal: v.principal, realizedPnl: v.realizedPnl, buyFees: v.buyFees,
       positions: v.positions.map((p) => ({ ...p, plan: (({ thesis, stop, target, hold_days, opened_ymd }) => ({ thesis, stop, target, holdDays: hold_days, openedYmd: opened_ymd }))(th.find((x) => x.code === p.code) || {}) })),
       openOrders: v.openOrders,
-      series: (dayRes.results || []).filter((x) => x.uid === a.uid).map((x) => ({ ymd: x.ymd, equity: x.equity })),
       rounds: u.n || 0, fails: u.fails || 0, neurons: isAdmin ? (u.neurons || 0) : undefined
     };
   }).sort((x, y) => y.equity - x.equity);
-  const journal = (jrRes.results || []).map((j) => aiJournalRow(j, isAdmin));
-  let round = null;
-  if (isAdmin && env.HOUSE_AI) round = await env.HOUSE_AI.get(env.HOUSE_AI.idFromName('house-ai'), { locationHint: 'apac' }).status().catch(() => null);
+  const journal = jrRows.map((j) => aiJournalRow(j, isAdmin));
+  // 진행 상태는 회원에게도 보인다 (예전엔 관리자만 받아 회원 화면에는 늘 '아직 라운드 없음'이 떴다). 오류 문구·글쓰기 결과는 관리자만
+  const round = env.HOUSE_AI ? await env.HOUSE_AI.get(env.HOUSE_AI.idFromName('house-ai'), { locationHint: 'apac' }).status().catch(() => null) : null;
   return {
-    mode: AI.aiMode(season), today, seed: season.seed, rounds: AI.ROUNDS,
+    mode: AI.aiMode(season), today: t.ymd, tradingDay: E.isTradingDay(t), seed: season.seed, rounds: AI.ROUNDS,
     season: { id: season.id, name: season.name, startDate: season.start_date, endDate: season.end_date },
-    round: round && { id: round.id, phase: round.phase, dry: !!round.dry, startedAt: round.startedAt, finishedAt: round.finishedAt || null, error: round.error || null, left: (round.botsLeft || []).length,
-      posts: round.posts ? Object.fromEntries(Object.entries(round.posts).map(([k, v]) => [k, v.result || null])) : undefined },
+    round: round && (round.seasonId == null || round.seasonId === season.id) ? {
+      id: round.id, hm: round.hm, manual: !!round.manual, post: /-post$/.test(round.id), phase: round.phase, startedAt: round.startedAt, finishedAt: round.finishedAt || null,
+      left: (round.botsLeft || []).length,
+      ...(isAdmin ? { error: round.error || null, posts: round.posts ? Object.fromEntries(Object.entries(round.posts).map(([k, v]) => [k, v.result || null])) : undefined } : {})
+    } : null,
     bots, journal, ...sessionInfo(now)
   };
 }

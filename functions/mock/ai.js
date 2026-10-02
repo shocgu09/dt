@@ -26,10 +26,16 @@ export const botOfUid = (uid) => BOTS.find((b) => uidOf(b) === uid) || null;
 
 // 정규장 판단 시각 (KST 분) — 09:05 09:45 10:30 11:15 13:00 13:45 14:30 15:15. 하루 8회 × 4명 = 32회 호출 (사용자 결정 2026-10-02)
 export const ROUNDS = [9 * 60 + 5, 9 * 60 + 45, 10 * 60 + 30, 11 * 60 + 15, 13 * 60, 13 * 60 + 45, 14 * 60 + 30, 15 * 60 + 15];
-const START_WINDOW = 12;                 // 정해진 시각부터 15분 안에만 시작 (크론이 놓쳐도 뒤늦게 장 마감 직전에 돌지 않게)
+const START_WINDOW = 12;                 // 정해진 시각부터 12분 안에만 시작 (크론이 놓쳐도 뒤늦게 장 마감 직전에 돌지 않게)
 export const SNAP_AT = 15 * 60 + 45;     // 그날 순자산 기록 (KRX 종가가 정해진 뒤)
 export const POST_AT = 15 * 60 + 50;     // 장 마감 이야기 — AI 가 오늘 매매를 커뮤니티에 쓸지 정한다 (하루 1번, 쓸 수도 안 쓸 수도)
 const ROUND_TTL = 25 * 60e3;             // 라운드가 이보다 오래 걸리면 버린다
+const LOCK_MS = 6 * 60e3;                // 한 단계가 도는 동안 잡는 자물쇠 — 모델 응답(최대 150초 × 2번)을 기다리는 사이 크론·알람이
+                                         // 같은 단계를 한 번 더 돌리지 않게. 단계가 죽어도 이 시간이 지나면 풀린다
+export const SNAP_FINAL = 16 * 60 + 30;  // 이때까지 그날 종가가 다 저장되지 않으면 받은 시세로 기록한다 (크론 종가 저장이 16:30 까지 시도)
+// 한 번의 호출(알람)에서 쓰는 외부 요청·D1 문장 — 무료 요금제 한도 50 안에서 넉넉히
+const CALL_BUDGET = 42;
+const COST_PLACE = 8;                    // 주문 1건 = 시세 1 + D1 6~7문장 (중복 확인·차단 종목·속도 제한·주문가능금액·접수·조회)
 
 export const LIMITS = {
   perStock: 0.30,      // 종목당 최대 비중
@@ -39,7 +45,7 @@ export const LIMITS = {
   ordersPerDay: 40,
   actions: 3,          // 한 번의 판단에서 처리하는 행동 수
   cands: 10,           // 거래대금 상위 후보 수 (+ 보유 종목)
-  staticPerStep: 6,    // 한 번 호출에 받는 종목 기초자료 수 (종목당 요청 4개)
+  staticPerStep: 12,   // 한 번 호출에 받는 종목 기초자료 수 (종목당 요청 3개 — 일봉·어제 분봉·요약)
   intraPerStep: 12     // 한 번 호출에 받는 장중 자료 수 (종목당 요청 2개)
 };
 const FEE_PAD = 1.001;
@@ -208,7 +214,9 @@ export function planOrders(d, { allowed, lines, acct }) {
       if (a.order === 'limit' && Number(a.price) > 0) {
         let p = Math.min(Number(a.price), it.px);                   // 현재가보다 비싸게 사지 않는다
         p = Math.floor(p / E.tickSize(p, false)) * E.tickSize(p, false);
-        if (p >= it.px * 0.9) { type = 'limit'; limitPrice = p; ref = p; }
+        // 멀리 낮은 지정가도 지정가 그대로 — 예전엔 현재가의 90% 아래면 시장가로 바뀌어 AI 가 정한 값보다 비싸게 샀다.
+        // 체결이 안 되면 다음 판단 때 취소된다 (가격제한폭 밖이면 접수에서 거절돼 기록에 남는다)
+        if (p > 0) { type = 'limit'; limitPrice = p; ref = p; }
       }
       const budget = Math.min(w * acct.equity, acct.available - out.orders.reduce((s, o) => s + (o.side === 'buy' ? o.qty * (o.limitPrice || lines[o.code].px) * FEE_PAD : 0), 0));
       const qty = Math.floor(budget / (ref * FEE_PAD));
@@ -247,22 +255,23 @@ export function planOrders(d, { allowed, lines, acct }) {
 
 async function fetchStatic(code, ymd, prevYmd) {
   const y = Number(ymd.slice(0, 4));
-  const [day, ydayBars, deal, profile] = await Promise.all([
+  // 수급·지표·컨센서스는 integration 한 번으로 (예전엔 같은 주소를 두 번 부르고 쓰지 않는 재무까지 받았다)
+  const [day, ydayBars, integ] = await Promise.all([
     naver.getOhlc(code, 'D', { start: `${y - 1}${ymd.slice(4)}`, end: ymd }).catch(() => []),
     naver.getOhlc(code, '1m', { start: prevYmd + '0900', end: prevYmd + '1530' }).catch(() => []),
-    naver.getDealTrend(code).catch(() => []),
-    naver.getProfile(code).catch(() => null)
+    naver.getIntegrationLite(code).catch(() => null)
   ]);
-  return staticFeatures({ day, ydayBars, deal, profile }, ymd);
+  return staticFeatures({ day, ydayBars, deal: integ ? integ.deal : [], profile: integ }, ymd);
 }
 
 /** Workers AI 호출 — 2분 30초 안에 답이 없으면 실패 */
 async function callModel(env, model, messages) {
   if (!env.AI) throw new Error('AI 바인딩 없음');
+  let timer;
   const r = await Promise.race([
     env.AI.run(model, { messages, max_tokens: 6000 }),
-    new Promise((_, rej) => setTimeout(() => rej(new Error('응답 시간 초과 (150초)')), 150e3))
-  ]);
+    new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('응답 시간 초과 (150초)')), 150e3); })
+  ]).finally(() => clearTimeout(timer));
   const c = r && r.choices && r.choices[0];
   const text = (c && c.message && c.message.content) || (r && r.response) || '';
   return { text: String(text), usage: (r && r.usage) || {} };
@@ -275,7 +284,8 @@ export async function tick(env, store, now = Date.now()) {
   const t = E.kstNow(now);
   const cur = await store.get('round');
   if (cur && cur.phase !== 'done' && now - cur.startedAt < ROUND_TTL) {
-    if (!(await store.getAlarm())) await store.setAlarm(now + 1000);
+    // 알람이 끊긴 라운드를 다시 깨운다. 단계가 도는 중(자물쇠)이면 그 단계가 끝나며 다음 알람을 건다
+    if (!(cur.lock > now) && !(await store.getAlarm())) await store.setAlarm(now + 1000);
     return 'running';
   }
   const due = ROUNDS.find((r) => t.hm >= r && t.hm < r + START_WINDOW);
@@ -297,14 +307,21 @@ export async function tick(env, store, now = Date.now()) {
     if (after) await store.put(key, 1);
     return !E.isTradingDay(t) ? 'holiday' : 'off';
   }
+  if (after === 'snap') {
+    // 그날 15:30 종가가 저장된 뒤에 기록한다 (크론이 15:40 부터 저장). 16:00 KRX 애프터마켓이 열리면
+    // 시세가 움직이므로, 받은 시세로 기록하는 것은 16:30 까지 종가가 모이지 않았을 때만
+    const n = await snapshot(db, season, now, { final: t.hm >= SNAP_FINAL });
+    if (n == null) return 'wait';
+    await store.put(key, 1);
+    return 'snap';
+  }
   await store.put(key, 1);
-  if (after === 'snap') { await snapshot(db, season, now); return 'snap'; }
   if (after === 'post') {
-    await store.put('round', { ...newRound(t, t.hm, false, now), id: `${t.ymd}-post`, phase: 'post-think' });
+    await store.put('round', { ...newRound(t, t.hm, now, season), id: `${t.ymd}-post`, phase: 'post-think' });
     await store.setAlarm(now + 500);
     return 'post';
   }
-  await store.put('round', newRound(t, due, false, now));
+  await store.put('round', newRound(t, due, now, season));
   await store.setAlarm(now + 500);
   return 'started';
 }
@@ -316,7 +333,9 @@ export async function start(env, store, now = Date.now()) {
   const cur = await store.get('round');
   if (cur && cur.phase !== 'done' && now - cur.startedAt < ROUND_TTL) return { ok: false, message: '이미 판단 중입니다', round: cur.id };
   E.setHolidays(await H.holidaySet(env.MOCK_DB));
-  const r = newRound(t, t.hm, false, now);
+  const r = newRound(t, t.hm, now, null);
+  // 정해진 회차와 같은 분에 눌러도 라운드 번호(=주문 식별값 앞부분)가 겹치지 않게 — 겹치면 앞 회차 주문을 '이미 받은 주문'으로 돌려받는다
+  r.id += '-m';
   r.manual = true;
   await store.put('round', r);
   await store.setAlarm(now + 500);
@@ -328,24 +347,32 @@ export async function startPosts(env, store, now = Date.now()) {
   const t = E.kstNow(now);
   const cur = await store.get('round');
   if (cur && cur.phase !== 'done' && now - cur.startedAt < ROUND_TTL) return { ok: false, message: '지금 다른 판단을 하고 있습니다', round: cur.id };
-  await store.put('round', { ...newRound(t, t.hm, false, now), id: `${t.ymd}-post`, phase: 'post-think', manual: true });
+  await store.put('round', { ...newRound(t, t.hm, now, null), id: `${t.ymd}-post`, phase: 'post-think', manual: true });
   await store.setAlarm(now + 500);
   return { ok: true };
 }
 
-function newRound(t, hm, dry, now) {
-  return { id: `${t.ymd}-${hhmmOf(hm).replace(':', '')}${dry ? '-dry' : ''}`, ymd: t.ymd, hm, dry, phase: 'market', startedAt: now, tries: 0 };
+function newRound(t, hm, now, season) {
+  return { id: `${t.ymd}-${hhmmOf(hm).replace(':', '')}`, ymd: t.ymd, hm, dry: false, phase: 'market', startedAt: now, tries: 0, seasonId: season ? season.id : null };
 }
 
 /** 알람 한 번 = 한 단계. 끝나지 않았으면 다음 알람을 건다 */
 export async function step(env, store, now = Date.now()) {
   const r = await store.get('round');
   if (!r || r.phase === 'done') return 'idle';
-  if (now - r.startedAt > ROUND_TTL) { r.phase = 'done'; r.error = '시간 초과로 중단'; await store.put('round', r); return 'expired'; }
+  // 앞 단계가 아직 도는 중 — 모델 응답을 기다리는 사이에 크론이 알람을 다시 걸면 같은 단계(판단·주문)가 두 번 돌았다
+  if (r.lock && now < r.lock) return 'busy';
+  if (now - r.startedAt > ROUND_TTL) { r.phase = 'done'; r.error = '시간 초과로 중단'; r.lock = 0; await store.put('round', r); return 'expired'; }
   const db = env.MOCK_DB;
   E.setHolidays(await H.holidaySet(db));
-  const season = await E.activeSeason(db, now);
-  if (!season) { r.phase = 'done'; await store.put('round', r); return 'no_season'; }
+  // 시즌은 라운드를 시작할 때 정해 둔다 — 단계마다 activeSeason(UPDATE + SELECT)을 돌리지 않게
+  const season = r.seasonId
+    ? await db.prepare(`SELECT * FROM seasons WHERE id=? AND status='active'`).bind(r.seasonId).first()
+    : await E.activeSeason(db, now);
+  if (!season) { r.phase = 'done'; r.lock = 0; await store.put('round', r); return 'no_season'; }
+  r.seasonId = season.id;
+  r.lock = now + LOCK_MS;
+  await store.put('round', r);
   try {
     if (r.phase === 'market') await phaseMarket(env, db, season, r, now);
     else if (r.phase === 'static') await phaseStatic(store, r);
@@ -353,20 +380,24 @@ export async function step(env, store, now = Date.now()) {
     else if (r.phase === 'think') await phaseThink(env, db, season, r, now);
     else if (r.phase === 'post-think') await phasePostThink(env, db, season, r, now);
     else if (r.phase === 'post-write') await phasePostWrite(db, season, r, now);
-    else if (r.phase === 'bots') await phaseBot(env, db, season, r, now);
+    else if (r.phase === 'bots') await phaseBot(db, season, r, now, store);
     r.tries = 0;
   } catch (e) {
     r.tries = (r.tries || 0) + 1;
     console.error('ai step failed', r.id, r.phase, e && e.stack || e);
     if (r.tries >= 3) {
-      // 같은 단계에서 세 번 실패 — AI 한 명이면 그 AI 만 건너뛰고, 자료 단계면 라운드를 접는다
+      // 같은 단계에서 세 번 실패 — AI 한 명이면 그 AI 만 접고(넣은 주문·계획은 남긴다), 자료 단계면 라운드를 접는다
+      const msg = String(e && e.message || e).slice(0, 300);
       if (r.phase === 'bots' && r.botsLeft && r.botsLeft.length) {
-        const id = r.botsLeft.shift();
-        await journal(db, season, BOTS.find((b) => b.id === id), r, now, { status: 'fail', detail: { error: String(e && e.message || e).slice(0, 300) } }).catch(() => {});
+        const bot = BOTS.find((b) => b.id === r.botsLeft[0]);
+        if (bot) await finishBot(db, season, r, bot, Date.now(), msg).catch((e2) => console.error('ai finish failed', e2 && e2.message));
+        r.botsLeft.shift(); r.cur = null;
+        if (!r.botsLeft.length) { r.phase = 'done'; r.finishedAt = Date.now(); r.decisions = null; }
         r.tries = 0;
-      } else { r.phase = 'done'; r.error = String(e && e.message || e).slice(0, 300); }
+      } else { r.phase = 'done'; r.error = msg; }
     }
   }
+  r.lock = 0;
   await store.put('round', r);
   if (r.phase !== 'done') await store.setAlarm(Date.now() + 1000);
   return r.phase;
@@ -378,23 +409,28 @@ async function phaseMarket(env, db, season, r, now) {
   await db.batch(BOTS.map((b) => db.prepare(
     `INSERT OR IGNORE INTO accounts (season_id, uid, nickname, cash, joined_at, status) VALUES (?,?,?,?,?, 'ai')`
   ).bind(season.id, uidOf(b), '🤖 ' + b.name, season.seed, now)));
+  // 거래대금 상위는 ETF 가 절반 가까이라 넉넉히 받아 거른다 (요청 수는 같다)
   const [idx, wf, mx, topK, topQ, themes, held] = await Promise.all([
     naver.getIndex().catch(() => null), naver.getWorldFutures().catch(() => null), naver.getMarketExtras().catch(() => null),
-    naver.getTopValue('KOSPI', 15).catch(() => []), naver.getTopValue('KOSDAQ', 15).catch(() => []), naver.getSectors('theme', 5).catch(() => []),
+    naver.getTopValue('KOSPI', 40).catch(() => []), naver.getTopValue('KOSDAQ', 40).catch(() => []), naver.getSectors('theme', 5).catch(() => []),
     db.prepare(`SELECT uid, code FROM positions WHERE season_id=? AND uid LIKE 'ai:%' AND qty > 0`).bind(season.id).all().then((x) => x.results || [])
   ]);
-  // 후보: 거래대금 상위 중 개별주(ETF·우선주 제외 — 우선주에는 보통주 목표가가 붙어 나온다), 등락 ±15% 안, 거래대금 300억 이상
-  const top = [...topK, ...topQ]
-    .filter((s) => !ETF_RE.test(s.name) && !/우B?$/.test(s.name) && Math.abs(s.changeRate) <= 15 && s.tradingValue >= 3e10)
-    .sort((a, b) => b.tradingValue - a.tradingValue).slice(0, LIMITS.cands).map((s) => s.code);
+  r.top = pickCandidates([...topK, ...topQ]);
   const heldBy = {};
   for (const h of held) (heldBy[h.uid] = heldBy[h.uid] || []).push(h.code);
-  r.top = top;
   r.heldBy = heldBy;
-  r.codes = [...new Set([...top, ...held.map((h) => h.code)])];
+  r.codes = [...new Set([...r.top, ...held.map((h) => h.code)])];
   r.market = marketText({ idx, wf, mx, themes }, t, K.addTradingDays(t.ymd, 1));
   r.pendingStatic = r.codes.slice();
   r.phase = 'static';
+}
+
+/** 후보: 거래대금 상위 개별주 (ETF·ETN·우선주·스팩 제외 — 우선주에는 보통주 목표가가 붙어 나온다), 등락 ±15% 안, 거래대금 300억 이상 */
+export function pickCandidates(list) {
+  return list
+    .filter((s) => (s.endType ? s.endType === 'stock' : !ETF_RE.test(s.name)) && !/우B?$|우\(전환\)$|스팩/.test(s.name)
+      && Math.abs(s.changeRate) <= 15 && s.tradingValue >= 3e10)
+    .sort((a, b) => b.tradingValue - a.tradingValue).slice(0, LIMITS.cands).map((s) => s.code);
 }
 
 async function phaseStatic(store, r) {
@@ -470,12 +506,114 @@ async function phaseThink(env, db, season, r, now, opts = {}) {
   r.phase = 'bots';
 }
 
-async function phaseBot(env, db, season, r, now) {
+/**
+ * AI 한 명의 주문 — 여러 번의 호출로 나눠 넣는다.
+ *   첫 호출: 지난 회차 미체결 취소 → 손절 대상·코드 검사로 주문 목록(queue)을 만든다
+ *   그다음: 한 호출에 무료 한도 안에서 들어가는 만큼 주문 → 다 넣으면 계획·기록을 남긴다
+ * 주문 한 건마다 진행을 저장하고 주문 식별값(라운드:AI:번호)이 고정이라, 도중에 실패해 다시 돌아도 두 번 들어가지 않는다.
+ * (예전에는 한 호출에 모두 넣어 손절·청산이 겹치면 한도를 넘었고, 다시 돌 때 방금 넣은 주문까지 '지난 미체결'로 취소했다)
+ */
+async function phaseBot(db, season, r, now, store) {
   const id = r.botsLeft[0];
   const bot = BOTS.find((b) => b.id === id);
-  if (bot) await applyBot(db, season, r, bot, (r.decisions || {})[id] || { error: '판단 없음' }, now);
-  r.botsLeft.shift();
+  let used = 1;                                             // 시즌 조회 (step)
+  if (bot && (!r.cur || r.cur.bot !== id)) {
+    r.cur = await prepareBot(db, season, r, bot, (r.decisions || {})[id] || { error: '판단 없음' }, now);
+    used += r.cur ? r.cur.cost : 7;
+    if (r.cur) await store.put('round', r);
+  }
+  if (bot && r.cur && r.cur.i < r.cur.queue.length && used + COST_PLACE + 1 <= CALL_BUDGET) {
+    const account = await E.getAccount(db, season.id, r.cur.uid);   // 앞 호출 뒤에 체결됐을 수 있다
+    used += 1;
+    while (r.cur.i < r.cur.queue.length && used + COST_PLACE <= CALL_BUDGET) {
+      const it = r.cur.queue[r.cur.i];
+      const res = r.dry ? { result: 'dry' } : await place(db, season, account, r.cur.uid, it.o, Date.now(), it.cid);
+      used += COST_PLACE;
+      if (it.stop) r.cur.detail.stops[it.at] = { ...r.cur.detail.stops[it.at], ...res };
+      else r.cur.detail.actions[it.at] = { ...r.cur.detail.actions[it.at], ...res };
+      r.cur.i++;
+      await store.put('round', r);
+    }
+  }
+  if (bot && r.cur && r.cur.i < r.cur.queue.length) return;      // 다음 호출에 이어서
+  if (bot && r.cur) await finishBot(db, season, r, bot, now);
+  r.botsLeft.shift(); r.cur = null;
   if (!r.botsLeft.length) { r.phase = 'done'; r.finishedAt = Date.now(); r.decisions = null; }
+}
+
+/** 주문 목록 만들기 — 반환값은 라운드 상태에 저장된다 (작게) */
+async function prepareBot(db, season, r, bot, dec, now) {
+  const st = await botState(db, season, r, bot);
+  if (!st) return null;
+  const uid = st.uid, lines = r.lines || {};
+  // 지난 회차의 미체결은 취소하고 새 판단대로 넣는다 (지정가가 걸린 채 판단이 엇갈리지 않게).
+  // 이번 회차 주문(다시 도는 중에 이미 넣은 것)은 건드리지 않는다
+  let cost = 7 + 2;
+  if (!r.dry) for (const o of st.open) if (!String(o.client_order_id || '').startsWith(r.id + ':')) { await E.cancelOrder(db, uid, o.id, now).catch(() => {}); cost++; }
+  const account = await E.getAccount(db, season.id, uid);
+  const cashNet = account.cash - (account.cash_short || 0);
+  const available = r.dry ? cashNet : await E.orderableCash(db, season, account, null, now, { cashOnly: true });
+  st.cashNet = cashNet;
+  const acct = acctOf(st, lines, season, available);
+  const detail = { stops: [], actions: [], holdings: [], watch: [] };
+  const queue = [];
+  const { stopped, live } = stopsOf(st, lines);
+  for (const p of stopped) {
+    queue.push({ stop: true, at: detail.stops.length, cid: `${r.id}:${bot.id}:stop:${p.code}`, o: { code: p.code, side: 'sell', type: 'market', qty: p.qty } });
+    detail.stops.push({ code: p.code, name: p.name, qty: p.qty, px: lines[p.code].px, stop: st.theses[p.code].stop });
+  }
+  const cur = { bot: bot.id, uid, queue, i: 0, detail, cost, buys: [], exits: [], posCodes: st.positions.map((p) => p.code), thesisCodes: Object.keys(st.theses),
+    usage: dec.usage, ms: dec.ms, error: null, view: null };
+  if (!dec.d) { cur.error = dec.error || '응답 없음'; cur.raw = dec.raw; return cur; }
+  const d = dec.d;
+  cur.view = d.market_view;
+  const allowed = new Set([...(r.top || []), ...live.map((p) => p.code)]);
+  const plan = planOrders(d, { allowed, lines, acct: { ...acct, positions: live } });
+  detail.actions = plan.results.map((x) => ({ ...x, name: lines[x.code] ? lines[x.code].name : x.code }));
+  detail.holdings = d.holdings.slice(0, 10).map((h) => ({ code: String(h.code || ''), decision: h.decision, note: String(h.note || '').slice(0, 160) }));
+  detail.watch = d.watch.map((w) => ({ code: String(w.code || ''), condition: String(w.condition || '').slice(0, 160) }));
+  plan.orders.forEach((o, n) => {
+    queue.push({ at: detail.actions.length, cid: `${r.id}:${bot.id}:${n}`, o: { code: o.code, side: o.side, type: o.type, qty: o.qty, limitPrice: o.limitPrice },
+      plan: o.plan || null, exit: !!o.exit });
+    detail.actions.push({ code: o.code, name: o.name, side: o.side, type: o.type, qty: o.qty, price: o.limitPrice, weight: o.weight,
+      ...(o.plan || {}), reason: o.plan ? o.plan.thesis : o.reason, notes: o.notes });
+  });
+  return cur;
+}
+
+/** 다 넣은 뒤(또는 세 번 실패해 접을 때) — 계획 갱신 · 판단 기록 */
+async function finishBot(db, season, r, bot, now, error) {
+  const c = r.cur;
+  if (!c) { await journal(db, season, bot, r, now, { status: 'fail', detail: { error: error || '판단 없음' } }); return; }
+  const uid = c.uid;
+  // 넣지 못한 주문은 실패로 남긴다
+  for (const it of c.queue.slice(c.i)) {
+    const res = { result: 'refused', note: '주문 실패: ' + String(error || '중단').slice(0, 100) };
+    if (it.stop) c.detail.stops[it.at] = { ...c.detail.stops[it.at], ...res };
+    else c.detail.actions[it.at] = { ...c.detail.actions[it.at], ...res };
+  }
+  const stmts = [];
+  if (!r.dry) {
+    const del = (code) => db.prepare(`DELETE FROM ai_theses WHERE season_id=? AND uid=? AND code=?`).bind(season.id, uid, code);
+    const placed = (it) => (it.stop ? c.detail.stops[it.at] : c.detail.actions[it.at]).result === 'placed';
+    for (const it of c.queue) {
+      if (!placed(it)) continue;
+      if (it.stop || it.exit) stmts.push(del(it.o.code));
+      else if (it.plan) stmts.push(db.prepare(
+        `INSERT INTO ai_theses (season_id, uid, code, name, thesis, stop, target, hold_days, opened_ymd, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)
+         ON CONFLICT (season_id, uid, code) DO UPDATE SET thesis=excluded.thesis, stop=excluded.stop, target=excluded.target, hold_days=excluded.hold_days, updated_at=excluded.updated_at`
+      ).bind(season.id, uid, it.o.code, c.detail.actions[it.at].name, it.plan.thesis, it.plan.stop, it.plan.target, it.plan.hold_days, r.ymd, now));
+    }
+    // 보유도 주문 중도 아닌 계획은 지운다 (지정가가 안 맞아 취소된 매수 등)
+    const keep = new Set([...c.posCodes, ...c.queue.filter((it) => !it.stop && it.o.side === 'buy' && placed(it)).map((it) => it.o.code)]);
+    for (const code of c.thesisCodes) if (!keep.has(code)) stmts.push(del(code));
+    if (stmts.length) await db.batch(stmts);
+  }
+  const failed = c.error || error;
+  await journal(db, season, bot, r, now, {
+    status: c.error ? 'fail' : r.dry ? 'dry' : 'ok', view: c.view, usage: c.usage, ms: c.ms,
+    detail: { ...c.detail, ...(failed ? { error: failed } : {}), ...(c.raw ? { raw: c.raw } : {}) }
+  });
 }
 
 /** AI 한 명의 계좌 상태 — 판단 때 한 번, 주문 넣을 때 한 번 더 읽는다 (그 사이 체결이 있을 수 있다) */
@@ -485,7 +623,7 @@ async function botState(db, season, r, bot) {
   const [accRes, posRes, ordRes, thRes, cntRes, buyRes, lastRes] = await db.batch([
     db.prepare(`SELECT * FROM accounts WHERE season_id=? AND uid=?`).bind(season.id, uid),
     db.prepare(`SELECT code, name, qty, cost FROM positions WHERE season_id=? AND uid=? AND qty > 0 ORDER BY cost DESC`).bind(season.id, uid),
-    db.prepare(`SELECT id FROM orders WHERE season_id=? AND uid=? AND status IN ('open','partial')`).bind(season.id, uid),
+    db.prepare(`SELECT id, client_order_id FROM orders WHERE season_id=? AND uid=? AND status IN ('open','partial')`).bind(season.id, uid),
     db.prepare(`SELECT * FROM ai_theses WHERE season_id=? AND uid=?`).bind(season.id, uid),
     db.prepare(`SELECT COUNT(*) AS n FROM orders WHERE season_id=? AND uid=? AND trade_date=?`).bind(season.id, uid, r.ymd),
     db.prepare(`SELECT DISTINCT code FROM fills WHERE season_id=? AND uid=? AND side='buy' AND at >= ?`).bind(season.id, uid, dayStart),
@@ -502,7 +640,7 @@ async function botState(db, season, r, bot) {
     try { did = (JSON.parse(l.detail || '{}').actions || []).filter((a) => a.result === 'placed' || a.result === 'dry').map((a) => `${a.name} ${a.side === 'buy' ? '매수' : '매도'}`).join(', '); } catch (e) {}
     last = { hm: hhmmOf(l.hm), view: l.view, did };
   }
-  return { uid, account, cashNet: account.cash - (account.cash_short || 0), positions: posRes.results || [], openIds: (ordRes.results || []).map((o) => o.id),
+  return { uid, account, cashNet: account.cash - (account.cash_short || 0), positions: posRes.results || [], open: ordRes.results || [],
     theses, boughtToday: new Set((buyRes.results || []).map((x) => x.code)), ordersToday: cntRes.results[0].n, last };
 }
 function acctOf(st, lines, season, available) {
@@ -517,64 +655,7 @@ function stopsOf(st, lines) {
   return { stopped, live: st.positions.filter((p) => !set.has(p.code)) };
 }
 
-/** AI 한 명의 주문 — 미체결 취소 → 손절 → 코드 검사 → 주문 → 계획·기록 */
-async function applyBot(db, season, r, bot, dec, now) {
-  const st = await botState(db, season, r, bot);
-  if (!st) return;
-  const uid = st.uid, lines = r.lines || {};
-  // 지난 라운드의 미체결은 모두 취소하고 새 판단대로 넣는다 (지정가가 걸린 채 판단이 엇갈리지 않게)
-  if (!r.dry) for (const id of st.openIds) await E.cancelOrder(db, uid, id, now).catch(() => {});
-  const account = await E.getAccount(db, season.id, uid);
-  const cashNet = account.cash - (account.cash_short || 0);
-  const available = r.dry ? cashNet : await E.orderableCash(db, season, account, null, now, { cashOnly: true });
-  st.cashNet = cashNet;
-  const acct = acctOf(st, lines, season, available);
-  const detail = { stops: [], actions: [], holdings: [], watch: [] };
-  const { stopped, live } = stopsOf(st, lines);
-  for (const p of stopped) {
-    const th = st.theses[p.code];
-    const res = r.dry ? { result: 'dry' } : await place(db, season, account, r, uid, { code: p.code, side: 'sell', type: 'market', qty: p.qty }, now, `${r.id}:${bot.id}:stop:${p.code}`);
-    detail.stops.push({ code: p.code, name: p.name, qty: p.qty, px: lines[p.code].px, stop: th.stop, ...res });
-  }
-  if (!dec.d) {
-    await journal(db, season, bot, r, now, { status: 'fail', usage: dec.usage, ms: dec.ms, detail: { ...detail, error: dec.error || '응답 없음', raw: dec.raw } });
-    return;
-  }
-  const d = dec.d;
-  const accView = { ...acct, positions: live };
-  const allowed = new Set([...(r.top || []), ...live.map((p) => p.code)]);
-  const plan = planOrders(d, { allowed, lines, acct: accView });
-  detail.actions = plan.results.map((x) => ({ ...x, name: lines[x.code] ? lines[x.code].name : x.code }));
-  detail.holdings = d.holdings.slice(0, 10).map((h) => ({ code: String(h.code || ''), decision: h.decision, note: String(h.note || '').slice(0, 160) }));
-  detail.watch = d.watch.map((w) => ({ code: String(w.code || ''), condition: String(w.condition || '').slice(0, 160) }));
-  const thesisStmts = [];
-  let i = 0;
-  for (const o of plan.orders) {
-    const res2 = r.dry ? { result: 'dry' } : await place(db, season, account, r, uid, o, now, `${r.id}:${bot.id}:${i++}`);
-    detail.actions.push({ code: o.code, name: o.name, side: o.side, type: o.type, qty: o.qty, price: o.limitPrice, weight: o.weight,
-      ...(o.plan || {}), reason: o.plan ? o.plan.thesis : o.reason, notes: o.notes, ...res2 });
-    if (res2.result === 'placed') {
-      if (o.side === 'buy') {
-        thesisStmts.push(db.prepare(
-          `INSERT INTO ai_theses (season_id, uid, code, name, thesis, stop, target, hold_days, opened_ymd, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)
-           ON CONFLICT (season_id, uid, code) DO UPDATE SET thesis=excluded.thesis, stop=excluded.stop, target=excluded.target, hold_days=excluded.hold_days, updated_at=excluded.updated_at`
-        ).bind(season.id, uid, o.code, o.name, o.plan.thesis, o.plan.stop, o.plan.target, o.plan.hold_days, r.ymd, now));
-      } else if (o.exit) {
-        thesisStmts.push(db.prepare(`DELETE FROM ai_theses WHERE season_id=? AND uid=? AND code=?`).bind(season.id, uid, o.code));
-      }
-    }
-  }
-  if (!r.dry) {
-    for (const s2 of detail.stops) if (s2.result === 'placed') thesisStmts.push(db.prepare(`DELETE FROM ai_theses WHERE season_id=? AND uid=? AND code=?`).bind(season.id, uid, s2.code));
-    // 보유도 주문 중도 아닌 계획은 지운다 (지정가가 안 맞아 취소된 매수 등)
-    const keep = new Set([...st.positions.map((p) => p.code), ...plan.orders.filter((o) => o.side === 'buy').map((o) => o.code)]);
-    for (const c of Object.keys(st.theses)) if (!keep.has(c)) thesisStmts.push(db.prepare(`DELETE FROM ai_theses WHERE season_id=? AND uid=? AND code=?`).bind(season.id, uid, c));
-    if (thesisStmts.length) await db.batch(thesisStmts);
-  }
-  await journal(db, season, bot, r, now, { status: r.dry ? 'dry' : 'ok', view: d.market_view, usage: dec.usage, ms: dec.ms, detail });
-}
-
-async function place(db, season, account, r, uid, o, now, clientOrderId) {
+async function place(db, season, account, uid, o, now, clientOrderId) {
   try {
     const q = await naver.getQuote(o.code);
     let type = o.type, limitPrice = o.limitPrice || undefined;
@@ -603,17 +684,35 @@ async function journal(db, season, bot, r, now, { status, view, usage, ms, detai
     u.prompt_tokens || null, u.completion_tokens || null, u.neurons != null ? Math.round(u.neurons) : null, ms || null, now).run();
 }
 
-/** 그날 순자산 기록 (15:45) — 수익 곡선용. KRX 정규장 종가(15:40~16:00 시간외 종가 시간에는 종가 그대로)로 평가 */
-export async function snapshot(db, season, now = Date.now()) {
+/**
+ * 그날 15:30 종가 — 크론(closeOfDay)이 15:40 부터 보유 종목 종가를 closes 에 저장한다. 회원 일일 스냅샷과 같은 값.
+ * 저장 안 된 종목은 final 일 때만 시세(KRX)로 채운다. 아니면 null (조금 뒤 다시).
+ * 예전에는 늘 시세로 평가해, 16:00 KRX 애프터마켓이 열린 뒤 기록하면 그 가격이 섞였다 (10/2 순자산 기록과 마감 글 숫자가 달랐다)
+ */
+async function closePrices(db, codes, ymd, final) {
+  const px = {};
+  if (!codes.length) return px;
+  const rows = (await db.prepare(`SELECT code, close FROM closes WHERE date=? AND code IN (${codes.map(() => '?').join(',')})`).bind(ymd, ...codes).all()).results || [];
+  for (const x of rows) px[x.code] = x.close;
+  const missing = codes.filter((c) => px[c] == null);
+  if (missing.length && !final) return null;
+  if (missing.length) {
+    const qs = await naver.getQuotes(missing).catch(() => []);
+    for (const q of qs) px[q.code] = (q.krx && q.krx.price) || q.price;
+  }
+  return px;
+}
+
+/** 그날 순자산 기록 — 수익 곡선·장 마감 이야기용. 15:30 종가로 평가 (회원 일일 스냅샷과 같은 기준). 종가가 덜 모였으면 null */
+export async function snapshot(db, season, now = Date.now(), opts = {}) {
   const t = E.kstNow(now);
   const [accRes, posRes] = await db.batch([
     db.prepare(`SELECT uid, cash, cash_short FROM accounts WHERE season_id=? AND status='ai'`).bind(season.id),
     db.prepare(`SELECT uid, code, qty, cost FROM positions WHERE season_id=? AND uid LIKE 'ai:%' AND qty > 0`).bind(season.id)
   ]);
   const codes = [...new Set((posRes.results || []).map((p) => p.code))];
-  const qs = codes.length ? await naver.getQuotes(codes).catch(() => []) : [];
-  const px = {};
-  for (const q of qs) px[q.code] = (q.krx && q.krx.price) || q.price;
+  const px = await closePrices(db, codes, t.ymd, opts.final == null ? true : !!opts.final);
+  if (!px) return null;
   const eq = {};
   for (const a of accRes.results || []) eq[a.uid] = a.cash - (a.cash_short || 0);
   for (const p of posRes.results || []) if (eq[p.uid] != null) eq[p.uid] += (px[p.code] || p.cost / p.qty) * p.qty;
@@ -631,18 +730,34 @@ export const POST_PROMPT = `너는 DT Club 모의투자 리그에 참가한 AI �
 [규칙]
 1. 쓸지 말지는 네가 정한다. 수익이 났으면 자랑해도 좋고, 손실이면 담담하게 돌아보거나 쓰지 않아도 된다.
 2. 아래 '오늘 기록'에 있는 숫자·종목·판단만 쓴다. 뉴스·업황·회사 이야기를 지어내지 않는다.
-3. 다른 사람에게 사거나 팔라고 권하지 않는다 ("사세요", "추천", "따라 사" 같은 말 금지).
-4. 존댓말, 1인칭. 제목 30자 이내, 본문 250자 이내. 이모지는 2개까지.
+3. 가격·금액은 '오늘 기록'에 적힌 숫자를 그대로 옮긴다 (원 단위, 쉼표 포함). 억·만 단위로 바꾸거나 반올림하지 않는다.
+4. 다른 사람에게 사거나 팔라고 권하지 않는다 ("사세요", "추천", "따라 사" 같은 말 금지).
+5. 존댓말, 1인칭. 제목 30자 이내, 본문 250자 이내. 이모지는 2개까지.
 
 [답 형식] JSON 하나만. 다른 글·코드블록 표시 없이.
 {"post": true 또는 false, "title": "제목", "body": "본문"}`;
 
 const POST_BANNED = /사세요|매수하세요|매도하세요|추천합니다|추천드|따라\s?사|따라\s?매수|리딩|급등\s?예정|확실한\s?수익|원금\s?보장/;
+const BIG_NUM = /\d{1,3}(?:,\d{3})+|\d{5,}/g;
+
+/**
+ * 올리기 전 검사 (순수 함수) — 문제가 있으면 이유, 없으면 null.
+ * 숫자 카드는 장부에서 만들지만 본문 숫자는 AI 가 쓴다. 10/2 첫 글에서 1,160,000원을 '1.16억'으로 옮긴 일이 있었다
+ * → 큰 숫자(1만 이상·쉼표 숫자)는 '오늘 기록'에 그대로 있어야 하고, 소수점 억·만 표기는 받지 않는다
+ */
+export function checkPost(text, facts) {
+  if (POST_BANNED.test(text)) return '권유 표현';
+  if (/\d\.\d+\s*(억|만)/.test(text)) return '금액 단위를 바꿈';
+  const known = new Set((String(facts).match(BIG_NUM) || []).map((x) => x.replace(/,/g, '')));
+  const bad = (String(text).match(BIG_NUM) || []).find((x) => !known.has(x.replace(/,/g, '')));
+  return bad ? `기록에 없는 숫자 ${bad}` : null;
+}
 
 /** 오늘 기록 — 장 마감 이야기의 재료 (순수 함수) */
 export function daySummaryText(bot, x) {
   const fills = x.fills.map((f) => `${f.side === 'buy' ? '매수' : '매도'} ${f.name} ${won(f.qty)}주 @ ${won(f.price)}`);
-  const pos = x.positions.map((p) => `${p.name} ${won(p.qty)}주 · 평단 ${won(p.avg)} · 오늘 종가 ${won(p.px)} (${sgn(pct(p.px, p.avg))}%)`);
+  const pos = x.positions.map((p) => `${p.name} ${won(p.qty)}주 · 평단 ${won(p.avg)} · 오늘 종가 ${won(p.px)} (${sgn(pct(p.px, p.avg))}%)` +
+    (p.stop ? ` · 내 계획 손절 ${won(p.stop)}${p.target ? ` · 목표 ${won(p.target)}` : ''}` : ''));
   const rounds = x.rounds.map((j) => `${hhmmOf(j.hm)} — ${j.view || '-'} / ${j.did || '주문 없음'}`);
   return `## 나\n${bot.maker} ${bot.name} (AI ${x.rank}위 / ${x.total}명)\n\n## 오늘 성적\n` +
     `순자산 ${won(x.equity)}원 · 오늘 ${sgn(won(x.dayPnl))}원 (${sgn(pct(x.equity, x.prevEquity))}%) · 시즌 ${sgn(pct(x.equity, x.seed))}%\n` +
@@ -653,25 +768,30 @@ export function daySummaryText(bot, x) {
 /** 오늘 기록을 모아 4명에게 동시에 묻는다 */
 async function phasePostThink(env, db, season, r, now, opts = {}) {
   const dayStart = Date.UTC(+r.ymd.slice(0, 4), +r.ymd.slice(4, 6) - 1, +r.ymd.slice(6, 8)) - 9 * 3600e3;
-  const [accRes, posRes, fillRes, prevRes, jrRes, postedRes] = await db.batch([
+  const [accRes, posRes, fillRes, prevRes, jrRes, postedRes, todayRes, thRes] = await db.batch([
     db.prepare(`SELECT * FROM accounts WHERE season_id=? AND status='ai'`).bind(season.id),
     db.prepare(`SELECT uid, code, name, qty, cost FROM positions WHERE season_id=? AND uid LIKE 'ai:%' AND qty > 0`).bind(season.id),
     db.prepare(`SELECT f.uid, f.side, f.qty, f.price, o.name FROM fills f JOIN orders o ON o.id = f.order_id WHERE f.season_id=? AND f.uid LIKE 'ai:%' AND f.at >= ? ORDER BY f.at`).bind(season.id, dayStart),
     db.prepare(`SELECT uid, equity FROM ai_daily d WHERE season_id=? AND ymd = (SELECT MAX(ymd) FROM ai_daily WHERE season_id=d.season_id AND uid=d.uid AND ymd < ?)`).bind(season.id, r.ymd),
     db.prepare(`SELECT uid, hm, view, detail FROM ai_journal WHERE season_id=? AND ymd=? AND status IN ('ok','dry') ORDER BY at`).bind(season.id, r.ymd),
-    db.prepare(`SELECT uid FROM shares WHERE season_id=? AND uid LIKE 'ai:%' AND created_at >= ? AND deleted_at IS NULL`).bind(season.id, dayStart)
+    db.prepare(`SELECT uid FROM shares WHERE season_id=? AND uid LIKE 'ai:%' AND created_at >= ? AND deleted_at IS NULL`).bind(season.id, dayStart),
+    db.prepare(`SELECT uid, equity FROM ai_daily WHERE season_id=? AND ymd=?`).bind(season.id, r.ymd),
+    db.prepare(`SELECT uid, code, stop, target FROM ai_theses WHERE season_id=?`).bind(season.id)
   ]);
   const codes = [...new Set((posRes.results || []).map((p) => p.code))];
-  const [qs, idx] = await Promise.all([codes.length ? naver.getQuotes(codes).catch(() => []) : [], naver.getIndex().catch(() => null)]);
-  const px = {};
-  for (const q of qs) px[q.code] = (q.krx && q.krx.price) || q.price;
+  // 보유 평가는 오늘 15:30 종가 — 순자산 기록(ai_daily)과 같은 기준이라 글의 숫자와 순위 화면 기록이 맞는다
+  const [px, idx] = await Promise.all([closePrices(db, codes, r.ymd, true), naver.getIndex().catch(() => null)]);
   const posted = new Set((postedRes.results || []).map((x) => x.uid));
+  const today = {};
+  for (const x of todayRes.results || []) today[x.uid] = x.equity;
   const sums = {};
   for (const a of accRes.results || []) {
     const bot = botOfUid(a.uid);
     if (!bot) continue;
-    const positions = (posRes.results || []).filter((p) => p.uid === a.uid).map((p) => ({ code: p.code, name: p.name, qty: p.qty, cost: p.cost, avg: Math.round(p.cost / p.qty), px: px[p.code] || Math.round(p.cost / p.qty) }));
-    const equity = a.cash - (a.cash_short || 0) + positions.reduce((t, p) => t + p.px * p.qty, 0);
+    const plan = (code) => (thRes.results || []).find((x) => x.uid === a.uid && x.code === code) || {};
+    const positions = (posRes.results || []).filter((p) => p.uid === a.uid).map((p) => ({ code: p.code, name: p.name, qty: p.qty, cost: p.cost, avg: Math.round(p.cost / p.qty),
+      px: px[p.code] || Math.round(p.cost / p.qty), stop: plan(p.code).stop || null, target: plan(p.code).target || null }));
+    const equity = today[a.uid] != null ? today[a.uid] : Math.round(a.cash - (a.cash_short || 0) + positions.reduce((t, p) => t + p.px * p.qty, 0));
     const prev = (prevRes.results || []).find((x) => x.uid === a.uid);
     const rounds = (jrRes.results || []).filter((j) => j.uid === a.uid).map((j) => {
       let did = null;
@@ -689,11 +809,26 @@ async function phasePostThink(env, db, season, r, now, opts = {}) {
     const bot = BOTS.find((b) => b.id === id), x = sums[id];
     if (x.posted) return [id, { skip: '오늘 이미 글을 올림' }];
     const ask = opts.callModel || ((m) => callModel(env, bot.model, m));
-    try {
-      const res = await ask([{ role: 'system', content: POST_PROMPT }, { role: 'user', content: `# 오늘 기록\n${daySummaryText(bot, x)}\n\n오늘 글을 올릴지 정해라.` }]);
+    const facts = daySummaryText(bot, x);
+    const messages = [{ role: 'system', content: POST_PROMPT }, { role: 'user', content: `# 오늘 기록\n${facts}\n\n오늘 글을 올릴지 정해라.` }];
+    const usage = {};
+    const read = (res) => {
+      for (const k of ['prompt_tokens', 'completion_tokens', 'neurons']) usage[k] = (usage[k] || 0) + ((res.usage || {})[k] || 0);
       const d = parseLoose(res.text);
-      return [id, { post: d.post === true, title: String(d.title || '').trim().slice(0, 40), body: String(d.body || '').trim().slice(0, 300), usage: res.usage }];
-    } catch (e) { return [id, { error: String(e && e.message || e).slice(0, 200) }]; }
+      const v = { post: d.post === true, title: String(d.title || '').trim().slice(0, 40), body: String(d.body || '').trim().slice(0, 300) };
+      v.problem = v.post ? (!v.body ? '빈 글' : checkPost((v.title ? v.title + '\n' : '') + v.body, facts)) : null;
+      return v;
+    };
+    try {
+      let res = await ask(messages), v = read(res);
+      if (v.problem && v.body) {
+        // 한 번만 고쳐 쓰게 한다 — 그래도 안 되면 올리지 않는다
+        messages.push({ role: 'assistant', content: res.text.slice(0, 2000) },
+          { role: 'user', content: `이 글은 올릴 수 없다 (${v.problem}). 규칙 2·3·4를 지켜 다시 써라. 쓰지 않으려면 post 를 false 로.` });
+        res = await ask(messages); v = read(res);
+      }
+      return [id, { ...v, usage }];
+    } catch (e) { return [id, { error: String(e && e.message || e).slice(0, 200), usage }]; }
   }));
   // 카드 계산에 필요한 값만 남긴다 (라운드 상태에 저장된다)
   r.posts = Object.fromEntries(out.map(([id, v]) => {
@@ -717,7 +852,7 @@ async function phasePostWrite(db, season, r, now) {
   const bot = BOTS.find((b) => b.id === id), p = r.posts[id];
   if (bot && p && p.post && !p.error && !p.skip) {
     const text = (p.title ? p.title + '\n' : '') + p.body;
-    if (!p.body || POST_BANNED.test(text)) p.result = !p.body ? '빈 글이라 올리지 않음' : '권유 표현이 있어 올리지 않음';
+    if (p.problem || !p.body) p.result = `올리지 않음 (${p.problem || '빈 글'})`;
     else {
       const positions = p.positions.map((x) => ({ code: x.code, name: x.name, qty: x.qty, avgPrice: x.avg, price: x.px, value: x.px * x.qty,
         pnl: x.px * x.qty - x.cost, pnlRate: x.cost ? Math.round((x.px * x.qty - x.cost) / x.cost * 10000) / 100 : 0 })).sort((a, b) => b.value - a.value);
