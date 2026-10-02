@@ -664,3 +664,9 @@
 .mk-ai-run:disabled { opacity: .5; cursor: progress; }
 .mk-ai-sum { margin: 0; }
 .mk-ai-posplan { margin: -2px 0 6px; padding: 0 2px 6px; border-bottom: 1px dashed var(--border); display: flex; flex-wrap: wrap; gap: 2px 6px; }
+.mk-ai-line { display: flex; gap: 8px; align-items: baseline; font-size: .8rem; }
+.mk-ai-k { flex: 0 0 auto; font-weight: 700; color: var(--text2); min-width: 2.6em; }
+.mk-ai-line.no, .mk-ai-line.no .mk-ai-k { color: var(--text3); }
+.mk-ai-items { display: grid; gap: 4px; min-width: 0; }
+.mk-ai-item { display: flex; flex-wrap: wrap; gap: 2px 6px; align-items: baseline; }
+.mk-ai-none { color: var(--text3); }

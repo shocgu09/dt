@@ -1415,14 +1415,17 @@ var Mock = (function () {
     return r != null ? hmTxt(r) : null;
   }
   function kstNowMin() { var k = new Date(Date.now() + 9 * 3600e3); return k.getUTCHours() * 60 + k.getUTCMinutes(); }
-  function actLine(a) {
-    var ok = a.result === 'placed' || a.result === 'dry';
-    var what = (a.side === 'buy' ? '매수' : '매도') + (a.qty ? ' ' + fmtNum(a.qty) + '주' : '') + (a.weight ? ' (' + Math.round(a.weight * 100) + '%)' : '')
-      + (a.type === 'limit' && a.price ? ' 지정가 ' + fmtNum(a.price) : '');
-    return '<div class="mk-ai-act ' + (ok ? 'ok' : 'no') + '"><b>' + escapeHtml(a.name || a.code) + '</b> ' + what
-      + (a.result === 'dry' ? ' <i class="mk-tag">판단만</i>' : '') + (ok ? '' : ' <i class="mk-tag no">' + escapeHtml(a.note || '거부') + '</i>')
+  /** 판단 기록의 주문 한 건 — 종목 · 수량 · 비중 · 가격, 아래에 계획과 이유 */
+  function actItem(a) {
+    return '<div class="mk-ai-item"><b>' + escapeHtml(a.name || a.code) + '</b> ' + (a.qty ? fmtNum(a.qty) + '주' : '')
+      + (a.weight ? ' (' + Math.round(a.weight * 100) + '%)' : '') + (a.type === 'limit' && a.price ? ' · 지정가 ' + fmtNum(a.price) : a.type === 'market' ? ' · 시장가' : '')
+      + (a.result === 'dry' ? ' <i class="mk-tag">판단만</i>' : '')
       + (a.stop ? '<span class="mk-ai-plan">손절 ' + fmtNum(a.stop) + (a.target ? ' · 목표 ' + fmtNum(a.target) : '') + (a.hold_days ? ' · ' + a.hold_days + '일' : '') + '</span>' : '')
       + (a.reason ? '<span class="mk-ai-why">' + escapeHtml(a.reason) + '</span>' : '') + '</div>';
+  }
+  function actRow(label, items, cls) {
+    return '<div class="mk-ai-line' + (cls ? ' ' + cls : '') + '"><span class="mk-ai-k">' + label + '</span>'
+      + (items.length ? '<div class="mk-ai-items">' + items.join('') + '</div>' : '<span class="mk-ai-none">없음</span>') + '</div>';
   }
   function journalHtml(j, withName) {
     var dt = j.detail || {}, acts = (dt.actions || []);
@@ -1433,10 +1436,18 @@ var Mock = (function () {
     if (j.status === 'fail') body = '<div class="mk-ai-why">' + escapeHtml(dt.error || '응답 없음') + '</div>';
     else {
       if (j.view) body += '<div class="mk-ai-view">' + escapeHtml(j.view) + '</div>';
-      (dt.stops || []).forEach(function (x) { body += '<div class="mk-ai-act no"><b>' + escapeHtml(x.name || x.code) + '</b> 손절 매도 ' + fmtNum(x.qty) + '주 <i class="mk-tag no">손절가 ' + fmtNum(x.stop) + ' 도달</i></div>'; });
-      body += acts.length ? acts.map(actLine).join('') : '<div class="mk-ai-act">새 주문 없음 (관망)</div>';
-      var hold = (dt.holdings || []).filter(function (x) { return x.decision && x.decision !== 'keep'; });
-      if (hold.length) body += hold.map(function (x) { return '<div class="mk-ai-act">' + escapeHtml(x.code) + ' ' + escapeHtml(x.decision) + ' — ' + escapeHtml(x.note || '') + '</div>'; }).join('');
+      // 매수: ~ / 매도: ~ (없으면 없음) · 거부된 것은 따로 한 줄
+      var done = function (a) { return a.result === 'placed' || a.result === 'dry'; };
+      var stops = (dt.stops || []).map(function (x) {
+        return '<div class="mk-ai-item"><b>' + escapeHtml(x.name || x.code) + '</b> ' + fmtNum(x.qty) + '주 · 손절<span class="mk-ai-plan">손절가 ' + fmtNum(x.stop) + ' 도달 — 코드가 자동으로 팜</span></div>';
+      });
+      body += actRow('매수', acts.filter(function (a) { return done(a) && a.side === 'buy'; }).map(actItem));
+      body += actRow('매도', stops.concat(acts.filter(function (a) { return done(a) && a.side === 'sell'; }).map(actItem)));
+      var rej = acts.filter(function (a) { return !done(a); });
+      if (rej.length) body += actRow('거부', rej.map(function (a) {
+        return '<div class="mk-ai-item"><b>' + escapeHtml(a.name || a.code) + '</b> ' + (a.side === 'sell' ? '매도' : '매수') + ' — ' + escapeHtml(a.note || '거부')
+          + (a.reason ? '<span class="mk-ai-why">' + escapeHtml(a.reason) + '</span>' : '') + '</div>';
+      }), 'no');
     }
     return '<div class="mk-ai-j">' + head + body + '</div>';
   }
