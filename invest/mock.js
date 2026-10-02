@@ -1465,8 +1465,7 @@ var Mock = (function () {
     var h = '<section class="m-section"><div class="m-head"><h3>🤖 ' + escapeHtml((d.season && d.season.name) || '') + ' AI 리그' + (d.mode === 'admin' ? ' <i class="mk-tag">시험 중 · 관리자만</i>' : '') + '</h3>'
       + '<span class="m-hint">' + status
       // 지금 한 번 판단시키기 — 슈퍼관리자만, 작게. 정규장 밖이면 시간외 지정가로 넣는다
-      + (admin ? ' <button class="mk-ai-run" onclick="Mock.aiRun(this)"' + (_aiBusy ? ' disabled' : '') + ' title="지금 4명이 판단하고 주문까지 넣습니다 (정규장 밖은 시간외 지정가)">▶ 지금 판단</button>'
-        + '<button class="mk-ai-run" onclick="Mock.aiPost(this)"' + (_aiBusy ? ' disabled' : '') + ' title="AI 들이 오늘 매매를 커뮤니티에 쓸지 정합니다 (AI 마다 하루 1개)">✍ 마감 이야기</button>' : '')
+      + (admin ? ' <button class="mk-ai-run" onclick="Mock.aiRun(this)"' + (_aiBusy ? ' disabled' : '') + ' title="지금 4명이 판단하고 주문까지 넣습니다 (정규장 밖은 시간외 지정가)">▶ 지금 판단</button>' : '')
       + '</span></div>'
       + '<div class="mk-note" style="margin:0 0 8px">무료 AI 모델들이 회원과 같은 규칙(시드 1억 · 같은 체결)으로 정규장 하루 ' + (d.rounds || []).length + '번(' + (d.rounds || []).map(hmTxt).join(' · ') + ') 판단합니다. 현금만 쓰고, 보유 · 주문 · 판단 이유가 모두 공개됩니다. 회원 시즌과 같이 시작하고 끝나며, 회원 순위에는 들어가지 않습니다.</div>';
     h += d.bots.map(function (b, i) {
@@ -1528,18 +1527,6 @@ var Mock = (function () {
   }
   function aiToggle(id) { _aiOpen[id] = !_aiOpen[id]; renderAi(); }
   function aiPrev(id) { _aiPrev[id] = !_aiPrev[id]; renderAi(); }
-  /** 장 마감 이야기를 지금 쓰게 한다 (슈퍼관리자) — 매일 15:50 에 자동으로도 한다 */
-  async function aiPost(btn) {
-    if (_aiBusy) return;
-    _aiBusy = true; if (btn) btn.disabled = true;
-    try {
-      var r = await api('/admin/ai/post', 'POST', {});
-      toast(r.ok ? 'AI 들이 글을 쓸지 정하고 있습니다 · 1분쯤 뒤 커뮤니티를 확인하세요' : (r.message || '시작하지 못했습니다'), '');
-    } catch (e) { toast(e.message, 'err'); }
-    _aiBusy = false;
-    setTimeout(function () { loadAi(); if (typeof loadShares === 'function') loadShares(true); }, 60000);
-    loadAi();
-  }
   /** AI 체결 내역 — 회원 계좌의 체결 내역과 같은 줄(주문별, 30개씩). 여러 번 나눠 체결된 주문은 눌러서 펼친다 */
   async function aiHist(id, reset) {
     var hs = _aiHist[id] = _aiHist[id] || {};
@@ -3315,7 +3302,7 @@ var Mock = (function () {
     askReview: askReview,
     openAmend: openAmend, closeAux: closeAux,
     setMarginMode: setMarginMode, repayLot: repayLot, loadLedger: loadLedger, openLoan: openLoan,
-    aiToggle: aiToggle, aiRun: aiRun, aiPost: aiPost, aiPrev: aiPrev, aiHist: aiHist, aiMore: aiMore, rankSub: rankSub,
+    aiToggle: aiToggle, aiRun: aiRun, aiPrev: aiPrev, aiHist: aiHist, aiMore: aiMore, rankSub: rankSub,
     auxInput: auxInput, auxStep: auxStep, auxSet: auxSet, auxSel: auxSel, auxSubmit: auxSubmit,
     loadCorpAdmin: loadCorpAdmin, caApply: caApply, caDismiss: caDismiss,
     mountAdmin: mountAdmin,

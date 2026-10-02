@@ -279,19 +279,27 @@ export async function tick(env, store, now = Date.now()) {
     return 'running';
   }
   const due = ROUNDS.find((r) => t.hm >= r && t.hm < r + START_WINDOW);
-  const snapDue = t.hm >= SNAP_AT && t.hm < POST_AT;
-  const postDue = t.hm >= POST_AT && t.hm < POST_AT + 30;
-  if (due == null && !snapDue && !postDue) return 'idle';
-  const key = due != null ? `done:${t.ymd}:${due}` : snapDue ? `snap:${t.ymd}` : `post:${t.ymd}`;
+  // 장 마감 뒤 하루 한 번 — 순자산 기록(15:45~) → 장 마감 이야기(15:50~). 크론이 놓쳐도 20:00 전까지 다음 분에 한다
+  let after = null;
+  if (due == null) {
+    if (t.hm < SNAP_AT || t.hm >= E.AFTER_TO) return 'idle';
+    if (!(await store.get(`snap:${t.ymd}`))) after = 'snap';
+    else if (t.hm >= POST_AT && !(await store.get(`post:${t.ymd}`))) after = 'post';
+    else return 'done';
+  }
+  const key = due != null ? `done:${t.ymd}:${due}` : `${after}:${t.ymd}`;
   if (await store.get(key)) return 'done';
   const db = env.MOCK_DB;
   E.setHolidays(await H.holidaySet(db));
-  if (!E.isTradingDay(t)) return 'holiday';
-  const season = await E.activeSeason(db, now);
-  if (!season || aiMode(season) === 'off') return 'off';
+  const season = E.isTradingDay(t) ? await E.activeSeason(db, now) : null;
+  if (!season || aiMode(season) === 'off') {
+    // 장 마감 뒤 작업은 그날 다시 보지 않는다 (20:00 까지 매분 장부를 읽지 않게). 판단 회차는 켜지면 할 수 있게 남긴다
+    if (after) await store.put(key, 1);
+    return !E.isTradingDay(t) ? 'holiday' : 'off';
+  }
   await store.put(key, 1);
-  if (snapDue && due == null) { await snapshot(db, season, now); return 'snap'; }
-  if (postDue && due == null) {
+  if (after === 'snap') { await snapshot(db, season, now); return 'snap'; }
+  if (after === 'post') {
     await store.put('round', { ...newRound(t, t.hm, false, now), id: `${t.ymd}-post`, phase: 'post-think' });
     await store.setAlarm(now + 500);
     return 'post';
