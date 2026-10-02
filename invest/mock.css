@@ -647,16 +647,11 @@
 .mk-rk-sub { margin: -4px 0 10px; }
 .mk-rk-sub[hidden] { display: none; }   /* .seg-row 의 display 가 hidden 을 덮어써 커뮤니티 화면에도 보였다 */
 .mk-ai-det { border: 1px solid var(--border); border-top: 0; background: var(--bg2); padding: 10px 12px; margin: -4px 0 8px; display: grid; gap: 6px; }
-/* AI 한 명 = 카드 — 접힌 줄은 순위표처럼 이어 붙이고, 펼치면 굵은 앰버 테두리·그림자로 묶는다 */
+/* AI 한 명 = 카드 — 접힌 줄은 순위표처럼 이어 붙이고, 펼치면 굵은 앰버 테두리로 묶는다 (간격 없이) */
 .mk-ai-list > .mk-ai-card:first-child > .mk-ai-row { border-top: 1px solid var(--border); }
-.mk-ai-card.open { border: 2px solid var(--primary); border-left-width: 5px; box-shadow: var(--shadow); margin: 12px 0 16px; background: var(--bg2); }
-.mk-ai-list > .mk-ai-card.open:first-child { margin-top: 0; }
-.mk-ai-card.open + .mk-ai-card > .mk-ai-row { border-top: 1px solid var(--border); }
-/* 펼친 AI 의 순위 줄 = 머리 — 상세를 내려 보는 동안 화면 위에 붙어 지금 누구를 보는지 알려 준다 (카드 안에서만) */
-.mk-ai-card.open > .mk-ai-row { position: sticky; top: 0; z-index: 3; border: 0; border-bottom: 2px solid var(--primary); background: var(--bg3); }
+.mk-ai-card.open { border: 2px solid var(--primary); border-left-width: 5px; background: var(--bg2); }
+.mk-ai-card.open > .mk-ai-row { border: 0; border-bottom: 2px solid var(--primary); background: var(--bg3); }
 .mk-ai-card.open > .mk-ai-det { border: 0; margin: 0; padding-bottom: 12px; }
-.mk-ai-close { margin-top: 4px; background: var(--bg3); border: 1px solid var(--primary); color: var(--primary-light); font: inherit; font-size: .78rem; font-weight: 800; padding: 8px; cursor: pointer; }
-.mk-ai-close:hover { background: var(--primary); color: var(--on-primary); }
 .mk-ai-pos { border-bottom: 1px dashed var(--border); padding-bottom: 6px; font-size: .82rem; display: grid; gap: 2px; }
 .mk-ai-sub { font-size: .74rem; font-weight: 700; color: var(--text2); margin-top: 4px; }
 .mk-ai-j { border: 1px solid var(--border); background: var(--bg2); padding: 8px 10px; margin-bottom: 6px; display: grid; gap: 4px; }
