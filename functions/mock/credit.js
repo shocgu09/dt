@@ -54,7 +54,14 @@ export const RULES = {
 
   // 현금상환 가능 시간 (영업일)
   repayFrom: 8 * 60, creditRepayTo: 17 * 60 + 10, loanRepayTo: 17 * 60 + 30,
-  loanFrom: 8 * 60, loanTo: 17 * 60 + 30
+  loanFrom: 8 * 60, loanTo: 17 * 60 + 30,
+
+  // ── 시즌 규칙 (실전에는 없다 — 2026-10-02 결정) ──
+  // 시즌이 끝나면 빚은 순자산에서 빠질 뿐 갚을 일이 없어서, 막판에 빚을 끌어와 한 방을 노리거나
+  // 늦게 들어와 바로 최대한 빌리는 쪽이 유리해진다. 0 이면 그 규칙을 쓰지 않는다.
+  seasonCutoffDays: 10,                // 시즌 마지막 10거래일은 신용매수·담보대출·미수 매수를 새로 할 수 없다 (상환·매도는 된다)
+  seasonDueDays: 3,                    // 신용·대출 만기를 시즌 종료 3거래일 전으로 당긴다 → 다음 거래일 아침 자동상환, 마지막 3거래일은 현금만
+  unlockDays: 5                        // 참가 후 5거래일이 지나야 신용매수·담보대출·미수 매수를 쓸 수 있다
 };
 
 // ── 달력 ──────────────────────────────────────────────────────
@@ -82,6 +89,12 @@ export function prevTradingDay(ymd) {
   }
   return ymd;
 }
+/** 영업일 n일 전 */
+export function subTradingDays(ymd, n) {
+  let d = ymd;
+  for (let i = 0; i < n; i++) d = prevTradingDay(d);
+  return d;
+}
 /** 달력일 차이 — 이자 일수 '한편빼기'(기산일 제외, 끝나는 날 포함) */
 export function daysBetween(fromYmd, toYmd) { return Math.round((ymdToMs(toYmd) - ymdToMs(fromYmd)) / 86400e3); }
 export function addCalendarDays(ymd, n) { return msToYmd(ymdToMs(ymd) + n * 86400e3); }
@@ -89,6 +102,56 @@ export function addCalendarDays(ymd, n) { return msToYmd(ymdToMs(ymd) + n * 8640
 function yearDays(ymd) { const y = +ymd.slice(0, 4); return (y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0)) ? 366 : 365; }
 /** 전달 말일 */
 export function prevMonthEnd(ymd) { return msToYmd(Date.UTC(+ymd.slice(0, 4), +ymd.slice(4, 6) - 1, 1) - 86400e3); }
+
+// ── 시즌 규칙 ────────────────────────────────────────────────
+const mdTxt = (ymd) => `${+ymd.slice(4, 6)}/${+ymd.slice(6, 8)}`;
+
+/** 시즌 마지막 거래일 (종료일이 휴장일이면 그 전 거래일) */
+export function seasonLastDay(season) {
+  const end = String((season && season.end_date) || '').replace(/-/g, '');
+  if (!end) return null;
+  return E.isTradingDay({ dow: new Date(ymdToMs(end)).getUTCDay(), ymd: end }) ? end : prevTradingDay(end);
+}
+/** 신규 신용이 막히는 첫날 — 마지막 거래일을 포함해 seasonCutoffDays 거래일 */
+export function creditCutoffYmd(season) {
+  const last = seasonLastDay(season);
+  return last && RULES.seasonCutoffDays > 0 ? subTradingDays(last, RULES.seasonCutoffDays - 1) : null;
+}
+/** 신용·대출 만기 상한 — 마지막 거래일의 seasonDueDays 거래일 전 */
+export function seasonDueCap(season) {
+  const last = seasonLastDay(season);
+  return last && RULES.seasonDueDays > 0 ? subTradingDays(last, RULES.seasonDueDays) : null;
+}
+/** 실제로 적용할 만기일 — 180일 만기와 시즌 상한 중 이른 날. 이미 있는 잔고도 이걸로 판정한다 (시즌 종료일을 바꿔도 따라간다) */
+export function dueFor(season, dueYmd) {
+  const cap = seasonDueCap(season);
+  return cap && cap < dueYmd ? cap : dueYmd;
+}
+/** 신용이 열리는 날 — 참가일(시즌 시작 전 참가는 시작일)부터 unlockDays 거래일 뒤 */
+export function unlockYmd(season, account) {
+  if (!(RULES.unlockDays > 0) || !account || !account.joined_at) return null;
+  const start = String(season.start_date || '').replace(/-/g, '');
+  let j = E.kstNow(account.joined_at).ymd;
+  if (start && j < start) j = start;
+  return addTradingDays(j, RULES.unlockDays);
+}
+/**
+ * 신규 신용(신용매수·담보대출·미수 매수) 제한 — 없으면 null.
+ * 상환·매도·현금상환·증거금률 설정 바꾸기는 막지 않는다.
+ */
+export function creditGate(season, account, today) {
+  const cut = creditCutoffYmd(season);
+  if (cut && today >= cut) {
+    return { code: 'credit_closing', from: cut,
+      msg: `시즌 마지막 ${RULES.seasonCutoffDays}거래일(${mdTxt(cut)}부터)에는 신용매수 · 담보대출 · 미수 매수를 새로 할 수 없습니다` };
+  }
+  const u = unlockYmd(season, account);
+  if (u && today < u) {
+    return { code: 'credit_locked', until: u,
+      msg: `신용매수 · 담보대출 · 미수 매수는 참가 ${RULES.unlockDays}거래일 뒤인 ${mdTxt(u)}부터 쓸 수 있습니다` };
+  }
+  return null;
+}
 
 // ── 종목 조건 ────────────────────────────────────────────────
 const LEVERAGED = /레버리지|인버스|2X|곱버스|울트라|\bBULL\b|\bBEAR\b/i;

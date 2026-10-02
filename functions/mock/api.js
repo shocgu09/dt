@@ -332,7 +332,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       season: season && {
         id: season.id, name: season.name, startDate: season.start_date, endDate: season.end_date,
         seed: season.seed, feeRate: season.fee_rate, taxRate: season.tax_rate, notice: season.notice || '',
-        creditMode: season.credit_mode || 'off', creditOn: E.creditOn(season, isAdmin)
+        creditMode: season.credit_mode || 'off', creditOn: E.creditOn(season, isAdmin), creditRules: seasonCreditRules(season)
       },
       next, joined: !!account, participants: count ? count.n : 0, isAdmin, ...sessionInfo(now)
     };
@@ -859,6 +859,8 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     }
     const t = E.kstNow(now);
     if (!E.isTradingDay(t) || t.hm < K.RULES.loanFrom || t.hm >= K.RULES.loanTo) throw new HttpError(409, '증권담보대출은 거래일 08:00~17:30 에 신청할 수 있습니다', 'hours');
+    const gate = K.creditGate(season, account, t.ymd);
+    if (gate) throw new HttpError(409, gate.msg, gate.code);
     const view = await accountView(db, season, account, now, isAdmin);
     if (view.settle.misu > 0) throw new HttpError(409, '미수금이 있으면 대출을 받을 수 없습니다', 'misu');
     if (view.credit.calls.some((c) => c.kind !== 'misu' && c.status !== 'covered')) throw new HttpError(409, '담보부족·만기 처리 중에는 대출을 받을 수 없습니다', 'call');
@@ -895,7 +897,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
                     VALUES (?,?,?,'loan',?,?,?,?,?,?,?,?,?)
                     ON CONFLICT (season_id, uid, kind, code, start_ymd) DO UPDATE SET
                       qty = qty + excluded.qty, cost = cost + excluded.cost, principal = principal + excluded.principal, closed_at = NULL`)
-          .bind(lotId, season.id, uid, code, pos.name, qty, moved, amount, K.RULES.loanRate, t.ymd, K.addCalendarDays(t.ymd, K.RULES.loanTermDays), now),
+          .bind(lotId, season.id, uid, code, pos.name, qty, moved, amount, K.RULES.loanRate, t.ymd, K.dueFor(season, K.addCalendarDays(t.ymd, K.RULES.loanTermDays)), now),
         db.prepare(`UPDATE accounts SET ${cs.sql} WHERE season_id=? AND uid=?`).bind(...cs.args, season.id, uid),
         db.prepare(`INSERT INTO lot_moves (id, season_id, uid, lot_id, code, dir, qty, cost, at) VALUES (?,?,?,?,?,'in',?,?,?)`)
           .bind(crypto.randomUUID(), season.id, uid, lotId, code, qty, moved, now),
@@ -1044,7 +1046,7 @@ async function accountView(db, season, account, now, isAdmin = false) {
       id: l.id, kind: l.kind, code: l.code, name: l.name, qty: l.qty, avgPrice: l.qty ? Math.round(l.cost / l.qty) : 0, cost: l.cost,
       price, value, pnl: value - l.cost, pnlRate: l.cost ? (value - l.cost) / l.cost * 100 : 0,
       changeRate: q ? q.changeRate : null, halted: q ? q.halted : false,
-      principal: l.principal, startYmd: l.start_ymd, dueYmd: l.due_ymd, days,
+      principal: l.principal, startYmd: l.start_ymd, dueYmd: K.dueFor(season, l.due_ymd), days,
       rate: l.kind === 'credit' ? K.creditRate(Math.max(1, days)) : (l.rate || K.RULES.loanRate),
       accrued: due, interestPaid: l.interest_paid,
       executed: l.start_ymd <= today           // 신용은 매수 결제일에 융자가 실행된다 — 그 전엔 현금상환 불가
@@ -1069,6 +1071,7 @@ async function accountView(db, season, account, now, isAdmin = false) {
   // 원금 = 시드 + 출석금. 출석금은 수익이 아니므로 수익률·손익은 원금 기준 (순위는 순자산)
   const deposits = acc.deposits || 0, principal = season.seed + deposits;
   const on = E.creditOn(season, isAdmin);
+  const gate = on ? K.creditGate(season, acc, today) : null;
   // 알림 — 미수는 가장 최근 한 줄만(밤마다 날짜별로 새 줄이 생긴다), 담보부족·만기는 잔고를 다 갚았으면 끝난 일이라 뺀다
   // (밤 정산이 닫기 전이라도 대출 신청이 막히거나 '반대매매됩니다' 안내가 남지 않게)
   let misuShown = false;
@@ -1086,6 +1089,8 @@ async function accountView(db, season, account, now, isAdmin = false) {
     credit: {
       on, mode: season.credit_mode || 'off', marginMode: acc.margin_mode || 'cash',
       frozenUntil: acc.frozen_until && acc.frozen_until >= today ? acc.frozen_until : null,
+      // 참가 직후·시즌 막판 신규 신용 제한 — { code: credit_locked | credit_closing, msg, until | from }
+      gate,
       creditPrincipal, loanPrincipal, accrued, debt, interestPaid: acc.interest_paid || 0,
       collateral, lots: lotItems,
       calls: calls.map((c) => ({ kind: c.kind, ymd: c.ymd, amount: c.amount, ratio: c.ratio, dueYmd: c.due_ymd, status: c.status })),
@@ -1094,10 +1099,19 @@ async function accountView(db, season, account, now, isAdmin = false) {
         creditBrackets: K.RULES.creditBrackets.map((b) => ({ upto: isFinite(b.upto) ? b.upto : null, rate: b.rate })),
         loanLtv: K.RULES.loanLtv, loanRate: K.RULES.loanRate, loanTermDays: K.RULES.loanTermDays, loanMin: K.RULES.loanMin, loanUnit: K.RULES.loanUnit,
         maintRatio: K.RULES.maintRatio, misuOverdueRate: K.RULES.misuOverdueRate, forcedFeeRate: K.RULES.forcedFeeRate,
-        misuFreezeMin: K.RULES.misuFreezeMin, misuFreezeDays: K.RULES.misuFreezeDays
+        misuFreezeMin: K.RULES.misuFreezeMin, misuFreezeDays: K.RULES.misuFreezeDays,
+        ...seasonCreditRules(season)
       }
     },
     positions: items, openOrders: orders.map(publicOrder), live: px.live, closing: px.closing, ...sessionInfo(now)
+  };
+}
+
+/** 시즌 신용 규칙 — 참가 안내·규칙 설명용 (판정은 credit.js creditGate · dueFor) */
+function seasonCreditRules(season) {
+  return {
+    unlockDays: K.RULES.unlockDays, cutoffDays: K.RULES.seasonCutoffDays, dueDays: K.RULES.seasonDueDays,
+    cutoffYmd: K.creditCutoffYmd(season), dueCapYmd: K.seasonDueCap(season)
   };
 }
 

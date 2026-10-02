@@ -116,6 +116,7 @@ export function creditOn(season, isAdmin) {
 export function effectiveRate(season, account, terms, isAdmin, now = Date.now()) {
   if (!creditOn(season, isAdmin) || account.margin_mode !== 'spectrum') return 1;
   if (account.frozen_until && account.frozen_until >= kstNow(now).ymd) return 1;
+  if (K.creditGate(season, account, kstNow(now).ymd)) return 1;          // 참가 직후·시즌 막판에는 미수 매수도 막는다
   return terms ? terms.marginRate : 1;
 }
 
@@ -151,6 +152,10 @@ export async function acceptOrder(db, season, account, input, quote, taxFree, no
   const terms = opts.terms || { marginRate: 1, creditOk: false, reason: null };
   if (credit && !creditOn(season, opts.isAdmin)) throw new OrderError('신용거래를 이용할 수 없습니다', 'credit_off');
   if (credit && !terms.creditOk) throw new OrderError(terms.reason || '신용거래가 불가능한 종목입니다', 'credit_stock');
+  if (credit && !orig) {
+    const gate = K.creditGate(season, account, kstNow(now).ymd);
+    if (gate) throw new OrderError(gate.msg, gate.code);
+  }
 
   // 같은 주문이 재전송되면 새로 받지 않고 기존 주문을 돌려준다 (네트워크 재시도로 두 번 사지 않게)
   const dup = await db.prepare(`SELECT * FROM orders WHERE uid=? AND client_order_id=?`)
@@ -598,7 +603,7 @@ export async function tryFill(db, season, order, ctx, now = Date.now()) {
                   VALUES (?,?,?,'credit',?,?,?,?,?,NULL,?,?,?)
                   ON CONFLICT (season_id, uid, kind, code, start_ymd) DO UPDATE SET
                     qty = qty + excluded.qty, cost = cost + excluded.cost, principal = principal + excluded.principal, name = excluded.name, closed_at = NULL`)
-        .bind(lotId, season.id, order.uid, order.code, order.name, qty, amount, loan, settle, K.addCalendarDays(settle, K.RULES.creditTermDays), now)
+        .bind(lotId, season.id, order.uid, order.code, order.name, qty, amount, loan, settle, K.dueFor(season, K.addCalendarDays(settle, K.RULES.creditTermDays)), now)
     );
     order._lotId = lotId;
   } else if (isBuy) {

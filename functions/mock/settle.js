@@ -145,11 +145,16 @@ export async function nightly(db, season, now, stats = { q: 0 }) {
           .bind(r.ratio == null ? null : r.ratio, now, season.id, uid));
       }
       // 만기 — 만기일이 오늘 이전·오늘인 잔고: 다음 거래일 아침 자동상환·반대매매
+      // 만기일은 시즌 상한(종료 3거래일 전)으로 당겨질 수 있다 — 상한이 생기기 전에 만든 잔고도 같이 당긴다.
+      // 상한 때문에 같은 종목의 여러 잔고(신용 여러 날 · 담보대출)가 같은 날 만기가 되므로 알림 키에 잔고 종류·기산일을 넣는다
+      // (날짜:종목만 쓰면 한 줄로 합쳐져 하룻밤에 한 잔고만 처리됐다). 푸시는 회원당 하룻밤 한 번.
+      let expiryNoted = false;
       for (const l of u.lots) {
-        if (l.due_ymd > S) continue;
+        const due = K.dueFor(season, l.due_ymd);
+        if (due > S) continue;
         if (u.calls.some((c) => c.kind === 'expiry' && c.status !== 'resolved' && JSON.parse(c.detail || '{}').lotId === l.id)) continue;
-        push(callUpsert(db, season, uid, 'expiry', l.due_ymd + ':' + l.code, l.principal, null, next, 'due', { lotId: l.id, code: l.code }, now));
-        notes.push(Notify.marginNote(uid, 'expiry', { due: next }));
+        push(callUpsert(db, season, uid, 'expiry', [due, l.code, l.kind, l.start_ymd].join(':'), l.principal, null, next, 'due', { lotId: l.id, code: l.code }, now));
+        if (!expiryNoted) { notes.push(Notify.marginNote(uid, 'expiry', { due: next })); expiryNoted = true; }
       }
     }
   }

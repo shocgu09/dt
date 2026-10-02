@@ -412,6 +412,15 @@ var Mock = (function () {
     return Math.floor(principal * rate * days / yd + 1e-6);
   }
   function lotLabel(l) { return (l.kind === 'credit' ? '신용' : '담보') + ' ' + md(l.startYmd); }
+  /** 시즌 신용 규칙 (참가 직후 잠금 · 막판 신규 금지 · 만기 당김) — 참가 안내와 규칙 설명에 같이 쓴다 */
+  function seasonCreditRuleTxt(sr) {
+    if (!sr) return '';
+    var parts = [];
+    if (sr.unlockDays) parts.push('참가 후 ' + sr.unlockDays + '거래일이 지나야 미수 · 신용 · 대출을 쓸 수 있습니다');
+    if (sr.cutoffYmd) parts.push('시즌 마지막 ' + sr.cutoffDays + '거래일(' + md(sr.cutoffYmd) + '부터)에는 새로 빌릴 수 없습니다');
+    if (sr.dueCapYmd) parts.push('신용 · 대출 만기는 ' + md(sr.dueCapYmd) + '(종료 ' + sr.dueDays + '거래일 전)로 당겨지고 다음 거래일 아침 자동상환됩니다');
+    return parts.length ? parts.join('. ') + '.' : '';
+  }
 
   function creditActive(a) {
     var c = a.credit, st = a.settle;
@@ -449,8 +458,9 @@ var Mock = (function () {
           '· 증권담보대출: 결제된 주식을 담보로 전일종가의 ' + pctTxt(R.loanLtv || 0.7) + ' · 연 ' + ((R.loanRate || 0.0865) * 100).toFixed(2) + '% · ' + (R.loanTermDays || 180) + '일 · 매월 첫 영업일에 전월분 이자 출금',
           '· 담보비율(신용·대출 합산)이 장 마감 종가 기준 140% 아래면 추가담보를 요구합니다. 다음 거래일 종가 기준으로도 부족하면 그다음 거래일 09:00 시가에 반대매매됩니다.',
           '· 순위와 순자산은 빌린 돈(원금)과 쌓인 이자를 뺀 금액입니다.'
-        ].join('\n'), 'sm') + '</span></div>';
+        ].concat(seasonCreditRuleTxt(R) ? ['· 시즌 규칙: ' + seasonCreditRuleTxt(R)] : []).join('\n'), 'sm') + '</span></div>';
     (c.calls || []).forEach(function (x) { h += callLine(x); });
+    if (c.on && c.gate) h += '<div class="mk-alert warn">🔒 ' + escapeHtml(c.gate.msg) + '</div>';
     if (c.frozenUntil) h += '<div class="mk-alert warn">🔒 미수동결 · ' + md(c.frozenUntil) + '까지 증거금 100%로만 매수할 수 있습니다</div>';
     h += '<div class="mk-grid mk-grid3">'
       + cell('예수금', won(st.d0))
@@ -472,7 +482,7 @@ var Mock = (function () {
         + '<button class="seg' + (m ? ' on' : '') + '" aria-pressed="' + m + '" onclick="Mock.setMarginMode(\'spectrum\', this)">종목별 (미수)</button>'
         + '</div></div>'
         + '<div class="mk-note" style="margin-top:4px">' + (m ? '대부분 종목을 ' + pctTxt(R.stockMarginRate || 0.4) + ' 증거금으로 매수합니다. 결제일(D+2)까지 부족분을 채우지 못하면 미수 → 반대매매.' : '새로 사는 주문은 예수금 안에서만 매수합니다. 이미 "종목별"로 산 주식의 외상분은 결제일에 빠져나가니 D+2 예수금을 함께 확인하세요. 신용매수는 주문창에서 고릅니다.') + '</div>'
-        + '<div class="mk-cr-btns"><button class="mini-btn" onclick="Mock.openLoan()">증권담보대출</button>'
+        + '<div class="mk-cr-btns"><button class="mini-btn" onclick="Mock.openLoan()"' + (c.gate ? ' disabled title="' + escapeHtml(c.gate.msg) + '"' : '') + '>증권담보대출</button>'
         + '<button class="mini-btn" onclick="Mock.loadLedger()">대출·이자 내역</button></div>';
     } else {
       h += '<div class="mk-cr-btns"><button class="mini-btn" onclick="Mock.loadLedger()">대출·이자 내역</button></div>';
@@ -551,7 +561,7 @@ var Mock = (function () {
 
   /* ----- 증권담보대출 (보조 창) ----- */
   function openLoan() {
-    if (!account || !creditOnNow()) return;
+    if (!account || !creditOnNow() || cr().gate) return;
     var opts = account.positions.filter(function (p) { return pledgeable(p) > 0 && CODE_RE.test(p.code); });
     closeSheet();
     var first = opts[0];
@@ -932,6 +942,7 @@ var Mock = (function () {
           '거래일마다 <b>출석</b>하면 10만 원, 5일 연속마다 보너스 20만 원이 현금으로 들어옵니다. 순위는 총자산 기준이고, 출석금은 원금에 더해져 수익률에는 들어가지 않습니다.',
           s.creditOn
             ? '결제는 실제와 같이 <b>T+2</b>입니다. 계좌 증거금률을 "종목별"로 바꾸면 <b>미수</b>(대부분 40% 증거금)를 쓸 수 있고, <b>신용매수</b>(보증금 45%) · <b>증권담보대출</b>(전일종가 70%)도 됩니다. 이자 · 연체이자 · 담보비율 140% · 반대매매 규칙은 키움증권 기준입니다. 순위는 빌린 돈을 뺀 순자산 기준입니다. 공매도는 없습니다.'
+              + (seasonCreditRuleTxt(s.creditRules) ? ' ' + seasonCreditRuleTxt(s.creditRules) : '')
             : '신용 · 미수 · 공매도는 없습니다.'
         ])
       ;
@@ -2063,7 +2074,7 @@ var Mock = (function () {
     var c = cr();
     if (!c || !sheet) return 1;
     if (sheet.fund === 'credit') return (c.rules && c.rules.creditDepositRate) || 0.45;
-    if (!c.on || c.marginMode !== 'spectrum' || c.frozenUntil) return 1;
+    if (!c.on || c.marginMode !== 'spectrum' || c.frozenUntil || c.gate) return 1;
     if (sheet.terms && sheet.terms.marginRate) return sheet.terms.marginRate;
     // 종목 조건을 아직 못 받았으면(조회 실패) 이름으로 어림한다 — 레버리지·인버스·ETN 은 서버가 100% 로 받는다
     return /레버리지|인버스|2X|곱버스|울트라|\bBULL\b|\bBEAR\b|ETN/i.test(sheet.name || '') ? 1 : 0.4;
@@ -2176,15 +2187,16 @@ var Mock = (function () {
   function fundHtml(s) {
     if (s.side === 'buy') {
       if (!creditOnNow()) return '';
-      var t = s.terms, no = t && !t.creditOk, c = cr(), R = (c && c.rules) || {};
+      var t = s.terms, c = cr(), R = (c && c.rules) || {};
+      var gate = c && c.gate, no = !!gate || !!(t && !t.creditOk), noWhy = gate ? gate.msg : ((t && t.creditReason) || '신용 불가 종목');
       var note = s.fund === 'credit'
         ? '보증금 ' + pctTxt(R.creditDepositRate || 0.45) + ' · 나머지는 결제일에 융자 · ' + (R.creditTermDays || 180) + '일 · 이자 5.4~9.1%'
         : (buyRate() < 1 ? '증거금률 ' + pctTxt(buyRate()) + ' (종목별) · 결제일에 모자라면 미수' : '증거금 100% (현금)');
       return '<div class="seg-row sub mk-seg2" role="group" aria-label="매수 자금">'
         + '<button class="seg' + (s.fund !== 'credit' ? ' on' : '') + '" aria-pressed="' + (s.fund !== 'credit') + '" onclick="Mock.setSheet(\'fund\',\'cash\')">현금</button>'
         + '<button class="seg' + (s.fund === 'credit' ? ' on' : '') + '" aria-pressed="' + (s.fund === 'credit') + '" onclick="Mock.setSheet(\'fund\',\'credit\')"'
-        +   (no ? ' disabled title="' + escapeHtml(t.creditReason || '신용 불가 종목') + '"' : '') + '>신용</button>'
-        + '</div><div class="mk-dim mk-fund-note">' + escapeHtml(no && s.fund !== 'credit' ? (t.creditReason || '신용 불가 종목') : note) + '</div>';
+        +   (no ? ' disabled title="' + escapeHtml(noWhy) + '"' : '') + '>신용</button>'
+        + '</div><div class="mk-dim mk-fund-note">' + escapeHtml(no && s.fund !== 'credit' ? noWhy : note) + '</div>';
     }
     var lots = lotsOf(s.code);
     if (!lots.length) return '';
@@ -2212,7 +2224,7 @@ var Mock = (function () {
   function setSheet(key, val) {
     if (!sheet || sheet.busy) return;
     if (key === 'side' && val === 'sell' && sheet.side !== 'sell' && !hasAny(sheet.code)) return;
-    if (key === 'fund' && val === 'credit' && (!creditOnNow() || (sheet.terms && !sheet.terms.creditOk))) return;
+    if (key === 'fund' && val === 'credit' && (!creditOnNow() || cr().gate || (sheet.terms && !sheet.terms.creditOk))) return;
     sheet[key] = val;
     if (key === 'side' || key === 'fund' || key === 'lotId') sheet.qty = '';
     if (key === 'side' && val === 'sell') { var l0 = lotsOf(sheet.code); sheet.lotId = holding(sheet.code) || !l0.length ? '' : l0[0].id; }
