@@ -14,11 +14,12 @@ import * as E from './engine.js';
 import * as K from './credit.js';
 import * as H from './holidays.js';
 
+// logo — Simple Icons(simpleicons.org) 아이콘 이름. 화면이 최신판을 그때그때 불러온다 (로고가 바뀌면 따라간다)
 export const BOTS = [
-  { id: 'gemma4-26b', name: 'Gemma 4 26B', maker: 'Google', model: '@cf/google/gemma-4-26b-a4b-it' },
-  { id: 'gpt-oss-120b', name: 'GPT-OSS 120B', maker: 'OpenAI', model: '@cf/openai/gpt-oss-120b' },
-  { id: 'qwen3-30b', name: 'Qwen 3 30B', maker: 'Alibaba', model: '@cf/qwen/qwen3-30b-a3b-fp8' },
-  { id: 'gpt-oss-20b', name: 'GPT-OSS 20B', maker: 'OpenAI', model: '@cf/openai/gpt-oss-20b' }
+  { id: 'gemma4-26b', name: 'Gemma 4 26B', maker: 'Google', logo: 'google', model: '@cf/google/gemma-4-26b-a4b-it' },
+  { id: 'gpt-oss-120b', name: 'GPT-OSS 120B', maker: 'OpenAI', logo: 'openai', model: '@cf/openai/gpt-oss-120b' },
+  { id: 'qwen3-30b', name: 'Qwen 3 30B', maker: 'Alibaba', logo: 'alibabacloud', model: '@cf/qwen/qwen3-30b-a3b-fp8' },
+  { id: 'gpt-oss-20b', name: 'GPT-OSS 20B', maker: 'OpenAI', logo: 'openai', model: '@cf/openai/gpt-oss-20b' }
 ];
 export const uidOf = (bot) => 'ai:' + bot.id;
 export const botOfUid = (uid) => BOTS.find((b) => uidOf(b) === uid) || null;
