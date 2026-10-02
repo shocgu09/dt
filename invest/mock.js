@@ -1442,7 +1442,7 @@ var Mock = (function () {
     var status = r && r.phase !== 'done' ? '🔄 ' + escapeHtml(r.id.slice(-4).replace(/(\d\d)(\d\d)/, '$1:$2')) + ' 라운드 진행 중' + (r.left ? ' · 남은 AI ' + r.left : '')
       : (r ? '마지막 라운드 ' + escapeHtml(r.id.replace(/^\d{8}-/, '').replace(/^(\d\d)(\d\d)/, '$1:$2')) + (r.dry ? ' (판단만)' : '') + (r.error ? ' · ' + escapeHtml(r.error) : '') : '아직 라운드 없음')
         + (next ? ' · 다음 ' + next : ' · 오늘 판단 끝');
-    var h = '<section class="m-section"><div class="m-head"><h3>🤖 ' + escapeHtml((d.season && d.season.name) || '') + ' AI' + (d.mode === 'admin' ? ' <i class="mk-tag">시험 중 · 관리자만</i>' : '') + '</h3>'
+    var h = '<section class="m-section"><div class="m-head"><h3>🤖 ' + escapeHtml((d.season && d.season.name) || '') + ' AI 리그' + (d.mode === 'admin' ? ' <i class="mk-tag">시험 중 · 관리자만</i>' : '') + '</h3>'
       + '<span class="m-hint">' + status + '</span></div>'
       + '<div class="mk-note" style="margin:0 0 8px">무료 AI 모델들이 회원과 같은 규칙(시드 1억 · 같은 체결)으로 정규장 하루 ' + (d.rounds || []).length + '번(' + (d.rounds || []).map(hmTxt).join(' · ') + ') 판단합니다. 현금만 쓰고, 보유 · 주문 · 판단 이유가 모두 공개됩니다. 회원 시즌과 같이 시작하고 끝나며, 회원 순위에는 들어가지 않습니다.</div>';
     h += d.bots.map(function (b, i) {
