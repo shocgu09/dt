@@ -28,6 +28,7 @@ export const botOfUid = (uid) => BOTS.find((b) => uidOf(b) === uid) || null;
 export const ROUNDS = [9 * 60 + 5, 9 * 60 + 45, 10 * 60 + 30, 11 * 60 + 15, 13 * 60, 13 * 60 + 45, 14 * 60 + 30, 15 * 60 + 15];
 const START_WINDOW = 12;                 // 정해진 시각부터 15분 안에만 시작 (크론이 놓쳐도 뒤늦게 장 마감 직전에 돌지 않게)
 export const SNAP_AT = 15 * 60 + 45;     // 그날 순자산 기록 (KRX 종가가 정해진 뒤)
+export const POST_AT = 15 * 60 + 50;     // 장 마감 이야기 — AI 가 오늘 매매를 커뮤니티에 쓸지 정한다 (하루 1번, 쓸 수도 안 쓸 수도)
 const ROUND_TTL = 25 * 60e3;             // 라운드가 이보다 오래 걸리면 버린다
 
 export const LIMITS = {
@@ -278,9 +279,10 @@ export async function tick(env, store, now = Date.now()) {
     return 'running';
   }
   const due = ROUNDS.find((r) => t.hm >= r && t.hm < r + START_WINDOW);
-  const snapDue = t.hm >= SNAP_AT && t.hm < SNAP_AT + 30;
-  if (due == null && !snapDue) return 'idle';
-  const key = due != null ? `done:${t.ymd}:${due}` : `snap:${t.ymd}`;
+  const snapDue = t.hm >= SNAP_AT && t.hm < POST_AT;
+  const postDue = t.hm >= POST_AT && t.hm < POST_AT + 30;
+  if (due == null && !snapDue && !postDue) return 'idle';
+  const key = due != null ? `done:${t.ymd}:${due}` : snapDue ? `snap:${t.ymd}` : `post:${t.ymd}`;
   if (await store.get(key)) return 'done';
   const db = env.MOCK_DB;
   E.setHolidays(await H.holidaySet(db));
@@ -288,7 +290,12 @@ export async function tick(env, store, now = Date.now()) {
   const season = await E.activeSeason(db, now);
   if (!season || aiMode(season) === 'off') return 'off';
   await store.put(key, 1);
-  if (due == null) { await snapshot(db, season, now); return 'snap'; }
+  if (snapDue && due == null) { await snapshot(db, season, now); return 'snap'; }
+  if (postDue && due == null) {
+    await store.put('round', { ...newRound(t, t.hm, false, now), id: `${t.ymd}-post`, phase: 'post-think' });
+    await store.setAlarm(now + 500);
+    return 'post';
+  }
   await store.put('round', newRound(t, due, false, now));
   await store.setAlarm(now + 500);
   return 'started';
@@ -306,6 +313,16 @@ export async function start(env, store, now = Date.now()) {
   await store.put('round', r);
   await store.setAlarm(now + 500);
   return { ok: true, round: r.id, dry: r.dry };
+}
+
+/** 장 마감 이야기를 지금 쓰게 한다 (슈퍼관리자) — 하루 1개 한도는 그대로 */
+export async function startPosts(env, store, now = Date.now()) {
+  const t = E.kstNow(now);
+  const cur = await store.get('round');
+  if (cur && cur.phase !== 'done' && now - cur.startedAt < ROUND_TTL) return { ok: false, message: '지금 다른 판단을 하고 있습니다', round: cur.id };
+  await store.put('round', { ...newRound(t, t.hm, false, now), id: `${t.ymd}-post`, phase: 'post-think', manual: true });
+  await store.setAlarm(now + 500);
+  return { ok: true };
 }
 
 function newRound(t, hm, dry, now) {
@@ -326,6 +343,8 @@ export async function step(env, store, now = Date.now()) {
     else if (r.phase === 'static') await phaseStatic(store, r);
     else if (r.phase === 'intraday') await phaseIntraday(store, r);
     else if (r.phase === 'think') await phaseThink(env, db, season, r, now);
+    else if (r.phase === 'post-think') await phasePostThink(env, db, season, r, now);
+    else if (r.phase === 'post-write') await phasePostWrite(db, season, r, now);
     else if (r.phase === 'bots') await phaseBot(env, db, season, r, now);
     r.tries = 0;
   } catch (e) {
@@ -595,4 +614,115 @@ export async function snapshot(db, season, now = Date.now()) {
   ).bind(season.id, uid, t.ymd, Math.round(v)));
   if (stmts.length) await db.batch(stmts);
   return stmts.length;
+}
+
+// ── 장 마감 이야기 — AI 가 오늘 매매를 커뮤니티에 쓸지 정한다 ──────────────────
+
+export const POST_PROMPT = `너는 DT Club 모의투자 리그에 참가한 AI 트레이더다. 장이 끝난 뒤 회원들이 보는 커뮤니티에 오늘 매매 이야기를 올릴지 정한다.
+
+[규칙]
+1. 쓸지 말지는 네가 정한다. 수익이 났으면 자랑해도 좋고, 손실이면 담담하게 돌아보거나 쓰지 않아도 된다.
+2. 아래 '오늘 기록'에 있는 숫자·종목·판단만 쓴다. 뉴스·업황·회사 이야기를 지어내지 않는다.
+3. 다른 사람에게 사거나 팔라고 권하지 않는다 ("사세요", "추천", "따라 사" 같은 말 금지).
+4. 존댓말, 1인칭. 제목 30자 이내, 본문 250자 이내. 이모지는 2개까지.
+
+[답 형식] JSON 하나만. 다른 글·코드블록 표시 없이.
+{"post": true 또는 false, "title": "제목", "body": "본문"}`;
+
+const POST_BANNED = /사세요|매수하세요|매도하세요|추천합니다|추천드|따라\s?사|따라\s?매수|리딩|급등\s?예정|확실한\s?수익|원금\s?보장/;
+
+/** 오늘 기록 — 장 마감 이야기의 재료 (순수 함수) */
+export function daySummaryText(bot, x) {
+  const fills = x.fills.map((f) => `${f.side === 'buy' ? '매수' : '매도'} ${f.name} ${won(f.qty)}주 @ ${won(f.price)}`);
+  const pos = x.positions.map((p) => `${p.name} ${won(p.qty)}주 · 평단 ${won(p.avg)} · 오늘 종가 ${won(p.px)} (${sgn(pct(p.px, p.avg))}%)`);
+  const rounds = x.rounds.map((j) => `${hhmmOf(j.hm)} — ${j.view || '-'} / ${j.did || '주문 없음'}`);
+  return `## 나\n${bot.maker} ${bot.name} (AI ${x.rank}위 / ${x.total}명)\n\n## 오늘 성적\n` +
+    `순자산 ${won(x.equity)}원 · 오늘 ${sgn(won(x.dayPnl))}원 (${sgn(pct(x.equity, x.prevEquity))}%) · 시즌 ${sgn(pct(x.equity, x.seed))}%\n` +
+    `코스피 오늘 ${x.kospi == null ? '-' : sgn(x.kospi) + '%'} · 코스닥 ${x.kosdaq == null ? '-' : sgn(x.kosdaq) + '%'}\n\n` +
+    `## 오늘 체결\n${fills.length ? fills.join('\n') : '없음'}\n\n## 보유 종목\n${pos.length ? pos.join('\n') : '없음'}\n\n## 오늘 판단\n${rounds.length ? rounds.join('\n') : '없음'}`;
+}
+
+/** 오늘 기록을 모아 4명에게 동시에 묻는다 */
+async function phasePostThink(env, db, season, r, now, opts = {}) {
+  const dayStart = Date.UTC(+r.ymd.slice(0, 4), +r.ymd.slice(4, 6) - 1, +r.ymd.slice(6, 8)) - 9 * 3600e3;
+  const [accRes, posRes, fillRes, prevRes, jrRes, postedRes] = await db.batch([
+    db.prepare(`SELECT * FROM accounts WHERE season_id=? AND status='ai'`).bind(season.id),
+    db.prepare(`SELECT uid, code, name, qty, cost FROM positions WHERE season_id=? AND uid LIKE 'ai:%' AND qty > 0`).bind(season.id),
+    db.prepare(`SELECT f.uid, f.side, f.qty, f.price, o.name FROM fills f JOIN orders o ON o.id = f.order_id WHERE f.season_id=? AND f.uid LIKE 'ai:%' AND f.at >= ? ORDER BY f.at`).bind(season.id, dayStart),
+    db.prepare(`SELECT uid, equity FROM ai_daily d WHERE season_id=? AND ymd = (SELECT MAX(ymd) FROM ai_daily WHERE season_id=d.season_id AND uid=d.uid AND ymd < ?)`).bind(season.id, r.ymd),
+    db.prepare(`SELECT uid, hm, view, detail FROM ai_journal WHERE season_id=? AND ymd=? AND status IN ('ok','dry') ORDER BY at`).bind(season.id, r.ymd),
+    db.prepare(`SELECT uid FROM shares WHERE season_id=? AND uid LIKE 'ai:%' AND created_at >= ? AND deleted_at IS NULL`).bind(season.id, dayStart)
+  ]);
+  const codes = [...new Set((posRes.results || []).map((p) => p.code))];
+  const [qs, idx] = await Promise.all([codes.length ? naver.getQuotes(codes).catch(() => []) : [], naver.getIndex().catch(() => null)]);
+  const px = {};
+  for (const q of qs) px[q.code] = (q.krx && q.krx.price) || q.price;
+  const posted = new Set((postedRes.results || []).map((x) => x.uid));
+  const sums = {};
+  for (const a of accRes.results || []) {
+    const bot = botOfUid(a.uid);
+    if (!bot) continue;
+    const positions = (posRes.results || []).filter((p) => p.uid === a.uid).map((p) => ({ code: p.code, name: p.name, qty: p.qty, cost: p.cost, avg: Math.round(p.cost / p.qty), px: px[p.code] || Math.round(p.cost / p.qty) }));
+    const equity = a.cash - (a.cash_short || 0) + positions.reduce((t, p) => t + p.px * p.qty, 0);
+    const prev = (prevRes.results || []).find((x) => x.uid === a.uid);
+    const rounds = (jrRes.results || []).filter((j) => j.uid === a.uid).map((j) => {
+      let did = null;
+      try { did = (JSON.parse(j.detail || '{}').actions || []).filter((x) => x.result === 'placed').map((x) => `${x.name} ${x.side === 'buy' ? '매수' : '매도'}`).join(', '); } catch (e) {}
+      return { hm: j.hm, view: j.view, did };
+    });
+    sums[bot.id] = { uid: a.uid, account: a, equity, prevEquity: prev ? prev.equity : season.seed, seed: season.seed, positions,
+      fills: (fillRes.results || []).filter((f) => f.uid === a.uid), rounds, posted: posted.has(a.uid),
+      kospi: idx && idx.kospi ? idx.kospi.changeRate : null, kosdaq: idx && idx.kosdaq ? idx.kosdaq.changeRate : null };
+    sums[bot.id].dayPnl = Math.round(equity - sums[bot.id].prevEquity);
+  }
+  const order = Object.keys(sums).sort((x, y) => sums[y].equity - sums[x].equity);
+  order.forEach((id, i) => { sums[id].rank = i + 1; sums[id].total = order.length; });
+  const out = await Promise.all(Object.keys(sums).map(async (id) => {
+    const bot = BOTS.find((b) => b.id === id), x = sums[id];
+    if (x.posted) return [id, { skip: '오늘 이미 글을 올림' }];
+    const ask = opts.callModel || ((m) => callModel(env, bot.model, m));
+    try {
+      const res = await ask([{ role: 'system', content: POST_PROMPT }, { role: 'user', content: `# 오늘 기록\n${daySummaryText(bot, x)}\n\n오늘 글을 올릴지 정해라.` }]);
+      const d = parseLoose(res.text);
+      return [id, { post: d.post === true, title: String(d.title || '').trim().slice(0, 40), body: String(d.body || '').trim().slice(0, 300), usage: res.usage }];
+    } catch (e) { return [id, { error: String(e && e.message || e).slice(0, 200) }]; }
+  }));
+  // 카드 계산에 필요한 값만 남긴다 (라운드 상태에 저장된다)
+  r.posts = Object.fromEntries(out.map(([id, v]) => {
+    const x = sums[id];
+    return [id, { ...v, equity: x.equity, seed: x.seed, rank: x.rank, total: x.total, cash: x.account.cash - (x.account.cash_short || 0), realizedPnl: x.account.realized_pnl,
+      positions: x.positions }];
+  }));
+  r.botsLeft = Object.keys(r.posts);
+  r.phase = 'post-write';
+}
+function parseLoose(text) {
+  const t = String(text || '').replace(/<think>[\s\S]*?<\/think>/g, '');
+  const a = t.indexOf('{'), b = t.lastIndexOf('}');
+  if (a < 0 || b <= a) throw new Error('JSON 없음');
+  return JSON.parse(t.slice(a, b + 1));
+}
+
+/** 글 한 개씩 올린다 — 숫자 카드는 장부에서 코드가 만든다 (AI 가 숫자를 부풀릴 수 없게) */
+async function phasePostWrite(db, season, r, now) {
+  const id = r.botsLeft.shift();
+  const bot = BOTS.find((b) => b.id === id), p = r.posts[id];
+  if (bot && p && p.post && !p.error && !p.skip) {
+    const text = (p.title ? p.title + '\n' : '') + p.body;
+    if (!p.body || POST_BANNED.test(text)) p.result = !p.body ? '빈 글이라 올리지 않음' : '권유 표현이 있어 올리지 않음';
+    else {
+      const positions = p.positions.map((x) => ({ code: x.code, name: x.name, qty: x.qty, avgPrice: x.avg, price: x.px, value: x.px * x.qty,
+        pnl: x.px * x.qty - x.cost, pnlRate: x.cost ? Math.round((x.px * x.qty - x.cost) / x.cost * 10000) / 100 : 0 })).sort((a, b) => b.value - a.value);
+      const card = { v: 1, kind: 'account', seasonName: season.name, at: now, live: false, closing: false, seed: p.seed, principal: p.seed,
+        equity: Math.round(p.equity), pnl: Math.round(p.equity - p.seed), returnRate: Math.round((p.equity / p.seed - 1) * 10000) / 100,
+        cash: p.cash, stock: Math.round(p.equity - p.cash), realizedPnl: p.realizedPnl, debt: 0, rank: p.rank, participants: p.total, aiLeague: true,
+        holdings: positions.length, positions: positions.slice(0, 10) };
+      const shareId = crypto.randomUUID();
+      await db.prepare(`INSERT INTO shares (id, season_id, uid, nickname, kind, code, card, body, images, comment_count, created_at) VALUES (?,?,?,?,'account',NULL,?,?,'[]',0,?)`)
+        .bind(shareId, season.id, uidOf(bot), `🤖 ${bot.maker} ${bot.name}`, JSON.stringify(card), text, now).run();
+      p.result = 'posted'; p.shareId = shareId;
+    }
+  } else if (p) p.result = p.skip || p.error || '쓰지 않기로 함';
+  if (p) delete p.positions;
+  if (!r.botsLeft.length) { r.phase = 'done'; r.finishedAt = Date.now(); }
 }

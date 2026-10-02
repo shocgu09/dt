@@ -1457,13 +1457,16 @@ var Mock = (function () {
     if (!el || !d) return;
     var admin = !!(season && season.isSuper);      // 모드 바꾸기·지금 판단시키기는 슈퍼관리자만
     var r = d.round, next = aiNextRound(d);
-    var status = r && r.phase !== 'done' ? '🔄 ' + escapeHtml(r.id.slice(-4).replace(/(\d\d)(\d\d)/, '$1:$2')) + ' 라운드 진행 중' + (r.left ? ' · 남은 AI ' + r.left : '')
+    var isPost = r && /-post$/.test(r.id);
+    var status = isPost ? (r.phase !== 'done' ? '✍ 장 마감 이야기 쓰는 중' : '✍ 장 마감 이야기 끝') + (next ? ' · 다음 ' + next : '')
+      : r && r.phase !== 'done' ? '🔄 ' + escapeHtml(r.id.slice(-4).replace(/(\d\d)(\d\d)/, '$1:$2')) + ' 라운드 진행 중' + (r.left ? ' · 남은 AI ' + r.left : '')
       : (r ? '마지막 라운드 ' + escapeHtml(r.id.replace(/^\d{8}-/, '').replace(/^(\d\d)(\d\d)/, '$1:$2')) + (r.dry ? ' (판단만)' : '') + (r.error ? ' · ' + escapeHtml(r.error) : '') : '아직 라운드 없음')
         + (next ? ' · 다음 ' + next : ' · 오늘 판단 끝');
     var h = '<section class="m-section"><div class="m-head"><h3>🤖 ' + escapeHtml((d.season && d.season.name) || '') + ' AI 리그' + (d.mode === 'admin' ? ' <i class="mk-tag">시험 중 · 관리자만</i>' : '') + '</h3>'
       + '<span class="m-hint">' + status
       // 지금 한 번 판단시키기 — 슈퍼관리자만, 작게. 정규장 밖이면 시간외 지정가로 넣는다
-      + (admin ? ' <button class="mk-ai-run" onclick="Mock.aiRun(this)"' + (_aiBusy ? ' disabled' : '') + ' title="지금 4명이 판단하고 주문까지 넣습니다 (정규장 밖은 시간외 지정가)">▶ 지금 판단</button>' : '')
+      + (admin ? ' <button class="mk-ai-run" onclick="Mock.aiRun(this)"' + (_aiBusy ? ' disabled' : '') + ' title="지금 4명이 판단하고 주문까지 넣습니다 (정규장 밖은 시간외 지정가)">▶ 지금 판단</button>'
+        + '<button class="mk-ai-run" onclick="Mock.aiPost(this)"' + (_aiBusy ? ' disabled' : '') + ' title="AI 들이 오늘 매매를 커뮤니티에 쓸지 정합니다 (AI 마다 하루 1개)">✍ 마감 이야기</button>' : '')
       + '</span></div>'
       + '<div class="mk-note" style="margin:0 0 8px">무료 AI 모델들이 회원과 같은 규칙(시드 1억 · 같은 체결)으로 정규장 하루 ' + (d.rounds || []).length + '번(' + (d.rounds || []).map(hmTxt).join(' · ') + ') 판단합니다. 현금만 쓰고, 보유 · 주문 · 판단 이유가 모두 공개됩니다. 회원 시즌과 같이 시작하고 끝나며, 회원 순위에는 들어가지 않습니다.</div>';
     h += d.bots.map(function (b, i) {
@@ -1525,6 +1528,18 @@ var Mock = (function () {
   }
   function aiToggle(id) { _aiOpen[id] = !_aiOpen[id]; renderAi(); }
   function aiPrev(id) { _aiPrev[id] = !_aiPrev[id]; renderAi(); }
+  /** 장 마감 이야기를 지금 쓰게 한다 (슈퍼관리자) — 매일 15:50 에 자동으로도 한다 */
+  async function aiPost(btn) {
+    if (_aiBusy) return;
+    _aiBusy = true; if (btn) btn.disabled = true;
+    try {
+      var r = await api('/admin/ai/post', 'POST', {});
+      toast(r.ok ? 'AI 들이 글을 쓸지 정하고 있습니다 · 1분쯤 뒤 커뮤니티를 확인하세요' : (r.message || '시작하지 못했습니다'), '');
+    } catch (e) { toast(e.message, 'err'); }
+    _aiBusy = false;
+    setTimeout(function () { loadAi(); if (typeof loadShares === 'function') loadShares(true); }, 60000);
+    loadAi();
+  }
   /** AI 체결 내역 — 회원 계좌의 체결 내역과 같은 줄(주문별, 30개씩). 여러 번 나눠 체결된 주문은 눌러서 펼친다 */
   async function aiHist(id, reset) {
     var hs = _aiHist[id] = _aiHist[id] || {};
@@ -1678,9 +1693,12 @@ var Mock = (function () {
     var c = s.card || {}, open = !!_sh.open[s.id];
     // 모의투자인 건 랭킹 탭이라 자명하다 — 배지 대신 오른쪽에는 공유 시점 순위를 둔다
     var rank = c.kind === 'account' && c.rank
-      ? '<span class="mk-sc-rank">' + c.rank + '위' + (c.participants ? '<i>/' + fmtNum(c.participants) + '명</i>' : '') + '</span>' : '';
+      ? '<span class="mk-sc-rank">' + (c.aiLeague ? 'AI ' : '') + c.rank + '위' + (c.participants ? '<i>/' + fmtNum(c.participants) + '명</i>' : '') + '</span>' : '';
+    // AI 리그의 장 마감 이야기 — 작성자를 로고 · 회사 · 모델로
+    var who = s.ai ? aiLogo(s.ai.logo) + '<b class="mk-sc-who">' + escapeHtml(s.ai.maker) + '</b> <small class="mk-ai-model">' + escapeHtml(s.ai.name) + '</small> <i class="mk-tag">🤖 AI</i>'
+      : '<b class="mk-sc-who">' + escapeHtml(s.nickname) + '</b>';
     var h = '<article class="mk-sc" id="sc-' + s.id + '">'
-      + '<div class="mk-sc-top"><div class="mk-sc-id"><b class="mk-sc-who">' + escapeHtml(s.nickname) + '</b>' + (s.realName ? ' <small class="mk-real" title="실명 (관리자에게만 보임)">' + escapeHtml(s.realName) + '</small>' : '')
+      + '<div class="mk-sc-top"><div class="mk-sc-id">' + who + (s.realName ? ' <small class="mk-real" title="실명 (관리자에게만 보임)">' + escapeHtml(s.realName) + '</small>' : '')
       +   (s.mine ? '<i class="mk-tag">나</i>' : '') + '</div>' + rank + '</div>'
       + '<div class="mk-sc-meta">' + (c.seasonName ? '<span class="mk-sc-season">' + escapeHtml(c.seasonName) + '</span>' : '')
       +   escapeHtml(kstHM(c.at || s.createdAt) + (c.kind === 'text' ? '' : (c.closing ? ' 종가' : '') + ' 기준')) + '</div>';
@@ -3297,7 +3315,7 @@ var Mock = (function () {
     askReview: askReview,
     openAmend: openAmend, closeAux: closeAux,
     setMarginMode: setMarginMode, repayLot: repayLot, loadLedger: loadLedger, openLoan: openLoan,
-    aiToggle: aiToggle, aiRun: aiRun, aiPrev: aiPrev, aiHist: aiHist, aiMore: aiMore, rankSub: rankSub,
+    aiToggle: aiToggle, aiRun: aiRun, aiPost: aiPost, aiPrev: aiPrev, aiHist: aiHist, aiMore: aiMore, rankSub: rankSub,
     auxInput: auxInput, auxStep: auxStep, auxSet: auxSet, auxSel: auxSel, auxSubmit: auxSubmit,
     loadCorpAdmin: loadCorpAdmin, caApply: caApply, caDismiss: caDismiss,
     mountAdmin: mountAdmin,

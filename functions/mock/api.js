@@ -202,11 +202,16 @@ function cleanText(v, max, label) {
   return t;
 }
 /** uid 는 내보내지 않는다 — 순위표와 같은 원칙. 대신 내 글인지·지울 수 있는지만 알려 준다 */
-const publicShare = (r, uid, isAdmin, nicks) => ({
-  id: r.id, nickname: (nicks && nicks.get(r.uid)) || '회원', ...(isAdmin ? { realName: r.nickname } : {}), kind: r.kind, code: r.code || null, card: JSON.parse(r.card),
+const publicShare = (r, uid, isAdmin, nicks) => {
+  // AI 리그의 장 마감 이야기 — 작성자는 회사·모델 (닉네임 표에 없다)
+  const bot = String(r.uid).startsWith('ai:') ? AI.botOfUid(r.uid) : null;
+  return {
+  id: r.id, nickname: bot ? `${bot.maker} ${bot.name}` : (nicks && nicks.get(r.uid)) || '회원', ...(isAdmin && !bot ? { realName: r.nickname } : {}),
+  ...(bot ? { ai: { id: bot.id, maker: bot.maker, name: bot.name, logo: bot.logo || null } } : {}), kind: r.kind, code: r.code || null, card: JSON.parse(r.card),
   body: r.body, images: JSON.parse(r.images || '[]'), commentCount: r.comment_count, createdAt: r.created_at,
   mine: r.uid === uid, canDelete: r.uid === uid || isAdmin
-});
+  };
+};
 /** 사진 — JPEG data URL 만 받는다 (SVG·HTML 등은 형식에서 걸러진다). base64 그대로 저장한다 */
 function decodeImages(list) {
   if (list == null) return [];
@@ -278,6 +283,10 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       await db.prepare(`UPDATE seasons SET ai_mode=? WHERE id=?`).bind(b.mode, s.id).run();
       await db.prepare(`INSERT INTO audit_log (at, actor, action, detail) VALUES (?,?,?,?)`).bind(now, uid, 'ai.mode', JSON.stringify({ season: s.id, mode: b.mode })).run().catch(() => {});
       return { ok: true, mode: b.mode };
+    }
+    if (path === '/admin/ai/post' && method === 'POST') {
+      if (!env.HOUSE_AI) throw new HttpError(503, 'AI 리그가 준비되지 않았습니다');
+      return env.HOUSE_AI.get(env.HOUSE_AI.idFromName('house-ai'), { locationHint: 'apac' }).startPosts();
     }
     if (path === '/admin/ai/run' && method === 'POST') {
       if (!env.HOUSE_AI) throw new HttpError(503, 'AI 리그가 준비되지 않았습니다');
@@ -548,7 +557,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       const count = await db.prepare(`SELECT comment_count AS n FROM shares WHERE id=?`).bind(share.id).first();
       const nicks = await N.nicksFor(db, [uid]);
       // 내 공유글에 남이 댓글을 달면 알림 (닉네임으로)
-      if (share.uid !== uid) {
+      if (share.uid !== uid && !String(share.uid).startsWith('ai:')) {     // AI 글에는 알림 받을 사람이 없다
         await Notify.sendNotes(env, [{ uid: share.uid, kind: 'share', tag: 'share-' + share.id, url: '/invest/?tab=ranking',
           title: '💬 내 공유글에 댓글', body: (nicks.get(uid) || '회원') + ': ' + text.slice(0, 80) }]);
       }
@@ -1209,7 +1218,8 @@ async function aiLeague(env, db, season, now, isAdmin) {
   return {
     mode: AI.aiMode(season), today, seed: season.seed, rounds: AI.ROUNDS,
     season: { id: season.id, name: season.name, startDate: season.start_date, endDate: season.end_date },
-    round: round && { id: round.id, phase: round.phase, dry: !!round.dry, startedAt: round.startedAt, finishedAt: round.finishedAt || null, error: round.error || null, left: (round.botsLeft || []).length },
+    round: round && { id: round.id, phase: round.phase, dry: !!round.dry, startedAt: round.startedAt, finishedAt: round.finishedAt || null, error: round.error || null, left: (round.botsLeft || []).length,
+      posts: round.posts ? Object.fromEntries(Object.entries(round.posts).map(([k, v]) => [k, v.result || null])) : undefined },
     bots, journal, ...sessionInfo(now)
   };
 }

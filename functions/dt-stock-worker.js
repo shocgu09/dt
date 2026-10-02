@@ -293,6 +293,7 @@ export class HouseAI extends DurableObject {
     return r;
   }
   async start() { return AI.start(this.env, this.store()); }
+  async startPosts() { return AI.startPosts(this.env, this.store()); }
   async status() { return (await this.ctx.storage.get('round')) || null; }
   async alarm() { await AI.step(this.env, this.store()); }
   async prune() {
