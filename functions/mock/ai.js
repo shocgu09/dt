@@ -560,7 +560,8 @@ async function place(db, season, account, r, uid, o, now, clientOrderId) {
     }
     const input = { clientOrderId: clientOrderId.slice(0, 64), code: o.code, side: o.side, type, qty: o.qty, limitPrice };
     const order = await E.acceptOrder(db, season, account, input, q, false, now, { terms: K.stockTerms('stock', q.name, q), isAdmin: false });
-    return { result: 'placed', orderId: order.id };
+    // 기록에는 실제로 접수된 방식·가격을 남긴다 (시간외에는 시장가가 현재가 지정가로 바뀐다)
+    return { result: 'placed', orderId: order.id, type, price: type === 'limit' ? limitPrice : null };
   } catch (e) {
     return { result: 'refused', note: e instanceof E.OrderError ? e.message : '주문 실패: ' + String(e && e.message || e).slice(0, 120) };
   }

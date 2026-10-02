@@ -1066,7 +1066,7 @@ var Mock = (function () {
       + '</div><div class="mk-hist-fills" hidden></div></div>';
   }
   /** 여러 번에 나눠 체결된 주문 — 체결 건별로 펼친다 (처음 펼칠 때 한 번 받는다) */
-  async function toggleFills(orderId) {
+  async function toggleFills(orderId, aiBot) {
     if (!UUID_RE.test(String(orderId))) return;
     var box = document.getElementById('mkh-' + orderId);
     if (!box) return;
@@ -1078,7 +1078,8 @@ var Mock = (function () {
     if (!open || list.dataset.loaded) return;
     list.innerHTML = '<div class="mk-hist-fill loading">불러오는 중</div>';
     try {
-      var d = await api('/history/fills?order=' + encodeURIComponent(orderId));
+      // AI 계좌 체결은 AI 리그 쪽에서 받는다 (회원 계좌 API 는 내 주문만 준다)
+      var d = await api((aiBot ? '/ai/history/fills?bot=' + encodeURIComponent(aiBot) + '&' : '/history/fills?') + 'order=' + encodeURIComponent(orderId));
       list.innerHTML = d.items.map(function (f, i) {
         return '<div class="mk-hist-fill"><span>' + (i + 1) + '</span><span>' + escapeHtml(hmOf(f.at)) + '</span>'
           + '<span>' + fmtNum(f.qty) + '주 × ' + fmtNum(f.price) + '원</span><b>' + fmtNum(f.qty * f.price) + '원</b></div>';
@@ -1393,7 +1394,7 @@ var Mock = (function () {
   /* ===== 랭킹 탭 · AI 리그 =====
    * 무료 모델 AI 들이 회원과 같은 규칙으로 정규장 하루 6번 판단한다 (서버 mock/ai.js). 계좌·보유·주문·판단 이유가 전부 공개된다.
    * 시험 모드(ai_mode=admin)에서는 관리자에게만 보인다. 회원 순위표에는 AI 가 들어가지 않는다. */
-  var _ai = null, _aiAt = 0, _aiOpen = {}, _aiBusy = false, _aiPrev = {}, _aiMore = {}, _aiMoreLeft = {};
+  var _ai = null, _aiAt = 0, _aiOpen = {}, _aiBusy = false, _aiPrev = {}, _aiMore = {}, _aiMoreLeft = {}, _aiHist = {};
   function aiVisible() { return !!(season && season.season && season.season.aiVisible); }
   /* 회사 로고 — Simple Icons 최신판을 그때그때 불러온다 (회사가 로고를 바꾸면 따라간다).
    * 글자색으로 칠해 다크·라이트 모두에서 보이고, 못 불러오면 빈칸으로 남는다 */
@@ -1477,15 +1478,14 @@ var Mock = (function () {
       // 내 계좌 화면과 같은 모양 — 요약 카드 · 📦 보유 종목 · ⏳ 미체결 (AI 계좌라 정정·취소 버튼은 없다)
       var evalPnl = b.positions.reduce(function (t, p) { return t + (p.pnl || 0); }, 0);
       var det = '<div class="mk-ai-det">'
-        + '<div class="mk-card mk-summary mk-ai-sum">'
-        // 총자산·수익률은 바로 위 순위 줄에 있으므로 여기서는 나눠 본 값만
-        +   '<div class="mk-grid">'
+        // 총자산·수익률은 바로 위 순위 줄에 있으므로 여기서는 나눠 본 값만 (박스 없이)
+        +   '<div class="mk-grid mk-ai-grid">'
         +     cell('주문 가능', won(b.available) + (b.reserved > 0 ? '<small class="mk-cell-sub">주문 대기 ' + won(b.reserved) + '</small>' : ''))
         +     cell('보유 주식', won(b.stock))
         +     cell('평가손익', '<span class="' + signClass(evalPnl) + '">' + (evalPnl > 0 ? '+' : '') + fmtNum(evalPnl) + '원</span>')
         +     cell('실현손익', '<span class="' + signClass(b.realizedPnl || 0) + '">' + ((b.realizedPnl || 0) > 0 ? '+' : '') + fmtNum(b.realizedPnl || 0) + '원</span>'
               + (b.buyFees ? '<small class="mk-cell-sub">매수 수수료 −' + fmtNum(b.buyFees) + '원</small>' : ''))
-        +   '</div></div>'
+        +   '</div>'
         + '<div class="mk-ai-sub">📦 보유 종목 ' + b.positions.length + '종목</div>';
       det += b.positions.length ? b.positions.filter(function (p) { return CODE_RE.test(p.code); }).map(function (p) {
         var pl = p.plan || {};
@@ -1501,14 +1501,20 @@ var Mock = (function () {
       }).join('') : '<div class="empty">보유 종목이 없습니다.</div>';
       if (b.openOrders.length) det += '<div class="mk-ai-sub">⏳ 미체결 ' + b.openOrders.length + '건</div>'
         + b.openOrders.map(function (o) { return orderRowHtml(Object.assign({}, o, { id: null })); }).join('');
+      // 🧾 체결 내역 — 내 계좌처럼 '불러오기'
+      var hs = _aiHist[b.id] || {};
+      det += '<div class="mk-ai-sub mk-ai-subrow">🧾 체결 내역<button class="mini-btn" onclick="Mock.aiHist(\'' + escapeJsArg(b.id) + '\', true)"' + (hs.busy ? ' disabled' : '') + '>' + (hs.html != null ? '새로고침' : '불러오기') + '</button></div>'
+        + (hs.html != null ? (hs.html || '<div class="empty">체결 내역이 없습니다.</div>')
+          + (hs.next ? '<button class="mini-btn mk-more" onclick="Mock.aiHist(\'' + escapeJsArg(b.id) + '\', false)"' + (hs.busy ? ' disabled' : '') + '>더 보기</button>' : '') : '');
       var js = d.journal.filter(function (j) { return j.bot === b.id; }).concat(_aiMore[b.id] || []);
       det += '<div class="mk-ai-sub">최근 판단</div>' + (js.length ? journalHtml(js[0], false) : '<div class="mk-ai-act">아직 없음</div>');
-      if (js.length > 1 || _aiMoreLeft[b.id]) {
+      var older = js.length < (b.rounds || 0) && _aiMoreLeft[b.id] !== false;   // 아직 안 받은 기록이 있나
+      if (js.length > 1 || older) {
         var po = !!_aiPrev[b.id];
-        det += '<button type="button" class="mk-ai-prev" aria-expanded="' + po + '" onclick="Mock.aiPrev(\'' + escapeJsArg(b.id) + '\')">이전 판단 ' + (po ? '접기 ▲' : (js.length - 1) + '건' + (_aiMoreLeft[b.id] !== false ? '+' : '') + ' 보기 ▼') + '</button>';
+        det += '<button type="button" class="mk-ai-prev" aria-expanded="' + po + '" onclick="Mock.aiPrev(\'' + escapeJsArg(b.id) + '\')">이전 판단 ' + (po ? '접기 ▲' : (js.length - 1) + '건' + (older ? '+' : '') + ' 보기 ▼') + '</button>';
         if (po) {
           det += js.slice(1).map(function (j) { return journalHtml(j, false); }).join('');
-          if (_aiMoreLeft[b.id] !== false) det += '<button type="button" class="mk-ai-prev" onclick="Mock.aiMore(\'' + escapeJsArg(b.id) + '\', this)">더 이전 기록 불러오기</button>';
+          if (older) det += '<button type="button" class="mk-ai-prev" onclick="Mock.aiMore(\'' + escapeJsArg(b.id) + '\', this)">더 이전 기록 불러오기</button>';
         }
       }
       return row + det + '</div>';
@@ -1519,6 +1525,19 @@ var Mock = (function () {
   }
   function aiToggle(id) { _aiOpen[id] = !_aiOpen[id]; renderAi(); }
   function aiPrev(id) { _aiPrev[id] = !_aiPrev[id]; renderAi(); }
+  /** AI 체결 내역 — 회원 계좌의 체결 내역과 같은 줄(주문별, 30개씩). 여러 번 나눠 체결된 주문은 눌러서 펼친다 */
+  async function aiHist(id, reset) {
+    var hs = _aiHist[id] = _aiHist[id] || {};
+    if (hs.busy) return;
+    hs.busy = true; renderAi();
+    try {
+      var d = await api('/ai/history?bot=' + encodeURIComponent(id) + (!reset && hs.next ? '&before=' + encodeURIComponent(hs.next) : ''));
+      var rows = d.items.map(histOrderHtml).join('').replace(/Mock\.toggleFills\('([0-9a-f-]{36})'\)/g, "Mock.toggleFills('$1','" + id + "')");
+      hs.html = (reset ? '' : (hs.html || '')) + rows;
+      hs.next = d.next;
+    } catch (e) { toast(e.message, 'err'); }
+    hs.busy = false; renderAi();
+  }
   /** 더 이전 판단 — 지금 보이는 가장 오래된 기록보다 앞선 10개 */
   async function aiMore(id, btn) {
     var js = _ai.journal.filter(function (j) { return j.bot === id; }).concat(_aiMore[id] || []);
@@ -3278,7 +3297,7 @@ var Mock = (function () {
     askReview: askReview,
     openAmend: openAmend, closeAux: closeAux,
     setMarginMode: setMarginMode, repayLot: repayLot, loadLedger: loadLedger, openLoan: openLoan,
-    aiToggle: aiToggle, aiRun: aiRun, aiPrev: aiPrev, aiMore: aiMore, rankSub: rankSub,
+    aiToggle: aiToggle, aiRun: aiRun, aiPrev: aiPrev, aiHist: aiHist, aiMore: aiMore, rankSub: rankSub,
     auxInput: auxInput, auxStep: auxStep, auxSet: auxSet, auxSel: auxSel, auxSubmit: auxSubmit,
     loadCorpAdmin: loadCorpAdmin, caApply: caApply, caDismiss: caDismiss,
     mountAdmin: mountAdmin,

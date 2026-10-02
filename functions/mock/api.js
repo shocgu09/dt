@@ -374,6 +374,19 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       .bind(season.id, AI.uidOf(bot), before).all()).results || [];
     return { items: rows.map((j) => aiJournalRow(j, isAdmin)), more: rows.length === 10 };
   }
+  // AI 체결 내역 — 회원 계좌의 체결 내역과 같은 모양 (주문별 30개씩, 여러 번에 나눠 체결된 주문은 펼쳐 본다)
+  if ((path === '/ai/history' || path === '/ai/history/fills') && method === 'GET') {
+    if (!season) throw new HttpError(409, '진행 중인 시즌이 없습니다', 'no_season');
+    if (!AI.aiVisible(season, isAdmin)) throw new HttpError(404, 'AI 리그가 열려 있지 않습니다', 'ai_off');
+    const bot = AI.BOTS.find((b) => b.id === url.searchParams.get('bot'));
+    if (!bot) throw new HttpError(400, 'AI 가 올바르지 않습니다');
+    if (path === '/ai/history') return historyByOrder(db, season, AI.uidOf(bot), url, now);
+    const oid = String(url.searchParams.get('order') || '');
+    if (!/^[0-9a-f-]{36}$/i.test(oid)) throw new HttpError(400, '주문을 찾을 수 없습니다');
+    const rows = (await db.prepare(`SELECT id, qty, price, fee, tax, at, loan, interest FROM fills WHERE order_id=? AND uid=? ORDER BY at, id`)
+      .bind(oid, AI.uidOf(bot)).all()).results || [];
+    return { items: rows };
+  }
   /* ── 계좌 공유: 읽기·댓글·삭제 — 시즌에 참가하지 않은 회원도 읽고 댓글을 달 수 있다 ──
    * 공유하기(POST /shares)만 참가자 전용이라 아래 계좌 확인 뒤에 있다. */
   if (path === '/shares' && method === 'GET') {
@@ -816,31 +829,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
 
   /* 체결 내역 — 주문별로 묶어서 (증권사 '주문별 체결' 보기). 한 주문이 여러 번에 나눠 체결되면 평균가·총수량 한 줄,
      체결 건별은 /history/fills?order= 로 펼친다. 다음 페이지 기준은 (마지막 체결 시각, 주문 id) */
-  if (path === '/history' && method === 'GET' && url.searchParams.get('by') === 'order') {
-    const cur = String(url.searchParams.get('before') || '');
-    const mm = /^(\d{1,15})_([0-9a-f-]{36})$/i.exec(cur);
-    const bAt = mm ? Number(mm[1]) : now + 1, bId = mm ? mm[2] : 'ffffffff';
-    const rows = (await db.prepare(
-      `SELECT g.*, (SELECT kind FROM lots WHERE id = g.lot_id) AS lot_kind FROM (
-       SELECT o.id, o.code, o.name, o.side, o.type, o.qty, o.filled_qty, o.status, o.limit_price, o.credit, o.forced, o.reason,
-              COALESCE(o.tax_free, 0) AS tax_free, MAX(f.at) AS last_at, MIN(f.at) AS first_at, COUNT(*) AS n,
-              SUM(f.qty) AS fq, SUM(f.qty * f.price) AS amt, SUM(f.fee) AS fee, SUM(f.tax) AS tax,
-              SUM(COALESCE(f.loan, 0)) AS loan, SUM(COALESCE(f.interest, 0)) AS interest, MAX(f.settle_ymd) AS settle_ymd, MAX(f.lot_id) AS lot_id
-       FROM fills f JOIN orders o ON o.id = f.order_id
-       WHERE f.season_id=? AND f.uid=?
-       GROUP BY o.id
-       HAVING MAX(f.at) < ? OR (MAX(f.at) = ? AND o.id < ?)) g
-       ORDER BY g.last_at DESC, g.id DESC LIMIT 30`
-    ).bind(season.id, uid, bAt, bAt, bId).all()).results || [];
-    const last = rows[rows.length - 1];
-    const items = rows.map((r) => ({
-      orderId: r.id, code: r.code, name: r.name, side: r.side, type: r.type, qty: r.qty, filledQty: r.filled_qty, status: r.status,
-      limitPrice: r.limit_price, credit: r.credit, forced: r.forced, reason: r.reason, taxFree: !!r.tax_free,
-      lastAt: r.last_at, firstAt: r.first_at, fills: r.n, fillQty: r.fq, amount: r.amt, avgPrice: r.fq ? Math.round(r.amt / r.fq) : null,
-      fee: r.fee, tax: r.tax, loan: r.loan, interest: r.interest, settleYmd: r.settle_ymd || null, lotKind: r.lot_kind || null
-    }));
-    return { items, next: rows.length === 30 ? `${last.last_at}_${last.id}` : null };
-  }
+  if (path === '/history' && method === 'GET' && url.searchParams.get('by') === 'order') return historyByOrder(db, season, uid, url, now);
   if (path === '/history/fills' && method === 'GET') {
     const oid = String(url.searchParams.get('order') || '');
     if (!/^[0-9a-f-]{36}$/i.test(oid)) throw new HttpError(400, '주문을 찾을 수 없습니다');
@@ -1147,6 +1136,33 @@ async function accountView(db, season, account, now, isAdmin = false) {
     },
     positions: items, openOrders: orders.map(publicOrder), live: px.live, closing: px.closing, ...sessionInfo(now)
   };
+}
+
+/** 체결 내역 — 주문별로 묶어 30개씩 (회원 계좌·AI 계좌 공통) */
+async function historyByOrder(db, season, uid, url, now) {
+  const cur = String(url.searchParams.get('before') || '');
+  const mm = /^(\d{1,15})_([0-9a-f-]{36})$/i.exec(cur);
+  const bAt = mm ? Number(mm[1]) : now + 1, bId = mm ? mm[2] : 'ffffffff';
+  const rows = (await db.prepare(
+    `SELECT g.*, (SELECT kind FROM lots WHERE id = g.lot_id) AS lot_kind FROM (
+     SELECT o.id, o.code, o.name, o.side, o.type, o.qty, o.filled_qty, o.status, o.limit_price, o.credit, o.forced, o.reason,
+            COALESCE(o.tax_free, 0) AS tax_free, MAX(f.at) AS last_at, MIN(f.at) AS first_at, COUNT(*) AS n,
+            SUM(f.qty) AS fq, SUM(f.qty * f.price) AS amt, SUM(f.fee) AS fee, SUM(f.tax) AS tax,
+            SUM(COALESCE(f.loan, 0)) AS loan, SUM(COALESCE(f.interest, 0)) AS interest, MAX(f.settle_ymd) AS settle_ymd, MAX(f.lot_id) AS lot_id
+     FROM fills f JOIN orders o ON o.id = f.order_id
+     WHERE f.season_id=? AND f.uid=?
+     GROUP BY o.id
+     HAVING MAX(f.at) < ? OR (MAX(f.at) = ? AND o.id < ?)) g
+     ORDER BY g.last_at DESC, g.id DESC LIMIT 30`
+  ).bind(season.id, uid, bAt, bAt, bId).all()).results || [];
+  const last = rows[rows.length - 1];
+  const items = rows.map((r) => ({
+    orderId: r.id, code: r.code, name: r.name, side: r.side, type: r.type, qty: r.qty, filledQty: r.filled_qty, status: r.status,
+    limitPrice: r.limit_price, credit: r.credit, forced: r.forced, reason: r.reason, taxFree: !!r.tax_free,
+    lastAt: r.last_at, firstAt: r.first_at, fills: r.n, fillQty: r.fq, amount: r.amt, avgPrice: r.fq ? Math.round(r.amt / r.fq) : null,
+    fee: r.fee, tax: r.tax, loan: r.loan, interest: r.interest, settleYmd: r.settle_ymd || null, lotKind: r.lot_kind || null
+  }));
+  return { items, next: rows.length === 30 ? `${last.last_at}_${last.id}` : null };
 }
 
 function aiJournalRow(j, isAdmin) {

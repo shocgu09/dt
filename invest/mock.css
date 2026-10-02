@@ -670,3 +670,6 @@
 .mk-ai-items { display: grid; gap: 4px; min-width: 0; }
 .mk-ai-item { display: flex; flex-wrap: wrap; gap: 2px 6px; align-items: baseline; }
 .mk-ai-none { color: var(--text3); }
+.mk-ai-grid { margin: 0 0 4px; }
+.mk-ai-subrow { display: flex; align-items: center; justify-content: space-between; }
+.mk-ai-subrow .mini-btn { margin-left: auto; }
