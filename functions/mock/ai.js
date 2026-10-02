@@ -23,9 +23,9 @@ export const BOTS = [
 export const uidOf = (bot) => 'ai:' + bot.id;
 export const botOfUid = (uid) => BOTS.find((b) => uidOf(b) === uid) || null;
 
-// 정규장 판단 시각 (KST 분) — 09:05 10:00 11:00 13:00 14:30 15:15. 하루 6회 × 4명 = 24회 호출
-export const ROUNDS = [9 * 60 + 5, 10 * 60, 11 * 60, 13 * 60, 14 * 60 + 30, 15 * 60 + 15];
-const START_WINDOW = 15;                 // 정해진 시각부터 15분 안에만 시작 (크론이 놓쳐도 뒤늦게 장 마감 직전에 돌지 않게)
+// 정규장 판단 시각 (KST 분) — 09:05 09:45 10:30 11:15 13:00 13:45 14:30 15:15. 하루 8회 × 4명 = 32회 호출 (사용자 결정 2026-10-02)
+export const ROUNDS = [9 * 60 + 5, 9 * 60 + 45, 10 * 60 + 30, 11 * 60 + 15, 13 * 60, 13 * 60 + 45, 14 * 60 + 30, 15 * 60 + 15];
+const START_WINDOW = 12;                 // 정해진 시각부터 15분 안에만 시작 (크론이 놓쳐도 뒤늦게 장 마감 직전에 돌지 않게)
 export const SNAP_AT = 15 * 60 + 45;     // 그날 순자산 기록 (KRX 종가가 정해진 뒤)
 const ROUND_TTL = 25 * 60e3;             // 라운드가 이보다 오래 걸리면 버린다
 
@@ -324,6 +324,7 @@ export async function step(env, store, now = Date.now()) {
     if (r.phase === 'market') await phaseMarket(env, db, season, r, now);
     else if (r.phase === 'static') await phaseStatic(store, r);
     else if (r.phase === 'intraday') await phaseIntraday(store, r);
+    else if (r.phase === 'think') await phaseThink(env, db, season, r, now);
     else if (r.phase === 'bots') await phaseBot(env, db, season, r, now);
     r.tries = 0;
   } catch (e) {
@@ -401,28 +402,57 @@ async function phaseIntraday(store, r) {
     if (!q || !st || q.price == null || q.halted) continue;            // 시세가 없거나 거래정지면 후보에서 뺀다
     r.lines[code] = cardLine(code, st, q, bars, news);
   }
-  if (!r.pendingIntra.length) {
-    r.quotes = null;
-    // 공정하게 — 라운드마다 AI 순서를 섞는다 (라운드 id 로 정해서 다시 돌려도 같은 순서)
-    let h = 0; for (const ch of r.id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-    r.botsLeft = BOTS.map((b) => b.id).sort((a, b) => ((h ^ a.length * 7919) % 13) - ((h ^ b.length * 7919) % 13) || (a < b ? -1 : 1));
-    if (h % 2) r.botsLeft.reverse();
-    r.phase = 'bots';
-  }
+  if (!r.pendingIntra.length) { r.quotes = null; r.phase = 'think'; }
+}
+
+/** 4명 동시 판단 — 같은 시각의 같은 카드로 한꺼번에 묻는다. 주문은 다음 단계에서 한 명씩 넣는다 */
+async function phaseThink(env, db, season, r, now, opts = {}) {
+  const lines = r.lines || {};
+  const states = await Promise.all(BOTS.map((b) => botState(db, season, r, b)));
+  const t0 = Date.now();
+  const out = await Promise.all(BOTS.map(async (bot, i) => {
+    const st = states[i];
+    if (!st) return [bot.id, { error: '계좌 없음' }];
+    const { live } = stopsOf(st, lines);
+    const acct = acctOf(st, lines, season, st.cashNet);
+    const allowed = new Set([...(r.top || []), ...live.map((p) => p.code)]);
+    const card = `# 판단 카드\n${r.market}\n\n${accountText(bot, { ...acct, positions: live }, lines, r.ymd, st.last)}\n\n` +
+      `## 후보 종목 (코드가 고름 — 이 목록 밖 종목은 주문할 수 없다)\n${[...allowed].filter((c) => lines[c]).map((c) => lines[c].line).join('\n')}\n\n지금 무엇을 할지 정해라.`;
+    const messages = [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: card }];
+    const ask = opts.callModel || ((m) => callModel(env, bot.model, m));
+    let usage = {};
+    const add = (u) => { for (const k of ['prompt_tokens', 'completion_tokens', 'neurons']) usage[k] = (usage[k] || 0) + ((u || {})[k] || 0); };
+    try {
+      let res = await ask(messages); add(res.usage);
+      try { return [bot.id, { d: parseDecision(res.text), usage, ms: Date.now() - t0 }]; }
+      catch (e) {
+        // JSON 이 깨지면 한 번 더 묻는다
+        messages.push({ role: 'assistant', content: res.text.slice(0, 2000) }, { role: 'user', content: `답이 JSON 형식이 아니다 (${e.message}). 정해진 JSON 하나만 다시 답해라.` });
+        res = await ask(messages); add(res.usage);
+        try { return [bot.id, { d: parseDecision(res.text), usage, ms: Date.now() - t0 }]; }
+        catch (e2) { return [bot.id, { error: '답 형식 오류: ' + e2.message, raw: res.text.slice(0, 500), usage, ms: Date.now() - t0 }]; }
+      }
+    } catch (e) { return [bot.id, { error: String(e && e.message || e).slice(0, 200), usage, ms: Date.now() - t0 }]; }
+  }));
+  r.decisions = Object.fromEntries(out);
+  // 주문 넣는 순서는 라운드마다 섞는다 (라운드 id 로 정해서 다시 돌려도 같은 순서)
+  let h = 0; for (const ch of r.id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  r.botsLeft = BOTS.map((b) => b.id);
+  for (let i = r.botsLeft.length - 1; i > 0; i--) { h = (h * 1103515245 + 12345) >>> 0; const j = h % (i + 1); [r.botsLeft[i], r.botsLeft[j]] = [r.botsLeft[j], r.botsLeft[i]]; }
+  r.phase = 'bots';
 }
 
 async function phaseBot(env, db, season, r, now) {
   const id = r.botsLeft[0];
   const bot = BOTS.find((b) => b.id === id);
-  if (bot) await runBot(env, db, season, r, bot, now);
+  if (bot) await applyBot(db, season, r, bot, (r.decisions || {})[id] || { error: '판단 없음' }, now);
   r.botsLeft.shift();
-  if (!r.botsLeft.length) { r.phase = 'done'; r.finishedAt = Date.now(); }
+  if (!r.botsLeft.length) { r.phase = 'done'; r.finishedAt = Date.now(); r.decisions = null; }
 }
 
-/** AI 한 명의 판단 — 계좌 읽기 → 미체결 취소 → 손절 → 판단 → 검사 → 주문 → 기록 */
-export async function runBot(env, db, season, r, bot, now, opts = {}) {
+/** AI 한 명의 계좌 상태 — 판단 때 한 번, 주문 넣을 때 한 번 더 읽는다 (그 사이 체결이 있을 수 있다) */
+async function botState(db, season, r, bot) {
   const uid = uidOf(bot);
-  const t = E.kstNow(now);
   const dayStart = Date.UTC(+r.ymd.slice(0, 4), +r.ymd.slice(4, 6) - 1, +r.ymd.slice(6, 8)) - 9 * 3600e3;
   const [accRes, posRes, ordRes, thRes, cntRes, buyRes, lastRes] = await db.batch([
     db.prepare(`SELECT * FROM accounts WHERE season_id=? AND uid=?`).bind(season.id, uid),
@@ -433,58 +463,58 @@ export async function runBot(env, db, season, r, bot, now, opts = {}) {
     db.prepare(`SELECT DISTINCT code FROM fills WHERE season_id=? AND uid=? AND side='buy' AND at >= ?`).bind(season.id, uid, dayStart),
     db.prepare(`SELECT hm, view, detail FROM ai_journal WHERE season_id=? AND uid=? AND status IN ('ok','dry') ORDER BY at DESC LIMIT 1`).bind(season.id, uid)
   ]);
-  let account = accRes.results[0];
-  if (!account) return;
-  // 지난 라운드의 미체결은 모두 취소하고 새로 판단한다 (지정가가 걸린 채 판단이 엇갈리지 않게)
-  if (!r.dry) for (const o of ordRes.results || []) await E.cancelOrder(db, uid, o.id, now).catch(() => {});
-  const positions = posRes.results || [];
+  const account = accRes.results[0];
+  if (!account) return null;
   const theses = {};
   for (const x of thRes.results || []) theses[x.code] = x;
-  const boughtToday = new Set((buyRes.results || []).map((x) => x.code));
-  const lines = r.lines || {};
+  const l = lastRes.results[0];
+  let last = null;
+  if (l) {
+    let did = null;
+    try { did = (JSON.parse(l.detail || '{}').actions || []).filter((a) => a.result === 'placed' || a.result === 'dry').map((a) => `${a.name} ${a.side === 'buy' ? '매수' : '매도'}`).join(', '); } catch (e) {}
+    last = { hm: hhmmOf(l.hm), view: l.view, did };
+  }
+  return { uid, account, cashNet: account.cash - (account.cash_short || 0), positions: posRes.results || [], openIds: (ordRes.results || []).map((o) => o.id),
+    theses, boughtToday: new Set((buyRes.results || []).map((x) => x.code)), ordersToday: cntRes.results[0].n, last };
+}
+function acctOf(st, lines, season, available) {
   let stock = 0;
-  for (const p of positions) stock += (lines[p.code] ? lines[p.code].px : p.cost / p.qty) * p.qty;
-  account = await E.getAccount(db, season.id, uid);
+  for (const p of st.positions) stock += (lines[p.code] ? lines[p.code].px : p.cost / p.qty) * p.qty;
+  return { equity: st.cashNet + stock, seed: season.seed, available, positions: st.positions, theses: st.theses, boughtToday: st.boughtToday, ordersToday: st.ordersToday };
+}
+/** 계획한 손절가 아래로 내려간 보유 종목 — AI 에게 묻지 않고 코드가 판다 (오늘 산 종목도) */
+function stopsOf(st, lines) {
+  const stopped = st.positions.filter((p) => { const th = st.theses[p.code], ln = lines[p.code]; return th && ln && ln.px <= th.stop; });
+  const set = new Set(stopped.map((p) => p.code));
+  return { stopped, live: st.positions.filter((p) => !set.has(p.code)) };
+}
+
+/** AI 한 명의 주문 — 미체결 취소 → 손절 → 코드 검사 → 주문 → 계획·기록 */
+async function applyBot(db, season, r, bot, dec, now) {
+  const st = await botState(db, season, r, bot);
+  if (!st) return;
+  const uid = st.uid, lines = r.lines || {};
+  // 지난 라운드의 미체결은 모두 취소하고 새 판단대로 넣는다 (지정가가 걸린 채 판단이 엇갈리지 않게)
+  if (!r.dry) for (const id of st.openIds) await E.cancelOrder(db, uid, id, now).catch(() => {});
+  const account = await E.getAccount(db, season.id, uid);
   const cashNet = account.cash - (account.cash_short || 0);
   const available = r.dry ? cashNet : await E.orderableCash(db, season, account, null, now, { cashOnly: true });
-  const acct = { equity: cashNet + stock, seed: season.seed, available, positions, theses, boughtToday, ordersToday: cntRes.results[0].n };
-
+  st.cashNet = cashNet;
+  const acct = acctOf(st, lines, season, available);
   const detail = { stops: [], actions: [], holdings: [], watch: [] };
-  // ① 손절 — 계획한 손절가 아래면 AI 에게 묻지 않고 판다 (오늘 산 종목도)
-  const stopped = new Set();
-  for (const p of positions) {
-    const th = theses[p.code], ln = lines[p.code];
-    if (!th || !ln || !(ln.px <= th.stop)) continue;
-    stopped.add(p.code);
-    const res = await place(db, season, account, r, uid, { code: p.code, side: 'sell', type: 'market', qty: p.qty }, now, `${r.id}:${bot.id}:stop:${p.code}`);
-    detail.stops.push({ code: p.code, name: p.name, qty: p.qty, px: ln.px, stop: th.stop, ...res });
+  const { stopped, live } = stopsOf(st, lines);
+  for (const p of stopped) {
+    const th = st.theses[p.code];
+    const res = r.dry ? { result: 'dry' } : await place(db, season, account, r, uid, { code: p.code, side: 'sell', type: 'market', qty: p.qty }, now, `${r.id}:${bot.id}:stop:${p.code}`);
+    detail.stops.push({ code: p.code, name: p.name, qty: p.qty, px: lines[p.code].px, stop: th.stop, ...res });
   }
-  const live = positions.filter((p) => !stopped.has(p.code));
-  const allowed = new Set([...(r.top || []), ...live.map((p) => p.code)]);
-  const last = lastRes.results[0];
-  let lastDid = null;
-  if (last) try { lastDid = (JSON.parse(last.detail || '{}').actions || []).filter((a) => a.result === 'placed' || a.result === 'dry').map((a) => `${a.name} ${a.side === 'buy' ? '매수' : '매도'}`).join(', '); } catch (e) {}
+  if (!dec.d) {
+    await journal(db, season, bot, r, now, { status: 'fail', usage: dec.usage, ms: dec.ms, detail: { ...detail, error: dec.error || '응답 없음', raw: dec.raw } });
+    return;
+  }
+  const d = dec.d;
   const accView = { ...acct, positions: live };
-  const card = `# 판단 카드\n${r.market}\n\n${accountText(bot, accView, lines, r.ymd, last && { hm: hhmmOf(last.hm), view: last.view, did: lastDid })}\n\n` +
-    `## 후보 종목 (코드가 고름 — 이 목록 밖 종목은 주문할 수 없다)\n${[...allowed].filter((c) => lines[c]).map((c) => lines[c].line).join('\n')}\n\n지금 무엇을 할지 정해라.`;
-
-  // ② 판단 — JSON 이 깨지면 한 번 더 묻는다
-  const messages = [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: card }];
-  const t0 = Date.now();
-  const ask = opts.callModel || ((m) => callModel(env, bot.model, m));
-  let res = await ask(messages), d, usage = { ...res.usage };
-  try { d = parseDecision(res.text); }
-  catch (e) {
-    messages.push({ role: 'assistant', content: res.text.slice(0, 2000) }, { role: 'user', content: `답이 JSON 형식이 아니다 (${e.message}). 정해진 JSON 하나만 다시 답해라.` });
-    res = await ask(messages);
-    for (const k of ['prompt_tokens', 'completion_tokens', 'neurons']) usage[k] = (usage[k] || 0) + ((res.usage || {})[k] || 0);
-    try { d = parseDecision(res.text); }
-    catch (e2) {
-      await journal(db, season, bot, r, now, { status: 'fail', usage, ms: Date.now() - t0, detail: { ...detail, error: '답 형식 오류: ' + e2.message, raw: res.text.slice(0, 500) } });
-      return;
-    }
-  }
-  // ③ 코드 검사 → 주문
+  const allowed = new Set([...(r.top || []), ...live.map((p) => p.code)]);
   const plan = planOrders(d, { allowed, lines, acct: accView });
   detail.actions = plan.results.map((x) => ({ ...x, name: lines[x.code] ? lines[x.code].name : x.code }));
   detail.holdings = d.holdings.slice(0, 10).map((h) => ({ code: String(h.code || ''), decision: h.decision, note: String(h.note || '').slice(0, 160) }));
@@ -495,7 +525,7 @@ export async function runBot(env, db, season, r, bot, now, opts = {}) {
     const res2 = r.dry ? { result: 'dry' } : await place(db, season, account, r, uid, o, now, `${r.id}:${bot.id}:${i++}`);
     detail.actions.push({ code: o.code, name: o.name, side: o.side, type: o.type, qty: o.qty, price: o.limitPrice, weight: o.weight,
       ...(o.plan || {}), reason: o.plan ? o.plan.thesis : o.reason, notes: o.notes, ...res2 });
-    if (res2.result === 'placed' || res2.result === 'dry') {
+    if (res2.result === 'placed') {
       if (o.side === 'buy') {
         thesisStmts.push(db.prepare(
           `INSERT INTO ai_theses (season_id, uid, code, name, thesis, stop, target, hold_days, opened_ymd, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)
@@ -506,14 +536,14 @@ export async function runBot(env, db, season, r, bot, now, opts = {}) {
       }
     }
   }
-  for (const s of detail.stops) if (s.result === 'placed') thesisStmts.push(db.prepare(`DELETE FROM ai_theses WHERE season_id=? AND uid=? AND code=?`).bind(season.id, uid, s.code));
-  // 보유도 주문 중도 아닌 계획은 지운다 (지정가가 안 맞아 취소된 매수 등)
   if (!r.dry) {
-    const keep = new Set([...positions.map((p) => p.code), ...plan.orders.filter((o) => o.side === 'buy').map((o) => o.code)]);
-    for (const c of Object.keys(theses)) if (!keep.has(c)) thesisStmts.push(db.prepare(`DELETE FROM ai_theses WHERE season_id=? AND uid=? AND code=?`).bind(season.id, uid, c));
+    for (const s2 of detail.stops) if (s2.result === 'placed') thesisStmts.push(db.prepare(`DELETE FROM ai_theses WHERE season_id=? AND uid=? AND code=?`).bind(season.id, uid, s2.code));
+    // 보유도 주문 중도 아닌 계획은 지운다 (지정가가 안 맞아 취소된 매수 등)
+    const keep = new Set([...st.positions.map((p) => p.code), ...plan.orders.filter((o) => o.side === 'buy').map((o) => o.code)]);
+    for (const c of Object.keys(st.theses)) if (!keep.has(c)) thesisStmts.push(db.prepare(`DELETE FROM ai_theses WHERE season_id=? AND uid=? AND code=?`).bind(season.id, uid, c));
+    if (thesisStmts.length) await db.batch(thesisStmts);
   }
-  if (thesisStmts.length && !r.dry) await db.batch(thesisStmts);
-  await journal(db, season, bot, r, now, { status: r.dry ? 'dry' : 'ok', view: d.market_view, usage, ms: Date.now() - t0, detail });
+  await journal(db, season, bot, r, now, { status: r.dry ? 'dry' : 'ok', view: d.market_view, usage: dec.usage, ms: dec.ms, detail });
 }
 
 async function place(db, season, account, r, uid, o, now, clientOrderId) {

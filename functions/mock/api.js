@@ -1168,7 +1168,7 @@ async function aiLeague(env, db, season, now, isAdmin) {
   const parse = (t) => { try { return JSON.parse(t || '{}'); } catch (e) { return {}; } };
   const journal = (jrRes.results || []).map((j) => {
     const bot = AI.botOfUid(j.uid);
-    return { bot: bot ? bot.id : j.uid, name: bot ? bot.name : j.uid, ymd: j.ymd, hm: j.hm, round: j.round_id, status: j.status, view: j.view,
+    return { bot: bot ? bot.id : j.uid, name: bot ? bot.name : j.uid, maker: bot ? bot.maker : '', ymd: j.ymd, hm: j.hm, round: j.round_id, status: j.status, view: j.view,
       detail: parse(j.detail), ms: j.ms, neurons: isAdmin ? j.neurons : undefined, at: j.at };
   });
   let round = null;

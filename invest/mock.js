@@ -1265,8 +1265,11 @@ var Mock = (function () {
       el.innerHTML = '<div class="seg-row mk-rk-seg" role="tablist" aria-label="랭킹 보기">'
         +   '<button type="button" class="seg" role="tab" data-rk="board" onclick="Mock.rankView(\'board\')">🏆 순위</button>'
         +   '<button type="button" class="seg" role="tab" data-rk="share" onclick="Mock.rankView(\'share\')">💬 커뮤니티<i class="mk-rk-dot" hidden></i></button>'
-        +   (aiVisible() ? '<button type="button" class="seg" role="tab" data-rk="ai" onclick="Mock.rankView(\'ai\')">🤖 AI 리그</button>' : '')
         + '</div>'
+        // 순위 화면 안에서 회원 순위 ↔ AI 리그 (AI 리그가 열렸을 때만)
+        + (aiVisible() ? '<div class="seg-row sub mk-seg2 mk-rk-sub" id="rkSub" role="group" aria-label="순위 종류">'
+          +   '<button type="button" class="seg" data-sub="members" onclick="Mock.rankSub(\'members\')">👥 회원</button>'
+          +   '<button type="button" class="seg" data-sub="ai" onclick="Mock.rankSub(\'ai\')">🤖 AI 리그</button></div>' : '')
         + '<div id="rkBoard" role="tabpanel"></div><div id="rkHall"></div><div id="rkShare" role="tabpanel"></div><div id="rkAi" role="tabpanel"></div>'
         + '<div id="rkNick"></div>';          // 내 닉네임 — 순위 화면 맨 아래
       applyRankView();
@@ -1275,7 +1278,7 @@ var Mock = (function () {
     document.getElementById('rkBoard').innerHTML = h;
     document.getElementById('rkHall').innerHTML = _hallHtml || '';
     if (fresh) loadShares(true);     // 커뮤니티를 열지 않아도 새 글 표시(점)를 위해 받아 둔다
-    if (_rkView === 'ai' && Date.now() - _aiAt > 30000) loadAi();     // AI 리그는 30초마다
+    if (_rkView === 'board' && _rkSub === 'ai' && Date.now() - _aiAt > 30000) loadAi();     // AI 리그는 30초마다
     _rankBuilt = true;
   }
 
@@ -1341,15 +1344,27 @@ var Mock = (function () {
   }
 
   /* 랭킹 탭 안의 두 화면 — 순위(순위표·명예의 전당) | 커뮤니티(계좌 공유 글). 한 번에 하나만 보인다 */
-  var _rkView = 'board';
+  var _rkView = 'board', _rkSub = 'members';
   function rankView(v) {
-    _rkView = v === 'share' ? 'share' : v === 'ai' && aiVisible() ? 'ai' : 'board';
+    _rkView = v === 'share' ? 'share' : 'board';
     applyRankView();
     if (_rkView === 'share') markSharesSeen();
-    if (_rkView === 'ai') loadAi();
+    if (_rkView === 'board' && _rkSub === 'ai') loadAi();
+  }
+  /** 순위 화면 안의 회원 ↔ AI 리그 전환 */
+  function rankSub(v) {
+    _rkSub = v === 'ai' && aiVisible() ? 'ai' : 'members';
+    applyRankView();
+    if (_rkSub === 'ai') loadAi();
   }
   function applyRankView() {
-    var share = _rkView === 'share', ai = _rkView === 'ai';
+    var share = _rkView === 'share', ai = !share && _rkSub === 'ai' && aiVisible();
+    document.querySelectorAll('.mk-rk-sub .seg').forEach(function (b) {
+      var on = b.dataset.sub === (ai ? 'ai' : 'members');
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on);
+    });
+    var sub = document.getElementById('rkSub'); if (sub) sub.hidden = share;
     document.querySelectorAll('.mk-rk-seg .seg').forEach(function (b) {
       var on = b.dataset.rk === _rkView;
       b.classList.toggle('on', on);
@@ -1378,7 +1393,7 @@ var Mock = (function () {
   /* ===== 랭킹 탭 · AI 리그 =====
    * 무료 모델 AI 들이 회원과 같은 규칙으로 정규장 하루 6번 판단한다 (서버 mock/ai.js). 계좌·보유·주문·판단 이유가 전부 공개된다.
    * 시험 모드(ai_mode=admin)에서는 관리자에게만 보인다. 회원 순위표에는 AI 가 들어가지 않는다. */
-  var _ai = null, _aiAt = 0, _aiOpen = {}, _aiBusy = false;
+  var _ai = null, _aiAt = 0, _aiOpen = {}, _aiBusy = false, _aiFeedOpen = false;
   function aiVisible() { return !!(season && season.season && season.season.aiVisible); }
   function hmTxt(m) { return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
   async function loadAi() {
@@ -1405,7 +1420,7 @@ var Mock = (function () {
   }
   function journalHtml(j, withName) {
     var dt = j.detail || {}, acts = (dt.actions || []);
-    var head = '<div class="mk-ai-jh"><span>' + hmTxt(j.hm) + (j.ymd !== _ai.today ? ' · ' + md(j.ymd) : '') + (withName ? ' · <b>' + escapeHtml(j.name) + '</b>' : '') + '</span>'
+    var head = '<div class="mk-ai-jh"><span>' + hmTxt(j.hm) + (j.ymd !== _ai.today ? ' · ' + md(j.ymd) : '') + (withName ? ' · <b>' + escapeHtml(j.maker || j.name) + '</b> <small class="mk-ai-model">' + escapeHtml(j.name) + '</small>' : '') + '</span>'
       + (j.status === 'fail' ? '<i class="mk-tag no">판단 실패</i>' : j.status === 'dry' ? '<i class="mk-tag">판단만</i>' : '')
       + (j.ms ? '<small>' + Math.round(j.ms / 1000) + '초' + (j.neurons != null ? ' · ' + fmtNum(j.neurons) + '뉴런' : '') + '</small>' : '') + '</div>';
     var body = '';
@@ -1429,13 +1444,13 @@ var Mock = (function () {
         + (next ? ' · 다음 ' + next : ' · 오늘 판단 끝');
     var h = '<section class="m-section"><div class="m-head"><h3>🤖 AI 리그' + (d.mode === 'admin' ? ' <i class="mk-tag">시험 중 · 관리자만</i>' : '') + '</h3>'
       + '<span class="m-hint">' + status + '</span></div>'
-      + '<div class="mk-note" style="margin:0 0 8px">무료 AI 모델들이 회원과 같은 규칙(시드 1억 · 같은 체결)으로 정규장 하루 6번(09:05 · 10:00 · 11:00 · 13:00 · 14:30 · 15:15) 판단합니다. 현금만 쓰고, 보유 · 주문 · 판단 이유가 모두 공개됩니다. 회원 순위에는 들어가지 않습니다.</div>';
+      + '<div class="mk-note" style="margin:0 0 8px">무료 AI 모델들이 회원과 같은 규칙(시드 1억 · 같은 체결)으로 정규장 하루 ' + (d.rounds || []).length + '번(' + (d.rounds || []).map(hmTxt).join(' · ') + ') 판단합니다. 현금만 쓰고, 보유 · 주문 · 판단 이유가 모두 공개됩니다. 회원 순위에는 들어가지 않습니다.</div>';
     h += d.bots.map(function (b, i) {
       var open = !!_aiOpen[b.id], rr = b.returnRate;
       var cashPct = b.equity ? Math.round(b.cash / b.equity * 100) : 100;
       var row = '<button class="mk-rank mk-ai-row" aria-expanded="' + open + '" onclick="Mock.aiToggle(\'' + escapeJsArg(b.id) + '\')">'
         + '<span class="mk-rank-no">' + (['🥇', '🥈', '🥉'][i] || i + 1) + '</span>'
-        + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(b.name) + ' <small class="mk-ai-maker">' + escapeHtml(b.maker) + '</small></span>'
+        + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(b.maker || b.name) + ' <small class="mk-ai-model">' + escapeHtml(b.name) + '</small></span>'
         +   '<span class="mk-pos-sub">보유 ' + b.positions.length + '종목 · 현금 ' + cashPct + '% · 판단 ' + fmtNum(b.rounds) + '회' + (b.fails ? ' · 실패 ' + b.fails : '') + (b.neurons != null ? ' · ' + fmtNum(b.neurons) + '뉴런' : '') + '</span></span>'
         + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(b.equity) + '</span><span class="mk-pos-pnl ' + signClass(rr) + '">' + fmtRate(rr) + '</span></span></button>';
       if (!open) return row;
@@ -1456,15 +1471,18 @@ var Mock = (function () {
     h += '</section>';
     // 최근 판단 — 모든 AI 를 시간순으로
     var feed = d.journal.slice(0, 12);
-    if (feed.length) h += '<section class="m-section"><div class="m-head"><h3>최근 판단</h3></div>' + feed.map(function (j) { return journalHtml(j, true); }).join('') + '</section>';
+    if (feed.length) h += '<section class="m-section"><button class="mk-ai-fold" aria-expanded="' + _aiFeedOpen + '" onclick="Mock.aiFeed()">'
+      + '<span>최근 판단 <small>' + feed.length + '건</small></span><span aria-hidden="true">' + (_aiFeedOpen ? '▲' : '▼') + '</span></button>'
+      + (_aiFeedOpen ? feed.map(function (j) { return journalHtml(j, true); }).join('') : '') + '</section>';
     if (admin) h += '<section class="m-section"><div class="m-head"><h3>관리</h3></div><div class="mk-ai-admin">'
       + '<button class="mini-btn" onclick="Mock.aiRun(this)"' + (_aiBusy ? ' disabled' : '') + '>지금 한 번 판단시키기</button>'
       + '<select class="f-input" aria-label="AI 리그 공개 범위" onchange="Mock.aiMode(this)">'
       +   [['off', '끄기'], ['admin', '시험 (관리자만)'], ['on', '전체 공개']].map(function (o) { return '<option value="' + o[0] + '"' + (d.mode === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('')
-      + '</select></div><div class="mk-note">정규장(09:00~15:20) 밖에서 누르면 판단만 하고 주문은 넣지 않습니다. 한 번에 4명이 차례로 판단해 1~3분 걸립니다.</div></section>';
+      + '</select></div><div class="mk-note">정규장(09:00~15:20) 밖에서 누르면 판단만 하고 주문은 넣지 않습니다. 4명이 동시에 판단하고 주문은 차례로 넣어, 1~2분 걸립니다.</div></section>';
     el.innerHTML = h;
   }
   function aiToggle(id) { _aiOpen[id] = !_aiOpen[id]; renderAi(); }
+  function aiFeed() { _aiFeedOpen = !_aiFeedOpen; renderAi(); }
   async function aiRun(btn) {
     if (_aiBusy) return;
     _aiBusy = true; if (btn) btn.disabled = true;
@@ -3216,7 +3234,7 @@ var Mock = (function () {
     askReview: askReview,
     openAmend: openAmend, closeAux: closeAux,
     setMarginMode: setMarginMode, repayLot: repayLot, loadLedger: loadLedger, openLoan: openLoan,
-    aiToggle: aiToggle, aiRun: aiRun, aiMode: aiMode,
+    aiToggle: aiToggle, aiRun: aiRun, aiMode: aiMode, aiFeed: aiFeed, rankSub: rankSub,
     auxInput: auxInput, auxStep: auxStep, auxSet: auxSet, auxSel: auxSel, auxSubmit: auxSubmit,
     loadCorpAdmin: loadCorpAdmin, caApply: caApply, caDismiss: caDismiss,
     mountAdmin: mountAdmin,

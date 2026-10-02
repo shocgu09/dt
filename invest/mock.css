@@ -640,7 +640,11 @@
 
 /* AI 리그 (랭킹 탭) */
 .mk-ai-row { width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
-.mk-ai-maker { font-weight: 500; color: var(--text3); font-size: .72rem; }
+.mk-ai-model { font-weight: 500; color: var(--text3); font-size: .72rem; }
+.mk-rk-sub { margin: -4px 0 10px; }
+.mk-ai-fold { width: 100%; display: flex; justify-content: space-between; align-items: center; background: none; border: 0; border-bottom: 1px solid var(--border);
+  padding: 4px 0 8px; margin-bottom: 8px; font: inherit; font-weight: 800; font-size: 1rem; color: var(--text); cursor: pointer; text-align: left; }
+.mk-ai-fold small { font-weight: 600; color: var(--text3); font-size: .74rem; margin-left: 4px; }
 .mk-ai-det { border: 1px solid var(--border); border-top: 0; background: var(--bg2); padding: 10px 12px; margin: -4px 0 8px; display: grid; gap: 6px; }
 .mk-ai-pos { border-bottom: 1px dashed var(--border); padding-bottom: 6px; font-size: .82rem; display: grid; gap: 2px; }
 .mk-ai-sub { font-size: .74rem; font-weight: 700; color: var(--text2); margin-top: 4px; }
@@ -653,5 +657,5 @@
 .mk-ai-plan { font-size: .74rem; color: var(--text2); }
 .mk-ai-why { flex-basis: 100%; font-size: .76rem; color: var(--text3); word-break: keep-all; }
 .mk-tag.no { background: var(--bg3); color: var(--text3); }
-.mk-ai-admin { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.mk-ai-admin .f-input { width: auto; }
+.mk-ai-admin { display: flex; gap: 8px; align-items: stretch; }
+.mk-ai-admin .mini-btn, .mk-ai-admin .f-input { flex: 1 1 0; min-width: 0; min-height: 42px; margin: 0; font-size: .86rem; padding: 0 10px; }
