@@ -48,6 +48,19 @@ class_name = "MockCron"
 tag = "v1"
 new_sqlite_classes = ["MockCron"]
 
+# AI 리그 (mock/ai.js) — 정규장 판단 라운드를 알람으로 나눠 돈다. 저장소에는 진행 상태와 종목 기초자료(하루 캐시)만 둔다
+[[durable_objects.bindings]]
+name = "HOUSE_AI"
+class_name = "HouseAI"
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["HouseAI"]
+
+# Workers AI — AI 리그 모델 호출 (무료 요금제 하루 10,000 뉴런, 넘으면 청구 없이 막힌다)
+[ai]
+binding = "AI"
+
 # 크론·체결 오류를 대시보드(Workers Logs)에 남긴다 — 지금까지는 실패해도 흔적이 없었다
 [observability]
 enabled = true

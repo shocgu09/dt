@@ -12,6 +12,7 @@ import * as N from './nick.js';
 import * as K from './credit.js';
 import * as S from './settle.js';
 import * as Notify from './notify.js';
+import * as AI from './ai.js';
 
 const isCode = (c) => /^[0-9A-Z]{6}$/.test(c || '');
 
@@ -266,6 +267,22 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
   // ── 관리자 ──
   if (path.startsWith('/admin/')) {
     if (!isAdmin) throw new HttpError(403, '관리자만 가능합니다');
+    // AI 리그 — 모드 바꾸기 · 지금 한 번 판단시키기 (정규장 밖이면 판단만 하고 주문은 넣지 않는다)
+    if (path === '/admin/ai/mode' && method === 'POST') {
+      const b = await body();
+      if (!['off', 'admin', 'on'].includes(b.mode)) throw new HttpError(400, 'AI 리그 모드가 올바르지 않습니다');
+      const s = await E.activeSeason(db, now);
+      if (!s) throw new HttpError(409, '진행 중인 시즌이 없습니다', 'no_season');
+      await db.prepare(`UPDATE seasons SET ai_mode=? WHERE id=?`).bind(b.mode, s.id).run();
+      await db.prepare(`INSERT INTO audit_log (at, actor, action, detail) VALUES (?,?,?,?)`).bind(now, uid, 'ai.mode', JSON.stringify({ season: s.id, mode: b.mode })).run().catch(() => {});
+      return { ok: true, mode: b.mode };
+    }
+    if (path === '/admin/ai/run' && method === 'POST') {
+      if (!env.HOUSE_AI) throw new HttpError(503, 'AI 리그가 준비되지 않았습니다');
+      const s = await E.activeSeason(db, now);
+      if (!s || AI.aiMode(s) === 'off') throw new HttpError(409, 'AI 리그가 꺼져 있습니다. 먼저 시험 모드로 켜 주세요', 'ai_off');
+      return env.HOUSE_AI.get(env.HOUSE_AI.idFromName('house-ai'), { locationHint: 'apac' }).start();
+    }
     return handleAdmin(db, uid, path, method, body, now, url);
   }
 
@@ -332,10 +349,17 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       season: season && {
         id: season.id, name: season.name, startDate: season.start_date, endDate: season.end_date,
         seed: season.seed, feeRate: season.fee_rate, taxRate: season.tax_rate, notice: season.notice || '',
-        creditMode: season.credit_mode || 'off', creditOn: E.creditOn(season, isAdmin), creditRules: seasonCreditRules(season)
+        creditMode: season.credit_mode || 'off', creditOn: E.creditOn(season, isAdmin), creditRules: seasonCreditRules(season),
+        aiMode: isAdmin ? AI.aiMode(season) : undefined, aiVisible: AI.aiVisible(season, isAdmin)
       },
       next, joined: !!account, participants: count ? count.n : 0, isAdmin, ...sessionInfo(now)
     };
+  }
+  /* ── AI 리그 — 계좌·보유·미체결·판단 기록 전부 공개 (시험 모드에서는 관리자만) ── */
+  if (path === '/ai' && method === 'GET') {
+    if (!season) throw new HttpError(409, '진행 중인 시즌이 없습니다', 'no_season');
+    if (!AI.aiVisible(season, isAdmin)) throw new HttpError(404, 'AI 리그가 열려 있지 않습니다', 'ai_off');
+    return aiLeague(env, db, season, now, isAdmin);
   }
   /* ── 계좌 공유: 읽기·댓글·삭제 — 시즌에 참가하지 않은 회원도 읽고 댓글을 달 수 있다 ──
    * 공유하기(POST /shares)만 참가자 전용이라 아래 계좌 확인 뒤에 있다. */
@@ -1109,6 +1133,50 @@ async function accountView(db, season, account, now, isAdmin = false) {
       }
     },
     positions: items, openOrders: orders.map(publicOrder), live: px.live, closing: px.closing, ...sessionInfo(now)
+  };
+}
+
+/** AI 리그 화면 — AI 마다 회원 계좌 화면과 같은 계산(accountView)으로 평가하고, 계획·판단 기록을 붙인다 */
+async function aiLeague(env, db, season, now, isAdmin) {
+  const today = E.kstNow(now).ymd;
+  const [accRes, thRes, jrRes, dayRes, useRes] = await db.batch([
+    db.prepare(`SELECT * FROM accounts WHERE season_id=? AND status='ai'`).bind(season.id),
+    db.prepare(`SELECT * FROM ai_theses WHERE season_id=?`).bind(season.id),
+    db.prepare(`SELECT uid, ymd, hm, round_id, status, view, detail, neurons, ms, at FROM ai_journal WHERE season_id=? ORDER BY at DESC LIMIT 60`).bind(season.id),
+    db.prepare(`SELECT uid, ymd, equity FROM ai_daily WHERE season_id=? ORDER BY ymd`).bind(season.id),
+    db.prepare(`SELECT uid, COUNT(*) AS n, SUM(CASE WHEN status='fail' THEN 1 ELSE 0 END) AS fails, SUM(COALESCE(neurons,0)) AS neurons
+                FROM ai_journal WHERE season_id=? GROUP BY uid`).bind(season.id)
+  ]);
+  const accounts = accRes.results || [];
+  const views = await Promise.all(accounts.map((a) => accountView(db, season, a, now, false)));
+  const use = {};
+  for (const u of useRes.results || []) use[u.uid] = u;
+  const bots = accounts.map((a, i) => {
+    const bot = AI.botOfUid(a.uid) || { id: a.uid, name: a.nickname, maker: '', model: '' };
+    const v = views[i];
+    const th = (thRes.results || []).filter((x) => x.uid === a.uid);
+    const u = use[a.uid] || {};
+    return {
+      id: bot.id, name: bot.name, maker: bot.maker, model: bot.model,
+      equity: v.equity, returnRate: v.returnRate, cash: v.cash, available: v.available, stock: v.stock, fills: v.fills, orders: v.orders,
+      positions: v.positions.map((p) => ({ ...p, plan: (({ thesis, stop, target, hold_days, opened_ymd }) => ({ thesis, stop, target, holdDays: hold_days, openedYmd: opened_ymd }))(th.find((x) => x.code === p.code) || {}) })),
+      openOrders: v.openOrders,
+      series: (dayRes.results || []).filter((x) => x.uid === a.uid).map((x) => ({ ymd: x.ymd, equity: x.equity })),
+      rounds: u.n || 0, fails: u.fails || 0, neurons: isAdmin ? (u.neurons || 0) : undefined
+    };
+  }).sort((x, y) => y.equity - x.equity);
+  const parse = (t) => { try { return JSON.parse(t || '{}'); } catch (e) { return {}; } };
+  const journal = (jrRes.results || []).map((j) => {
+    const bot = AI.botOfUid(j.uid);
+    return { bot: bot ? bot.id : j.uid, name: bot ? bot.name : j.uid, ymd: j.ymd, hm: j.hm, round: j.round_id, status: j.status, view: j.view,
+      detail: parse(j.detail), ms: j.ms, neurons: isAdmin ? j.neurons : undefined, at: j.at };
+  });
+  let round = null;
+  if (isAdmin && env.HOUSE_AI) round = await env.HOUSE_AI.get(env.HOUSE_AI.idFromName('house-ai'), { locationHint: 'apac' }).status().catch(() => null);
+  return {
+    mode: AI.aiMode(season), today, seed: season.seed, rounds: AI.ROUNDS,
+    round: round && { id: round.id, phase: round.phase, dry: !!round.dry, startedAt: round.startedAt, finishedAt: round.finishedAt || null, error: round.error || null, left: (round.botsLeft || []).length },
+    bots, journal, ...sessionInfo(now)
   };
 }
 

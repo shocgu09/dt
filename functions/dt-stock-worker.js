@@ -11,6 +11,7 @@ import { verifyIdToken, bearerToken } from './lib/verify-id-token.js';
 import { profileOf } from './lib/profile.js';
 import { handleMock, mockErrorResponse, runCron } from './mock/api.js';
 import { holidaySet } from './mock/holidays.js';
+import * as AI from './mock/ai.js';
 import { DurableObject } from 'cloudflare:workers';
 
 const CORS = {
@@ -233,6 +234,11 @@ export default {
   // 지정가 주문이 걸린 종목마다 분봉을 받아 판정하느라 장 초반엔 이미 12~20ms 를 쓰고 있었다(9/30 실측, 726회 중 93회 초과).
   // Durable Object 는 같은 무료 요금제에서 호출당 CPU 30초라 회원·주문이 늘어도 체결 판정이 잘리지 않는다.
   async scheduled(event, env, ctx) {
+    // AI 리그 — 정해진 시각이면 판단 라운드를 시작한다 (실제 일은 HouseAI 알람이 나눠서 한다). 체결 크론과 따로 돈다
+    if (env.HOUSE_AI) {
+      const ai = env.HOUSE_AI.get(env.HOUSE_AI.idFromName('house-ai'), { locationHint: 'apac' });
+      ctx.waitUntil(ai.tick().catch((e) => console.error('ai tick failed', e && e.stack || e)));
+    }
     if (env.MOCK_CRON) {
       // 이름 하나로 고정 — 인스턴스가 하나라 두 크론이 겹쳐도 한 곳에서 차례로 돈다. D1·네이버가 있는 아시아에 둔다
       const stub = env.MOCK_CRON.get(env.MOCK_CRON.idFromName('mock-cron'), { locationHint: 'apac' });
@@ -271,6 +277,30 @@ export class MockCron extends DurableObject {
       await this.ctx.storage.setAlarm(Date.now() + CHAIN_GAP_MS).catch((e) => console.error('chain alarm failed', e && e.message));
     }
     return stats && stats.more ? 'more' : 'ok';
+  }
+}
+
+// AI 리그 — 진행 상태·종목 기초자료 캐시를 이 객체의 저장소에 둔다 (D1 문장 수를 아끼려고)
+export class HouseAI extends DurableObject {
+  store() {
+    const s = this.ctx.storage;
+    return { get: (k) => s.get(k), put: (k, v) => s.put(k, v), getAlarm: () => s.getAlarm(), setAlarm: (t) => s.setAlarm(t) };
+  }
+  async tick() {
+    const r = await AI.tick(this.env, this.store());
+    // 하루 지난 기초자료 캐시는 지운다 (아침 첫 라운드 때 한 번)
+    if (r === 'started') await this.prune().catch(() => {});
+    return r;
+  }
+  async start() { return AI.start(this.env, this.store()); }
+  async status() { return (await this.ctx.storage.get('round')) || null; }
+  async alarm() { await AI.step(this.env, this.store()); }
+  async prune() {
+    const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10).replace(/-/g, '');
+    const old = [...(await this.ctx.storage.list({ prefix: 'st:' })).keys()].filter((k) => k.slice(3, 11) < today);
+    const done = [...(await this.ctx.storage.list({ prefix: 'done:' })).keys()].filter((k) => k.slice(5, 13) < today);
+    const snap = [...(await this.ctx.storage.list({ prefix: 'snap:' })).keys()].filter((k) => k.slice(5, 13) < today);
+    for (let i = 0; i < old.length + done.length + snap.length; i += 128) await this.ctx.storage.delete([...old, ...done, ...snap].slice(i, i + 128));
   }
 }
 
