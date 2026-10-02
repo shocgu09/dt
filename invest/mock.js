@@ -1396,7 +1396,7 @@ var Mock = (function () {
   }
 
   /* ===== 랭킹 탭 · AI 리그 =====
-   * 무료 모델 AI 들이 회원과 같은 규칙으로 정규장 하루 8번 판단한다 (서버 mock/ai.js). 계좌·보유·주문·판단 이유가 전부 공개된다.
+   * AI 모델들이 회원과 같은 규칙으로 정규장 하루 8번 판단한다 (서버 mock/ai.js). 계좌·보유·주문·판단 이유가 전부 공개된다.
    * 시험 모드(ai_mode=admin)에서는 관리자에게만 보인다. 회원 순위표에는 AI 가 들어가지 않는다. */
   var _ai = null, _aiAt = 0, _aiOpen = {}, _aiBusy = false, _aiPrev = {}, _aiMore = {}, _aiMoreLeft = {}, _aiHist = {}, _aiSeason = null;
   // 시즌 사이(진행 중 시즌 없음)에도 지난 AI 리그 기록은 볼 수 있다 (aiArchive)
@@ -1487,7 +1487,7 @@ var Mock = (function () {
       + '<div class="mk-ai-status"><span class="m-hint">' + status + '</span>' + seasonPickHtml(d.seasons, d.season && d.season.id, 'aiSeasonPick') + '</div>'
       + '<div class="mk-note" style="margin:0 0 8px">' + (closed
         ? '끝난 시즌입니다. 순위는 마지막 날(' + md(d.season.endDate) + ') 종가 기준이며, 보유 · 판단 기록 · 체결 내역이 그대로 남아 있습니다.'
-        : '무료 AI 모델들이 회원과 같은 규칙(시드 1억 · 같은 체결)으로 정규장 하루 ' + (d.rounds || []).length + '번(' + (d.rounds || []).map(hmTxt).join(' · ') + ') 판단합니다. 현금만 쓰고, 보유 · 주문 · 판단 이유가 모두 공개됩니다. 회원 시즌과 같이 시작하고 끝나며, 회원 순위에는 들어가지 않습니다.') + '</div>';
+        : 'AI 모델들이 회원과 같은 규칙(시드 1억 · 같은 체결)으로 정규장 하루 ' + (d.rounds || []).length + '번(' + (d.rounds || []).map(hmTxt).join(' · ') + ') 판단합니다. 현금만 쓰고, 보유 · 주문 · 판단 이유가 모두 공개됩니다. 회원 시즌과 같이 시작하고 끝나며, 회원 순위에는 들어가지 않습니다.') + '</div>';
     h += d.bots.map(function (b, i) {
       var open = !!_aiOpen[b.id], rr = b.returnRate;
       var cashPct = b.equity ? Math.round(b.cash / b.equity * 100) : 100;
