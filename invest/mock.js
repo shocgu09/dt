@@ -1424,7 +1424,7 @@ var Mock = (function () {
       + (a.reason ? '<span class="mk-ai-why">' + escapeHtml(a.reason) + '</span>' : '') + '</div>';
   }
   function actRow(label, items, cls) {
-    return '<div class="mk-ai-line' + (cls ? ' ' + cls : '') + '"><span class="mk-ai-k">' + label + '</span>'
+    return '<div class="mk-ai-line' + (cls ? ' ' + cls : '') + '"><span class="mk-ai-k">' + label + ':</span>'
       + (items.length ? '<div class="mk-ai-items">' + items.join('') + '</div>' : '<span class="mk-ai-none">없음</span>') + '</div>';
   }
   function journalHtml(j, withName) {
