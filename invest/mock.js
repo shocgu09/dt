@@ -1395,6 +1395,16 @@ var Mock = (function () {
    * 시험 모드(ai_mode=admin)에서는 관리자에게만 보인다. 회원 순위표에는 AI 가 들어가지 않는다. */
   var _ai = null, _aiAt = 0, _aiOpen = {}, _aiBusy = false, _aiPrev = {}, _aiMore = {}, _aiMoreLeft = {};
   function aiVisible() { return !!(season && season.season && season.season.aiVisible); }
+  /* 회사 로고 — Simple Icons(CC0) 16.33.0 의 경로. 글자색을 따라가 다크·라이트 모두에서 보인다 */
+  var AI_LOGOS = {
+    'Google': 'M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z',
+    'OpenAI': 'M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z',
+    'Alibaba': 'M3.996 4.517h5.291L8.01 6.324 4.153 7.506a1.668 1.668 0 0 0-1.165 1.601v5.786a1.668 1.668 0 0 0 1.165 1.6l3.857 1.183 1.277 1.807H3.996A3.996 3.996 0 0 1 0 15.487V8.513a3.996 3.996 0 0 1 3.996-3.996m16.008 0h-5.291l1.277 1.807 3.857 1.182c.715.227 1.17.889 1.165 1.601v5.786a1.668 1.668 0 0 1-1.165 1.6l-3.857 1.183-1.277 1.807h5.291A3.996 3.996 0 0 0 24 15.487V8.513a3.996 3.996 0 0 0-3.996-3.996m-4.007 8.345H8.002v-1.804h7.995Z'
+  };
+  function aiLogo(maker) {
+    var p = AI_LOGOS[maker];
+    return p ? '<svg class="mk-ai-logo" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="' + p + '"/></svg>' : '';
+  }
   function hmTxt(m) { return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
   async function loadAi() {
     var el = document.getElementById('rkAi');
@@ -1437,7 +1447,7 @@ var Mock = (function () {
   function renderAi() {
     var el = document.getElementById('rkAi'), d = _ai;
     if (!el || !d) return;
-    var admin = !!(season && season.isAdmin);
+    var admin = !!(season && season.isSuper);      // 모드 바꾸기·지금 판단시키기는 슈퍼관리자만
     var r = d.round, next = aiNextRound(d);
     var status = r && r.phase !== 'done' ? '🔄 ' + escapeHtml(r.id.slice(-4).replace(/(\d\d)(\d\d)/, '$1:$2')) + ' 라운드 진행 중' + (r.left ? ' · 남은 AI ' + r.left : '')
       : (r ? '마지막 라운드 ' + escapeHtml(r.id.replace(/^\d{8}-/, '').replace(/^(\d\d)(\d\d)/, '$1:$2')) + (r.dry ? ' (판단만)' : '') + (r.error ? ' · ' + escapeHtml(r.error) : '') : '아직 라운드 없음')
@@ -1450,7 +1460,7 @@ var Mock = (function () {
       var cashPct = b.equity ? Math.round(b.cash / b.equity * 100) : 100;
       var row = '<button class="mk-rank mk-ai-row" aria-expanded="' + open + '" onclick="Mock.aiToggle(\'' + escapeJsArg(b.id) + '\')">'
         + '<span class="mk-rank-no">' + (['🥇', '🥈', '🥉'][i] || i + 1) + '</span>'
-        + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(b.maker || b.name) + ' <small class="mk-ai-model">' + escapeHtml(b.name) + '</small></span>'
+        + '<span class="mk-ord-main"><span class="mk-pos-name">' + aiLogo(b.maker) + escapeHtml(b.maker || b.name) + ' <small class="mk-ai-model">' + escapeHtml(b.name) + '</small></span>'
         +   '<span class="mk-pos-sub">보유 ' + b.positions.length + '종목 · 현금 ' + cashPct + '% · 판단 ' + fmtNum(b.rounds) + '회' + (b.fails ? ' · 실패 ' + b.fails : '') + (b.neurons != null ? ' · ' + fmtNum(b.neurons) + '뉴런' : '') + '</span></span>'
         + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(b.equity) + '</span><span class="mk-pos-pnl ' + signClass(rr) + '">' + fmtRate(rr) + '</span></span></button>';
       if (!open) return row;
@@ -1479,9 +1489,7 @@ var Mock = (function () {
     h += '</section>';
     if (admin) h += '<section class="m-section"><div class="m-head"><h3>관리</h3></div><div class="mk-ai-admin">'
       + '<button class="mini-btn" onclick="Mock.aiRun(this)"' + (_aiBusy ? ' disabled' : '') + '>지금 한 번 판단시키기</button>'
-      + '<select class="f-input" aria-label="AI 리그 공개 범위" onchange="Mock.aiMode(this)">'
-      +   [['off', '끄기'], ['admin', '시험 (관리자만)'], ['on', '전체 공개']].map(function (o) { return '<option value="' + o[0] + '"' + (d.mode === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('')
-      + '</select></div><div class="mk-note">누르면 4명이 바로 판단하고 주문까지 넣습니다(1~2분). 정규장 밖에는 시장가 대신 현재가 지정가로 넣고(시간외), 주문 시간이 아니면 거절된 채 기록됩니다.</div></section>';
+      + '</div><div class="mk-note">누르면 4명이 바로 판단하고 주문까지 넣습니다(1~2분). 정규장 밖에는 시장가 대신 현재가 지정가로 넣고(시간외), 주문 시간이 아니면 거절된 채 기록됩니다.</div></section>';
     el.innerHTML = h;
   }
   function aiToggle(id) { _aiOpen[id] = !_aiOpen[id]; renderAi(); }
@@ -1510,12 +1518,7 @@ var Mock = (function () {
     setTimeout(loadAi, 15000);
     loadAi();
   }
-  async function aiMode(sel) {
-    var v = sel.value, label = sel.options[sel.selectedIndex].text;
-    if (!confirm('AI 리그를 \'' + label + '\'(으)로 바꿀까요?')) { sel.value = _ai ? _ai.mode : 'admin'; return; }
-    try { await api('/admin/ai/mode', 'POST', { mode: v }); toast('AI 리그: ' + label, ''); await refreshSeason(); loadAi(); }
-    catch (e) { toast(e.message, 'err'); sel.value = _ai ? _ai.mode : 'admin'; }
-  }
+
 
   /* ===== 랭킹 탭 · 계좌 공유 =====
    * 카드 숫자는 서버가 장부로 만든다 — 화면은 종류(계좌 전체/종목 하나)·종목코드·한마디만 보낸다.
@@ -3250,7 +3253,7 @@ var Mock = (function () {
     askReview: askReview,
     openAmend: openAmend, closeAux: closeAux,
     setMarginMode: setMarginMode, repayLot: repayLot, loadLedger: loadLedger, openLoan: openLoan,
-    aiToggle: aiToggle, aiRun: aiRun, aiMode: aiMode, aiPrev: aiPrev, aiMore: aiMore, rankSub: rankSub,
+    aiToggle: aiToggle, aiRun: aiRun, aiPrev: aiPrev, aiMore: aiMore, rankSub: rankSub,
     auxInput: auxInput, auxStep: auxStep, auxSet: auxSet, auxSel: auxSel, auxSubmit: auxSubmit,
     loadCorpAdmin: loadCorpAdmin, caApply: caApply, caDismiss: caDismiss,
     mountAdmin: mountAdmin,

@@ -263,11 +263,13 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
   if (profile.transient) throw new HttpError(503, '회원 확인이 지연되고 있습니다. 잠시 후 다시 시도하세요');
   if (!profile.role) throw new HttpError(403, 'DT Club 회원만 이용할 수 있습니다');
   const isAdmin = profile.role === 'admin' || profile.role === 'superadmin';
+  const isSuper = profile.role === 'superadmin';
 
   // ── 관리자 ──
   if (path.startsWith('/admin/')) {
     if (!isAdmin) throw new HttpError(403, '관리자만 가능합니다');
-    // AI 리그 — 모드 바꾸기 · 지금 한 번 판단시키기 (정규장 밖이면 판단만 하고 주문은 넣지 않는다)
+    // AI 리그 — 모드 바꾸기 · 지금 한 번 판단시키기는 슈퍼관리자만 (2026-10-02 결정)
+    if (path.startsWith('/admin/ai/') && !isSuper) throw new HttpError(403, '슈퍼관리자만 가능합니다');
     if (path === '/admin/ai/mode' && method === 'POST') {
       const b = await body();
       if (!['off', 'admin', 'on'].includes(b.mode)) throw new HttpError(400, 'AI 리그 모드가 올바르지 않습니다');
@@ -352,7 +354,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
         creditMode: season.credit_mode || 'off', creditOn: E.creditOn(season, isAdmin), creditRules: seasonCreditRules(season),
         aiMode: isAdmin ? AI.aiMode(season) : undefined, aiVisible: AI.aiVisible(season, isAdmin)
       },
-      next, joined: !!account, participants: count ? count.n : 0, isAdmin, ...sessionInfo(now)
+      next, joined: !!account, participants: count ? count.n : 0, isAdmin, isSuper, ...sessionInfo(now)
     };
   }
   /* ── AI 리그 — 계좌·보유·미체결·판단 기록 전부 공개 (시험 모드에서는 관리자만) ── */
@@ -1375,6 +1377,8 @@ async function handleAdmin(db, actor, path, method, body, now, url) {
       b.volumeFill === false ? 0 : 1, String(b.notice || '').slice(0, 1000) || null,
       // 미수·신용·담보대출은 전체 회원 기본 (2026-10-01 결정 — 관리 화면의 선택칸은 없앴다)
       ['off', 'admin', 'on'].includes(b.creditMode) ? b.creditMode : 'on').run();
+    // AI 리그는 새 시즌도 전체 공개로 연다 (2026-10-02 결정 — 공개 범위 선택 버튼은 없앴다)
+    await db.prepare(`UPDATE seasons SET ai_mode='on' WHERE id=?`).bind(b.id).run();
     await log('season.create', b);
     return { ok: true, created: true };
   }
