@@ -637,3 +637,21 @@
 .mk-ord-open { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .mk-ord-open:hover .mk-pos-name { color: var(--primary-light); text-decoration: underline; text-underline-offset: 2px; }
 .mk-ord-open:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* AI 리그 (랭킹 탭) */
+.mk-ai-row { width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.mk-ai-maker { font-weight: 500; color: var(--text3); font-size: .72rem; }
+.mk-ai-det { border: 1px solid var(--border); border-top: 0; background: var(--bg2); padding: 10px 12px; margin: -4px 0 8px; display: grid; gap: 6px; }
+.mk-ai-pos { border-bottom: 1px dashed var(--border); padding-bottom: 6px; font-size: .82rem; display: grid; gap: 2px; }
+.mk-ai-sub { font-size: .74rem; font-weight: 700; color: var(--text2); margin-top: 4px; }
+.mk-ai-j { border: 1px solid var(--border); background: var(--bg2); padding: 8px 10px; margin-bottom: 6px; display: grid; gap: 4px; }
+.mk-ai-jh { display: flex; gap: 8px; align-items: center; font-size: .78rem; color: var(--text2); }
+.mk-ai-jh small { margin-left: auto; color: var(--text3); }
+.mk-ai-view { font-size: .82rem; }
+.mk-ai-act { font-size: .8rem; display: flex; flex-wrap: wrap; gap: 2px 6px; align-items: baseline; }
+.mk-ai-act.no { color: var(--text3); }
+.mk-ai-plan { font-size: .74rem; color: var(--text2); }
+.mk-ai-why { flex-basis: 100%; font-size: .76rem; color: var(--text3); word-break: keep-all; }
+.mk-tag.no { background: var(--bg3); color: var(--text3); }
+.mk-ai-admin { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.mk-ai-admin .f-input { width: auto; }
