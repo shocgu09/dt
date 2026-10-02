@@ -1514,15 +1514,17 @@ var Mock = (function () {
       + '<div class="mk-note" style="margin:0 0 8px">' + (closed
         ? '끝난 시즌입니다. 순위는 마지막 날(' + md(d.season.endDate) + ') 종가 기준이며, 보유 · 판단 기록 · 체결 내역이 그대로 남아 있습니다.'
         : 'AI 모델들이 회원과 같은 규칙(시드 1억 · 같은 체결)으로 정규장 하루 ' + (d.rounds || []).length + '번(' + (d.rounds || []).map(hmTxt).join(' · ') + ') 판단합니다. 현금만 쓰고, 보유 · 주문 · 판단 이유가 모두 공개됩니다. 회원 시즌과 같이 시작하고 끝나며, 회원 순위에는 들어가지 않습니다.') + '</div>';
-    h += d.bots.map(function (b, i) {
+    // AI 한 명 = 카드 하나 (순위 줄 + 펼친 상세). 펼치면 굵은 테두리로 묶고 순위 줄은 머리로 고정, 끝에 접기 — 여러 명을 펼쳐도 경계가 보이게
+    h += '<div class="mk-ai-list">' + d.bots.map(function (b, i) {
       var open = !!_aiOpen[b.id], rr = b.returnRate;
+      var card = '<div class="mk-ai-card' + (open ? ' open' : '') + '" data-ai="' + escapeHtml(b.id) + '">';
       var cashPct = b.equity ? Math.round(b.cash / b.equity * 100) : 100;
       var row = '<button class="mk-rank mk-ai-row" aria-expanded="' + open + '" onclick="Mock.aiToggle(\'' + escapeJsArg(b.id) + '\')">'
         + '<span class="mk-rank-no">' + (['🥇', '🥈', '🥉'][i] || i + 1) + '</span>'
         + '<span class="mk-ord-main"><span class="mk-pos-name">' + aiLogo(b.logo) + escapeHtml(b.maker || b.name) + ' <small class="mk-ai-model">' + escapeHtml(b.name) + '</small></span>'
         +   '<span class="mk-pos-sub">보유 ' + b.positions.length + '종목 · 현금 ' + cashPct + '% · 판단 ' + fmtNum(b.rounds) + '회' + (b.fails ? ' · 실패 ' + b.fails : '') + (b.neurons != null ? ' · ' + fmtNum(b.neurons) + '뉴런' : '') + '</span></span>'
         + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(b.equity) + '</span><span class="mk-pos-pnl ' + signClass(rr) + '">' + fmtRate(rr) + '</span></span></button>';
-      if (!open) return row;
+      if (!open) return card + row + '</div>';
       // 내 계좌 화면과 같은 모양 — 요약 카드 · 📦 보유 종목 · ⏳ 미체결 (AI 계좌라 정정·취소 버튼은 없다)
       var evalPnl = b.positions.reduce(function (t, p) { return t + (p.pnl || 0); }, 0);
       var det = '<div class="mk-ai-det">'
@@ -1565,8 +1567,9 @@ var Mock = (function () {
           if (older) det += '<button type="button" class="mk-ai-prev" onclick="Mock.aiMore(\'' + escapeJsArg(b.id) + '\', this)">더 이전 기록 불러오기</button>';
         }
       }
-      return row + det + '</div>';
-    }).join('');
+      det += '<button type="button" class="mk-ai-close" onclick="Mock.aiToggle(\'' + escapeJsArg(b.id) + '\', true)">▲ ' + escapeHtml(b.maker ? b.maker + ' ' + b.name : b.name) + ' 접기</button>';
+      return card + row + det + '</div></div>';
+    }).join('') + '</div>';
     h += '</section>';
 
     el.innerHTML = h;
@@ -1587,7 +1590,14 @@ var Mock = (function () {
       '· 회원 글 · 댓글은 읽지 않음'
     ].join('\n'), 'sm');
   }
-  function aiToggle(id) { _aiOpen[id] = !_aiOpen[id]; renderAi(); }
+  function aiToggle(id, fromEnd) {
+    _aiOpen[id] = !_aiOpen[id]; renderAi();
+    // 상세 끝의 접기 — 접히면서 그 AI 가 화면 위로 사라졌으면 그 줄로 돌아온다
+    if (fromEnd) {
+      var c = document.querySelector('.mk-ai-card[data-ai="' + id + '"]');
+      if (c && c.getBoundingClientRect().top < 0) try { c.scrollIntoView({ block: 'start' }); } catch (e) { c.scrollIntoView(); }
+    }
+  }
   function aiSeasonQ() { return _ai && _ai.season && _ai.season.id ? '&season=' + encodeURIComponent(_ai.season.id) : ''; }
   /** 지난 시즌 AI 리그 보기 — 펼침·불러온 기록은 시즌마다 새로 */
   function aiSeasonPick(id) {
