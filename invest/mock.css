@@ -642,6 +642,7 @@
 .mk-ai-row { width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
 .mk-ai-model { font-weight: 500; color: var(--text3); font-size: .72rem; }
 .mk-rk-sub { margin: -4px 0 10px; }
+.mk-rk-sub[hidden] { display: none; }   /* .seg-row 의 display 가 hidden 을 덮어써 커뮤니티 화면에도 보였다 */
 .mk-ai-det { border: 1px solid var(--border); border-top: 0; background: var(--bg2); padding: 10px 12px; margin: -4px 0 8px; display: grid; gap: 6px; }
 .mk-ai-pos { border-bottom: 1px dashed var(--border); padding-bottom: 6px; font-size: .82rem; display: grid; gap: 2px; }
 .mk-ai-sub { font-size: .74rem; font-weight: 700; color: var(--text2); margin-top: 4px; }
