@@ -671,7 +671,9 @@
 /* AI 리그 머리 — 1줄: 제목 · 지금 판단 / 2줄: 상태 · 시즌 고르기 (좁은 화면에서 제목과 버튼이 줄바꿈되지 않게) */
 .mk-ai-head { margin-bottom: 4px; }
 .mk-ai-head h3 { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mk-ai-head .mk-ai-run { margin-left: auto; flex: 0 0 auto; white-space: nowrap; }
+.mk-ai-head .mk-ai-run { margin-left: 0; flex: 0 0 auto; white-space: nowrap; }
+/* ! 는 오른쪽에 두되 '지금 판단' 왼쪽 — 버튼이 없는 회원 화면에서도 ! 가 오른쪽 끝에 남는다 */
+.mk-ai-head .info-tip.sm { order: 0; margin-left: auto; }
 .mk-ai-status { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; min-height: 26px; }
 .mk-ai-status .m-hint { margin-left: 0; min-width: 0; }
 .mk-ai-status .mk-sel { margin-left: auto; }
