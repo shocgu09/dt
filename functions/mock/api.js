@@ -361,6 +361,17 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
     if (!AI.aiVisible(season, isAdmin)) throw new HttpError(404, 'AI 리그가 열려 있지 않습니다', 'ai_off');
     return aiLeague(env, db, season, now, isAdmin);
   }
+  // 이전 판단 — AI 한 명의 기록을 10개씩 거슬러 본다 (기록은 시즌 동안 전부 남는다)
+  if (path === '/ai/journal' && method === 'GET') {
+    if (!season) throw new HttpError(409, '진행 중인 시즌이 없습니다', 'no_season');
+    if (!AI.aiVisible(season, isAdmin)) throw new HttpError(404, 'AI 리그가 열려 있지 않습니다', 'ai_off');
+    const bot = AI.BOTS.find((b) => b.id === url.searchParams.get('bot'));
+    if (!bot) throw new HttpError(400, 'AI 가 올바르지 않습니다');
+    const before = Number(url.searchParams.get('before')) || Date.now() + 1;
+    const rows = (await db.prepare(`SELECT uid, ymd, hm, round_id, status, view, detail, neurons, ms, at FROM ai_journal WHERE season_id=? AND uid=? AND at < ? ORDER BY at DESC LIMIT 10`)
+      .bind(season.id, AI.uidOf(bot), before).all()).results || [];
+    return { items: rows.map((j) => aiJournalRow(j, isAdmin)), more: rows.length === 10 };
+  }
   /* ── 계좌 공유: 읽기·댓글·삭제 — 시즌에 참가하지 않은 회원도 읽고 댓글을 달 수 있다 ──
    * 공유하기(POST /shares)만 참가자 전용이라 아래 계좌 확인 뒤에 있다. */
   if (path === '/shares' && method === 'GET') {
@@ -1136,13 +1147,21 @@ async function accountView(db, season, account, now, isAdmin = false) {
   };
 }
 
+function aiJournalRow(j, isAdmin) {
+  const bot = AI.botOfUid(j.uid);
+  let detail = {};
+  try { detail = JSON.parse(j.detail || '{}'); } catch (e) {}
+  return { bot: bot ? bot.id : j.uid, name: bot ? bot.name : j.uid, maker: bot ? bot.maker : '', ymd: j.ymd, hm: j.hm, round: j.round_id, status: j.status, view: j.view,
+    detail, ms: j.ms, neurons: isAdmin ? j.neurons : undefined, at: j.at };
+}
+
 /** AI 리그 화면 — AI 마다 회원 계좌 화면과 같은 계산(accountView)으로 평가하고, 계획·판단 기록을 붙인다 */
 async function aiLeague(env, db, season, now, isAdmin) {
   const today = E.kstNow(now).ymd;
   const [accRes, thRes, jrRes, dayRes, useRes] = await db.batch([
     db.prepare(`SELECT * FROM accounts WHERE season_id=? AND status='ai'`).bind(season.id),
     db.prepare(`SELECT * FROM ai_theses WHERE season_id=?`).bind(season.id),
-    db.prepare(`SELECT uid, ymd, hm, round_id, status, view, detail, neurons, ms, at FROM ai_journal WHERE season_id=? ORDER BY at DESC LIMIT 60`).bind(season.id),
+    db.prepare(`SELECT uid, ymd, hm, round_id, status, view, detail, neurons, ms, at FROM ai_journal WHERE season_id=? ORDER BY at DESC LIMIT 100`).bind(season.id),
     db.prepare(`SELECT uid, ymd, equity FROM ai_daily WHERE season_id=? ORDER BY ymd`).bind(season.id),
     db.prepare(`SELECT uid, COUNT(*) AS n, SUM(CASE WHEN status='fail' THEN 1 ELSE 0 END) AS fails, SUM(COALESCE(neurons,0)) AS neurons
                 FROM ai_journal WHERE season_id=? GROUP BY uid`).bind(season.id)
@@ -1165,16 +1184,12 @@ async function aiLeague(env, db, season, now, isAdmin) {
       rounds: u.n || 0, fails: u.fails || 0, neurons: isAdmin ? (u.neurons || 0) : undefined
     };
   }).sort((x, y) => y.equity - x.equity);
-  const parse = (t) => { try { return JSON.parse(t || '{}'); } catch (e) { return {}; } };
-  const journal = (jrRes.results || []).map((j) => {
-    const bot = AI.botOfUid(j.uid);
-    return { bot: bot ? bot.id : j.uid, name: bot ? bot.name : j.uid, maker: bot ? bot.maker : '', ymd: j.ymd, hm: j.hm, round: j.round_id, status: j.status, view: j.view,
-      detail: parse(j.detail), ms: j.ms, neurons: isAdmin ? j.neurons : undefined, at: j.at };
-  });
+  const journal = (jrRes.results || []).map((j) => aiJournalRow(j, isAdmin));
   let round = null;
   if (isAdmin && env.HOUSE_AI) round = await env.HOUSE_AI.get(env.HOUSE_AI.idFromName('house-ai'), { locationHint: 'apac' }).status().catch(() => null);
   return {
     mode: AI.aiMode(season), today, seed: season.seed, rounds: AI.ROUNDS,
+    season: { id: season.id, name: season.name, startDate: season.start_date, endDate: season.end_date },
     round: round && { id: round.id, phase: round.phase, dry: !!round.dry, startedAt: round.startedAt, finishedAt: round.finishedAt || null, error: round.error || null, left: (round.botsLeft || []).length },
     bots, journal, ...sessionInfo(now)
   };

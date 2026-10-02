@@ -293,14 +293,14 @@ export async function tick(env, store, now = Date.now()) {
   return 'started';
 }
 
-/** 관리자가 지금 한 번 돌린다 — 정규장 밖이면 판단만 하고 주문은 넣지 않는다 (dry) */
+/** 관리자가 지금 한 번 돌린다 — 정규장 밖이어도 주문을 넣는다 (2026-10-02 사용자 결정).
+ *  시간외에는 시장가가 안 되므로 현재가 지정가로 바꿔 넣고, 주문 시간이 아니면 접수 단계에서 거절돼 기록에 남는다 */
 export async function start(env, store, now = Date.now()) {
   const t = E.kstNow(now);
   const cur = await store.get('round');
   if (cur && cur.phase !== 'done' && now - cur.startedAt < ROUND_TTL) return { ok: false, message: '이미 판단 중입니다', round: cur.id };
   E.setHolidays(await H.holidaySet(env.MOCK_DB));
-  const live = E.isTradingDay(t) && t.hm >= E.OPEN_AT && t.hm < 15 * 60 + 20;
-  const r = newRound(t, t.hm, !live, now);
+  const r = newRound(t, t.hm, false, now);
   r.manual = true;
   await store.put('round', r);
   await store.setAlarm(now + 500);
@@ -549,7 +549,15 @@ async function applyBot(db, season, r, bot, dec, now) {
 async function place(db, season, account, r, uid, o, now, clientOrderId) {
   try {
     const q = await naver.getQuote(o.code);
-    const input = { clientOrderId: clientOrderId.slice(0, 64), code: o.code, side: o.side, type: o.type, qty: o.qty, limitPrice: o.limitPrice || undefined };
+    let type = o.type, limitPrice = o.limitPrice || undefined;
+    // 정규장(08:30~15:30 접수) 밖 — 시간외는 지정가만 받는다. 지금 그 시장에서 도는 가격으로 지정가를 건다
+    const hm = E.kstNow(now).hm;
+    if (type === 'market' && (hm < E.ACCEPT_FROM || hm >= E.ACCEPT_TO)) {
+      const px = (q.nxt && q.nxt.open && q.nxt.price) || (q.krx && q.krx.price) || q.price;
+      const tk = E.tickSize(px, false);
+      type = 'limit'; limitPrice = o.side === 'buy' ? Math.floor(px / tk) * tk : Math.ceil(px / tk) * tk;
+    }
+    const input = { clientOrderId: clientOrderId.slice(0, 64), code: o.code, side: o.side, type, qty: o.qty, limitPrice };
     const order = await E.acceptOrder(db, season, account, input, q, false, now, { terms: K.stockTerms('stock', q.name, q), isAdmin: false });
     return { result: 'placed', orderId: order.id };
   } catch (e) {

@@ -642,9 +642,6 @@
 .mk-ai-row { width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
 .mk-ai-model { font-weight: 500; color: var(--text3); font-size: .72rem; }
 .mk-rk-sub { margin: -4px 0 10px; }
-.mk-ai-fold { width: 100%; display: flex; justify-content: space-between; align-items: center; background: none; border: 0; border-bottom: 1px solid var(--border);
-  padding: 4px 0 8px; margin-bottom: 8px; font: inherit; font-weight: 800; font-size: 1rem; color: var(--text); cursor: pointer; text-align: left; }
-.mk-ai-fold small { font-weight: 600; color: var(--text3); font-size: .74rem; margin-left: 4px; }
 .mk-ai-det { border: 1px solid var(--border); border-top: 0; background: var(--bg2); padding: 10px 12px; margin: -4px 0 8px; display: grid; gap: 6px; }
 .mk-ai-pos { border-bottom: 1px dashed var(--border); padding-bottom: 6px; font-size: .82rem; display: grid; gap: 2px; }
 .mk-ai-sub { font-size: .74rem; font-weight: 700; color: var(--text2); margin-top: 4px; }
@@ -659,3 +656,6 @@
 .mk-tag.no { background: var(--bg3); color: var(--text3); }
 .mk-ai-admin { display: flex; gap: 8px; align-items: stretch; }
 .mk-ai-admin .mini-btn, .mk-ai-admin .f-input { flex: 1 1 0; min-width: 0; min-height: 42px; margin: 0; font-size: .86rem; padding: 0 10px; }
+.mk-ai-go { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; width: 100%; background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.mk-ai-arrow { margin-left: auto; color: var(--text3); }
+.mk-ai-prev { background: none; border: 1px dashed var(--border); color: var(--text2); font: inherit; font-size: .78rem; padding: 6px; cursor: pointer; }

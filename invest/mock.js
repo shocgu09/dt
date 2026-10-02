@@ -1269,7 +1269,7 @@ var Mock = (function () {
         // 순위 화면 안에서 회원 순위 ↔ AI 리그 (AI 리그가 열렸을 때만)
         + (aiVisible() ? '<div class="seg-row sub mk-seg2 mk-rk-sub" id="rkSub" role="group" aria-label="순위 종류">'
           +   '<button type="button" class="seg" data-sub="members" onclick="Mock.rankSub(\'members\')">👥 회원</button>'
-          +   '<button type="button" class="seg" data-sub="ai" onclick="Mock.rankSub(\'ai\')">🤖 AI 리그</button></div>' : '')
+          +   '<button type="button" class="seg" data-sub="ai" onclick="Mock.rankSub(\'ai\')">🤖 AI</button></div>' : '')
         + '<div id="rkBoard" role="tabpanel"></div><div id="rkHall"></div><div id="rkShare" role="tabpanel"></div><div id="rkAi" role="tabpanel"></div>'
         + '<div id="rkNick"></div>';          // 내 닉네임 — 순위 화면 맨 아래
       applyRankView();
@@ -1393,7 +1393,7 @@ var Mock = (function () {
   /* ===== 랭킹 탭 · AI 리그 =====
    * 무료 모델 AI 들이 회원과 같은 규칙으로 정규장 하루 6번 판단한다 (서버 mock/ai.js). 계좌·보유·주문·판단 이유가 전부 공개된다.
    * 시험 모드(ai_mode=admin)에서는 관리자에게만 보인다. 회원 순위표에는 AI 가 들어가지 않는다. */
-  var _ai = null, _aiAt = 0, _aiOpen = {}, _aiBusy = false, _aiFeedOpen = false;
+  var _ai = null, _aiAt = 0, _aiOpen = {}, _aiBusy = false, _aiPrev = {}, _aiMore = {}, _aiMoreLeft = {};
   function aiVisible() { return !!(season && season.season && season.season.aiVisible); }
   function hmTxt(m) { return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
   async function loadAi() {
@@ -1442,9 +1442,9 @@ var Mock = (function () {
     var status = r && r.phase !== 'done' ? '🔄 ' + escapeHtml(r.id.slice(-4).replace(/(\d\d)(\d\d)/, '$1:$2')) + ' 라운드 진행 중' + (r.left ? ' · 남은 AI ' + r.left : '')
       : (r ? '마지막 라운드 ' + escapeHtml(r.id.replace(/^\d{8}-/, '').replace(/^(\d\d)(\d\d)/, '$1:$2')) + (r.dry ? ' (판단만)' : '') + (r.error ? ' · ' + escapeHtml(r.error) : '') : '아직 라운드 없음')
         + (next ? ' · 다음 ' + next : ' · 오늘 판단 끝');
-    var h = '<section class="m-section"><div class="m-head"><h3>🤖 AI 리그' + (d.mode === 'admin' ? ' <i class="mk-tag">시험 중 · 관리자만</i>' : '') + '</h3>'
+    var h = '<section class="m-section"><div class="m-head"><h3>🤖 ' + escapeHtml((d.season && d.season.name) || '') + ' AI' + (d.mode === 'admin' ? ' <i class="mk-tag">시험 중 · 관리자만</i>' : '') + '</h3>'
       + '<span class="m-hint">' + status + '</span></div>'
-      + '<div class="mk-note" style="margin:0 0 8px">무료 AI 모델들이 회원과 같은 규칙(시드 1억 · 같은 체결)으로 정규장 하루 ' + (d.rounds || []).length + '번(' + (d.rounds || []).map(hmTxt).join(' · ') + ') 판단합니다. 현금만 쓰고, 보유 · 주문 · 판단 이유가 모두 공개됩니다. 회원 순위에는 들어가지 않습니다.</div>';
+      + '<div class="mk-note" style="margin:0 0 8px">무료 AI 모델들이 회원과 같은 규칙(시드 1억 · 같은 체결)으로 정규장 하루 ' + (d.rounds || []).length + '번(' + (d.rounds || []).map(hmTxt).join(' · ') + ') 판단합니다. 현금만 쓰고, 보유 · 주문 · 판단 이유가 모두 공개됩니다. 회원 시즌과 같이 시작하고 끝나며, 회원 순위에는 들어가지 않습니다.</div>';
     h += d.bots.map(function (b, i) {
       var open = !!_aiOpen[b.id], rr = b.returnRate;
       var cashPct = b.equity ? Math.round(b.cash / b.equity * 100) : 100;
@@ -1457,38 +1457,54 @@ var Mock = (function () {
       var det = '<div class="mk-ai-det">';
       det += b.positions.length ? b.positions.map(function (p) {
         var pl = p.plan || {};
-        return '<div class="mk-ai-pos"><div><b>' + escapeHtml(p.name) + '</b> ' + fmtNum(p.qty) + '주 · 평단 ' + fmtNum(p.avgPrice) + ' · 현재 ' + fmtNum(p.price) + ' <span class="' + signClass(p.pnlRate) + '">' + fmtRate(p.pnlRate) + '</span></div>'
+        return '<div class="mk-ai-pos"><button type="button" class="mk-ai-go" onclick="openStock(\'' + escapeJsArg(p.code) + '\',\'' + escapeJsArg(p.name) + '\')"><b>' + escapeHtml(p.name) + '</b> ' + fmtNum(p.qty) + '주 · 평단 ' + fmtNum(p.avgPrice) + ' · 현재 ' + fmtNum(p.price) + ' <span class="' + signClass(p.pnlRate) + '">' + fmtRate(p.pnlRate) + '</span><span class="mk-ai-arrow" aria-hidden="true">›</span></button>'
           + (pl.stop ? '<div class="mk-ai-plan">손절 ' + fmtNum(pl.stop) + (pl.target ? ' · 목표 ' + fmtNum(pl.target) : '') + (pl.holdDays ? ' · ' + pl.holdDays + '일 예정' : '') + (pl.openedYmd ? ' · ' + md(pl.openedYmd) + ' 매수' : '') + '</div>' : '')
           + (pl.thesis ? '<div class="mk-ai-why">' + escapeHtml(pl.thesis) + '</div>' : '') + '</div>';
       }).join('') : '<div class="mk-ai-act">보유 종목 없음</div>';
       if (b.openOrders.length) det += '<div class="mk-ai-sub">미체결</div>' + b.openOrders.map(function (o) {
         return '<div class="mk-ai-act">' + escapeHtml(o.name) + ' ' + (o.side === 'buy' ? '매수' : '매도') + ' ' + fmtNum(o.qty - o.filledQty) + '주' + (o.limitPrice ? ' · 지정가 ' + fmtNum(o.limitPrice) : ' · 시장가') + '</div>';
       }).join('');
-      var js = d.journal.filter(function (j) { return j.bot === b.id; }).slice(0, 6);
-      det += '<div class="mk-ai-sub">판단 기록</div>' + (js.length ? js.map(function (j) { return journalHtml(j, false); }).join('') : '<div class="mk-ai-act">아직 없음</div>');
+      var js = d.journal.filter(function (j) { return j.bot === b.id; }).concat(_aiMore[b.id] || []);
+      det += '<div class="mk-ai-sub">최근 판단</div>' + (js.length ? journalHtml(js[0], false) : '<div class="mk-ai-act">아직 없음</div>');
+      if (js.length > 1 || _aiMoreLeft[b.id]) {
+        var po = !!_aiPrev[b.id];
+        det += '<button type="button" class="mk-ai-prev" aria-expanded="' + po + '" onclick="Mock.aiPrev(\'' + escapeJsArg(b.id) + '\')">이전 판단 ' + (po ? '접기 ▲' : (js.length - 1) + '건' + (_aiMoreLeft[b.id] !== false ? '+' : '') + ' 보기 ▼') + '</button>';
+        if (po) {
+          det += js.slice(1).map(function (j) { return journalHtml(j, false); }).join('');
+          if (_aiMoreLeft[b.id] !== false) det += '<button type="button" class="mk-ai-prev" onclick="Mock.aiMore(\'' + escapeJsArg(b.id) + '\', this)">더 이전 기록 불러오기</button>';
+        }
+      }
       return row + det + '</div>';
     }).join('');
     h += '</section>';
-    // 최근 판단 — 모든 AI 를 시간순으로
-    var feed = d.journal.slice(0, 12);
-    if (feed.length) h += '<section class="m-section"><button class="mk-ai-fold" aria-expanded="' + _aiFeedOpen + '" onclick="Mock.aiFeed()">'
-      + '<span>최근 판단 <small>' + feed.length + '건</small></span><span aria-hidden="true">' + (_aiFeedOpen ? '▲' : '▼') + '</span></button>'
-      + (_aiFeedOpen ? feed.map(function (j) { return journalHtml(j, true); }).join('') : '') + '</section>';
     if (admin) h += '<section class="m-section"><div class="m-head"><h3>관리</h3></div><div class="mk-ai-admin">'
       + '<button class="mini-btn" onclick="Mock.aiRun(this)"' + (_aiBusy ? ' disabled' : '') + '>지금 한 번 판단시키기</button>'
       + '<select class="f-input" aria-label="AI 리그 공개 범위" onchange="Mock.aiMode(this)">'
       +   [['off', '끄기'], ['admin', '시험 (관리자만)'], ['on', '전체 공개']].map(function (o) { return '<option value="' + o[0] + '"' + (d.mode === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('')
-      + '</select></div><div class="mk-note">정규장(09:00~15:20) 밖에서 누르면 판단만 하고 주문은 넣지 않습니다. 4명이 동시에 판단하고 주문은 차례로 넣어, 1~2분 걸립니다.</div></section>';
+      + '</select></div><div class="mk-note">누르면 4명이 바로 판단하고 주문까지 넣습니다(1~2분). 정규장 밖에는 시장가 대신 현재가 지정가로 넣고(시간외), 주문 시간이 아니면 거절된 채 기록됩니다.</div></section>';
     el.innerHTML = h;
   }
   function aiToggle(id) { _aiOpen[id] = !_aiOpen[id]; renderAi(); }
-  function aiFeed() { _aiFeedOpen = !_aiFeedOpen; renderAi(); }
+  function aiPrev(id) { _aiPrev[id] = !_aiPrev[id]; renderAi(); }
+  /** 더 이전 판단 — 지금 보이는 가장 오래된 기록보다 앞선 10개 */
+  async function aiMore(id, btn) {
+    var js = _ai.journal.filter(function (j) { return j.bot === id; }).concat(_aiMore[id] || []);
+    var last = js[js.length - 1];
+    if (btn) btn.disabled = true;
+    try {
+      var r = await api('/ai/journal?bot=' + encodeURIComponent(id) + (last ? '&before=' + last.at : ''));
+      var seen = {}; js.forEach(function (j) { seen[j.at + j.bot] = 1; });
+      _aiMore[id] = (_aiMore[id] || []).concat(r.items.filter(function (j) { return !seen[j.at + j.bot]; }));
+      _aiMoreLeft[id] = r.more;
+    } catch (e) { toast(e.message, 'err'); }
+    renderAi();
+  }
   async function aiRun(btn) {
     if (_aiBusy) return;
     _aiBusy = true; if (btn) btn.disabled = true;
     try {
       var r = await api('/admin/ai/run', 'POST', {});
-      toast(r.ok ? (r.dry ? '판단만 시작했습니다 (정규장 밖 — 주문 없음)' : '판단을 시작했습니다') : (r.message || '시작하지 못했습니다'), '');
+      toast(r.ok ? '판단을 시작했습니다 · 1~2분 뒤 결과가 보입니다' : (r.message || '시작하지 못했습니다'), '');
     } catch (e) { toast(e.message, 'err'); }
     _aiBusy = false;
     setTimeout(loadAi, 15000);
@@ -3234,7 +3250,7 @@ var Mock = (function () {
     askReview: askReview,
     openAmend: openAmend, closeAux: closeAux,
     setMarginMode: setMarginMode, repayLot: repayLot, loadLedger: loadLedger, openLoan: openLoan,
-    aiToggle: aiToggle, aiRun: aiRun, aiMode: aiMode, aiFeed: aiFeed, rankSub: rankSub,
+    aiToggle: aiToggle, aiRun: aiRun, aiMode: aiMode, aiPrev: aiPrev, aiMore: aiMore, rankSub: rankSub,
     auxInput: auxInput, auxStep: auxStep, auxSet: auxSet, auxSel: auxSel, auxSubmit: auxSubmit,
     loadCorpAdmin: loadCorpAdmin, caApply: caApply, caDismiss: caDismiss,
     mountAdmin: mountAdmin,
