@@ -1398,8 +1398,17 @@ var Mock = (function () {
   /* ===== 랭킹 탭 · AI 리그 =====
    * 무료 모델 AI 들이 회원과 같은 규칙으로 정규장 하루 8번 판단한다 (서버 mock/ai.js). 계좌·보유·주문·판단 이유가 전부 공개된다.
    * 시험 모드(ai_mode=admin)에서는 관리자에게만 보인다. 회원 순위표에는 AI 가 들어가지 않는다. */
-  var _ai = null, _aiAt = 0, _aiOpen = {}, _aiBusy = false, _aiPrev = {}, _aiMore = {}, _aiMoreLeft = {}, _aiHist = {};
-  function aiVisible() { return !!(season && season.season && season.season.aiVisible); }
+  var _ai = null, _aiAt = 0, _aiOpen = {}, _aiBusy = false, _aiPrev = {}, _aiMore = {}, _aiMoreLeft = {}, _aiHist = {}, _aiSeason = null;
+  // 시즌 사이(진행 중 시즌 없음)에도 지난 AI 리그 기록은 볼 수 있다 (aiArchive)
+  function aiVisible() { return !!(season && (season.season ? season.season.aiVisible : season.aiArchive)); }
+  /** 시즌 고르기 — 커뮤니티·AI 리그 공통. 목록 맨 앞이 진행 중 시즌이면 '현재 시즌'으로 보인다 */
+  function seasonPickHtml(list, shownId, fn) {
+    if (!list || list.length < 2) return '';
+    return '<span class="mk-sel"><select class="mini-btn mk-sh-older" aria-label="시즌 고르기" onchange="Mock.' + fn + '(this.value)">'
+      + list.map(function (x, i) {
+          return '<option value="' + escapeHtml(x.id) + '"' + (x.id === shownId ? ' selected' : '') + '>' + escapeHtml(i === 0 && !x.closed ? '현재 시즌' : x.name) + '</option>';
+        }).join('') + '</select></span>';
+  }
   /* 회사 로고 — Simple Icons 최신판을 그때그때 불러온다 (회사가 로고를 바꾸면 따라간다).
    * 글자색으로 칠해 다크·라이트 모두에서 보이고, 못 불러오면 빈칸으로 남는다 */
   function aiLogo(slug) {
@@ -1412,7 +1421,7 @@ var Mock = (function () {
     if (!el) return;
     _aiAt = Date.now();
     if (!_ai) el.innerHTML = '<div class="loading">AI 리그를 불러오는 중</div>';
-    try { _ai = await api('/ai'); renderAi(); }
+    try { _ai = await api('/ai' + (_aiSeason ? '?season=' + encodeURIComponent(_aiSeason) : '')); renderAi(); }
     catch (e) { el.innerHTML = '<div class="empty">' + escapeHtml(e.message) + '</div>'; }
   }
   function aiNextRound(d) {
@@ -1468,12 +1477,16 @@ var Mock = (function () {
     var status = isPost ? (r.phase !== 'done' ? '✍ 장 마감 이야기 쓰는 중' : '✍ 장 마감 이야기 끝') + nextTxt
       : r && r.phase !== 'done' ? '🔄 ' + rHm + ' 라운드 진행 중' + (r.left ? ' · 남은 AI ' + r.left : '')
       : (r ? '마지막 라운드 ' + rHm + (r.error ? ' · ' + escapeHtml(r.error) : '') : '아직 라운드 없음') + nextTxt;
-    var h = '<section class="m-section"><div class="m-head"><h3>🤖 ' + escapeHtml((d.season && d.season.name) || '') + ' AI 리그' + (d.mode === 'admin' ? ' <i class="mk-tag">시험 중 · 관리자만</i>' : '') + '</h3>'
-      + '<span class="m-hint">' + status
+    var closed = !!(d.season && d.season.closed);
+    if (closed) status = '시즌 종료 · 최종 순위';
+    var h = '<section class="m-section"><div class="m-head mk-ai-head"><h3>🤖 ' + escapeHtml((d.season && d.season.name) || '') + ' AI 리그' + (d.mode === 'admin' ? ' <i class="mk-tag">시험 중 · 관리자만</i>' : '') + '</h3>'
       // 지금 한 번 판단시키기 — 슈퍼관리자만, 작게. 정규장 밖이면 시간외 지정가로 넣는다
-      + (admin ? ' <button class="mk-ai-run" onclick="Mock.aiRun(this)"' + (_aiBusy ? ' disabled' : '') + ' title="지금 4명이 판단하고 주문까지 넣습니다 (정규장 밖은 시간외 지정가)">▶ 지금 판단</button>' : '')
-      + '</span></div>'
-      + '<div class="mk-note" style="margin:0 0 8px">무료 AI 모델들이 회원과 같은 규칙(시드 1억 · 같은 체결)으로 정규장 하루 ' + (d.rounds || []).length + '번(' + (d.rounds || []).map(hmTxt).join(' · ') + ') 판단합니다. 현금만 쓰고, 보유 · 주문 · 판단 이유가 모두 공개됩니다. 회원 시즌과 같이 시작하고 끝나며, 회원 순위에는 들어가지 않습니다.</div>';
+      + (admin && !closed ? '<button class="mk-ai-run" onclick="Mock.aiRun(this)"' + (_aiBusy ? ' disabled' : '') + ' title="지금 4명이 판단하고 주문까지 넣습니다 (정규장 밖은 시간외 지정가)">▶ 지금 판단</button>' : '')
+      + '</div>'
+      + '<div class="mk-ai-status"><span class="m-hint">' + status + '</span>' + seasonPickHtml(d.seasons, d.season && d.season.id, 'aiSeasonPick') + '</div>'
+      + '<div class="mk-note" style="margin:0 0 8px">' + (closed
+        ? '끝난 시즌입니다. 순위는 마지막 날(' + md(d.season.endDate) + ') 종가 기준이며, 보유 · 판단 기록 · 체결 내역이 그대로 남아 있습니다.'
+        : '무료 AI 모델들이 회원과 같은 규칙(시드 1억 · 같은 체결)으로 정규장 하루 ' + (d.rounds || []).length + '번(' + (d.rounds || []).map(hmTxt).join(' · ') + ') 판단합니다. 현금만 쓰고, 보유 · 주문 · 판단 이유가 모두 공개됩니다. 회원 시즌과 같이 시작하고 끝나며, 회원 순위에는 들어가지 않습니다.') + '</div>';
     h += d.bots.map(function (b, i) {
       var open = !!_aiOpen[b.id], rr = b.returnRate;
       var cashPct = b.equity ? Math.round(b.cash / b.equity * 100) : 100;
@@ -1532,6 +1545,13 @@ var Mock = (function () {
     el.innerHTML = h;
   }
   function aiToggle(id) { _aiOpen[id] = !_aiOpen[id]; renderAi(); }
+  function aiSeasonQ() { return _ai && _ai.season && _ai.season.id ? '&season=' + encodeURIComponent(_ai.season.id) : ''; }
+  /** 지난 시즌 AI 리그 보기 — 펼침·불러온 기록은 시즌마다 새로 */
+  function aiSeasonPick(id) {
+    if (_ai && _ai.season && id === _ai.season.id) return;
+    _aiSeason = id; _ai = null; _aiOpen = {}; _aiPrev = {}; _aiMore = {}; _aiMoreLeft = {}; _aiHist = {};
+    loadAi();
+  }
   function aiPrev(id) { _aiPrev[id] = !_aiPrev[id]; renderAi(); }
   /** AI 체결 내역 — 회원 계좌의 체결 내역과 같은 줄(주문별, 30개씩). 여러 번 나눠 체결된 주문은 눌러서 펼친다 */
   async function aiHist(id, reset) {
@@ -1539,7 +1559,7 @@ var Mock = (function () {
     if (hs.busy) return;
     hs.busy = true; renderAi();
     try {
-      var d = await api('/ai/history?bot=' + encodeURIComponent(id) + (!reset && hs.next ? '&before=' + encodeURIComponent(hs.next) : ''));
+      var d = await api('/ai/history?bot=' + encodeURIComponent(id) + aiSeasonQ() + (!reset && hs.next ? '&before=' + encodeURIComponent(hs.next) : ''));
       var rows = d.items.map(histOrderHtml).join('').replace(/Mock\.toggleFills\('([0-9a-f-]{36})'\)/g, "Mock.toggleFills('$1','" + id + "')");
       hs.html = (reset ? '' : (hs.html || '')) + rows;
       hs.next = d.next;
@@ -1552,7 +1572,7 @@ var Mock = (function () {
     var last = js[js.length - 1];
     if (btn) btn.disabled = true;
     try {
-      var r = await api('/ai/journal?bot=' + encodeURIComponent(id) + (last ? '&before=' + last.at : ''));
+      var r = await api('/ai/journal?bot=' + encodeURIComponent(id) + aiSeasonQ() + (last ? '&before=' + last.at : ''));
       var seen = {}; js.forEach(function (j) { seen[j.at + j.bot] = 1; });
       _aiMore[id] = (_aiMore[id] || []).concat(r.items.filter(function (j) { return !seen[j.at + j.bot]; }));
       _aiMoreLeft[id] = r.more;
@@ -1621,29 +1641,21 @@ var Mock = (function () {
 
     var joined = !!(season && season.joined);
     // 시즌이 둘 이상이면 고를 수 있게 — 지난 시즌 글은 읽기만 (글쓰기·댓글 입력 숨김)
-    // 기본은 현재 시즌(목록 맨 앞 — 진행 중, 없으면 가장 최근에 끝난 시즌)만. 지난 시즌은 머리 줄의 작은 '이전 시즌 ▾'로 고른다
+    // 기본은 현재 시즌(목록 맨 앞 — 진행 중, 없으면 가장 최근에 끝난 시즌). 머리 줄의 '현재 시즌 ▾'에서 다른 시즌을 고른다 (AI 리그와 같은 모양)
     var curId = _sh.seasons.length ? _sh.seasons[0].id : null;
-    var past = _sh.seasons.filter(function (x) { return x.id !== curId; });
     var viewingPast = !!(_sh.shown && curId && _sh.shown !== curId);
-    var shownName = (_sh.seasons.filter(function (x) { return x.id === _sh.shown; })[0] || {}).name || '';
-    var pastPicker = past.length
-      ? '<select class="mini-btn mk-sh-older" aria-label="이전 시즌 보기" onchange="if(this.value)Mock.shareSeason(this.value)">'
-        + '<option value="">이전 시즌 ▾</option>'
-        + past.map(function (x) {
-            return '<option value="' + escapeHtml(x.id) + '"' + (x.id === _sh.shown ? ' selected' : '') + '>' + escapeHtml(x.name) + '</option>';
-          }).join('') + '</select>'
-      : '';
+
     var h = '<section class="m-section mk-share">'
       + '<div class="m-head"><span class="m-hint">'
-      +   (viewingPast ? '<b class="mk-sh-name">' + escapeHtml(shownName) + '</b> 지난 시즌 글 · 읽기만 할 수 있습니다'
+      +   (viewingPast ? '지난 시즌 글 · 읽기만 할 수 있습니다'
             : (_sh.closed ? '지난 시즌 글 · 읽기만 할 수 있습니다' : aiShareView() ? 'AI 들의 장 마감 이야기 · 매일 15:50' : '회원들의 이야기와 모의투자 계좌')) + '</span>'
       +   '<span class="mk-sh-acts">'
-      +   (viewingPast ? '<button type="button" class="mini-btn" onclick="Mock.shareSeason(\'' + escapeJsArg(curId) + '\')">← 현재 시즌</button>' : pastPicker)
+      +   seasonPickHtml(_sh.seasons, _sh.shown || curId, 'shareSeason')
       +   (_sh.closed || aiShareView() ? '' : '<button class="mini-btn mk-share-btn" onclick="Mock.openShare()">✏️ 글쓰기</button>')
       +   '</span></div>';
     if (!_sh.items.length) {
       h += _sh.err ? '<div class="empty">' + escapeHtml(_sh.err) + '</div>'
-        : (_sh.loading ? '<div class="loading">불러오는 중</div>' : '<div class="mk-share-empty">' + (aiShareView() ? 'AI 글은 장 마감 뒤(15:50) 올라옵니다. 쓸지 말지는 AI 가 정합니다.' : '아직 올라온 글이 없습니다.') + '</div>');
+        : (_sh.loading ? '<div class="loading">불러오는 중</div>' : '<div class="mk-share-empty">작성된 글이 없습니다.</div>');
     } else {
       h += (_sh.all ? _sh.items : _sh.items.slice(0, SHARE_PREVIEW)).map(shareCardHtml).join('');
       if (!_sh.all && _sh.items.length > SHARE_PREVIEW) {
@@ -3313,7 +3325,7 @@ var Mock = (function () {
     askReview: askReview,
     openAmend: openAmend, closeAux: closeAux,
     setMarginMode: setMarginMode, repayLot: repayLot, loadLedger: loadLedger, openLoan: openLoan,
-    aiToggle: aiToggle, aiRun: aiRun, aiPrev: aiPrev, aiHist: aiHist, aiMore: aiMore, rankSub: rankSub,
+    aiToggle: aiToggle, aiSeasonPick: aiSeasonPick, aiRun: aiRun, aiPrev: aiPrev, aiHist: aiHist, aiMore: aiMore, rankSub: rankSub,
     auxInput: auxInput, auxStep: auxStep, auxSet: auxSet, auxSel: auxSel, auxSubmit: auxSubmit,
     loadCorpAdmin: loadCorpAdmin, caApply: caApply, caDismiss: caDismiss,
     mountAdmin: mountAdmin,

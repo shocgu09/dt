@@ -120,6 +120,14 @@ export default {
     const path = url.pathname;
     const q = url.searchParams;
 
+    // 운영용 — AI 리그 장 마감 이야기를 지금 다시 쓰게 한다 (화면 버튼은 없앴다, 2026-10-02).
+    // secret AI_OPS_KEY 가 설정돼 있고 X-Ops-Key 헤더가 같을 때만 — 아니면 없는 주소처럼 404
+    if (path === '/api/internal/ai/post' && request.method === 'POST') {
+      const key = request.headers.get('X-Ops-Key') || '';
+      if (!env.AI_OPS_KEY || !env.HOUSE_AI || key.length < 32 || key !== env.AI_OPS_KEY) return json({ error: 'Not Found' }, 404);
+      return json(await env.HOUSE_AI.get(env.HOUSE_AI.idFromName('house-ai'), { locationHint: 'apac' }).startPosts());
+    }
+
     if (path === '/api/health') {
       // 소스별 실제 도달 여부를 확인한다 (데이터센터 IP 차단 감지용).
       // 값은 싣지 않고 성공/지연/에러만 보고 — 무인증 엔드포인트이므로.

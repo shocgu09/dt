@@ -363,33 +363,34 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
         creditMode: season.credit_mode || 'off', creditOn: E.creditOn(season, isAdmin), creditRules: seasonCreditRules(season),
         aiMode: isAdmin ? AI.aiMode(season) : undefined, aiVisible: AI.aiVisible(season, isAdmin)
       },
-      next, joined: !!account, participants: count ? count.n : 0, isAdmin, isSuper, ...sessionInfo(now)
+      next, joined: !!account, participants: count ? count.n : 0, isAdmin, isSuper,
+      // 시즌 사이(진행 중 시즌 없음)에도 지난 AI 리그 기록을 볼 수 있게
+      aiArchive: season ? undefined : (await aiSeasonList(db, isAdmin)).length > 0,
+      ...sessionInfo(now)
     };
   }
   /* ── AI 리그 — 계좌·보유·미체결·판단 기록 전부 공개 (시험 모드에서는 관리자만) ── */
+  // 지난 시즌 AI 리그도 볼 수 있다 (?season=) — 계좌·보유·판단 기록·순자산 기록이 시즌이 끝나도 그대로 남는다
   if (path === '/ai' && method === 'GET') {
-    if (!season) throw new HttpError(409, '진행 중인 시즌이 없습니다', 'no_season');
-    if (!AI.aiVisible(season, isAdmin)) throw new HttpError(404, 'AI 리그가 열려 있지 않습니다', 'ai_off');
-    return aiLeague(env, db, season, now, isAdmin);
+    const s = await aiSeasonOf(db, url, season, isAdmin);
+    return aiLeague(env, db, s, now, isAdmin, await aiSeasonList(db, isAdmin));
   }
   // 이전 판단 — AI 한 명의 기록을 10개씩 거슬러 본다 (기록은 시즌 동안 전부 남는다)
   if (path === '/ai/journal' && method === 'GET') {
-    if (!season) throw new HttpError(409, '진행 중인 시즌이 없습니다', 'no_season');
-    if (!AI.aiVisible(season, isAdmin)) throw new HttpError(404, 'AI 리그가 열려 있지 않습니다', 'ai_off');
+    const aiS = await aiSeasonOf(db, url, season, isAdmin);
     const bot = AI.BOTS.find((b) => b.id === url.searchParams.get('bot'));
     if (!bot) throw new HttpError(400, 'AI 가 올바르지 않습니다');
     const before = Number(url.searchParams.get('before')) || Date.now() + 1;
     const rows = (await db.prepare(`SELECT uid, ymd, hm, round_id, status, view, detail, neurons, ms, at FROM ai_journal WHERE season_id=? AND uid=? AND at < ? ORDER BY at DESC LIMIT 10`)
-      .bind(season.id, AI.uidOf(bot), before).all()).results || [];
+      .bind(aiS.id, AI.uidOf(bot), before).all()).results || [];
     return { items: rows.map((j) => aiJournalRow(j, isAdmin)), more: rows.length === 10 };
   }
   // AI 체결 내역 — 회원 계좌의 체결 내역과 같은 모양 (주문별 30개씩, 여러 번에 나눠 체결된 주문은 펼쳐 본다)
   if ((path === '/ai/history' || path === '/ai/history/fills') && method === 'GET') {
-    if (!season) throw new HttpError(409, '진행 중인 시즌이 없습니다', 'no_season');
-    if (!AI.aiVisible(season, isAdmin)) throw new HttpError(404, 'AI 리그가 열려 있지 않습니다', 'ai_off');
+    const aiS = await aiSeasonOf(db, url, season, isAdmin);
     const bot = AI.BOTS.find((b) => b.id === url.searchParams.get('bot'));
     if (!bot) throw new HttpError(400, 'AI 가 올바르지 않습니다');
-    if (path === '/ai/history') return historyByOrder(db, season, AI.uidOf(bot), url, now);
+    if (path === '/ai/history') return historyByOrder(db, aiS, AI.uidOf(bot), url, now);
     const oid = String(url.searchParams.get('order') || '');
     if (!/^[0-9a-f-]{36}$/i.test(oid)) throw new HttpError(400, '주문을 찾을 수 없습니다');
     const rows = (await db.prepare(`SELECT id, qty, price, fee, tax, at, loan, interest FROM fills WHERE order_id=? AND uid=? ORDER BY at, id`)
@@ -1187,8 +1188,34 @@ function aiJournalRow(j, isAdmin) {
 
 /** AI 리그 화면 — AI 마다 회원 계좌 화면과 같은 계산(accountView)으로 평가하고, 계획·판단 기록을 붙인다.
  *  모든 회원에게 같은 내용이라 10초 동안 돌려쓴다 (화면이 30초마다 부르고, 한 번에 AI 4명 계좌를 평가한다) */
-function aiLeague(env, db, season, now, isAdmin) {
-  return memo(`ai:${season.id}:${isAdmin ? 1 : 0}`, 10000, () => aiLeagueFresh(env, db, season, now, isAdmin));
+function aiLeague(env, db, season, now, isAdmin, seasons) {
+  return memo(`ai:${season.id}:${isAdmin ? 1 : 0}`, 10000, () => aiLeagueFresh(env, db, season, now, isAdmin))
+    .then((d) => ({ ...d, seasons: seasons || [] }));
+}
+
+/** AI 리그가 있었던 시즌 (최근순) — 화면의 시즌 고르기. 진행 중이면 맨 앞 */
+async function aiSeasonList(db, isAdmin) {
+  const rows = (await db.prepare(
+    `SELECT s.id, s.name, s.status, s.ai_mode FROM seasons s WHERE s.status IN ('active','closed')
+       AND EXISTS (SELECT 1 FROM accounts a WHERE a.season_id = s.id AND a.status = 'ai')
+     ORDER BY s.start_date DESC LIMIT 12`
+  ).all()).results || [];
+  return rows.filter((x) => AI.aiVisible(x, isAdmin)).map((x) => ({ id: x.id, name: x.name, closed: x.status !== 'active' }));
+}
+/** 볼 시즌 — ?season= 이 있으면 그 시즌(진행 중·종료), 없으면 진행 중 시즌, 그것도 없으면 가장 최근에 끝난 AI 리그 시즌 */
+async function aiSeasonOf(db, url, active, isAdmin) {
+  const want = String(url.searchParams.get('season') || '');
+  let s = null;
+  if (want) s = await db.prepare(`SELECT * FROM seasons WHERE id=? AND status IN ('active','closed')`).bind(want).first();
+  else {
+    s = active;
+    if (!s) s = await db.prepare(
+      `SELECT * FROM seasons s WHERE s.status='closed' AND EXISTS (SELECT 1 FROM accounts a WHERE a.season_id=s.id AND a.status='ai') ORDER BY s.end_date DESC LIMIT 1`
+    ).first();
+  }
+  if (!s) throw new HttpError(409, '진행 중인 시즌이 없습니다', 'no_season');
+  if (!AI.aiVisible(s, isAdmin)) throw new HttpError(404, 'AI 리그가 열려 있지 않습니다', 'ai_off');
+  return s;
 }
 const AI_JOURNAL_PER_BOT = 3;      // 화면은 AI 마다 최신 판단 1개 + 이전 판단 몇 개 — 더 오래된 것은 /ai/journal 로
 async function aiLeagueFresh(env, db, season, now, isAdmin) {
@@ -1227,10 +1254,11 @@ async function aiLeagueFresh(env, db, season, now, isAdmin) {
   }).sort((x, y) => y.equity - x.equity);
   const journal = jrRows.map((j) => aiJournalRow(j, isAdmin));
   // 진행 상태는 회원에게도 보인다 (예전엔 관리자만 받아 회원 화면에는 늘 '아직 라운드 없음'이 떴다). 오류 문구·글쓰기 결과는 관리자만
-  const round = env.HOUSE_AI ? await env.HOUSE_AI.get(env.HOUSE_AI.idFromName('house-ai'), { locationHint: 'apac' }).status().catch(() => null) : null;
+  const closed = season.status !== 'active';
+  const round = env.HOUSE_AI && !closed ? await env.HOUSE_AI.get(env.HOUSE_AI.idFromName('house-ai'), { locationHint: 'apac' }).status().catch(() => null) : null;
   return {
     mode: AI.aiMode(season), today: t.ymd, tradingDay: E.isTradingDay(t), seed: season.seed, rounds: AI.ROUNDS,
-    season: { id: season.id, name: season.name, startDate: season.start_date, endDate: season.end_date },
+    season: { id: season.id, name: season.name, startDate: season.start_date, endDate: season.end_date, closed },
     round: round && (round.seasonId == null || round.seasonId === season.id) ? {
       id: round.id, hm: round.hm, manual: !!round.manual, post: /-post$/.test(round.id), phase: round.phase, startedAt: round.startedAt, finishedAt: round.finishedAt || null,
       left: (round.botsLeft || []).length,

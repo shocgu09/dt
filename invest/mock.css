@@ -502,7 +502,10 @@
 /* 커뮤니티 — 현재 시즌만 보이고, 머리 줄 오른쪽 작은 버튼으로 지난 시즌을 고른다 */
 .mk-sh-acts .mini-btn, .mk-share .m-head .mk-sh-acts .mk-share-btn { margin-left: 0; }
 .mk-sh-acts { margin-left: auto; display: flex; gap: 6px; flex: 0 0 auto; }
-.mk-sh-older { appearance: none; -webkit-appearance: none; font: inherit; cursor: pointer; }
+.mk-sh-older { appearance: none; -webkit-appearance: none; font-family: inherit; cursor: pointer; padding-right: 20px; }
+/* 시즌 고르기 — 커뮤니티·AI 리그 공통 '현재 시즌 ▾' (화살표는 글자가 아니라 장식이라 목록에 섞이지 않는다) */
+.mk-sel { position: relative; display: inline-flex; flex: 0 0 auto; }
+.mk-sel::after { content: '▾'; position: absolute; right: 7px; top: 50%; transform: translateY(-50%); font-size: .7rem; color: var(--text3); pointer-events: none; }
 .mk-sh-name { color: var(--text); font-weight: 800; margin-right: 2px; }
 
 /* 출석 체크 — 계좌 요약 카드 머리 줄 오른쪽 작은 버튼 */
@@ -660,6 +663,13 @@
 .mk-ai-prev { background: none; border: 1px dashed var(--border); color: var(--text2); font: inherit; font-size: .78rem; padding: 6px; cursor: pointer; }
 .mk-ai-logo { display: inline-block; width: 14px; height: 14px; vertical-align: -2px; margin-right: 5px; background: currentColor;
   -webkit-mask: var(--logo) center / contain no-repeat; mask: var(--logo) center / contain no-repeat; }
+/* AI 리그 머리 — 1줄: 제목 · 지금 판단 / 2줄: 상태 · 시즌 고르기 (좁은 화면에서 제목과 버튼이 줄바꿈되지 않게) */
+.mk-ai-head { margin-bottom: 4px; }
+.mk-ai-head h3 { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mk-ai-head .mk-ai-run { margin-left: auto; flex: 0 0 auto; white-space: nowrap; }
+.mk-ai-status { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; min-height: 26px; }
+.mk-ai-status .m-hint { margin-left: 0; min-width: 0; }
+.mk-ai-status .mk-sel { margin-left: auto; }
 .mk-ai-run { margin-left: 6px; background: none; border: 1px solid var(--border); color: var(--text2); font: inherit; font-size: .7rem; padding: 2px 7px; cursor: pointer; }
 .mk-ai-run:hover { border-color: var(--primary); color: var(--text); }
 .mk-ai-run:disabled { opacity: .5; cursor: progress; }
