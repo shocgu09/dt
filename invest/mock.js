@@ -482,7 +482,8 @@ var Mock = (function () {
         + '<button class="seg' + (m ? ' on' : '') + '" aria-pressed="' + m + '" onclick="Mock.setMarginMode(\'spectrum\', this)">종목별 (미수)</button>'
         + '</div></div>'
         + '<div class="mk-note" style="margin-top:4px">' + (m ? '대부분 종목을 ' + pctTxt(R.stockMarginRate || 0.4) + ' 증거금으로 매수합니다. 결제일(D+2)까지 부족분을 채우지 못하면 미수 → 반대매매.' : '새로 사는 주문은 예수금 안에서만 매수합니다. 이미 "종목별"로 산 주식의 외상분은 결제일에 빠져나가니 D+2 예수금을 함께 확인하세요. 신용매수는 주문창에서 고릅니다.') + '</div>'
-        + '<div class="mk-cr-btns"><button class="mini-btn" onclick="Mock.openLoan()"' + (c.gate ? ' disabled title="' + escapeHtml(c.gate.msg) + '"' : '') + '>증권담보대출</button>'
+        // 잠긴 동안에도 눌리게 둔다 — disabled 는 아무 반응이 없어 고장처럼 보였다. 누르면 언제부터 되는지 알려 준다
+        + '<div class="mk-cr-btns"><button class="mini-btn' + (c.gate ? ' mk-locked' : '') + '" onclick="Mock.openLoan()"' + (c.gate ? ' aria-disabled="true"' : '') + '>' + (c.gate ? '🔒 ' : '') + '증권담보대출</button>'
         + '<button class="mini-btn" onclick="Mock.loadLedger()">대출·이자 내역</button></div>';
     } else {
       h += '<div class="mk-cr-btns"><button class="mini-btn" onclick="Mock.loadLedger()">대출·이자 내역</button></div>';
@@ -561,7 +562,8 @@ var Mock = (function () {
 
   /* ----- 증권담보대출 (보조 창) ----- */
   function openLoan() {
-    if (!account || !creditOnNow() || cr().gate) return;
+    if (!account || !creditOnNow()) return;
+    if (cr().gate) { toast(cr().gate.msg, ''); return; }
     var opts = account.positions.filter(function (p) { return pledgeable(p) > 0 && CODE_RE.test(p.code); });
     closeSheet();
     var first = opts[0];

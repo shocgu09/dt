@@ -528,6 +528,8 @@
 .mk-alert b { font-weight: 800; }
 .mk-cr-mode { margin-top: 14px; }
 .mk-cr-btns { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.mk-cr-btns .mini-btn.mk-locked { opacity: .5; }
+.mk-cr-btns .mini-btn.mk-locked:hover { border-color: var(--border); color: var(--text2); }
 .mk-tag.cr { background: var(--stock-down); }
 .mk-tag.ln { background: var(--text3); }
 .mk-tag.bad { background: var(--accent); }
