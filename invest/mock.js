@@ -1475,12 +1475,10 @@ var Mock = (function () {
         + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(b.equity) + '</span><span class="mk-pos-pnl ' + signClass(rr) + '">' + fmtRate(rr) + '</span></span></button>';
       if (!open) return row;
       // 내 계좌 화면과 같은 모양 — 요약 카드 · 📦 보유 종목 · ⏳ 미체결 (AI 계좌라 정정·취소 버튼은 없다)
-      var base = b.principal || d.seed, evalPnl = b.positions.reduce(function (t, p) { return t + (p.pnl || 0); }, 0);
+      var evalPnl = b.positions.reduce(function (t, p) { return t + (p.pnl || 0); }, 0);
       var det = '<div class="mk-ai-det">'
         + '<div class="mk-card mk-summary mk-ai-sum">'
-        +   '<div class="mk-eq">' + won(b.equity) + '</div>'
-        +   '<div class="mk-eq-sub">' + rateHtml(b.returnRate) + ' <span class="' + signClass(b.equity - base) + '">' + (b.equity - base > 0 ? '+' : '') + fmtNum(b.equity - base) + '원</span>'
-        +     '<span class="mk-dim"> · 시작 ' + fmtCompact(d.seed) + '원</span></div>'
+        // 총자산·수익률은 바로 위 순위 줄에 있으므로 여기서는 나눠 본 값만
         +   '<div class="mk-grid">'
         +     cell('주문 가능', won(b.available) + (b.reserved > 0 ? '<small class="mk-cell-sub">주문 대기 ' + won(b.reserved) + '</small>' : ''))
         +     cell('보유 주식', won(b.stock))
