@@ -1134,11 +1134,11 @@ var Mock = (function () {
     var tip = escapeHtml(attendSummary(t));
     if (t.canAttend && !t.today) {
       el.innerHTML = '<button class="mk-att-chip go" onclick="Mock.attend(this)" title="' + tip + '"' + (_attBusy ? ' disabled' : '') + '>'
-        + '📅 출석 +' + fmtCompact(t.amount + (t.bonusToday ? t.bonus : 0)) + '</button>';
+        + '📅 출석 +' + fmtCompact(t.amount + (t.bonusToday ? t.bonus : 0)) + (window.DtNew ? DtNew.html('invest-attend') : '') + '</button>';
     } else {
       // 출석했거나 휴장일 — 누르면 이번 시즌 출석 현황을 알려 준다
       el.innerHTML = '<button class="mk-att-chip' + (t.today ? ' done' : '') + '" onclick="Mock.attendInfo()" title="' + tip + '">'
-        + (t.today ? '✓ 출석' : '📅 출석') + (t.streak ? ' · 연속 ' + fmtNum(t.streak) + '일' : '') + '</button>';
+        + (t.today ? '✓ 출석' : '📅 출석') + (t.streak ? ' · 연속 ' + fmtNum(t.streak) + '일' : '') + (window.DtNew ? DtNew.html('invest-attend') : '') + '</button>';
     }
   }
   function attendSummary(t) {
@@ -2474,7 +2474,7 @@ var Mock = (function () {
       return '<div class="seg-row sub mk-seg2" role="group" aria-label="매수 자금">'
         + '<button class="seg' + (s.fund !== 'credit' ? ' on' : '') + '" aria-pressed="' + (s.fund !== 'credit') + '" onclick="Mock.setSheet(\'fund\',\'cash\')">현금</button>'
         + '<button class="seg' + (s.fund === 'credit' ? ' on' : '') + '" aria-pressed="' + (s.fund === 'credit') + '" onclick="Mock.setSheet(\'fund\',\'credit\')"'
-        +   (no ? ' disabled title="' + escapeHtml(noWhy) + '"' : '') + '>신용</button>'
+        +   (no ? ' disabled title="' + escapeHtml(noWhy) + '"' : '') + '>신용' + (window.DtNew ? DtNew.html('invest-credit') : '') + '</button>'
         + '</div><div class="mk-dim mk-fund-note">' + escapeHtml(no && s.fund !== 'credit' ? noWhy : note) + '</div>';
     }
     var lots = lotsOf(s.code);

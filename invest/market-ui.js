@@ -869,7 +869,7 @@ function renderWatchGroups() {
   };
   el.innerHTML = '<div class="wg-chips" role="group" aria-label="관심종목 그룹">'
     + wgOrdered().map(function (g) { return chip(g.id, g.name, g.codes.length); }).join('')
-    + (watchGroups.length < WG_MAX ? '<button type="button" class="wg-chip add" onclick="openWatchGroupNew()">+ 그룹 추가</button>' : '')
+    + (watchGroups.length < WG_MAX ? '<button type="button" class="wg-chip add" onclick="openWatchGroupNew()">+ 그룹 추가' + (window.DtNew ? DtNew.html('invest-watch-groups') : '') + '</button>' : '')
     + '</div>'
     + (watchGroups.length ? '<button type="button" class="wg-edit" onclick="openWatchGroupEdit()">그룹 편집</button>' : '');
 }
