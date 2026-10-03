@@ -16,15 +16,17 @@ import * as H from './holidays.js';
 
 // logo — Simple Icons(simpleicons.org) 아이콘 이름. 화면이 최신판을 그때그때 불러온다 (로고가 바뀌면 따라간다)
 export const BOTS = [
-  { id: 'gemma4-26b', name: 'Gemma 4 26B', maker: 'Google', logo: 'google', model: '@cf/google/gemma-4-26b-a4b-it', style: 'value' },
-  { id: 'gpt-oss-120b', name: 'GPT-OSS 120B', maker: 'OpenAI', logo: 'openai', model: '@cf/openai/gpt-oss-120b', style: 'flow' },
-  { id: 'qwen3-30b', name: 'Qwen 3 30B', maker: 'Alibaba', logo: 'alibabacloud', model: '@cf/qwen/qwen3-30b-a3b-fp8', style: 'momentum' },
-  { id: 'gpt-oss-20b', name: 'GPT-OSS 20B', maker: 'OpenAI', logo: 'openai', model: '@cf/openai/gpt-oss-20b', style: 'contrarian' }
+  { id: 'gemma4-26b', name: 'Gemma 4 26B', maker: 'Google', logo: 'google', model: '@cf/google/gemma-4-26b-a4b-it' },
+  { id: 'gpt-oss-120b', name: 'GPT-OSS 120B', maker: 'OpenAI', logo: 'openai', model: '@cf/openai/gpt-oss-120b' },
+  { id: 'qwen3-30b', name: 'Qwen 3 30B', maker: 'Alibaba', logo: 'alibabacloud', model: '@cf/qwen/qwen3-30b-a3b-fp8' },
+  { id: 'gpt-oss-20b', name: 'GPT-OSS 20B', maker: 'OpenAI', logo: 'openai', model: '@cf/openai/gpt-oss-20b' }
 ];
 
-/* 투자 성향 — 4명이 같은 판단 카드를 받지만 먼저 보는 숫자가 달라 사는 종목이 갈린다 (사용자 결정 2026-10-03).
+/* 투자 성향 — 4명이 같은 판단 카드를 받지만 먼저 보는 숫자가 달라 사는 종목이 갈린다 (2026-10-03).
+ * AI 마다 관리 탭에서 고른다 (D1 ai_styles, 행이 없으면 '기본' = 성향 없음 — 처음 상태).
  * 같은 자료로만 판단하니 받은 숫자 밖의 정보는 없다. 카드에 실린 줄(추세 · 수급 · 가치)만 가리킨다.
- * 공통 규칙(SYSTEM_PROMPT)은 그대로이고 그 뒤에 붙인다. 바꾸면 화면(/ai 응답 style·styleHint → 순위 줄 꼬리표, AI 매매 규칙 !)에 그대로 나간다 */
+ * 공통 규칙(SYSTEM_PROMPT · POST_PROMPT)은 그대로이고 그 뒤에 붙인다. 매매 판단과 장 마감 글 말투에 같이 쓰인다.
+ * 바꾸면 화면(/ai 응답 style·styleHint → 순위 줄 배지, 관리 탭 고르기)에 그대로 나간다 */
 export const STYLES = {
   value: {
     name: '가치형', hint: 'PER · PBR · 목표가',
@@ -55,9 +57,17 @@ export const STYLES = {
 - 손절가는 짧게(하루변동폭의 1~1.5배), 보유 기간은 5~10거래일.`
   }
 };
-/** 공통 규칙 + 이 AI 의 투자 성향 */
-export function systemPromptOf(bot) {
-  const st = STYLES[bot && bot.style];
+/** AI 마다 고른 성향 { botId: 'value' … } — 없는(기본) AI 는 빠진다. 표가 없거나 읽기에 실패하면 모두 기본 */
+export async function stylesOf(db) {
+  const rows = await db.prepare(`SELECT bot_id, style FROM ai_styles`).all().then((x) => x.results || []).catch(() => []);
+  const out = {};
+  for (const r of rows) if (STYLES[r.style] && BOTS.some((b) => b.id === r.bot_id)) out[r.bot_id] = r.style;
+  return out;
+}
+
+/** 공통 규칙 + 이 AI 의 투자 성향 (style 이 없으면 공통 규칙만 — 기본) */
+export function systemPromptOf(bot, style) {
+  const st = STYLES[style];
   return st ? `${SYSTEM_PROMPT}\n\n[너의 투자 성향: ${st.name}]\n${st.text}\n- 성향에 맞는 후보가 없으면 사지 않는다. 다른 AI 와 같은 종목을 사야 한다는 생각은 하지 않는다.` : SYSTEM_PROMPT;
 }
 export const uidOf = (bot) => 'ai:' + bot.id;
@@ -512,7 +522,7 @@ async function phaseIntraday(store, r) {
 /** 4명 동시 판단 — 같은 시각의 같은 카드로 한꺼번에 묻는다. 주문은 다음 단계에서 한 명씩 넣는다 */
 async function phaseThink(env, db, season, r, now, opts = {}) {
   const lines = r.lines || {};
-  const states = await Promise.all(BOTS.map((b) => botState(db, season, r, b)));
+  const [states, styles] = await Promise.all([Promise.all(BOTS.map((b) => botState(db, season, r, b))), stylesOf(db)]);
   const t0 = Date.now();
   const out = await Promise.all(BOTS.map(async (bot, i) => {
     const st = states[i];
@@ -522,7 +532,7 @@ async function phaseThink(env, db, season, r, now, opts = {}) {
     const allowed = new Set([...(r.top || []), ...live.map((p) => p.code)]);
     const card = `# 판단 카드\n${r.market}\n\n${accountText(bot, { ...acct, positions: live }, lines, r.ymd, st.last)}\n\n` +
       `## 후보 종목 (코드가 고름 — 이 목록 밖 종목은 주문할 수 없다)\n${[...allowed].filter((c) => lines[c]).map((c) => lines[c].line).join('\n')}\n\n지금 무엇을 할지 정해라.`;
-    const messages = [{ role: 'system', content: systemPromptOf(bot) }, { role: 'user', content: card }];
+    const messages = [{ role: 'system', content: systemPromptOf(bot, styles[bot.id]) }, { role: 'user', content: card }];
     const ask = opts.callModel || ((m) => callModel(env, bot.model, m));
     let usage = {};
     const add = (u) => { for (const k of ['prompt_tokens', 'completion_tokens', 'neurons']) usage[k] = (usage[k] || 0) + ((u || {})[k] || 0); };
@@ -780,9 +790,9 @@ export const POST_PROMPT = `너는 DT Club 모의투자 리그에 참가한 AI �
 [답 형식] JSON 하나만. 다른 글·코드블록 표시 없이.
 {"post": true 또는 false, "title": "제목", "body": "본문"}`;
 
-/** 장 마감 이야기 지시문 + 이 AI 의 성향 말투 — 숫자 · 사실 규칙(1~8)은 그대로 */
-export function postPromptOf(bot) {
-  const st = STYLES[bot && bot.style];
+/** 장 마감 이야기 지시문 + 이 AI 의 성향 말투 — 숫자 · 사실 규칙(1~8)은 그대로 (style 이 없으면 기본) */
+export function postPromptOf(bot, style) {
+  const st = STYLES[style];
   return st ? `${POST_PROMPT}\n\n[너의 투자 성향: ${st.name} (${st.hint})]\n${st.voice}\n성향은 말투와 관점에만 드러낸다. 모든 문장은 '~습니다' 또는 '~요'로 끝내는 존댓말로 쓴다. 숫자 · 종목 · 사실(산 것 · 판 것 · 들고 있는 것)은 여전히 '오늘 기록'에 있는 것만 쓴다.` : POST_PROMPT;
 }
 
@@ -908,12 +918,13 @@ async function phasePostThink(env, db, season, r, now, opts = {}) {
   const todayEq = Object.fromEntries(Object.values(sums).map((x) => [x.uid, x.equity]));
   const nameOf = (u) => { const b = botOfUid(u); return b ? `${b.maker} ${b.name}` : u; };
   for (const id of order) sums[id].league = leagueStatus(sums[id].uid, daily, r.ymd, todayEq, season.seed, nameOf);
+  const styles = await stylesOf(db);
   const out = await Promise.all(Object.keys(sums).map(async (id) => {
     const bot = BOTS.find((b) => b.id === id), x = sums[id];
     if (x.posted) return [id, { skip: '오늘 이미 글을 올림' }];
     const ask = opts.callModel || ((m) => callModel(env, bot.model, m));
     const facts = daySummaryText(bot, x);
-    const messages = [{ role: 'system', content: postPromptOf(bot) }, { role: 'user', content: `# 오늘 기록\n${facts}\n\n오늘 글을 올릴지 정해라.` }];
+    const messages = [{ role: 'system', content: postPromptOf(bot, styles[id]) }, { role: 'user', content: `# 오늘 기록\n${facts}\n\n오늘 글을 올릴지 정해라.` }];
     const usage = {};
     const read = (res) => {
       for (const k of ['prompt_tokens', 'completion_tokens', 'neurons']) usage[k] = (usage[k] || 0) + ((res.usage || {})[k] || 0);

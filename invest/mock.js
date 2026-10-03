@@ -3029,6 +3029,53 @@ var Mock = (function () {
   var CA_KIND = { split: '액면분할', merge: '병합', bonus: '무상증자', rights: '유상증자', delist: '상장폐지' };
   var CA_STATUS = { applied: ['반영', 'on'], dismissed: ['무시', 'off'], needs_review: ['확인 필요', 'wait'] };
 
+  /* ===== 관리자: AI 리그 투자 성향 (슈퍼관리자만 — /admin/ai/*) =====
+   * AI 마다 기본 | 가치형 | 수급형 | 모멘텀형 | 역발상형. 매매 판단과 장 마감 글 말투에 같이 쓰인다 (서버 ai.js STYLES) */
+  function aiStyleAdminHtml() {
+    if (!season || !season.isSuper) return '';
+    return '<details class="mk-admin mk-ais-admin" ontoggle="if(this.open) Mock.loadAiStyles()"><summary>🤖 AI 리그 투자 성향</summary>'
+      + '<div id="mkAiStyles"><div class="loading">불러오는 중...</div></div></details>';
+  }
+  var _aiStyles = null;
+  async function loadAiStyles() {
+    var box = document.getElementById('mkAiStyles');
+    if (!box) return;
+    try { _aiStyles = await api('/admin/ai/styles'); }
+    catch (e) { box.innerHTML = '<div class="empty">' + escapeHtml(e && e.message ? e.message : '불러오지 못했습니다') + '</div>'; return; }
+    renderAiStyles();
+  }
+  function renderAiStyles() {
+    var box = document.getElementById('mkAiStyles'), d = _aiStyles;
+    if (!box || !d) return;
+    var opts = [{ key: '', name: '기본', hint: '성향 없음' }].concat(d.styles || []);
+    box.innerHTML = '<div class="mk-ais-list">' + (d.bots || []).map(function (b) {
+        return '<label class="mk-ais-row"><span class="mk-ais-name">' + escapeHtml(b.maker) + ' <small>' + escapeHtml(b.name) + '</small></span>'
+          + '<select class="f-input" aria-label="' + escapeHtml(b.name) + ' 투자 성향" onchange="Mock.setAiStyle(\'' + escapeJsArg(b.id) + '\', this)">'
+          + opts.map(function (o) {
+              return '<option value="' + escapeHtml(o.key) + '"' + (o.key === (b.style || '') ? ' selected' : '') + '>' + escapeHtml(o.name) + ' · ' + escapeHtml(o.hint) + '</option>';
+            }).join('')
+          + '</select></label>';
+      }).join('') + '</div>'
+      + '<p class="mk-note">같은 판단 자료에서 무엇을 먼저 볼지 정합니다. 장 마감 글 말투에도 같이 반영됩니다. 바꾸면 다음 판단부터 적용되고, 순위 화면의 성향 배지도 바뀝니다. 기본은 성향 없이 공통 규칙만 따릅니다.</p>';
+  }
+  async function setAiStyle(id, sel) {
+    var b = _aiStyles && (_aiStyles.bots || []).find(function (x) { return x.id === id; });
+    if (!b || !sel) return;
+    var prev = b.style || '';
+    sel.disabled = true;
+    try {
+      await api('/admin/ai/styles', 'POST', { bot: id, style: sel.value });
+      b.style = sel.value;
+      var name = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text.split(' · ')[0] : '';
+      toast(b.name + ' → ' + name + ' · 다음 판단부터 적용됩니다', '');
+      _aiAt = 0;                         // AI 리그 화면을 다시 받아 배지를 맞춘다
+    } catch (e) {
+      sel.value = prev;
+      alert(e && e.message ? e.message : '바꾸지 못했습니다.');
+    }
+    sel.disabled = false;
+  }
+
   function corpAdminHtml() {
     return '<details class="mk-admin mk-ca-admin" ontoggle="if(this.open) Mock.loadCorpAdmin()"><summary>🔔 권리 변동 <span class="mk-ca-badge" id="mkCaBadge"></span></summary>'
       + '<div id="mkCaAdmin"><div class="loading">불러오는 중...</div></div></details>';
@@ -3129,7 +3176,7 @@ var Mock = (function () {
     if (!season || !season.isAdmin) { mount.innerHTML = ''; return; }
     // 이미 그려 뒀으면 다시 만들지 않는다 (펼친 상태와 입력 중인 값을 지키기 위해)
     if (mount.querySelector('.mk-admin')) return;
-    mount.innerHTML = adminHtml() + corpAdminHtml();
+    mount.innerHTML = adminHtml() + aiStyleAdminHtml() + corpAdminHtml();
     fillAdminForm();
     loadCorpAdmin();           // 접힌 채로도 "확인 필요 N건"을 제목에 띄운다
   }
@@ -3378,6 +3425,7 @@ var Mock = (function () {
     aiToggle: aiToggle, aiSeasonPick: aiSeasonPick, aiRun: aiRun, aiPrev: aiPrev, aiHist: aiHist, aiMore: aiMore, rankSub: rankSub,
     auxInput: auxInput, auxStep: auxStep, auxSet: auxSet, auxSel: auxSel, auxSubmit: auxSubmit,
     loadCorpAdmin: loadCorpAdmin, caApply: caApply, caDismiss: caDismiss,
+    loadAiStyles: loadAiStyles, setAiStyle: setAiStyle,
     mountAdmin: mountAdmin,
     saveSeason: saveSeason, loadSeasons: loadSeasons, pickSeason: pickSeason,
     newSeasonForm: newSeasonForm, onSeasonIdInput: onSeasonIdInput,

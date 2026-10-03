@@ -699,3 +699,10 @@
 .mk-ai-grid { margin: 0 0 4px; }
 .mk-ai-subrow { display: flex; align-items: center; justify-content: space-between; }
 .mk-ai-subrow .mini-btn { margin-left: auto; }
+
+/* 관리 탭 · AI 리그 투자 성향 (mock.js aiStyleAdminHtml) */
+.mk-ais-list { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; }
+.mk-ais-row { display: flex; align-items: center; gap: 10px; }
+.mk-ais-name { flex: 0 0 9.5em; min-width: 0; font-size: .82rem; font-weight: 800; color: var(--text); }
+.mk-ais-name small { display: block; font-size: .7rem; font-weight: 600; color: var(--text3); }
+.mk-ais-row select { flex: 1; min-width: 0; }

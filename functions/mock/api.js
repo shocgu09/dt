@@ -284,6 +284,26 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       await db.prepare(`INSERT INTO audit_log (at, actor, action, detail) VALUES (?,?,?,?)`).bind(now, uid, 'ai.mode', JSON.stringify({ season: s.id, mode: b.mode })).run().catch(() => {});
       return { ok: true, mode: b.mode };
     }
+    // AI 투자 성향 — AI 마다 기본 | 가치형 | 수급형 | 모멘텀형 | 역발상형. 다음 판단 · 장 마감 글부터 적용
+    if (path === '/admin/ai/styles' && method === 'GET') {
+      const cur = await AI.stylesOf(db);
+      return {
+        bots: AI.BOTS.map((b) => ({ id: b.id, name: b.name, maker: b.maker, style: cur[b.id] || '' })),
+        styles: Object.entries(AI.STYLES).map(([key, s]) => ({ key, name: s.name, hint: s.hint }))
+      };
+    }
+    if (path === '/admin/ai/styles' && method === 'POST') {
+      const b = await body();
+      const bot = AI.BOTS.find((x) => x.id === b.bot);
+      if (!bot) throw new HttpError(400, 'AI 가 올바르지 않습니다');
+      const style = String(b.style || '');
+      if (style && !AI.STYLES[style]) throw new HttpError(400, '성향이 올바르지 않습니다');
+      if (style) await db.prepare(`INSERT INTO ai_styles (bot_id, style, updated_at, updated_by) VALUES (?,?,?,?)
+        ON CONFLICT (bot_id) DO UPDATE SET style=excluded.style, updated_at=excluded.updated_at, updated_by=excluded.updated_by`).bind(bot.id, style, now, uid).run();
+      else await db.prepare(`DELETE FROM ai_styles WHERE bot_id=?`).bind(bot.id).run();
+      await db.prepare(`INSERT INTO audit_log (at, actor, action, detail) VALUES (?,?,?,?)`).bind(now, uid, 'ai.style', JSON.stringify({ bot: bot.id, style: style || 'default' })).run().catch(() => {});
+      return { ok: true, bot: bot.id, style };
+    }
     if (path === '/admin/ai/post' && method === 'POST') {
       if (!env.HOUSE_AI) throw new HttpError(503, 'AI 리그가 준비되지 않았습니다');
       return env.HOUSE_AI.get(env.HOUSE_AI.idFromName('house-ai'), { locationHint: 'apac' }).startPosts();
@@ -1249,7 +1269,7 @@ async function aiLeagueFresh(env, db, season, now, isAdmin) {
     `SELECT uid, COUNT(*) AS n, SUM(CASE WHEN status='fail' THEN 1 ELSE 0 END) AS fails, SUM(COALESCE(neurons,0)) AS neurons
      FROM ai_journal WHERE season_id=? GROUP BY uid`).bind(season.id).all()).results || []);
   const accounts = accRes.results || [];
-  const views = await Promise.all(accounts.map((a) => accountView(db, season, a, now, false)));
+  const [views, styles] = await Promise.all([Promise.all(accounts.map((a) => accountView(db, season, a, now, false))), AI.stylesOf(db)]);
   const use = {};
   for (const u of useRows) use[u.uid] = u;
   const bots = accounts.map((a, i) => {
@@ -1259,8 +1279,7 @@ async function aiLeagueFresh(env, db, season, now, isAdmin) {
     const u = use[a.uid] || {};
     return {
       id: bot.id, name: bot.name, maker: bot.maker, logo: bot.logo || null, model: bot.model,
-      style: AI.STYLES[bot.style] ? AI.STYLES[bot.style].name : null, styleHint: AI.STYLES[bot.style] ? AI.STYLES[bot.style].hint : null,
-      styleKey: AI.STYLES[bot.style] ? bot.style : null,
+      ...((st) => ({ style: st ? st.name : null, styleHint: st ? st.hint : null, styleKey: st ? styles[bot.id] : null }))(AI.STYLES[styles[bot.id]]),
       equity: v.equity, returnRate: v.returnRate, cash: v.cash, available: v.available, reserved: v.reserved, stock: v.stock, fills: v.fills, orders: v.orders,
       principal: v.principal, realizedPnl: v.realizedPnl, buyFees: v.buyFees,
       positions: v.positions.map((p) => ({ ...p, plan: (({ thesis, stop, target, hold_days, opened_ymd }) => ({ thesis, stop, target, holdDays: hold_days, openedYmd: opened_ymd }))(th.find((x) => x.code === p.code) || {}) })),
