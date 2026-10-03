@@ -479,14 +479,14 @@ var Mock = (function () {
       var m = c.marginMode === 'spectrum';
       h += '<div class="mk-field mk-cr-mode"><span>증거금률</span><div class="seg-row sub mk-seg2" role="group" aria-label="계좌 증거금률">'
         + '<button class="seg' + (!m ? ' on' : '') + '" aria-pressed="' + !m + '" onclick="Mock.setMarginMode(\'cash\', this)">100% (현금)</button>'
-        + '<button class="seg' + (m ? ' on' : '') + (c.gate && !m ? ' mk-locked' : '') + '" aria-pressed="' + m + '" onclick="Mock.setMarginMode(\'spectrum\', this)">' + (c.gate && !m ? '🔒 ' : '') + '종목별 (미수)</button>'
+        + '<button class="seg' + (m ? ' on' : '') + (c.gate && !m ? ' mk-locked' : '') + '" aria-pressed="' + m + '" onclick="Mock.setMarginMode(\'spectrum\', this)">' + (c.gate && !m ? '🔒 ' : '') + '종목별 (미수)' + (window.DtNew ? DtNew.html('invest-credit') : '') + '</button>'
         + '</div></div>'
         // 잠금 중에는 "종목별" 계좌도 서버가 증거금 100% 로 받는다 — 40% 라고 안내하면 틀린 말이 된다
         + '<div class="mk-note" style="margin-top:4px">' + (m && c.gate
           ? '🔒 ' + (c.gate.code === 'credit_closing' ? '시즌 마지막 ' + (R.cutoffDays || 10) + '거래일이라' : md(c.gate.until) + ' 전까지는') + ' 새 매수에도 증거금 100%가 적용됩니다.'
           : m ? '대부분 종목을 ' + pctTxt(R.stockMarginRate || 0.4) + ' 증거금으로 매수합니다. 결제일(D+2)까지 부족분을 채우지 못하면 미수 → 반대매매.' : '새로 사는 주문은 예수금 안에서만 매수합니다. 이미 "종목별"로 산 주식의 외상분은 결제일에 빠져나가니 D+2 예수금을 함께 확인하세요. 신용매수는 주문창에서 고릅니다.') + '</div>'
         // 잠긴 동안에도 눌리게 둔다 — disabled 는 아무 반응이 없어 고장처럼 보였다. 누르면 언제부터 되는지 알려 준다
-        + '<div class="mk-cr-btns"><button class="mini-btn' + (c.gate ? ' mk-locked' : '') + '" onclick="Mock.openLoan()"' + (c.gate ? ' aria-disabled="true"' : '') + '>' + (c.gate ? '🔒 ' : '') + '증권담보대출</button>'
+        + '<div class="mk-cr-btns"><button class="mini-btn' + (c.gate ? ' mk-locked' : '') + '" onclick="Mock.openLoan()"' + (c.gate ? ' aria-disabled="true"' : '') + '>' + (c.gate ? '🔒 ' : '') + '증권담보대출' + (window.DtNew ? DtNew.html('invest-credit') : '') + '</button>'
         + '<button class="mini-btn" onclick="Mock.loadLedger()">대출·이자 내역</button></div>';
     } else {
       h += '<div class="mk-cr-btns"><button class="mini-btn" onclick="Mock.loadLedger()">대출·이자 내역</button></div>';

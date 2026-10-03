@@ -531,9 +531,10 @@
 .mk-alert b { font-weight: 800; }
 .mk-cr-mode { margin-top: 14px; }
 .mk-cr-btns { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
-.mk-cr-btns .mini-btn.mk-locked { opacity: .5; }
-.mk-seg2 .seg.mk-locked { opacity: .5; }
-.mk-cr-btns .mini-btn.mk-locked:hover { border-color: var(--border); color: var(--text2); }
+/* 잠긴 버튼은 글자만 흐리게 — 버튼 전체 opacity 는 안의 NEW 꼬리표(new-badge.js)까지 흐려 잘 안 보였다 */
+.mk-cr-btns .mini-btn.mk-locked,
+.mk-seg2 .seg.mk-locked,
+.mk-cr-btns .mini-btn.mk-locked:hover { color: color-mix(in srgb, var(--text2) 50%, transparent); border-color: color-mix(in srgb, var(--border) 60%, transparent); }
 .mk-tag.cr { background: var(--stock-down); }
 .mk-tag.ln { background: var(--text3); }
 .mk-tag.bad { background: var(--accent); }
