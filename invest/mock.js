@@ -450,7 +450,7 @@ var Mock = (function () {
     if (!creditActive(a)) return '';
     var c = a.credit, st = a.settle, R = c.rules || {};
     var h = '<div class="mk-card mk-credit">'
-      + '<div class="mk-sum-head"><span>💳 예수금 · 신용</span><span>' + InfoTip.btn('결제·신용 규칙', [
+      + '<div class="mk-sum-head"><span>💳 예수금 · 신용' + (window.DtNew ? DtNew.html('invest-credit') : '') + '</span><span>' + InfoTip.btn('결제·신용 규칙', [
           '· 주식은 체결일 포함 3영업일째(T+2)에 결제됩니다. 매도대금은 결제 전이라도 바로 다시 매수할 수 있습니다 (결제 전에 산 주식을 되판 대금은 증거금률만큼만).',
           '· 증거금률 "종목별": 대부분 종목 ' + pctTxt(R.stockMarginRate || 0.4) + '만 현금으로 내고 나머지는 결제일까지 외상입니다 (레버리지·인버스·ETN·정리매매 100%). 결제일에 예수금이 모자라면 미수금입니다.',
           '· 미수금은 결제일 23:30까지 못 갚으면 다음 거래일 09:00 시가에 반대매매됩니다. 10만 원이 넘으면 30일간 증거금 100%(미수동결). 연체이자 연 9.7%.',
@@ -479,14 +479,14 @@ var Mock = (function () {
       var m = c.marginMode === 'spectrum';
       h += '<div class="mk-field mk-cr-mode"><span>증거금률</span><div class="seg-row sub mk-seg2" role="group" aria-label="계좌 증거금률">'
         + '<button class="seg' + (!m ? ' on' : '') + '" aria-pressed="' + !m + '" onclick="Mock.setMarginMode(\'cash\', this)">100% (현금)</button>'
-        + '<button class="seg' + (m ? ' on' : '') + (c.gate && !m ? ' mk-locked' : '') + '" aria-pressed="' + m + '" onclick="Mock.setMarginMode(\'spectrum\', this)">' + (c.gate && !m ? '🔒 ' : '') + '종목별 (미수)' + (window.DtNew ? DtNew.html('invest-credit') : '') + '</button>'
+        + '<button class="seg' + (m ? ' on' : '') + (c.gate && !m ? ' mk-locked' : '') + '" aria-pressed="' + m + '" onclick="Mock.setMarginMode(\'spectrum\', this)">' + (c.gate && !m ? '🔒 ' : '') + '종목별 (미수)</button>'
         + '</div></div>'
         // 잠금 중에는 "종목별" 계좌도 서버가 증거금 100% 로 받는다 — 40% 라고 안내하면 틀린 말이 된다
         + '<div class="mk-note" style="margin-top:4px">' + (m && c.gate
           ? '🔒 ' + (c.gate.code === 'credit_closing' ? '시즌 마지막 ' + (R.cutoffDays || 10) + '거래일이라' : md(c.gate.until) + ' 전까지는') + ' 새 매수에도 증거금 100%가 적용됩니다.'
           : m ? '대부분 종목을 ' + pctTxt(R.stockMarginRate || 0.4) + ' 증거금으로 매수합니다. 결제일(D+2)까지 부족분을 채우지 못하면 미수 → 반대매매.' : '새로 사는 주문은 예수금 안에서만 매수합니다. 이미 "종목별"로 산 주식의 외상분은 결제일에 빠져나가니 D+2 예수금을 함께 확인하세요. 신용매수는 주문창에서 고릅니다.') + '</div>'
         // 잠긴 동안에도 눌리게 둔다 — disabled 는 아무 반응이 없어 고장처럼 보였다. 누르면 언제부터 되는지 알려 준다
-        + '<div class="mk-cr-btns"><button class="mini-btn' + (c.gate ? ' mk-locked' : '') + '" onclick="Mock.openLoan()"' + (c.gate ? ' aria-disabled="true"' : '') + '>' + (c.gate ? '🔒 ' : '') + '증권담보대출' + (window.DtNew ? DtNew.html('invest-credit') : '') + '</button>'
+        + '<div class="mk-cr-btns"><button class="mini-btn' + (c.gate ? ' mk-locked' : '') + '" onclick="Mock.openLoan()"' + (c.gate ? ' aria-disabled="true"' : '') + '>' + (c.gate ? '🔒 ' : '') + '증권담보대출</button>'
         + '<button class="mini-btn" onclick="Mock.loadLedger()">대출·이자 내역</button></div>';
     } else {
       h += '<div class="mk-cr-btns"><button class="mini-btn" onclick="Mock.loadLedger()">대출·이자 내역</button></div>';
