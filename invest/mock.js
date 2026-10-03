@@ -328,8 +328,7 @@ var Mock = (function () {
         ].concat(a.credit && creditActive(a) ? ['· 신용·담보대출·미수가 있으면 총자산은 순자산입니다: 예수금 + 보유 주식 − 융자·대출 원금 − 쌓인 이자'] : []).join('\n'), 'sm') + '<span id="mkAttend"></span></span></div>'
       + '<div class="mk-eq">' + won(a.equity) + '</div>'
       + '<div class="mk-eq-sub">' + rateHtml(a.returnRate) + ' <span class="' + signClass(a.equity - principal) + '">'
-      +   (a.equity - principal > 0 ? '+' : '') + fmtNum(a.equity - principal) + '원</span>'
-      +   '<span class="mk-dim"> · 시작 ' + fmtCompact(s.seed) + '원</span></div>'
+      +   (a.equity - principal > 0 ? '+' : '') + fmtNum(a.equity - principal) + '원</span></div>'
       + '<div class="mk-grid">'
       // 총자산 = 현금 + 보유 주식. 미체결 매수가 묶어 둔 돈은 '주문 가능'에서 빠지므로 따로 밝혀 합이 맞게 한다
       +   cell('주문 가능', won(a.available) + ((a.reserved != null ? a.reserved : a.cash - a.available) > 0 ? '<small class="mk-cell-sub">주문 대기 ' + won(a.reserved != null ? a.reserved : a.cash - a.available) + '</small>' : ''))
