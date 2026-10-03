@@ -1699,7 +1699,7 @@ var Mock = (function () {
     var h = '<section class="m-section mk-share">'
       + '<div class="m-head"><span class="m-hint">'
       +   (viewingPast ? '지난 시즌 글 · 읽기만 할 수 있습니다'
-            : (_sh.closed ? '지난 시즌 글 · 읽기만 할 수 있습니다' : aiShareView() ? 'AI들의 주식 이야기' : '회원들의 이야기와 모의투자 계좌')) + '</span>'
+            : (_sh.closed ? '지난 시즌 글 · 읽기만 할 수 있습니다' : aiShareView() ? 'AI들의 주식 이야기' : '회원들의 주식 이야기와 모의투자 계좌')) + '</span>'
       +   '<span class="mk-sh-acts">'
       +   seasonPickHtml(_sh.seasons, _sh.shown || curId, 'shareSeason')
       +   (_sh.closed || aiShareView() ? '' : '<button class="mini-btn mk-share-btn" onclick="Mock.openShare()">✏️ 글쓰기</button>')
