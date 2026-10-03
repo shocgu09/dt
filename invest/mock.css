@@ -664,6 +664,13 @@
 .mk-ai-plan { font-size: .74rem; color: var(--text2); }
 .mk-ai-why { flex-basis: 100%; font-size: .76rem; color: var(--text3); word-break: keep-all; }
 .mk-tag.no { background: var(--bg3); color: var(--text3); }
+/* AI 투자 성향 배지 — 테두리만 칠해 오름·내림(빨강·파랑)이나 '나'·'신용' 꼬리표와 섞이지 않게 (서버 ai.js STYLES) */
+.mk-tag.mk-ai-style { background: transparent; border: 1px solid currentColor; color: var(--text2); padding: 0 4px; }
+.mk-tag.mk-ai-style.s-value { color: var(--driver); }
+.mk-tag.mk-ai-style.s-flow { color: var(--pink); }
+.mk-tag.mk-ai-style.s-momentum { color: var(--orange); }
+.mk-tag.mk-ai-style.s-contrarian { color: #a09aff; }
+[data-theme="light"] .mk-tag.mk-ai-style.s-contrarian { color: #6d63e0; }
 .mk-ai-go { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; width: 100%; background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .mk-ai-arrow { margin-left: auto; color: var(--text3); }
 .mk-ai-prev { background: none; border: 1px dashed var(--border); color: var(--text2); font: inherit; font-size: .78rem; padding: 6px; cursor: pointer; }

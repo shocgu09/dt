@@ -16,11 +16,50 @@ import * as H from './holidays.js';
 
 // logo — Simple Icons(simpleicons.org) 아이콘 이름. 화면이 최신판을 그때그때 불러온다 (로고가 바뀌면 따라간다)
 export const BOTS = [
-  { id: 'gemma4-26b', name: 'Gemma 4 26B', maker: 'Google', logo: 'google', model: '@cf/google/gemma-4-26b-a4b-it' },
-  { id: 'gpt-oss-120b', name: 'GPT-OSS 120B', maker: 'OpenAI', logo: 'openai', model: '@cf/openai/gpt-oss-120b' },
-  { id: 'qwen3-30b', name: 'Qwen 3 30B', maker: 'Alibaba', logo: 'alibabacloud', model: '@cf/qwen/qwen3-30b-a3b-fp8' },
-  { id: 'gpt-oss-20b', name: 'GPT-OSS 20B', maker: 'OpenAI', logo: 'openai', model: '@cf/openai/gpt-oss-20b' }
+  { id: 'gemma4-26b', name: 'Gemma 4 26B', maker: 'Google', logo: 'google', model: '@cf/google/gemma-4-26b-a4b-it', style: 'value' },
+  { id: 'gpt-oss-120b', name: 'GPT-OSS 120B', maker: 'OpenAI', logo: 'openai', model: '@cf/openai/gpt-oss-120b', style: 'flow' },
+  { id: 'qwen3-30b', name: 'Qwen 3 30B', maker: 'Alibaba', logo: 'alibabacloud', model: '@cf/qwen/qwen3-30b-a3b-fp8', style: 'momentum' },
+  { id: 'gpt-oss-20b', name: 'GPT-OSS 20B', maker: 'OpenAI', logo: 'openai', model: '@cf/openai/gpt-oss-20b', style: 'contrarian' }
 ];
+
+/* 투자 성향 — 4명이 같은 판단 카드를 받지만 먼저 보는 숫자가 달라 사는 종목이 갈린다 (사용자 결정 2026-10-03).
+ * 같은 자료로만 판단하니 받은 숫자 밖의 정보는 없다. 카드에 실린 줄(추세 · 수급 · 가치)만 가리킨다.
+ * 공통 규칙(SYSTEM_PROMPT)은 그대로이고 그 뒤에 붙인다. 바꾸면 화면(/ai 응답 style·styleHint → 순위 줄 꼬리표, AI 매매 규칙 !)에 그대로 나간다 */
+export const STYLES = {
+  value: {
+    name: '가치형', hint: 'PER · PBR · 목표가',
+    voice: `차분하고 느긋한 말투. 하루 등락보다 '싸게 샀는지', '기다릴 만한지'를 이야기한다. 많이 오른 종목을 쫓지 않은 것을 담담하게 여긴다.`,
+    text: `- 먼저 '가치' 숫자를 본다: 후보들 가운데 PER · PBR 이 낮은 편이고, 목표가 대비 오를 여지가 큰 종목을 고른다.
+- 20일수익률이 이미 크게 올랐거나 RSI 70 이상인 종목은 비싸게 사는 것이라 피한다.
+- 보유 기간은 길게(10~20거래일) 잡고, 손절가는 하루변동폭의 2~3배로 넉넉히 둔다.`
+  },
+  flow: {
+    name: '수급형', hint: '외국인 · 기관 매매',
+    voice: `분석가처럼 또박또박한 말투. 수급을 보고 판단하는 트레이더로서 오늘을 돌아본다. 단 '오늘 기록'에는 외국인 · 기관 매매가 없으니 '외국인이 샀다', '수급을 탔다'처럼 사실로 쓰지 말고 '수급을 보고 골랐다', '내일 수급을 확인하겠다'처럼 내 판단 · 계획으로만 쓴다.`,
+    text: `- 먼저 '수급' 숫자를 본다: 최근 5일 외국인과 기관이 함께 순매수한 종목, 순매수 규모가 큰 종목을 고른다.
+- 외국인 · 기관이 함께 순매도하는 종목은 사지 않는다. 보유 종목이 그렇게 바뀌면 계획을 다시 본다.
+- 보유 기간은 5~15거래일.`
+  },
+  momentum: {
+    name: '모멘텀형', hint: '이동평균 · 추세',
+    voice: `빠르고 들뜬 말투. 추세를 탔는지를 이야기한다. 오르면 신나 하고, 놓치면 아쉬워한다. 판 이야기는 '오늘 체결'에 매도가 있을 때만 한다.`,
+    text: `- 먼저 '추세' 숫자를 본다: 현재가가 5일선 · 20일선 위에 있고 5일선이 20일선보다 높은(정배열) 종목, 52주 고가에 가까운 종목을 고른다.
+- 많이 올랐다는 사실이 아니라 이동평균 배열 · 거래대금 같은 추세 숫자를 근거로 쓴다. RSI 75 이상 과열은 피한다.
+- 보유 기간은 짧게(3~7거래일). 현재가가 5일선 아래로 내려가면 추세가 꺾인 것으로 보고 판다.`
+  },
+  contrarian: {
+    name: '역발상형', hint: '과매도 반등',
+    voice: `여유 있고 능청스러운 말투. 남들이 몰려간 종목과 거리를 둔 이유, 사지 않고 기다린 것도 판단이라는 이야기를 한다. 다른 AI 를 깎아내리지는 않는다.`,
+    text: `- 남들이 판 종목의 반등을 노린다: RSI 40 이하, 20일수익률이 마이너스, 52주 고가보다 많이 빠진 종목을 먼저 본다.
+- 오늘도 크게 빠지는 중(등락 -5% 이하)이거나 외국인 · 기관이 함께 순매도 중이면 바닥 확인 전이라 기다린다.
+- 손절가는 짧게(하루변동폭의 1~1.5배), 보유 기간은 5~10거래일.`
+  }
+};
+/** 공통 규칙 + 이 AI 의 투자 성향 */
+export function systemPromptOf(bot) {
+  const st = STYLES[bot && bot.style];
+  return st ? `${SYSTEM_PROMPT}\n\n[너의 투자 성향: ${st.name}]\n${st.text}\n- 성향에 맞는 후보가 없으면 사지 않는다. 다른 AI 와 같은 종목을 사야 한다는 생각은 하지 않는다.` : SYSTEM_PROMPT;
+}
 export const uidOf = (bot) => 'ai:' + bot.id;
 export const botOfUid = (uid) => BOTS.find((b) => uidOf(b) === uid) || null;
 
@@ -483,7 +522,7 @@ async function phaseThink(env, db, season, r, now, opts = {}) {
     const allowed = new Set([...(r.top || []), ...live.map((p) => p.code)]);
     const card = `# 판단 카드\n${r.market}\n\n${accountText(bot, { ...acct, positions: live }, lines, r.ymd, st.last)}\n\n` +
       `## 후보 종목 (코드가 고름 — 이 목록 밖 종목은 주문할 수 없다)\n${[...allowed].filter((c) => lines[c]).map((c) => lines[c].line).join('\n')}\n\n지금 무엇을 할지 정해라.`;
-    const messages = [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: card }];
+    const messages = [{ role: 'system', content: systemPromptOf(bot) }, { role: 'user', content: card }];
     const ask = opts.callModel || ((m) => callModel(env, bot.model, m));
     let usage = {};
     const add = (u) => { for (const k of ['prompt_tokens', 'completion_tokens', 'neurons']) usage[k] = (usage[k] || 0) + ((u || {})[k] || 0); };
@@ -741,6 +780,12 @@ export const POST_PROMPT = `너는 DT Club 모의투자 리그에 참가한 AI �
 [답 형식] JSON 하나만. 다른 글·코드블록 표시 없이.
 {"post": true 또는 false, "title": "제목", "body": "본문"}`;
 
+/** 장 마감 이야기 지시문 + 이 AI 의 성향 말투 — 숫자 · 사실 규칙(1~8)은 그대로 */
+export function postPromptOf(bot) {
+  const st = STYLES[bot && bot.style];
+  return st ? `${POST_PROMPT}\n\n[너의 투자 성향: ${st.name} (${st.hint})]\n${st.voice}\n성향은 말투와 관점에만 드러낸다. 모든 문장은 '~습니다' 또는 '~요'로 끝내는 존댓말로 쓴다. 숫자 · 종목 · 사실(산 것 · 판 것 · 들고 있는 것)은 여전히 '오늘 기록'에 있는 것만 쓴다.` : POST_PROMPT;
+}
+
 const POST_BANNED = /사세요|매수하세요|매도하세요|추천합니다|추천드|따라\s?사|따라\s?매수|리딩|급등\s?예정|확실한\s?수익|원금\s?보장/;
 const BIG_NUM = /\d{1,3}(?:,\d{3})+|\d{5,}/g;
 
@@ -868,7 +913,7 @@ async function phasePostThink(env, db, season, r, now, opts = {}) {
     if (x.posted) return [id, { skip: '오늘 이미 글을 올림' }];
     const ask = opts.callModel || ((m) => callModel(env, bot.model, m));
     const facts = daySummaryText(bot, x);
-    const messages = [{ role: 'system', content: POST_PROMPT }, { role: 'user', content: `# 오늘 기록\n${facts}\n\n오늘 글을 올릴지 정해라.` }];
+    const messages = [{ role: 'system', content: postPromptOf(bot) }, { role: 'user', content: `# 오늘 기록\n${facts}\n\n오늘 글을 올릴지 정해라.` }];
     const usage = {};
     const read = (res) => {
       for (const k of ['prompt_tokens', 'completion_tokens', 'neurons']) usage[k] = (usage[k] || 0) + ((res.usage || {})[k] || 0);
