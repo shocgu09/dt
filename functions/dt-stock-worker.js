@@ -632,9 +632,33 @@ async function handleProfile(env, code) {
 async function handleIndexSpark(env) {
   const st = kstStamp();
   // 장이 닫힌 동안에는 값이 바뀌지 않는다 — KV 에 10분마다 쓰면 밤·주말에만 하루 수백 건을 썼다 (무료 한도 1,000건)
-  return memo(`ixsp:${st.ymd}`, marketOpen() ? 60 : 1800, async () => ({
-    series: await naver.getIndexSparks(), span: 'intraday', source: 'naver'
-  }));
+  return memo(`ixsp:${st.ymd}`, marketOpen() ? 60 : 1800, async () => {
+    let series = await naver.getIndexSparks();
+    let day = st.ymd;
+    // 오늘 분봉이 없으면(휴장일·주말·09:00 전) 마지막 거래일 선을 그린다.
+    // 예전엔 오늘 것만 받아서 그때마다 지수 칸의 선이 통째로 사라졌다 — 숫자는 마지막 거래일 값인데 (2026-10-03 개천절)
+    if (!Object.keys(series).length) {
+      for (const d of await prevTradingDays(env, st.ymd, 3)) {
+        series = await naver.getIndexSparks(d);
+        if (Object.keys(series).length) { day = d; break; }
+      }
+    }
+    return { series, day, span: 'intraday', source: 'naver' };
+  });
+}
+
+/** ymd 이전의 거래일(주말·휴장일 제외) n 개, 가까운 날부터 */
+async function prevTradingDays(env, ymd, n) {
+  const hol = env.MOCK_DB ? await holidaySet(env.MOCK_DB) : new Set();
+  const out = [];
+  const d = new Date(Date.UTC(+ymd.slice(0, 4), +ymd.slice(4, 6) - 1, +ymd.slice(6, 8)));
+  for (let i = 0; i < 20 && out.length < n; i++) {
+    d.setUTCDate(d.getUTCDate() - 1);
+    const dow = d.getUTCDay();
+    const s = d.toISOString().slice(0, 10).replace(/-/g, '');
+    if (dow !== 0 && dow !== 6 && !hol.has(s)) out.push(s);
+  }
+  return out;
 }
 
 /**

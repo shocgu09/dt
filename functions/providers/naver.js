@@ -459,11 +459,12 @@ export const naver = {
    * 국내 지수 5종의 당일 분봉 스파크라인. 외부 호출 5건.
    * 해외 선물은 네이버에 분봉이 없어 선을 그리지 않는다 — 숫자만 보여 준다.
    */
-  async getIndexSparks() {
+  /** @param ymd 그날 분봉 (없으면 오늘) — 휴장일·장 시작 전에는 워커가 마지막 거래일을 넘긴다 */
+  async getIndexSparks(ymd) {
     const out = {};
     await Promise.all(Object.entries(INDEX_CODES).map(async ([code, key]) => {
       try {
-        const pts = await indexIntraday(code, 30);
+        const pts = await indexIntraday(code, 30, ymd);
         if (pts.length >= 3) out[key] = pts;
       } catch (e) { /* 이 항목만 선이 안 그려진다 */ }
     }));
@@ -674,11 +675,13 @@ function htmlToText(html) {
  * 네이버 자기 화면도 그래서 해외는 선 없이 숫자만 보여 준다 — 우리도 그렇게 한다.
  * 장 시작 전이라 분봉이 아직 없으면 선을 그리지 않는다 (일봉으로 대신하면 '실시간'이 아니다).
  */
-async function indexIntraday(code, points) {
+async function indexIntraday(code, points, day) {
   const k = new Date(Date.now() + 9 * 3600e3);
   const p2 = (n) => String(n).padStart(2, '0');
-  const ymd = `${k.getUTCFullYear()}${p2(k.getUTCMonth() + 1)}${p2(k.getUTCDate())}`;
-  const hm = `${p2(k.getUTCHours())}${p2(k.getUTCMinutes())}`;
+  const today = `${k.getUTCFullYear()}${p2(k.getUTCMonth() + 1)}${p2(k.getUTCDate())}`;
+  const ymd = day || today;
+  // 지난 날은 장 끝까지, 오늘은 지금까지
+  const hm = ymd === today ? `${p2(k.getUTCHours())}${p2(k.getUTCMinutes())}` : '2359';
 
   const bars = await getJson(
     `https://api.stock.naver.com/chart/domestic/index/${code}/minute?startDateTime=${ymd}0900&endDateTime=${ymd}${hm}`
