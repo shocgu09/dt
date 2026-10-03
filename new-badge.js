@@ -1,5 +1,5 @@
 /* ===== 새 기능 NEW 꼬리표 (모든 페이지 공용) =====
- * 새로 생긴 기능의 버튼·제목 옆에 빨간 'NEW' 를 붙인다. 생긴 날부터 14일 동안 모든 회원에게 보이고, 그 뒤엔 저절로 사라진다.
+ * 새로 생긴 기능의 버튼·제목 옆에 빨간 'NEW' 를 붙인다. 생긴 날부터 한 달 동안 모든 회원에게 보이고, 그 뒤엔 저절로 사라진다.
  * 열어 봐도 사라지지 않는다 (회원들이 새 기능이 있는지 몰라서 붙이는 표시라, 기간 동안은 계속 보이게).
  *
  * 새 표시를 달 때
@@ -10,7 +10,6 @@
  * 이 파일은 페이지 스크립트보다 먼저(head 의 tokens.css 바로 뒤) 불러온다 — 템플릿이 DtNew 를 바로 쓸 수 있게.
  * 색은 tokens.css 의 --accent(사이트 빨강)를 따른다. */
 var DtNew = (function () {
-  var DAYS = 14;
   var FEATURES = {
     'invest-ai-league': '2026-10-02',     // 재테크 · 랭킹 · 회원/AI 전환의 AI 버튼
     'invest-credit': '2026-10-01',        // 재테크 · 주문창 '신용' 버튼 · 계좌 '💳 예수금 · 신용' 카드 제목 (미수·신용·담보대출 전체 회원 개방)
@@ -25,7 +24,15 @@ var DtNew = (function () {
     var start = Date.parse(since + 'T00:00:00+09:00');
     if (!isFinite(start)) return false;
     var now = Date.now();
-    return now >= start && now < start + DAYS * 86400000;      // 10/2 → 10/16 00:00 부터 숨김
+    return now >= start && now < endOf(since);      // 10/2 → 11/2 00:00 부터 숨김
+  }
+
+  /** 다음 달 같은 날 00:00 (한국 시각). 그날이 없는 달이면 그 달 마지막 날 (1/31 → 2/28) */
+  function endOf(since) {
+    var y = +since.slice(0, 4), m = +since.slice(5, 7), d = +since.slice(8, 10);
+    if (++m > 12) { m = 1; y++; }
+    d = Math.min(d, new Date(Date.UTC(y, m, 0)).getUTCDate());
+    return Date.UTC(y, m - 1, d) - 9 * 3600000;
   }
 
   function html(id) {
