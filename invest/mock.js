@@ -1382,11 +1382,20 @@ var Mock = (function () {
     if (aiSub) markNewSeen('ai');
   }
   /* 새로 생긴 화면 표시 — 버튼 옆 빨간 '!'. 한 번 열어 보면 이 기기에서는 더 보이지 않는다.
+   * 생긴 날부터 2주가 지나면 열어 보지 않았어도 모든 회원에게서 사라진다 (! 가 쌓이지 않게).
    * 새 글 점(mk-rk-dot)과 다르다: 점은 안 읽은 글, '!' 는 아직 안 열어 본 새 기능 */
   var NEW_MARK_KEY = 'dt-invest-new-seen:';
+  var NEW_MARK_SINCE = { ai: '2026-10-02' };      // 기능이 생긴 날 (한국 날짜) — 새 표시를 달 때 여기에 추가
+  var NEW_MARK_DAYS = 14;
+  function newMarkExpired(id) {
+    var since = NEW_MARK_SINCE[id];
+    if (!since) return true;
+    var start = Date.parse(since + 'T00:00:00+09:00');
+    return !(Date.now() < start + NEW_MARK_DAYS * 86400000);     // 10/2 → 10/16 00:00 부터 숨김
+  }
   function newMarkSeen(id) { try { return !!localStorage.getItem(NEW_MARK_KEY + id); } catch (e) { return false; } }
   function newMarkHtml(id) {
-    return newMarkSeen(id) ? '' : '<b class="mk-new" data-new="' + id + '" title="새로 생겼어요" aria-label="새 기능">!</b>';
+    return newMarkExpired(id) || newMarkSeen(id) ? '' : '<b class="mk-new" data-new="' + id + '" title="새로 생겼어요" aria-label="새 기능">!</b>';
   }
   function markNewSeen(id) {
     if (newMarkSeen(id)) return;
