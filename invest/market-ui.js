@@ -349,6 +349,13 @@ function paintClock() {
 // 뼈대를 다시 만들어도 id 로 찾으므로 타이머는 하나면 된다. 초가 바뀌는 순간에 맞춰 1초마다 (탭이 가려지면 브라우저가 알아서 늦춘다)
 setTimeout(function () { paintClock(); setInterval(paintClock, 1000); }, 1000 - (Date.now() % 1000));
 
+/* 서버가 막 뜬 직후 등으로 야간선물을 한 번 빠뜨려도 칸이 사라졌다 나타나지 않게 직전 값을 3분까지 이어 쓴다 */
+var _nightFutLast = null, _nightFutAt = 0;
+function keepNightFut(d) {
+  if (d.nightfut) { _nightFutLast = d.nightfut; _nightFutAt = Date.now(); }
+  else if (_nightFutLast && Date.now() - _nightFutAt < 180000) d.nightfut = _nightFutLast;
+}
+
 /** 지금은 보여 줄 값이 없는 칸 — 야간선물은 개장 전(그날 야간장이 아직 안 열림)이면 '-' 뿐이라 칸을 뺀다 */
 function hiddenIndexCell(k, x) {
   return k === 'nightfut' && (x.state === 'pre' || x.price == null);
@@ -361,6 +368,7 @@ async function loadIndex() {
   if (!el) return;
   try {
     var d = await Market.index();
+    keepNightFut(d);
     if (d.marketStatus) setMarketStatus(d.marketStatus);   // 워커가 대표 종목 기준으로 실어 준다
     setHolidays(d.holidays);                              // 휴장일도 워커 목록을 쓴다 (D1 단일 출처)
     if (d.usMarket) _usMarket = d.usMarket;

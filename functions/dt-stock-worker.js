@@ -151,8 +151,8 @@ export default {
             if (!kis.enabled(env)) throw new Error('no key');
             // 지수 응답은 2.5초만 기다리고 나머지는 뒤에서 받는다. 상태 점검은 60초 캐시라 끝까지 기다려도 된다 —
             // 기다리지 않으면 응답과 함께 KIS 호출이 끊겨 매번 'unavailable' 로 보였다
-            let r = await nightFutCell(env);
-            if (!r.nightfut && nightBusy) { await nightBusy; r = await nightFutCell(env); }
+            let r = await nightFutCell(env, ctx);
+            if (!r.nightfut && nightBusy) { await nightBusy; r = await nightFutCell(env, ctx); }
             if (!r.nightfut) throw new Error(lastNightErr || 'unavailable');
             return r.nightfut.state;
           })
@@ -426,8 +426,8 @@ async function handleIndex(env, ctx) {
   return { ...base, ...coins };
 }
 
-function indexBase(env, ctx) {
-  return memo('idx', TTL.index, async () => {
+async function indexBase(env, ctx) {
+  const v = await memo('idx', TTL.index, async () => {
     // 휴장일 목록을 함께 내려보낸다 — 화면이 같은 목록을 쓰게 해서 출처를 하나로 둔다.
     // (예전에는 invest/market.js 에 같은 목록을 복붙해 뒀다)
     const holidays = env.MOCK_DB ? [...(await holidaySet(env.MOCK_DB))].sort() : [];
@@ -457,11 +457,24 @@ function indexBase(env, ctx) {
       sessionType: ref ? ref.sessionType : null
     };
   });
+  // 야간선물을 아직 못 받은 응답은 3초만 캐시한다 — 15초 동안 같은 '빈 칸' 응답이 나가 칸이 사라져 보였다 (2026-10-02)
+  if (!v.nightfut && kis.enabled(env)) {
+    const hit = mem.get('idx');
+    if (hit) hit.at = Math.min(hit.at, Date.now() - (TTL.index - 3) * 1000);
+  }
+  return v;
 }
 
 /* 코스피200 야간선물 칸 (KIS). 지수 캐시(15초)와 따로 둔다 — KIS 는 초당 호출 한도가 낮아 두 번 부르는 데 2~3초 걸린다.
  * 그래서 지수 응답을 기다리게 하지 않는다: 갖고 있는 값을 바로 싣고 새 값은 뒤에서 받는다(10분 넘게 묵은 값만 기다린다).
- * 야간장 중(18:00~06:00)에는 30초, 그 밖에는 5분마다 새로 받는다. 실패하면 마지막 성공값을 쓰고 30초 뒤 다시 시도한다. */
+ * 야간장 중(18:00~06:00)에는 30초, 그 밖에는 5분마다 새로 받는다. 실패하면 마지막 성공값을 쓰고 30초 뒤 다시 시도한다.
+ * 값은 아이솔레이트 메모리에 있어서, 새로 뜬 아이솔레이트는 KIS 를 기다리다(2.5초) 빈 칸을 보냈다 — 칸이 사라졌다 나타났다 했다.
+ * 그래서 마지막 값을 KV 에도 둔다. 새 아이솔레이트는 KV 값을 먼저 싣고 KIS 는 뒤에서 받는다.
+ * KV 무료 쓰기 한도(하루 1,000건) 때문에 상태(개장 전·진행·마감)가 바뀔 때와 야간장 15분 · 그 밖 60분마다만 쓴다. */
+const NIGHT_KV = 'kis:night';
+let nightKvRead = false;   // 이 아이솔레이트가 KV 를 한 번 읽어 봤는가
+let nightKvAt = 0;         // KV 에 들어 있는 값의 시각 (읽었거나 쓴 것)
+let nightKvState = '';     // KV 에 들어 있는 값의 상태
 let lastNight = null;
 let nightAt = 0;
 let nightBusy = null;
@@ -475,15 +488,41 @@ function nightOut() {
   if (lastNight.state === 'live' && Date.now() - nightOkAt > 600000) return { nightfut: { ...lastNight, state: 'closed', tag: '지연' } };
   return { nightfut: lastNight };
 }
+async function nightFromKv(env) {
+  nightKvRead = true;
+  if (!env.STOCK_KV) return;
+  const hit = await env.STOCK_KV.get(NIGHT_KV, 'json').catch(() => null);
+  nightKvAt = hit ? hit.at : 0;
+  nightKvState = hit && hit.c ? hit.c.state : '';
+  // 90분 넘게 묵은 값은 쓰지 않는다 (진행 중 값은 nightOut 이 10분 넘으면 '지연'으로 밝힌다)
+  if (lastNight || !hit || !hit.c || Date.now() - hit.at > 90 * 60000) return;
+  lastNight = hit.c;
+  nightAt = nightOkAt = hit.at;
+}
+function nightToKv(env, ctx, nightHours) {
+  if (!env.STOCK_KV || !lastNight) return;
+  const gap = (nightHours ? 15 : 60) * 60000;
+  if (lastNight.state === nightKvState && Date.now() - nightKvAt < gap) return;
+  const c = lastNight, at = nightOkAt;
+  nightKvAt = at; nightKvState = c.state;
+  const p = env.STOCK_KV.get(NIGHT_KV, 'json').catch(() => null).then((hit) => {
+    // 다른 아이솔레이트가 같은 상태를 방금 썼으면 건너뛴다
+    if (hit && hit.c && hit.c.state === c.state && at - hit.at < gap) return;
+    return env.STOCK_KV.put(NIGHT_KV, JSON.stringify({ c, at }), { expirationTtl: 6 * 3600 });
+  }).catch((e) => console.warn('kis night KV put 실패', String((e && e.message) || e).slice(0, 120)));
+  if (ctx && ctx.waitUntil) ctx.waitUntil(p);
+}
 async function nightFutCell(env, ctx) {
   if (!kis.enabled(env)) return {};
+  if (!lastNight && !nightKvRead) await nightFromKv(env);
   const h = new Date(Date.now() + 9 * 3600 * 1000).getUTCHours();
-  const ttl = (h >= 18 || h < 6 ? 30 : 300) * 1000;
+  const nightHours = h >= 18 || h < 6;
+  const ttl = (nightHours ? 30 : 300) * 1000;
   const age = Date.now() - nightAt;
   if (lastNight && age < ttl) return nightOut();
   if (!nightBusy && Date.now() >= nightRetryAt) {
     nightBusy = kis.nightCell(env)
-      .then((c) => { lastNight = c; nightAt = nightOkAt = Date.now(); lastNightErr = ''; })
+      .then((c) => { lastNight = c; nightAt = nightOkAt = Date.now(); lastNightErr = ''; nightToKv(env, ctx, nightHours); })
       .catch((e) => {
         lastNightErr = String((e && e.message) || e).slice(0, 120);
         console.warn('kis night failed', lastNightErr);

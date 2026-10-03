@@ -354,6 +354,8 @@
 .mk-rk-seg .seg.on { background: none; color: var(--text); border-bottom-color: var(--primary); }
 .mk-rk-dot { display: inline-block; width: 6px; height: 6px; margin-left: 5px; vertical-align: 5px; background: var(--accent); }
 .mk-rk-dot[hidden] { display: none; }
+/* 새로 생긴 화면 — 버튼 글자 옆 빨간 ! (한 번 열어 보면 사라진다, mock.js newMarkHtml) */
+.mk-new { margin-left: 3px; color: var(--accent); font-weight: 900; font-style: normal; }
 .mk-share .m-head .m-hint { margin-left: 0; }
 .mk-share .m-head .mk-share-btn { margin-left: auto; border-color: var(--primary); color: var(--primary-light); font-weight: 800; }
 .mk-share-empty { font-size: .82rem; color: var(--text3); padding: 18px 14px; border: 1px dashed var(--border); text-align: center; }
