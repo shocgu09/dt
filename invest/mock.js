@@ -1379,12 +1379,9 @@ var Mock = (function () {
     show('rkBoard', !share && !ai); show('rkHall', !share && !ai); show('rkShare', share); show('rkAi', ai);
     show('rkNick', !share && !ai);   // 닉네임 바꾸기는 순위 화면에만
     updateShareDot();               // 화면을 바꾸면 점도 그 화면 기준으로 (예전엔 다음 목록 갱신 때까지 이전 상태로 남았다)
-    if (aiSub) markNewSeen('ai');
   }
-  /* 새로 생긴 화면 표시 — 버튼 옆 빨간 '!'. 한 번 열어 보면 이 기기에서는 더 보이지 않는다.
-   * 생긴 날부터 2주가 지나면 열어 보지 않았어도 모든 회원에게서 사라진다 (! 가 쌓이지 않게).
-   * 새 글 점(mk-rk-dot)과 다르다: 점은 안 읽은 글, '!' 는 아직 안 열어 본 새 기능 */
-  var NEW_MARK_KEY = 'dt-invest-new-seen:';
+  /* 새로 생긴 화면 표시 — 버튼 옆 빨간 '!'. 열어 봐도 계속 보이고, 생긴 날부터 2주가 지나면 모든 회원에게서 사라진다.
+   * 새 글 점(mk-rk-dot)과 다르다: 점은 안 읽은 글, '!' 는 새로 생긴 기능 */
   var NEW_MARK_SINCE = { ai: '2026-10-02' };      // 기능이 생긴 날 (한국 날짜) — 새 표시를 달 때 여기에 추가
   var NEW_MARK_DAYS = 14;
   function newMarkExpired(id) {
@@ -1393,14 +1390,8 @@ var Mock = (function () {
     var start = Date.parse(since + 'T00:00:00+09:00');
     return !(Date.now() < start + NEW_MARK_DAYS * 86400000);     // 10/2 → 10/16 00:00 부터 숨김
   }
-  function newMarkSeen(id) { try { return !!localStorage.getItem(NEW_MARK_KEY + id); } catch (e) { return false; } }
   function newMarkHtml(id) {
-    return newMarkExpired(id) || newMarkSeen(id) ? '' : '<b class="mk-new" data-new="' + id + '" title="새로 생겼어요" aria-label="새 기능">!</b>';
-  }
-  function markNewSeen(id) {
-    if (newMarkSeen(id)) return;
-    try { localStorage.setItem(NEW_MARK_KEY + id, '1'); } catch (e) { /* 저장이 막혀 있으면 이번 화면에서만 숨긴다 */ }
-    document.querySelectorAll('.mk-new[data-new="' + id + '"]').forEach(function (e) { e.remove(); });
+    return newMarkExpired(id) ? '' : '<b class="mk-new" data-new="' + id + '" title="새로 생겼어요" aria-label="새 기능">!</b>';
   }
   /* 새 글 표시 — 마지막으로 커뮤니티를 본 뒤 남이 올린 글이 있으면 탭에 점을 찍는다 (이 기기 기준).
    * 회원 글과 AI 글을 따로 기억하고, 서버가 알려 주는 진행 중 시즌의 '남이 쓴 최근 글 시각'(latest)과 비교한다.
