@@ -693,14 +693,12 @@ function movingAverage(bars, n) {
 
 /**
  * 최고·최저 지점 표시 (간단 보기 전용).
- * 선이 종가로 그려지므로 점·글자 모두 선 위에서 가장 높은/낮은 종가를 쓴다.
- * 예전엔 고가·저가가 가장 큰 봉을 골라 그 봉의 고가를 적었는데, 개장 직후처럼 봉이 몇 개 없을 때
- * '최고 1,102.06' 점이 1,095.38 끝점보다 아래에 찍혔다 (2026-10-02 마이크론). 차트 위 '최고/최저'(#chartHiLo)는 고가·저가 기준 그대로.
+ * 점은 해당 봉의 종가 선 위에 찍고, 글자는 그 봉의 실제 고가/저가를 쓴다 (상단 "최고/최저" 라벨과 일치).
  * 글자는 차트 그리는 영역 안으로 밀어 넣는다 — 첫 봉·마지막 봉에 걸려도 "129,000"이 "29,000"으로 잘리지 않는다.
  */
 function makeHiLoOverlay(container, chart, series, upColor, downColor, fmt) {
   fmt = fmt || function (p) { return Math.round(p).toLocaleString('ko-KR'); };
-  var pts = [], hiIdx = -1, loIdx = -1, raf = 0, dead = false;      // pts: [{ t, c }] — 선에 그려진 점
+  var bars = [], hiIdx = -1, loIdx = -1, raf = 0, dead = false;
 
   if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
   var layer = document.createElement('div');
@@ -721,10 +719,11 @@ function makeHiLoOverlay(container, chart, series, upColor, downColor, fmt) {
   container.appendChild(layer);
 
   function place(p, idx, above, plotW, plotH) {
-    var b = pts[idx], x = null, y = null;
+    var b = bars[idx], x = null, y = null;
     if (b) {
-      x = chart.timeScale().timeToCoordinate(b.t);
-      y = series.priceToCoordinate(b.c);
+      x = chart.timeScale().timeToCoordinate(b._t);
+      var d = series.dataByIndex ? series.dataByIndex(idx) : null;
+      y = series.priceToCoordinate(d && d.value != null ? d.value : b.c);
     }
     // 스크롤·줌으로 그 봉이 화면 밖이면 숨긴다
     if (x == null || y == null || x < 0 || x > plotW || y < 0 || y > plotH) {
@@ -748,7 +747,7 @@ function makeHiLoOverlay(container, chart, series, upColor, downColor, fmt) {
     var plotW = ts.width(), plotH = container.clientHeight - ts.height();
     layer.style.width = plotW + 'px';
     layer.style.height = Math.max(0, plotH) + 'px';
-    var show = pts.length > 2 && hiIdx !== loIdx;
+    var show = bars.length > 2 && hiIdx !== loIdx;
     layer.style.display = show ? '' : 'none';
     if (!show) return;
     place(hi, hiIdx, true, plotW, plotH);
@@ -760,30 +759,19 @@ function makeHiLoOverlay(container, chart, series, upColor, downColor, fmt) {
   chart.timeScale().subscribeVisibleLogicalRangeChange(refresh);
   if (chart.timeScale().subscribeSizeChange) chart.timeScale().subscribeSizeChange(refresh);
 
-  function pick() {
-    hiIdx = 0; loIdx = 0;
-    pts.forEach(function (p, i) {
-      if (p.c > pts[hiIdx].c) hiIdx = i;
-      if (p.c < pts[loIdx].c) loIdx = i;
-    });
-    if (pts.length) {
-      hi.tag.textContent = '최고 ' + fmt(pts[hiIdx].c);
-      lo.tag.textContent = '최저 ' + fmt(pts[loIdx].c);
-    }
-    refresh();
-  }
-
   return {
     setBars: function (list) {
-      pts = (list || []).map(function (b) { return { t: b._t, c: b.c }; });
-      pick();
-    },
-    /** 실시간 끝점 — 현재가가 지금까지의 최고·최저 종가를 넘으면 표시가 끝점으로 옮겨 간다 */
-    setLast: function (time, close) {
-      var last = pts[pts.length - 1];
-      if (last && JSON.stringify(last.t) === JSON.stringify(time)) last.c = close;
-      else pts.push({ t: time, c: close });
-      pick();
+      bars = list || [];
+      hiIdx = 0; loIdx = 0;
+      bars.forEach(function (b, i) {
+        if (b.h > bars[hiIdx].h) hiIdx = i;
+        if (b.l < bars[loIdx].l) loIdx = i;
+      });
+      if (bars.length) {
+        hi.tag.textContent = '최고 ' + fmt(bars[hiIdx].h);
+        lo.tag.textContent = '최저 ' + fmt(bars[loIdx].l);
+      }
+      refresh();
     },
     refresh: refresh,
     dispose: function () {
@@ -978,7 +966,6 @@ async function renderChart(container, bars, tf, mode, opts) {
             color: (lastBar.close >= lastBar.open ? up : down) + '55'
           });
         }
-        if (hiloOverlay) hiloOverlay.setLast(lastBar.time, lastBar.close);   // 끝점이 새 최고·최저가 될 수 있다
       } catch (e) { /* 시간 역행 등은 무시 */ }
       if (hiloOverlay) hiloOverlay.refresh();            // 끝점이 움직이면 세로축이 다시 잡힐 수 있다
     }
