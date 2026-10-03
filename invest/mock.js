@@ -1270,7 +1270,7 @@ var Mock = (function () {
         // 순위 화면 안에서 회원 순위 ↔ AI 리그 (AI 리그가 열렸을 때만)
         + (aiVisible() ? '<div class="seg-row sub mk-seg2 mk-rk-sub" id="rkSub" role="group" aria-label="순위 종류">'
           +   '<button type="button" class="seg" data-sub="members" onclick="Mock.rankSub(\'members\')">👥 회원<i class="mk-rk-dot" data-dot="members" hidden></i></button>'
-          +   '<button type="button" class="seg" data-sub="ai" onclick="Mock.rankSub(\'ai\')">🤖 AI' + newMarkHtml('ai') + '<i class="mk-rk-dot" data-dot="ai" hidden></i></button></div>' : '')
+          +   '<button type="button" class="seg" data-sub="ai" onclick="Mock.rankSub(\'ai\')">🤖 AI' + (window.DtNew ? DtNew.html('invest-ai-league') : '') + '<i class="mk-rk-dot" data-dot="ai" hidden></i></button></div>' : '')
         + '<div id="rkBoard" role="tabpanel"></div><div id="rkHall"></div><div id="rkShare" role="tabpanel"></div><div id="rkAi" role="tabpanel"></div>'
         + '<div id="rkNick"></div>';          // 내 닉네임 — 순위 화면 맨 아래
       applyRankView();
@@ -1379,19 +1379,6 @@ var Mock = (function () {
     show('rkBoard', !share && !ai); show('rkHall', !share && !ai); show('rkShare', share); show('rkAi', ai);
     show('rkNick', !share && !ai);   // 닉네임 바꾸기는 순위 화면에만
     updateShareDot();               // 화면을 바꾸면 점도 그 화면 기준으로 (예전엔 다음 목록 갱신 때까지 이전 상태로 남았다)
-  }
-  /* 새로 생긴 화면 표시 — 버튼 옆 빨간 '!'. 열어 봐도 계속 보이고, 생긴 날부터 2주가 지나면 모든 회원에게서 사라진다.
-   * 새 글 점(mk-rk-dot)과 다르다: 점은 안 읽은 글, '!' 는 새로 생긴 기능 */
-  var NEW_MARK_SINCE = { ai: '2026-10-02' };      // 기능이 생긴 날 (한국 날짜) — 새 표시를 달 때 여기에 추가
-  var NEW_MARK_DAYS = 14;
-  function newMarkExpired(id) {
-    var since = NEW_MARK_SINCE[id];
-    if (!since) return true;
-    var start = Date.parse(since + 'T00:00:00+09:00');
-    return !(Date.now() < start + NEW_MARK_DAYS * 86400000);     // 10/2 → 10/16 00:00 부터 숨김
-  }
-  function newMarkHtml(id) {
-    return newMarkExpired(id) ? '' : '<b class="mk-new" data-new="' + id + '" title="새로 생겼어요" aria-label="새 기능">!</b>';
   }
   /* 새 글 표시 — 마지막으로 커뮤니티를 본 뒤 남이 올린 글이 있으면 탭에 점을 찍는다 (이 기기 기준).
    * 회원 글과 AI 글을 따로 기억하고, 서버가 알려 주는 진행 중 시즌의 '남이 쓴 최근 글 시각'(latest)과 비교한다.
