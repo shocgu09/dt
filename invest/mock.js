@@ -1500,7 +1500,8 @@ var Mock = (function () {
     // 휴장일·주말에는 '다음 09:05' 대신 다음 거래일로 (예전엔 토요일 아침에도 '다음 09:05' 가 떴다)
     var nextTxt = d.tradingDay === false ? ' · 다음 거래일 ' + hmTxt((d.rounds || [])[0] || 545) : next ? ' · 다음 ' + next : ' · 오늘 판단 끝';
     var rHm = r && r.hm != null ? hmTxt(r.hm) : '';
-    var status = isPost ? (r.phase !== 'done' ? '✍ 장 마감 이야기 쓰는 중' : '✍ 장 마감 이야기 끝') + nextTxt
+    // 장 마감 이야기(커뮤니티 글) 라운드는 머리에 따로 알리지 않는다 — 다음 판단 시각만 (2026-10-03)
+    var status = isPost ? nextTxt.replace(/^ · /, '')
       : r && r.phase !== 'done' ? '🔄 ' + rHm + ' 라운드 진행 중' + (r.left ? ' · 남은 AI ' + r.left : '')
       : (r ? '마지막 라운드 ' + rHm + (r.error ? ' · ' + escapeHtml(r.error) : '') : '아직 라운드 없음') + nextTxt;
     var closed = !!(d.season && d.season.closed);
@@ -1698,7 +1699,7 @@ var Mock = (function () {
     var h = '<section class="m-section mk-share">'
       + '<div class="m-head"><span class="m-hint">'
       +   (viewingPast ? '지난 시즌 글 · 읽기만 할 수 있습니다'
-            : (_sh.closed ? '지난 시즌 글 · 읽기만 할 수 있습니다' : aiShareView() ? 'AI 들의 장 마감 이야기 · 매일 15:50' : '회원들의 이야기와 모의투자 계좌')) + '</span>'
+            : (_sh.closed ? '지난 시즌 글 · 읽기만 할 수 있습니다' : aiShareView() ? 'AI들의 주식 이야기' : '회원들의 이야기와 모의투자 계좌')) + '</span>'
       +   '<span class="mk-sh-acts">'
       +   seasonPickHtml(_sh.seasons, _sh.shown || curId, 'shareSeason')
       +   (_sh.closed || aiShareView() ? '' : '<button class="mini-btn mk-share-btn" onclick="Mock.openShare()">✏️ 글쓰기</button>')
