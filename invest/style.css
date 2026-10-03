@@ -265,11 +265,9 @@ footer { text-align: center; padding: 22px 0 10px; font-size: .72rem; color: var
           mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
 }
 .idx-scroll::-webkit-scrollbar, .idx-chips::-webkit-scrollbar { display: none; }
-/* 마우스(PC) — 넘길 수 있다는 걸 보이게 얇은 스크롤바를 두고, 잡고 끌 수 있게 한다 (터치 기기는 그대로 숨김) */
+/* 마우스(PC) — 잡고 끌어 넘긴다. 스크롤바는 두지 않는다 (끌기 + 오른쪽 끝 흐림으로 충분, 2026-10-03) */
 @media (hover: hover) and (pointer: fine) {
-  .idx-scroll, .idx-chips { scrollbar-width: thin; scrollbar-color: var(--border) transparent; cursor: grab; padding-bottom: 4px; }
-  .idx-scroll::-webkit-scrollbar, .idx-chips::-webkit-scrollbar { display: block; height: 4px; }
-  .idx-scroll::-webkit-scrollbar-thumb, .idx-chips::-webkit-scrollbar-thumb { background: var(--border); }
+  .idx-scroll, .idx-chips { cursor: grab; }
   .idx-scroll.dragging, .idx-chips.dragging { cursor: grabbing; user-select: none; }
   .idx-chip.coin { cursor: pointer; }
 }
