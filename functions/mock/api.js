@@ -661,6 +661,7 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
       // uid 는 내보내지 않는다 — 순위표에는 닉네임만 (key 는 갱신 간 순위 변동 표시용 해시). 실명은 관리자에게만
       rows: board.rows.map((r) => ({ key: rowKey(r.uid), rank: r.rank, nickname: nicks.get(r.uid) || '회원',
         ...(isAdmin ? { realName: r.nickname } : {}), equity: r.equity, principal: season.seed + (r.deposits || 0), fills: r.fills, orders: r.orders, me: r.uid === uid,
+        joinedYmd: r.joined_at ? E.kstNow(r.joined_at).ymd : null,      // 시즌에 참가한 날 — 화면 'M/D 참가'
         // 신용·담보대출을 쓰는 계좌 — 순자산은 빚을 뺀 값이지만 빌린 돈으로 굴리는 중임을 알 수 있게
         credit: r.debt > 0 || r.cash < 0 })),
       me: me ? { rank: me.rank, equity: me.equity, principal: season.seed + (me.deposits || 0) } : null

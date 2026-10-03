@@ -1204,7 +1204,7 @@ var Mock = (function () {
           + '<span class="mk-rank-no">' + medal + '</span>'
           + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(r.nickname) + (r.realName ? ' <small class="mk-real" title="실명 (관리자에게만 보임)">' + escapeHtml(r.realName) + '</small>' : '') + (r.me ? ' <i class="mk-tag">나</i>' : '')
           +   (r.credit ? ' <i class="mk-tag cr" title="신용·담보대출·미수 사용 중 — 순자산은 빌린 돈을 뺀 금액">신용</i>' : '') + '</span>'
-          +   '<span class="mk-pos-sub">주문 ' + fmtNum(r.orders != null ? r.orders : r.fills) + '건</span></span>'
+          +   '<span class="mk-pos-sub">' + (r.joinedYmd ? md(r.joinedYmd) + ' 참가 · ' : '') + '주문 ' + fmtNum(r.orders != null ? r.orders : r.fills) + '건</span></span>'
           + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(r.equity) + '</span>'
           +   '<span class="mk-pos-pnl ' + signClass(rr) + '">' + fmtRate(rr) + '</span></span>'
           + '</div>';
