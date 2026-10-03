@@ -1262,7 +1262,8 @@ async function aiLeagueFresh(env, db, season, now, isAdmin) {
       principal: v.principal, realizedPnl: v.realizedPnl, buyFees: v.buyFees,
       positions: v.positions.map((p) => ({ ...p, plan: (({ thesis, stop, target, hold_days, opened_ymd }) => ({ thesis, stop, target, holdDays: hold_days, openedYmd: opened_ymd }))(th.find((x) => x.code === p.code) || {}) })),
       openOrders: v.openOrders,
-      rounds: u.n || 0, fails: u.fails || 0, neurons: isAdmin ? (u.neurons || 0) : undefined
+      rounds: u.n || 0, fails: u.fails || 0, neurons: isAdmin ? (u.neurons || 0) : undefined,
+      joinedYmd: a.joined_at ? E.kstNow(a.joined_at).ymd : null      // 리그에 들어온 날 — 화면 'M/D 참가'
     };
   }).sort((x, y) => y.equity - x.equity);
   const journal = jrRows.map((j) => aiJournalRow(j, isAdmin));

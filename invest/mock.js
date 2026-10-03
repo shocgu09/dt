@@ -1522,7 +1522,7 @@ var Mock = (function () {
       var row = '<button class="mk-rank mk-ai-row" aria-expanded="' + open + '" onclick="Mock.aiToggle(\'' + escapeJsArg(b.id) + '\')">'
         + '<span class="mk-rank-no">' + (['🥇', '🥈', '🥉'][i] || i + 1) + '</span>'
         + '<span class="mk-ord-main"><span class="mk-pos-name">' + aiLogo(b.logo) + escapeHtml(b.maker || b.name) + ' <small class="mk-ai-model">' + escapeHtml(b.name) + '</small></span>'
-        +   '<span class="mk-pos-sub">보유 ' + b.positions.length + '종목 · 현금 ' + cashPct + '% · 판단 ' + fmtNum(b.rounds) + '회' + (b.fails ? ' · 실패 ' + b.fails : '') + (b.neurons != null ? ' · ' + fmtNum(b.neurons) + '뉴런' : '') + '</span></span>'
+        +   '<span class="mk-pos-sub">' + (b.joinedYmd ? md(b.joinedYmd) + ' 참가 · ' : '') + '보유 ' + b.positions.length + '종목 · 현금 ' + cashPct + '% · 판단 ' + fmtNum(b.rounds) + '회' + (b.fails ? ' · 실패 ' + b.fails : '') + (b.neurons != null ? ' · ' + fmtNum(b.neurons) + '뉴런' : '') + '</span></span>'
         + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(b.equity) + '</span><span class="mk-pos-pnl ' + signClass(rr) + '">' + fmtRate(rr) + '</span></span></button>';
       if (!open) return card + row + '</div>';
       // 내 계좌 화면과 같은 모양 — 요약 카드 · 📦 보유 종목 · ⏳ 미체결 (AI 계좌라 정정·취소 버튼은 없다)
