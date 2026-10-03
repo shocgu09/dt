@@ -1129,11 +1129,18 @@ async function deleteBriefing(id) {
   }
 }
 
+// 관리 탭 게시된 브리핑 — 처음엔 최근 몇 개만, 더보기로 펼친다 (최근 50개를 한꺼번에 늘어놓아 관리 탭이 길었다)
+var ADMIN_BRIEF_SHOW = 5;
+var _adminBriefAll = false;
+function toggleAdminBriefings() { _adminBriefAll = !_adminBriefAll; renderAdminBriefingList(); }
+
 function renderAdminBriefingList() {
   var el = document.getElementById('adminBriefingList');
   if (!el) return;
   if (!briefings.length) { el.innerHTML = '<div class="empty">게시된 브리핑이 없습니다.</div>'; return; }
-  el.innerHTML = briefings.map(function(p) {
+  var more = briefings.length > ADMIN_BRIEF_SHOW;
+  var list = more && !_adminBriefAll ? briefings.slice(0, ADMIN_BRIEF_SHOW) : briefings;
+  el.innerHTML = list.map(function(p) {
     return '<div class="admin-list-item">'
       + '<div class="admin-list-info">'
       + '<div class="admin-list-title">' + (p.pinned ? '📌 ' : '') + escapeHtml(p.title || '') + '</div>'
@@ -1143,7 +1150,9 @@ function renderAdminBriefingList() {
       + '<button class="mini-btn" onclick="togglePin(\'' + p.id + '\')">' + (p.pinned ? '고정 해제' : '고정') + '</button>'
       + '<button class="mini-btn danger" onclick="deleteBriefing(\'' + p.id + '\')">삭제</button>'
       + '</div>';
-  }).join('');
+  }).join('')
+    + (more ? '<button class="briefing-toggle-btn" onclick="toggleAdminBriefings()">'
+      + (_adminBriefAll ? '접기 ▴' : '더보기 ▾ (' + (briefings.length - ADMIN_BRIEF_SHOW) + '개 더)') + '</button>' : '');
 }
 
 /* ===== 관리자: 설정 ===== */
