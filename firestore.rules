@@ -97,7 +97,7 @@ service cloud.firestore {
         && d.get('likedBy', []).size() == 0
         && (d.get('parentId', null) == null || isAutoId(d.get('parentId', null)))
         && d.createdAt == request.time
-        && (d.get('isAdmin', false) == false || isAdmin());
+        && (d.get('isAdmin', false) == false || isSuperAdmin());   // 재테크 운영 표시는 슈퍼관리자만 (2026-10-03)
     }
 
     // 좋아요 토글 — likedBy 에 본인 uid 하나만 넣거나 빼고, likes 는 정확히 ±1
@@ -464,12 +464,12 @@ service cloud.firestore {
 
     // ── invest_briefings 컬렉션 (관리자 시황 브리핑) ──────────
     // - 읽기는 게스트(익명 로그인)까지 — 시황은 비회원에게도 연다 (2026-10-01). 댓글은 아래처럼 회원만
-    // - 작성·수정·삭제는 관리자
+    // - 작성·수정·삭제는 슈퍼관리자 (재테크 운영 권한은 슈퍼관리자만 — 2026-10-03)
     // - 회원은 commentCount만, 그것도 ±1 로만 변경 가능 (댓글 작성/삭제 시)
     match /invest_briefings/{briefingId} {
       allow read: if isAuth();
-      allow create, delete: if isAdmin();
-      allow update: if isAdmin()
+      allow create, delete: if isSuperAdmin();
+      allow update: if isSuperAdmin()
         || (isRealUser()
             && request.resource.data.diff(resource.data)
                  .affectedKeys().hasOnly(['commentCount'])
@@ -492,17 +492,17 @@ service cloud.firestore {
                 && request.resource.data.body.size() <= 1000)
                || validLikeToggle()
              );
-        allow delete: if isAdmin()
+        allow delete: if isSuperAdmin()
           || (isRealUser() && resource.data.authorUid == request.auth.uid);
       }
     }
 
     // ── stock_watchlist 컬렉션 (내 관심종목) ──────────────────
-    // - 본인 것만 읽기/쓰기 (관리자는 열람만), 최대 50종목 (클라이언트 WATCHLIST_MAX 와 동일)
+    // - 본인 것만 읽기/쓰기 (슈퍼관리자는 열람만), 최대 50종목 (클라이언트 WATCHLIST_MAX 와 동일)
     // - coins: 관심 코인(업비트 원화 마켓 코드) — 주식 codes 와 따로, 같은 상한
     // - us: 관심 미국 주식(네이버 reuters 코드) — 같은 상한
     match /stock_watchlist/{uid} {
-      allow read: if isOwner(uid) || isAdmin();
+      allow read: if isOwner(uid) || isSuperAdmin();
       allow write: if isOwner(uid)
         && request.resource.data.get('codes', []) is list
         && request.resource.data.get('codes', []).size() <= 50
@@ -516,10 +516,10 @@ service cloud.firestore {
     }
 
     // ── invest_config 컬렉션 (재테크 설정·면책·상시구독 종목) ──
-    // - 실제 회원 읽기, 관리자만 수정
+    // - 실제 회원 읽기, 슈퍼관리자만 수정
     match /invest_config/{docId} {
       allow read: if isRealUser();
-      allow write: if isAdmin();
+      allow write: if isSuperAdmin();
     }
 
   }

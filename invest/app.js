@@ -59,7 +59,8 @@ try {
       _shownFor = key;
       if (role) {
         isMember = true;
-        isAdmin = (role === 'admin' || role === 'superadmin');
+        // 재테크 운영 권한(관리 탭 · 브리핑 작성 · 실명 보기 · 댓글 삭제 …)은 슈퍼관리자만 — 관리자는 일반 회원과 같다 (2026-10-03)
+        isAdmin = role === 'superadmin';
         if (typeof purgeLegacyRecent === 'function') purgeLegacyRecent();
         myName = (data && (data.name || data.displayName)) || user.displayName || '회원';
       }
@@ -258,7 +259,7 @@ function showToast(text) {
 /* ===== 모의투자 모드 =====
  * 코드(mock.js · mock.css)는 모드를 켤 때 처음 불러온다 — 쓰지 않는 회원에게는 아무 변화가 없다.
  */
-var MOCK_VER = '135';
+var MOCK_VER = '136';
 var _mockLoading = null;
 
 function loadMockAssets() {
@@ -514,7 +515,7 @@ async function ensureNicknames(uids) {
 function commentAuthorHtml(c) {
   var nick = _nickMap[c.authorUid];
   return '<span class="comment-author">' + escapeHtml(nick || '회원') + '</span>'
-    + (isAdmin && c.authorName ? '<span class="comment-real" title="실명 (관리자에게만 보임)">' + escapeHtml(c.authorName) + '</span>' : '');
+    + (isAdmin && c.authorName ? '<span class="comment-real" title="실명 (슈퍼관리자에게만 보임)">' + escapeHtml(c.authorName) + '</span>' : '');
 }
 
 async function loadComments(id) {

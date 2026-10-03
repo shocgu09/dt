@@ -605,7 +605,8 @@ async function handleBriefingNotify(request, env) {
   if (!auth.ok) return jsonResponse({ error: 'Unauthorized' }, 401);
   const token = bearerToken(request);
   const prof = await profileOf(env, auth.uid, token);
-  if (!['admin', 'superadmin'].includes(prof.role)) return jsonResponse({ error: 'Forbidden' }, 403);
+  // 재테크 운영(브리핑 게시 · 알림)은 슈퍼관리자만 (2026-10-03) — 화면 invest/app.js 와 같게
+  if (prof.role !== 'superadmin') return jsonResponse({ error: 'Forbidden' }, 403);
   const b = await request.json().catch(() => ({}));
   const id = String(b.briefingId || '');
   if (!/^[A-Za-z0-9]{10,40}$/.test(id)) return jsonResponse({ error: 'bad id' }, 400);

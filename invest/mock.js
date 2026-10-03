@@ -1202,7 +1202,7 @@ var Mock = (function () {
         _prevRank[k] = r.rank;
         return '<div class="mk-rank' + (r.me ? ' me' : '') + move + '">'
           + '<span class="mk-rank-no">' + medal + '</span>'
-          + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(r.nickname) + (r.realName ? ' <small class="mk-real" title="실명 (관리자에게만 보임)">' + escapeHtml(r.realName) + '</small>' : '') + (r.me ? ' <i class="mk-tag">나</i>' : '')
+          + '<span class="mk-ord-main"><span class="mk-pos-name">' + escapeHtml(r.nickname) + (r.realName ? ' <small class="mk-real" title="실명 (슈퍼관리자에게만 보임)">' + escapeHtml(r.realName) + '</small>' : '') + (r.me ? ' <i class="mk-tag">나</i>' : '')
           +   (r.credit ? ' <i class="mk-tag cr" title="신용·담보대출·미수 사용 중 — 순자산은 빌린 돈을 뺀 금액">신용</i>' : '') + '</span>'
           +   '<span class="mk-pos-sub">' + (r.joinedYmd ? md(r.joinedYmd) + ' 참가 · ' : '') + '주문 ' + fmtNum(r.orders != null ? r.orders : r.fills) + '건</span></span>'
           + '<span class="mk-pos-num"><span class="mk-pos-val">' + fmtNum(r.equity) + '</span>'
@@ -1245,7 +1245,7 @@ var Mock = (function () {
                 +   (si.participants ? '<span class="mk-hall-n">' + fmtNum(si.participants) + '명 참가</span>' : '') + '</div>'
                 + by[k].rows.slice(0, 3).map(function (r) {
                     return '<div class="mk-hall-row' + (r.me ? ' me' : '') + '"><span>' + (['🥇', '🥈', '🥉'][r.rank - 1] || r.rank) + ' ' + escapeHtml(r.nickname)
-                      + (r.realName ? ' <small class="mk-real" title="실명 (관리자에게만 보임)">' + escapeHtml(r.realName) + '</small>' : '')
+                      + (r.realName ? ' <small class="mk-real" title="실명 (슈퍼관리자에게만 보임)">' + escapeHtml(r.realName) + '</small>' : '')
                       + (r.me ? ' <i class="mk-tag">나</i>' : '') + '</span>'
                       + '<span>' + fmtNum(r.equity) + '원 (' + fmtRate((r.equity - (r.principal || r.seed)) / (r.principal || r.seed) * 100) + ')</span></div>';
                   }).join('')
@@ -1505,7 +1505,7 @@ var Mock = (function () {
       : (r ? '마지막 라운드 ' + rHm + (r.error ? ' · ' + escapeHtml(r.error) : '') : '아직 라운드 없음') + nextTxt;
     var closed = !!(d.season && d.season.closed);
     if (closed) status = '시즌 종료 · 최종 순위';
-    var h = '<section class="m-section"><div class="m-head mk-ai-head"><h3>🤖 ' + escapeHtml((d.season && d.season.name) || '') + ' AI 리그' + (d.mode === 'admin' ? ' <i class="mk-tag">시험 중 · 관리자만</i>' : '') + '</h3>'
+    var h = '<section class="m-section"><div class="m-head mk-ai-head"><h3>🤖 ' + escapeHtml((d.season && d.season.name) || '') + ' AI 리그' + (d.mode === 'admin' ? ' <i class="mk-tag">시험 중 · 슈퍼관리자만</i>' : '') + '</h3>'
       + aiRulesTip(d)
       // 지금 한 번 판단시키기 — 슈퍼관리자만, 작게. 정규장 밖이면 시간외 지정가로 넣는다
       + (admin && !closed ? '<button class="mk-ai-run" onclick="Mock.aiRun(this)"' + (_aiBusy ? ' disabled' : '') + ' title="지금 4명이 판단하고 주문까지 넣습니다 (정규장 밖은 시간외 지정가)">▶ 지금 판단</button>' : '')
@@ -1756,7 +1756,7 @@ var Mock = (function () {
     var who = s.ai ? aiLogo(s.ai.logo) + '<b class="mk-sc-who">' + escapeHtml(s.ai.maker) + '</b> <small class="mk-ai-model">' + escapeHtml(s.ai.name) + '</small> <i class="mk-tag">🤖 AI</i>'
       : '<b class="mk-sc-who">' + escapeHtml(s.nickname) + '</b>';
     var h = '<article class="mk-sc" id="sc-' + s.id + '">'
-      + '<div class="mk-sc-top"><div class="mk-sc-id">' + who + (s.realName ? ' <small class="mk-real" title="실명 (관리자에게만 보임)">' + escapeHtml(s.realName) + '</small>' : '')
+      + '<div class="mk-sc-top"><div class="mk-sc-id">' + who + (s.realName ? ' <small class="mk-real" title="실명 (슈퍼관리자에게만 보임)">' + escapeHtml(s.realName) + '</small>' : '')
       +   (s.mine ? '<i class="mk-tag">나</i>' : '') + '</div>' + rank + '</div>'
       + '<div class="mk-sc-meta">' + (c.seasonName ? '<span class="mk-sc-season">' + escapeHtml(c.seasonName) + '</span>' : '')
       +   escapeHtml(kstHM(c.at || s.createdAt) + (c.kind === 'text' ? '' : (c.closing ? ' 종가' : '') + ' 기준')) + '</div>';
@@ -1819,7 +1819,7 @@ var Mock = (function () {
     else if (list.err) h += '<div class="mk-sc-none">' + escapeHtml(list.err) + '</div>';
     else if (!list.length) h += '<div class="mk-sc-none">' + (_sh.closed ? '댓글이 없습니다' : '첫 댓글을 남겨 보세요') + '</div>';
     else h += list.map(function (c) {
-      return '<div class="mk-sc-c"><div class="mk-sc-ch"><b>' + escapeHtml(c.nickname) + '</b>' + (c.realName ? ' <small class="mk-real" title="실명 (관리자에게만 보임)">' + escapeHtml(c.realName) + '</small>' : '') + '<span class="mk-sc-ct">' + escapeHtml(kstHM(c.createdAt)) + '</span>'
+      return '<div class="mk-sc-c"><div class="mk-sc-ch"><b>' + escapeHtml(c.nickname) + '</b>' + (c.realName ? ' <small class="mk-real" title="실명 (슈퍼관리자에게만 보임)">' + escapeHtml(c.realName) + '</small>' : '') + '<span class="mk-sc-ct">' + escapeHtml(kstHM(c.createdAt)) + '</span>'
         + (c.canDelete ? '<button type="button" class="mk-sc-cdel" onclick="Mock.deleteComment(\'' + s.id + '\',\'' + c.id + '\')" aria-label="댓글 삭제">삭제</button>' : '')
         + '</div><div class="mk-sc-cb">' + linkText(c.body) + '</div></div>';
     }).join('');

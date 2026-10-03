@@ -267,12 +267,14 @@ export async function handleMock(request, env, user, token, url, now = Date.now(
   const profile = await profileOf(env, uid, token);
   if (profile.transient) throw new HttpError(503, '회원 확인이 지연되고 있습니다. 잠시 후 다시 시도하세요');
   if (!profile.role) throw new HttpError(403, 'DT Club 회원만 이용할 수 있습니다');
-  const isAdmin = profile.role === 'admin' || profile.role === 'superadmin';
+  // 재테크 운영 권한은 슈퍼관리자만 (2026-10-03 사용자 결정) — 관리자(admin)는 일반 회원과 같다.
+  // 아래 isAdmin(실명 보기 · 남의 글 삭제 · 시즌 관리 · 시험 모드 미리보기 …)도 슈퍼관리자일 때만 true
   const isSuper = profile.role === 'superadmin';
+  const isAdmin = isSuper;
 
   // ── 관리자 ──
   if (path.startsWith('/admin/')) {
-    if (!isAdmin) throw new HttpError(403, '관리자만 가능합니다');
+    if (!isAdmin) throw new HttpError(403, '슈퍼관리자만 가능합니다');
     // AI 리그 — 모드 바꾸기 · 지금 한 번 판단시키기는 슈퍼관리자만 (2026-10-02 결정)
     if (path.startsWith('/admin/ai/') && !isSuper) throw new HttpError(403, '슈퍼관리자만 가능합니다');
     if (path === '/admin/ai/mode' && method === 'POST') {
