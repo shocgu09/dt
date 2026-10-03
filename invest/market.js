@@ -1168,12 +1168,24 @@ var InfoTip = (function () {
     if (cur && cur !== el) cur.removeAttribute('aria-describedby');
     cur = el; mode = how;
     el.setAttribute('aria-describedby', 'infoPop');
-    // 아래에 띄우고, 넘치면 위로. 좌우는 화면 안으로 끌어온다
+    // 아래에 띄우고, 넘치면 위로. 좌우는 화면 안으로 끌어온다.
+    // 위·아래 어느 쪽에도 다 안 들어가면 넓은 쪽에 그 높이만큼만 띄우고 창 안에서 스크롤한다 —
+    // 창이 화면에 고정(fixed)이라 페이지를 내려도 따라 내려가지 않아, 긴 설명(AI 매매 규칙)의 끝을 볼 수 없었다 (2026-10-03)
+    p.style.maxHeight = '';
+    p.scrollTop = 0;
     var r = el.getBoundingClientRect();
     var w = p.offsetWidth, h = p.offsetHeight, gap = 6, m = 8;
     var left = Math.max(m, Math.min(window.innerWidth - w - m, r.left + r.width / 2 - w / 2));
-    var top = r.bottom + gap;
-    if (top + h > window.innerHeight - m && r.top - gap - h > m) top = r.top - gap - h;
+    var below = window.innerHeight - r.bottom - gap - m, above = r.top - gap - m;
+    var top;
+    if (h <= below) top = r.bottom + gap;
+    else if (h <= above) top = r.top - gap - h;
+    else {
+      var down = below >= above, room = Math.max(120, down ? below : above);
+      p.style.maxHeight = Math.floor(room) + 'px';
+      h = Math.min(h, room);
+      top = down ? r.bottom + gap : r.top - gap - h;
+    }
     p.style.left = Math.round(left) + 'px';
     p.style.top = Math.round(top) + 'px';
   }
@@ -1220,7 +1232,11 @@ var InfoTip = (function () {
   document.addEventListener('focusout', function (e) {
     if (mode === 'focus' && trigger(e.target) === cur) hide();
   });
-  window.addEventListener('scroll', hide, { capture: true, passive: true });
+  // 페이지가 움직이면 닫는다 — 설명창 안을 스크롤하는 것은 빼고 (scroll 은 거품이 없지만 capture 로는 안쪽 요소 것도 온다)
+  window.addEventListener('scroll', function (e) {
+    if (pop && e.target && e.target.nodeType === 1 && pop.contains(e.target)) return;
+    hide();
+  }, { capture: true, passive: true });
   window.addEventListener('resize', hide);
 
   /** 따로 쓰는 ! 버튼 */
